@@ -7,6 +7,13 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <style>
     #map { height: 100vh; }
+    .custom-tooltip {
+      background-color: white;
+      border-radius: 5px;
+      padding: 10px;
+      color: #333;
+      box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
+    }
   </style>
 </head>
 <body>
@@ -36,6 +43,26 @@
     markers.forEach(function(marker) {
       bounds.push([marker.lat, marker.lon]);
       var color = getGradientColor(marker.countRate);
+
+      // Рассчитываем микрозиверты и микрорентгены
+      var doseRateInMicroSieverts = marker.doseRate; // µSv/h
+      var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100; // µR/h
+
+      // Форматируем дату в удобочитаемый вид
+      var date = new Date(marker.date * 1000); // Конвертируем UNIX timestamp в миллисекунды
+      var formattedDate = date.toLocaleString();
+
+      // Оформляем текст всплывающей подсказки
+      var tooltipContent = `
+        <div class="custom-tooltip">
+          <strong>Доза радиации:</strong><br>
+          ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
+          <strong>Дата и время:</strong><br>
+          ${formattedDate}
+        </div>
+      `;
+
+      // Добавляем маркер с легендой
       L.circleMarker([marker.lat, marker.lon], {
         radius: 8,
         fillColor: color,
@@ -43,7 +70,8 @@
         weight: 1,
         opacity: 0.5, // Полупрозрачность обводки
         fillOpacity: 0.5 // Полупрозрачность заполнения
-      }).addTo(map).bindPopup("Dose Rate: " + marker.doseRate + "<br>Count Rate: " + marker.countRate);
+      }).addTo(map)
+        .bindTooltip(tooltipContent, { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
     });
 
     // Устанавливаем карту так, чтобы все маркеры были видны
