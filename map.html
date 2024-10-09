@@ -17,27 +17,37 @@
 
     console.log("Полученные маркеры:", markers);
 
-    var map = L.map('map').setView([44.0, 43.0], 8);
+    // Найдем последний добавленный маркер по дате
+    var lastMarker = markers.reduce((latest, marker) => {
+      return marker.date > latest.date ? marker : latest;
+    }, markers[0]);
+
+    console.log("Последний маркер:", lastMarker);
+
+    // Создаем карту и фокусируем на последний маркер
+    var map = L.map('map').setView([lastMarker.lat, lastMarker.lon], 13);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
     }).addTo(map);
 
-    if (Array.isArray(markers)) {
-      markers.forEach(function(marker) {
-        var color = getGradientColor(marker.countRate);
-        L.circleMarker([marker.lat, marker.lon], {
-          radius: 8,
-          fillColor: color,
-          color: color, // Цвет обводки совпадает с цветом заполнения
-          weight: 1,
-          opacity: 0.5, // Полупрозрачность обводки
-          fillOpacity: 0.5 // Полупрозрачность заполнения
-        }).addTo(map).bindPopup("Dose Rate: " + marker.doseRate + "<br>Count Rate: " + marker.countRate);
-      });
-    } else {
-      console.log("Маркер не загружен. Проверьте данные.");
-    }
+    // Автоматическое масштабирование карты по всем маркерам
+    var bounds = [];
+    markers.forEach(function(marker) {
+      bounds.push([marker.lat, marker.lon]);
+      var color = getGradientColor(marker.countRate);
+      L.circleMarker([marker.lat, marker.lon], {
+        radius: 8,
+        fillColor: color,
+        color: color, // Цвет обводки совпадает с цветом заполнения
+        weight: 1,
+        opacity: 0.5, // Полупрозрачность обводки
+        fillOpacity: 0.5 // Полупрозрачность заполнения
+      }).addTo(map).bindPopup("Dose Rate: " + marker.doseRate + "<br>Count Rate: " + marker.countRate);
+    });
+
+    // Устанавливаем карту так, чтобы все маркеры были видны
+    map.fitBounds(bounds);
 
     // Функция для получения градиентного цвета в зависимости от countRate
     function getGradientColor(countRate) {
