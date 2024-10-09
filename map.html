@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script>
+    // Передаем данные как строку и парсим их в объект
+    var markers = JSON.parse('{{ .Markers | toJSON }}');
+
+    console.log("Полученные маркеры:", markers);
+
+    var map = L.map('map').setView([44.0, 43.0], 8);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+    }).addTo(map);
+
+    if (Array.isArray(markers)) {
+      markers.forEach(function(marker) {
+        var color = getColor(marker.countRate);
+        L.circleMarker([marker.lat, marker.lon], {
+          radius: 8,
+          fillColor: color,
+          color: color, // Цвет обводки совпадает с цветом заполнения
+          weight: 1,
+          opacity: 0.5, // Полупрозрачность обводки
+          fillOpacity: 0.5 // Полупрозрачность заполнения
+        }).addTo(map).bindPopup("Dose Rate: " + marker.doseRate + "<br>Count Rate: " + marker.countRate);
+      });
+    } else {
+      console.log("Маркер не загружен. Проверьте данные.");
+    }
+
+    // Функция для получения цвета в зависимости от countRate
+    function getColor(countRate) {
+      if (countRate <= 3) {
+        return "#006400"; // Темно-зеленый
+      } else if (countRate > 3 && countRate <= 4) {
+        return "#00FF00"; // Светло-зеленый
+      } else if (countRate > 4 && countRate <= 5) {
+        return "#ADFF2F"; // Очень светлый зеленый
+      } else if (countRate > 5 && countRate <= 6) {
+        return "#FFFF00"; // Желтый
+      } else if (countRate > 6 && countRate <= 7) {
+        return "#FFA500"; // Оранжевый
+      } else {
+        return "#FF0000"; // Красный
+      }
+    }
+  </script>
+</body>
+</html>
+
