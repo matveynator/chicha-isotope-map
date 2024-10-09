@@ -28,7 +28,7 @@ type Data struct {
 // Переменная для хранения загруженных данных
 var doseData Data
 
-// Чтение данных из файла
+// Чтение данных из файла с удалением пустых значений
 func loadDataFromFile(filename string) (Data, error) {
 	var data Data
 
@@ -51,6 +51,15 @@ func loadDataFromFile(filename string) (Data, error) {
 		return data, err
 	}
 
+	// Фильтрация маркеров: удаляем маркеры с нулевой или отсутствующей дозой радиации
+	var filteredMarkers []Marker
+	for _, marker := range data.Markers {
+		if marker.DoseRate > 0 {
+			filteredMarkers = append(filteredMarkers, marker)
+		}
+	}
+
+	data.Markers = filteredMarkers
 	return data, nil
 }
 
