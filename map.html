@@ -43,6 +43,9 @@
     markers.forEach(function(marker) {
       bounds.push([marker.lat, marker.lon]);
       var color = getGradientColor(marker.countRate);
+      
+      // Рассчитываем радиус маркера в зависимости от дозы
+      var radius = getRadius(marker.countRate);
 
       // Рассчитываем микрозиверты и микрорентгены
       var doseRateInMicroSieverts = marker.doseRate; // µSv/h
@@ -64,7 +67,7 @@
 
       // Добавляем маркер с легендой
       L.circleMarker([marker.lat, marker.lon], {
-        radius: 8,
+        radius: radius,  // Радиус изменяется пропорционально дозе
         fillColor: color,
         color: color, // Цвет обводки совпадает с цветом заполнения
         weight: 1,
@@ -87,10 +90,10 @@
         return interpolateColor([255, 255, 0], [255, 165, 0], (countRate - 8) / (11 - 8)); // Переход от желтого к оранжевому
       } else if (countRate > 11 && countRate <= 20) {
         return interpolateColor([255, 165, 0], [255, 0, 0], (countRate - 11) / (20 - 11)); // Переход от оранжевого к красному
-      } else if (countRate > 20 && countRate <= 40) {
-        return interpolateColor([255, 0, 0], [139, 0, 0], (countRate - 20) / (40 - 20)); // Переход от красного к красно-черному
-      } else if (countRate > 40 && countRate <= 99) {
-        return interpolateColor([139, 0, 0], [0, 0, 0], (countRate - 40) / (99 - 40)); // Переход от красно-черного к черному
+      } else if (countRate > 20 && countRate <= 60) {
+        return interpolateColor([255, 0, 0], [139, 0, 0], (countRate - 20) / (60 - 20)); // Переход от красного к красно-черному
+      } else if (countRate > 60 && countRate <= 99) {
+        return interpolateColor([139, 0, 0], [0, 0, 0], (countRate - 60) / (99 - 60)); // Переход от красно-черного к черному
       } else {
         return "#000000"; // Черный для значений выше 99
       }
@@ -105,6 +108,23 @@
         result[i] = Math.round(result[i] + factor * (color2[i] - color1[i]));
       }
       return 'rgb(' + result.join(',') + ')';
+    }
+
+    // Функция для расчета радиуса маркера на основе дозы
+    function getRadius(countRate) {
+      const minRadius = 8;   // Минимальный размер маркера
+      const maxRadius = 35;  // Максимальный размер маркера
+      const minRate = 3;     // Минимальный уровень радиации
+      const maxRate = 99;    // Максимальный уровень радиации
+
+      if (countRate <= minRate) {
+        return minRadius; // Минимальный размер для низких значений
+      } else if (countRate >= maxRate) {
+        return maxRadius; // Максимальный размер для высоких значений
+      } else {
+        // Пропорциональное увеличение радиуса
+        return minRadius + (countRate - minRate) * (maxRadius - minRadius) / (maxRate - minRate);
+      }
     }
   </script>
 </body>
