@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -8,7 +9,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/webview/webview_go"
 )
+
+// Встраивание файлов из папки public_html
+//go:embed public_html/*
+var content embed.FS
 
 // Структура для хранения данных дозиметра
 type Marker struct {
@@ -76,7 +83,7 @@ func toJSON(data interface{}) (string, error) {
 func mapHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
 		"toJSON": toJSON,
-	}).ParseFiles("map.html"))
+	}).ParseFS(content, "public_html/map.html"))
 
 	// Выполняем шаблон
 	err := tmpl.Execute(w, doseData)
@@ -95,11 +102,20 @@ func main() {
 
 	fmt.Println("Данные успешно загружены:", doseData.Title)
 
-	// Маршруты
-	http.HandleFunc("/", mapHandler)
+	// Запуск веб-сервера
+	go func() {
+		http.HandleFunc("/", mapHandler)
+		log.Println("Запуск сервера на :8080...")
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	}()
 
-	// Запуск сервера
-	log.Println("Запуск сервера на :8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	// Запуск встроенного браузера с использованием библиотеки webview
+	debug := true
+	w := webview.New(debug)
+	defer w.Destroy()
+	w.SetTitle("Isotope Pathways")
+	w.SetSize(800, 700, webview.HintNone)
+	w.Navigate("http://localhost:8080")
+	w.Run()
 }
 

@@ -6,7 +6,18 @@
   <title>{{.Title}}</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <style>
-    #map { height: 100vh; }
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden; /* Отключение прокрутки страницы */
+    }
+    #map {
+      height: 100vh;  /* Карта занимает весь экран */
+      margin: 0;
+      overflow: hidden;
+    }
     .custom-tooltip {
       background-color: white;
       border-radius: 5px;
@@ -113,7 +124,7 @@
     // Функция для расчета радиуса маркера на основе дозы
     function getRadius(countRate) {
       const minRadius = 8;   // Минимальный размер маркера
-      const maxRadius = 35;  // Максимальный размер маркера
+      const maxRadius = 30;  // Максимальный размер маркера
       const minRate = 3;     // Минимальный уровень радиации
       const maxRate = 99;    // Максимальный уровень радиации
 
