@@ -90,10 +90,10 @@
         return interpolateColor([255, 255, 0], [255, 165, 0], (countRate - 8) / (11 - 8)); // Переход от желтого к оранжевому
       } else if (countRate > 11 && countRate <= 20) {
         return interpolateColor([255, 165, 0], [255, 0, 0], (countRate - 11) / (20 - 11)); // Переход от оранжевого к красному
-      } else if (countRate > 20 && countRate <= 60) {
-        return interpolateColor([255, 0, 0], [139, 0, 0], (countRate - 20) / (60 - 20)); // Переход от красного к красно-черному
-      } else if (countRate > 60 && countRate <= 99) {
-        return interpolateColor([139, 0, 0], [0, 0, 0], (countRate - 60) / (99 - 60)); // Переход от красно-черного к черному
+      } else if (countRate > 20 && countRate <= 30) {
+        return interpolateColor([255, 0, 0], [139, 0, 0], (countRate - 20) / (30 - 20)); // Переход от красного к красно-черному
+      } else if (countRate > 30 && countRate <= 99) {
+        return interpolateColor([139, 0, 0], [0, 0, 0], (countRate - 30) / (99 - 30)); // Переход от красно-черного к черному
       } else {
         return "#000000"; // Черный для значений выше 99
       }
