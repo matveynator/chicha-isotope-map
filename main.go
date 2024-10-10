@@ -35,40 +35,70 @@ type Data struct {
 // Переменная для хранения загруженных данных
 var doseData Data
 
-// Чтение данных из файла с удалением пустых значений
-func loadDataFromFile(filename string) (Data, error) {
-	var data Data
 
-	// Чтение содержимого файла
-	file, err := os.Open(filename)
-	if err != nil {
-		return data, err
-	}
-	defer file.Close()
-
-	// Чтение файла в байты
-	byteValue, err := ioutil.ReadAll(file)
-	if err != nil {
-		return data, err
-	}
-
-	// Парсинг JSON данных
-	err = json.Unmarshal(byteValue, &data)
-	if err != nil {
-		return data, err
-	}
-
-	// Фильтрация маркеров: удаляем маркеры с нулевой или отсутствующей дозой радиации
-	var filteredMarkers []Marker
-	for _, marker := range data.Markers {
-		if marker.DoseRate > 0 {
-			filteredMarkers = append(filteredMarkers, marker)
-		}
-	}
-
-	data.Markers = filteredMarkers
-	return data, nil
+// Функция для проверки, совпадают ли два маркера по всем полям
+func areMarkersEqual(m1, m2 Marker) bool {
+    return m1.DoseRate == m2.DoseRate &&
+           m1.Date == m2.Date &&
+           m1.Lon == m2.Lon &&
+           m1.Lat == m2.Lat &&
+           m1.CountRate == m2.CountRate
 }
+
+// Фильтрация маркеров: удаляем маркеры с нулевой дозой радиации и дубликаты
+func filterUniqueMarkers(markers []Marker) []Marker {
+    var filteredMarkers []Marker
+
+    for _, newMarker := range markers {
+        if newMarker.DoseRate == 0 {
+            continue // Игнорируем маркеры с нулевой дозой
+        }
+
+        isDuplicate := false
+        for _, existingMarker := range filteredMarkers {
+            if areMarkersEqual(newMarker, existingMarker) {
+                isDuplicate = true
+                break
+            }
+        }
+
+        if !isDuplicate {
+            filteredMarkers = append(filteredMarkers, newMarker)
+        }
+    }
+
+    return filteredMarkers
+}
+
+// Чтение данных из файла с удалением пустых значений и дубликатов
+func loadDataFromFile(filename string) (Data, error) {
+    var data Data
+
+    // Чтение содержимого файла
+    file, err := os.Open(filename)
+    if err != nil {
+        return data, err
+    }
+    defer file.Close()
+
+    // Чтение файла в байты
+    byteValue, err := ioutil.ReadAll(file)
+    if err != nil {
+        return data, err
+    }
+
+    // Парсинг JSON данных
+    err = json.Unmarshal(byteValue, &data)
+    if err != nil {
+        return data, err
+    }
+
+    // Фильтрация уникальных маркеров
+    data.Markers = filterUniqueMarkers(data.Markers)
+
+    return data, nil
+}
+
 
 // Функция для преобразования данных в JSON
 func toJSON(data interface{}) (string, error) {
