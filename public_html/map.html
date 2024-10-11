@@ -6,7 +6,6 @@
   <title>{{.Title}}</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <style>
-
     body, html {
       margin: 0;
       padding: 0;
@@ -28,7 +27,15 @@
   </style>
 </head>
 <body>
+  <!-- Форма для загрузки файлов -->
+  <form id="uploadForm" enctype="multipart/form-data">
+    <input type="file" id="fileInput" accept=".kml,.kmz,.rctrk" />
+    <button type="button" onclick="uploadFile()">Upload</button>
+  </form>
+
+
   <div id="map"></div>
+
   <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
   <script>
     var markers = JSON.parse('{{ .Markers | toJSON }}');
@@ -135,6 +142,31 @@
       } else {
         // Пропорциональное увеличение радиуса
         return minRadius + (countRate - minRate) * (maxRadius - minRadius) / (maxRate - minRate);
+      }
+    }
+
+    // Функция для загрузки файла
+    function uploadFile() {
+      var fileInput = document.getElementById('fileInput');
+      var file = fileInput.files[0];
+      if (file) {
+        var formData = new FormData();
+        formData.append("file", file);
+
+        // Отправляем файл на сервер
+        fetch('/upload', {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+          console.log("Файл загружен:", data);
+          // После загрузки обновим карту
+          location.reload();
+        })
+        .catch(error => console.error("Ошибка:", error));
+      } else {
+        alert("Пожалуйста, выберите файл");
       }
     }
   </script>

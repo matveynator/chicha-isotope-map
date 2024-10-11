@@ -1,14 +1,22 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"io/ioutil"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/webview/webview_go"
 )
@@ -35,70 +43,127 @@ type Data struct {
 // Переменная для хранения загруженных данных
 var doseData Data
 
-
 // Функция для проверки, совпадают ли два маркера по всем полям
 func areMarkersEqual(m1, m2 Marker) bool {
-    return m1.DoseRate == m2.DoseRate &&
-           m1.Date == m2.Date &&
-           m1.Lon == m2.Lon &&
-           m1.Lat == m2.Lat &&
-           m1.CountRate == m2.CountRate
+	return m1.DoseRate == m2.DoseRate &&
+		m1.Date == m2.Date &&
+		m1.Lon == m2.Lon &&
+		m1.Lat == m2.Lat &&
+		m1.CountRate == m2.CountRate
 }
 
 // Фильтрация маркеров: удаляем маркеры с нулевой дозой радиации и дубликаты
 func filterUniqueMarkers(markers []Marker) []Marker {
-    var filteredMarkers []Marker
+	var filteredMarkers []Marker
 
-    for _, newMarker := range markers {
-        if newMarker.DoseRate == 0 {
-            continue // Игнорируем маркеры с нулевой дозой
-        }
+	for _, newMarker := range markers {
+		if newMarker.DoseRate == 0 {
+			continue // Игнорируем маркеры с нулевой дозой
+		}
 
-        isDuplicate := false
-        for _, existingMarker := range filteredMarkers {
-            if areMarkersEqual(newMarker, existingMarker) {
-                isDuplicate = true
-                break
-            }
-        }
+		isDuplicate := false
+		for _, existingMarker := range filteredMarkers {
+			if areMarkersEqual(newMarker, existingMarker) {
+				isDuplicate = true
+				break
+			}
+		}
 
-        if !isDuplicate {
-            filteredMarkers = append(filteredMarkers, newMarker)
-        }
-    }
+		if !isDuplicate {
+			filteredMarkers = append(filteredMarkers, newMarker)
+		}
+	}
 
-    return filteredMarkers
+	return filteredMarkers
 }
 
 // Чтение данных из файла с удалением пустых значений и дубликатов
 func loadDataFromFile(filename string) (Data, error) {
-    var data Data
+	var data Data
 
-    // Чтение содержимого файла
-    file, err := os.Open(filename)
-    if err != nil {
-        return data, err
-    }
-    defer file.Close()
+	// Чтение содержимого файла
+	file, err := os.Open(filename)
+	if err != nil {
+		return data, err
+	}
+	defer file.Close()
 
-    // Чтение файла в байты
-    byteValue, err := ioutil.ReadAll(file)
-    if err != nil {
-        return data, err
-    }
+	// Чтение файла в байты
+	byteValue, err := ioutil.ReadAll(file)
+	if err != nil {
+		return data, err
+	}
 
-    // Парсинг JSON данных
-    err = json.Unmarshal(byteValue, &data)
-    if err != nil {
-        return data, err
-    }
+	// Парсинг JSON данных
+	err = json.Unmarshal(byteValue, &data)
+	if err != nil {
+		return data, err
+	}
 
-    // Фильтрация уникальных маркеров
-    data.Markers = filterUniqueMarkers(data.Markers)
+	// Фильтрация уникальных маркеров
+	data.Markers = filterUniqueMarkers(data.Markers)
 
-    return data, nil
+	return data, nil
 }
 
+func parseKML(data []byte) ([]Marker, error) {
+	var markers []Marker
+
+	// Используем регулярные выражения для извлечения координат и описаний
+	coordinatePattern := regexp.MustCompile(`<coordinates>(.*?)<\/coordinates>`)
+	descriptionPattern := regexp.MustCompile(`<description><!\[CDATA\[(.*?)\]\]><\/description>`)
+
+	coordinates := coordinatePattern.FindAllStringSubmatch(string(data), -1)
+	descriptions := descriptionPattern.FindAllStringSubmatch(string(data), -1)
+
+	// Обрабатываем данные и создаем маркеры
+	for i := 0; i < len(coordinates) && i < len(descriptions); i++ {
+		coords := strings.Split(strings.TrimSpace(coordinates[i][1]), ",")
+		if len(coords) >= 2 {
+			lon := parseFloat(coords[0])
+			lat := parseFloat(coords[1])
+
+			// Извлекаем значения из описания
+			description := descriptions[i][1]
+			doseRate := extractDoseRate(description)
+			countRate := extractCountRate(description)
+
+			// Создаем маркер
+			marker := Marker{
+				DoseRate:  doseRate,
+				Lat:       lat,
+				Lon:       lon,
+				CountRate: countRate,
+			}
+			markers = append(markers, marker)
+		}
+	}
+	return markers, nil
+}
+
+// Вспомогательные функции для извлечения дозы радиации и счетчика из описания
+func extractDoseRate(description string) float64 {
+	re := regexp.MustCompile(`(\d+(\.\d+)?) µR/h`)
+	match := re.FindStringSubmatch(description)
+	if len(match) > 0 {
+		return parseFloat(match[1]) / 100 // Преобразуем из µR/h в µSv/h
+	}
+	return 0
+}
+
+func extractCountRate(description string) float64 {
+	re := regexp.MustCompile(`(\d+(\.\d+)?) cps`)
+	match := re.FindStringSubmatch(description)
+	if len(match) > 0 {
+		return parseFloat(match[1])
+	}
+	return 0
+}
+
+func parseFloat(value string) float64 {
+	parsedValue, _ := strconv.ParseFloat(value, 64)
+	return parsedValue
+}
 
 // Функция для преобразования данных в JSON
 func toJSON(data interface{}) (string, error) {
@@ -108,6 +173,27 @@ func toJSON(data interface{}) (string, error) {
 	}
 	return string(bytes), nil
 }
+
+// Обработка KML файла
+func processKMLFile(file multipart.File) {
+    // Чтение данных файла
+    data, err := ioutil.ReadAll(file)
+    if err != nil {
+        log.Println("Ошибка чтения KML файла:", err)
+        return
+    }
+
+    // Парсим KML данные
+    markers, err := parseKML(data)
+    if err != nil {
+        log.Println("Ошибка парсинга KML файла:", err)
+        return
+    }
+
+    // Добавляем к существующим данным
+    doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
+}
+
 
 // Функция для отдачи HTML-страницы
 func mapHandler(w http.ResponseWriter, r *http.Request) {
@@ -122,30 +208,136 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func main() {
-	// Загрузка данных из файла
-	var err error
-	doseData, err = loadDataFromFile("isotope-map-kmv-northcaucases.rctrk")
+// Обработчик загрузки файла
+func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(10 << 20) // Ограничиваем до 10MB
 	if err != nil {
-		log.Fatalf("Ошибка при чтении файла: %v", err)
+		http.Error(w, "Ошибка загрузки файла", http.StatusInternalServerError)
+		return
 	}
 
-	fmt.Println("Данные успешно загружены:", doseData.Title)
+	// Получаем файл
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Не удалось загрузить файл", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
 
-	// Запуск веб-сервера
-	go func() {
-		http.HandleFunc("/", mapHandler)
-		log.Println("Запуск сервера на :8080...")
-		log.Fatal(http.ListenAndServe(":8080", nil))
-	}()
+	// Определяем тип файла по расширению
+	ext := filepath.Ext(header.Filename)
+	switch ext {
+	case ".kml":
+		processKMLFile(file)
+	case ".kmz":
+		processKMZFile(file)
+	case ".rctrk":
+		processRCTRKFile(file)
+	default:
+		http.Error(w, "Неподдерживаемый тип файла", http.StatusBadRequest)
+		return
+	}
 
-	// Запуск встроенного браузера с использованием библиотеки webview
-	debug := true
-	w := webview.New(debug)
-	defer w.Destroy()
-	w.SetTitle("Isotope Pathways")
-	w.SetSize(800, 700, webview.HintNone)
-	w.Navigate("http://localhost:8080")
-	w.Run()
+	// Успешная загрузка
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+// Обработка KMZ файла
+func processKMZFile(file multipart.File) {
+	// Чтение данных файла
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Println("Ошибка чтения KMZ файла:", err)
+		return
+	}
+
+	// Открытие KMZ как zip-архива
+	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		log.Println("Ошибка при открытии KMZ файла как ZIP:", err)
+		return
+	}
+
+	// Ищем KML файл внутри архива
+	for _, zipFile := range zipReader.File {
+		if filepath.Ext(zipFile.Name) == ".kml" {
+			kmlFile, err := zipFile.Open()
+			if err != nil {
+				log.Println("Ошибка при открытии KML файла внутри KMZ:", err)
+				continue
+			}
+			defer kmlFile.Close()
+
+			// Чтение содержимого KML файла
+			kmlData, err := io.ReadAll(kmlFile)
+			if err != nil {
+				log.Println("Ошибка при чтении KML файла внутри KMZ:", err)
+				return
+			}
+
+			// Парсим KML данные
+			markers, err := parseKML(kmlData)
+			if err != nil {
+				log.Println("Ошибка парсинга KML файла из KMZ:", err)
+				return
+			}
+
+			// Добавляем к существующим данным
+			doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
+		}
+	}
+}
+
+// Обработка RCTRK файла
+func processRCTRKFile(file multipart.File) {
+	// Чтение данных файла
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Println("Ошибка чтения RCTRK файла:", err)
+		return
+	}
+
+	// Парсинг RCTRK данных в структуру Data
+	var rctrkData Data
+	err = json.Unmarshal(data, &rctrkData)
+	if err != nil {
+		log.Println("Ошибка парсинга RCTRK файла:", err)
+		return
+	}
+
+	// Фильтрация уникальных маркеров
+	rctrkData.Markers = filterUniqueMarkers(rctrkData.Markers)
+
+    // Добавляем новые маркеры к существующим данным
+    doseData.Markers = append(doseData.Markers, rctrkData.Markers...)
+}
+
+func main() {
+    // Загрузка данных из файла
+    var err error
+    doseData, err = loadDataFromFile("isotope-map-kmv-northcaucases.rctrk")
+    if err != nil {
+        log.Fatalf("Ошибка при чтении файла: %v", err)
+    }
+
+    fmt.Println("Данные успешно загружены:", doseData.Title)
+
+    // Запуск веб-сервера
+    go func() {
+        http.HandleFunc("/", mapHandler)
+        http.HandleFunc("/upload", uploadHandler)
+        log.Println("Запуск сервера на :8080...")
+        log.Fatal(http.ListenAndServe(":8080", nil))
+    }()
+
+    // Запуск встроенного браузера с использованием библиотеки webview
+    debug := true
+    w := webview.New(debug)
+    defer w.Destroy()
+    w.SetTitle("Isotope Pathways")
+    w.SetSize(800, 700, webview.HintNone)
+    w.Navigate("http://localhost:8080")
+    w.Run()
 }
 
