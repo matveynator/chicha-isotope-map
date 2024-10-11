@@ -1,6 +1,7 @@
 package main
 
 import (
+	"time"
 	"archive/zip"
 	"bytes"
 	"embed"
@@ -106,40 +107,93 @@ func loadDataFromFile(filename string) (Data, error) {
 	return data, nil
 }
 
-func parseKML(data []byte) ([]Marker, error) {
-	var markers []Marker
-
-	// Используем регулярные выражения для извлечения координат и описаний
-	coordinatePattern := regexp.MustCompile(`<coordinates>(.*?)<\/coordinates>`)
-	descriptionPattern := regexp.MustCompile(`<description><!\[CDATA\[(.*?)\]\]><\/description>`)
-
-	coordinates := coordinatePattern.FindAllStringSubmatch(string(data), -1)
-	descriptions := descriptionPattern.FindAllStringSubmatch(string(data), -1)
-
-	// Обрабатываем данные и создаем маркеры
-	for i := 0; i < len(coordinates) && i < len(descriptions); i++ {
-		coords := strings.Split(strings.TrimSpace(coordinates[i][1]), ",")
-		if len(coords) >= 2 {
-			lon := parseFloat(coords[0])
-			lat := parseFloat(coords[1])
-
-			// Извлекаем значения из описания
-			description := descriptions[i][1]
-			doseRate := extractDoseRate(description)
-			countRate := extractCountRate(description)
-
-			// Создаем маркер
-			marker := Marker{
-				DoseRate:  doseRate,
-				Lat:       lat,
-				Lon:       lon,
-				CountRate: countRate,
-			}
-			markers = append(markers, marker)
-		}
-	}
-	return markers, nil
+// Функция для приблизительного определения временной зоны по долготе
+func getTimeZoneByLongitude(lon float64) *time.Location {
+    // Примерное распределение часовых поясов по долготе
+    switch {
+    case lon >= 37 && lon <= 60: // Москва и часть России
+        loc, _ := time.LoadLocation("Europe/Moscow")
+        return loc
+    case lon >= -9 && lon <= 3: // Центральная Европа
+        loc, _ := time.LoadLocation("Europe/Berlin")
+        return loc
+    case lon >= -180 && lon < -60: // Северная Америка
+        loc, _ := time.LoadLocation("America/New_York")
+        return loc
+    default: // По умолчанию UTC
+        loc, _ := time.LoadLocation("UTC")
+        return loc
+    }
 }
+
+// Функция для парсинга времени в формате "Feb 3, 2024 19:44:03"
+// Обновим функцию parseDate, чтобы учитывать временную зону на основе долготы
+func parseDate(description string, loc *time.Location) int64 {
+    re := regexp.MustCompile(`<b>([A-Za-z]{3} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2})<\/b>`)
+    match := re.FindStringSubmatch(description)
+    if len(match) > 0 {
+        dateString := match[1]
+        layout := "Jan 2, 2006 15:04:05"
+        t, err := time.ParseInLocation(layout, dateString, loc)
+        if err == nil {
+            return t.Unix() // Возвращаем время в формате UNIX timestamp
+        } else {
+            log.Println("Ошибка парсинга даты:", err)
+        }
+    }
+    return 0
+}
+
+// Обновляем функцию parseKML для определения временной зоны на основе координат
+func parseKML(data []byte) ([]Marker, error) {
+    var markers []Marker
+    var longitudes []float64
+
+    coordinatePattern := regexp.MustCompile(`<coordinates>(.*?)<\/coordinates>`)
+    descriptionPattern := regexp.MustCompile(`<description><!\[CDATA\[(.*?)\]\]><\/description>`)
+
+    coordinates := coordinatePattern.FindAllStringSubmatch(string(data), -1)
+    descriptions := descriptionPattern.FindAllStringSubmatch(string(data), -1)
+
+    // Сбор всех долгот для определения временной зоны
+    for i := 0; i < len(coordinates) && i < len(descriptions); i++ {
+        coords := strings.Split(strings.TrimSpace(coordinates[i][1]), ",")
+        if len(coords) >= 2 {
+            lon := parseFloat(coords[0])
+            lat := parseFloat(coords[1])
+            longitudes = append(longitudes, lon)
+
+            doseRate := extractDoseRate(descriptions[i][1])
+            countRate := extractCountRate(descriptions[i][1])
+            // Мы ещё не знаем точную временную зону, так что время пока не парсим
+            marker := Marker{
+                DoseRate:  doseRate,
+                Lat:       lat,
+                Lon:       lon,
+                CountRate: countRate,
+            }
+            markers = append(markers, marker)
+        }
+    }
+
+    // Определение средней долготы для временной зоны
+    var avgLon float64
+    for _, lon := range longitudes {
+        avgLon += lon
+    }
+    avgLon /= float64(len(longitudes))
+
+    // Получаем временную зону по среднему значению долготы
+    loc := getTimeZoneByLongitude(avgLon)
+
+    // Теперь пересчитываем время для каждого маркера
+    for i := range markers {
+        markers[i].Date = parseDate(descriptions[i][1], loc)
+    }
+
+    return markers, nil
+}
+
 
 // Вспомогательные функции для извлечения дозы радиации и счетчика из описания
 func extractDoseRate(description string) float64 {

@@ -24,15 +24,41 @@
       color: #333;
       box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
     }
+
+    /* Стиль кнопки загрузки поверх карты */
+    .upload-btn-container {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+    }
+    
+    .leaflet-control-container .leaflet-top.leaflet-right .upload-btn-container {
+      margin-top: 40px; /* Положение под кнопками масштабирования */
+    }
+    
+    .upload-btn {
+      background-color: white;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 14px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+    }
+    
+    .upload-btn:hover {
+      background-color: #f4f4f4;
+    }
   </style>
 </head>
 <body>
-  <!-- Форма для загрузки файлов -->
-  <form id="uploadForm" enctype="multipart/form-data">
-    <input type="file" id="fileInput" accept=".kml,.kmz,.rctrk" />
-    <button type="button" onclick="uploadFile()">Upload</button>
-  </form>
 
+  <!-- Контейнер для кнопки загрузки поверх карты -->
+  <div class="upload-btn-container leaflet-control">
+    <label for="fileInput" class="upload-btn">Upload File</label>
+    <input type="file" id="fileInput" accept=".kml,.kmz,.rctrk" style="display: none;" onchange="uploadFile()">
+  </div>
 
   <div id="map"></div>
 
@@ -172,4 +198,5 @@
   </script>
 </body>
 </html>
+
 
