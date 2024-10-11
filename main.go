@@ -381,8 +381,8 @@ func main() {
     go func() {
         http.HandleFunc("/", mapHandler)
         http.HandleFunc("/upload", uploadHandler)
-        log.Println("Запуск сервера на :8080...")
-        log.Fatal(http.ListenAndServe(":8080", nil))
+        log.Println("Запуск сервера на :8765...")
+        log.Fatal(http.ListenAndServe(":8765", nil))
     }()
 
     // Запуск встроенного браузера с использованием библиотеки webview
@@ -391,7 +391,7 @@ func main() {
     defer w.Destroy()
     w.SetTitle("Isotope Pathways")
     w.SetSize(800, 700, webview.HintNone)
-    w.Navigate("http://localhost:8080")
+    w.Navigate("http://localhost:8765")
     w.Run()
 }
 
