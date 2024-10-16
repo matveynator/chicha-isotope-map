@@ -132,16 +132,16 @@ function getRadius(doseRate, zoomLevel) {
     function getGradientColor(doseRate) {
       if (doseRate <= 0.04) {
         return "#006400";
-      } else if (doseRate > 0.04 && doseRate <= 0.08) {
-        return interpolateColor([0, 100, 0], [255, 255, 0], (doseRate - 0.04) / (0.08 - 0.04));
-      } else if (doseRate > 0.08 && doseRate <= 0.11) {
-        return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.08) / (0.11 - 0.08));
+      } else if (doseRate > 0.04 && doseRate <= 0.11) {
+        return interpolateColor([0, 100, 0], [255, 255, 0], (doseRate - 0.04) / (0.11 - 0.04));
       } else if (doseRate > 0.11 && doseRate <= 0.20) {
-        return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.11) / (0.20 - 0.11));
+        return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
       } else if (doseRate > 0.20 && doseRate <= 0.30) {
-        return interpolateColor([255, 0, 0], [139, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
-      } else if (doseRate > 0.30 && doseRate <= 0.99) {
-        return interpolateColor([139, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
+        return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
+      } else if (doseRate > 0.30 && doseRate <= 0.40) {
+        return interpolateColor([255, 0, 0], [139, 0, 0], (doseRate - 0.30) / (0.40 - 0.30));
+      } else if (doseRate > 0.40 && doseRate <= 0.99) {
+        return interpolateColor([139, 0, 0], [0, 0, 0], (doseRate - 0.40) / (0.99 - 0.40));
       } else {
         return "#000000";
       }
