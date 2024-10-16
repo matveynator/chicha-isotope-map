@@ -53,8 +53,9 @@
 ```bash
 git clone https://github.com/matveynator/isotope-pathways.git
 cd isotope-pathways
-go build -ldflags "-X isotope-pathways/pkg/config.CompileVersion=1.0.0" -o isotope-pathways.go main.go
-./isotope-pathways.go
+go build isotope-pathways.go
+chmod +x ./isotope-pathways
+./isotope-pathways
 ```
 
 ---
@@ -64,7 +65,7 @@ go build -ldflags "-X isotope-pathways/pkg/config.CompileVersion=1.0.0" -o isoto
 ### Запуск программы:
 
 ```bash
-go run isotope-pathways.go --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
+isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
 - `--port`: Порт, на котором будет запущен сервер. По умолчанию `8765`.  
