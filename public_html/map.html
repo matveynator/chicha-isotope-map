@@ -67,7 +67,6 @@
     if (bounds.length > 0) {
       map.fitBounds(bounds);
     } else {
-      // Если маркеров нет, устанавливаем центр по умолчанию
       map.setView([44.0, 43.0], 5);
     }
 
@@ -75,51 +74,59 @@
       maxZoom: 18,
     }).addTo(map);
 
-    var circleMarkers = [];
+    var circleMarkers = {};
 
-    // Обновляем маркеры в зависимости от зума
+    // Обновляем маркеры при изменении масштаба или перемещении карты
     map.on('zoomend', updateMarkers);
+    map.on('moveend', updateMarkers);
 
     function updateMarkers() {
       var zoomLevel = map.getZoom();
-      console.log("Текущий уровень увеличения:", zoomLevel);
+      var bounds = map.getBounds();
 
-      // Очищаем предыдущие маркеры с карты
-      circleMarkers.forEach(marker => map.removeLayer(marker));
-      circleMarkers = [];
+      // Удаляем маркеры, которые вышли за пределы видимой области
+      for (let key in circleMarkers) {
+        if (!bounds.contains(circleMarkers[key].getLatLng())) {
+          map.removeLayer(circleMarkers[key]);
+          delete circleMarkers[key];
+        }
+      }
 
+      // Добавляем маркеры, которые находятся в пределах видимой области
       var filteredMarkers = filterMarkersByZoom(zoomLevel);
-
       filteredMarkers.forEach(function(marker) {
-        var color = getGradientColor(marker.doseRate);
-        var radius = getRadius(marker.doseRate, zoomLevel);
+        var markerKey = `${marker.lat}-${marker.lon}`;
+        if (!circleMarkers[markerKey] && bounds.contains([marker.lat, marker.lon])) {
+          var color = getGradientColor(marker.doseRate);
+          var radius = getRadius(marker.doseRate, zoomLevel);
 
-        var doseRateInMicroSieverts = marker.doseRate;
-        var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
+          var doseRateInMicroSieverts = marker.doseRate;
+          var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
 
-        var date = new Date(marker.date * 1000);
-        var formattedDate = date.toLocaleString();
+          var date = new Date(marker.date * 1000);
+          var formattedDate = date.toLocaleString();
 
-        var tooltipContent = `
-          <div class="custom-tooltip">
-            <strong>Доза радиации:</strong><br>
-            ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
-            <strong>Дата и время:</strong><br>
-            ${formattedDate}
-          </div>
-        `;
+          var tooltipContent = `
+            <div class="custom-tooltip">
+              <strong>Доза радиации:</strong><br>
+              ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
+              <strong>Дата и время:</strong><br>
+              ${formattedDate}
+            </div>
+          `;
 
-        var circleMarker = L.circleMarker([marker.lat, marker.lon], {
-          radius: radius,
-          fillColor: color,
-          color: color,
-          weight: 1,
-          opacity: 0.5,
-          fillOpacity: 0.5
-        }).addTo(map)
-          .bindTooltip(tooltipContent, { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
+          var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+            radius: radius,
+            fillColor: color,
+            color: color,
+            weight: 1,
+            opacity: 0.5,
+            fillOpacity: 0.5
+          }).addTo(map)
+            .bindTooltip(tooltipContent, { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
 
-        circleMarkers.push(circleMarker);
+          circleMarkers[markerKey] = circleMarker;
+        }
       });
     }
 
@@ -189,7 +196,6 @@
       }
     }
 
-    // Инициализация маркеров при загрузке страницы
     updateMarkers();
   </script>
 </body>
