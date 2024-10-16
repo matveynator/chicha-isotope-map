@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/webview/webview_go"
+//	"github.com/webview/webview_go"
 )
 
 // Встраивание файлов из папки public_html
@@ -378,20 +378,10 @@ func main() {
     fmt.Println("Данные успешно загружены:", doseData.Title)
 
     // Запуск веб-сервера
-    go func() {
         http.HandleFunc("/", mapHandler)
         http.HandleFunc("/upload", uploadHandler)
         log.Println("Запуск сервера на :8765...")
         log.Fatal(http.ListenAndServe(":8765", nil))
-    }()
 
-    // Запуск встроенного браузера с использованием библиотеки webview
-    debug := true
-    w := webview.New(debug)
-    defer w.Destroy()
-    w.SetTitle("Isotope Pathways")
-    w.SetSize(800, 700, webview.HintNone)
-    w.Navigate("http://localhost:8765")
-    w.Run()
 }
 

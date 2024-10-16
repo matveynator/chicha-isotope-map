@@ -25,7 +25,6 @@
       box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
     }
 
-    /* Стиль кнопки загрузки поверх карты */
     .upload-btn-container {
       position: absolute;
       top: 10px;
@@ -34,7 +33,7 @@
     }
     
     .leaflet-control-container .leaflet-top.leaflet-right .upload-btn-container {
-      margin-top: 40px; /* Положение под кнопками масштабирования */
+      margin-top: 40px;
     }
     
     .upload-btn {
@@ -54,10 +53,9 @@
 </head>
 <body>
 
-  <!-- Контейнер для кнопки загрузки поверх карты -->
   <div class="upload-btn-container leaflet-control">
     <label for="fileInput" class="upload-btn">Upload File</label>
-    <input type="file" id="fileInput" accept=".kml,.kmz,.rctrk" style="display: none;" onchange="uploadFile()">
+    <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">
   </div>
 
   <div id="map"></div>
@@ -65,41 +63,59 @@
   <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
   <script>
     var markers = JSON.parse('{{ .Markers | toJSON }}');
-
     console.log("Полученные маркеры:", markers);
 
-    // Найдем последний добавленный маркер по дате
     var lastMarker = markers.reduce((latest, marker) => {
       return marker.date > latest.date ? marker : latest;
     }, markers[0]);
 
     console.log("Последний маркер:", lastMarker);
 
-    // Создаем карту и фокусируем на последний маркер
     var map = L.map('map').setView([lastMarker.lat, lastMarker.lon], 13);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
     }).addTo(map);
 
-    // Автоматическое масштабирование карты по всем маркерам
     var bounds = [];
+    var circleMarkers = [];
+
+    // Функция для расчета радиуса маркера с учетом масштаба
+    function getRadius(countRate, zoomLevel) {
+      const baseRadius = getBaseRadius(countRate);
+      const scaleFactor = Math.pow(2, (zoomLevel/8)); // Пропорциональная зависимость от увеличения
+      return baseRadius / scaleFactor; // Корректируем радиус в зависимости от зума
+    }
+
+    // Базовый радиус в зависимости от уровня радиации (как было)
+    function getBaseRadius(countRate) {
+      const minRadius = 8;
+      const maxRadius = 30;
+      const minRate = 3;
+      const maxRate = 99;
+
+      if (countRate <= minRate) {
+        return minRadius;
+      } else if (countRate >= maxRate) {
+        return maxRadius;
+      } else {
+        return minRadius + (countRate - minRate) * (maxRadius - minRadius) / (maxRate - minRate);
+      }
+    }
+
     markers.forEach(function(marker) {
       bounds.push([marker.lat, marker.lon]);
       var color = getGradientColor(marker.countRate);
-      
-      // Рассчитываем радиус маркера в зависимости от дозы
-      var radius = getRadius(marker.countRate);
 
-      // Рассчитываем микрозиверты и микрорентгены
-      var doseRateInMicroSieverts = marker.doseRate; // µSv/h
-      var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100; // µR/h
+      var zoomLevel = map.getZoom();
+      var radius = getRadius(marker.countRate, zoomLevel);
 
-      // Форматируем дату в удобочитаемый вид
-      var date = new Date(marker.date * 1000); // Конвертируем UNIX timestamp в миллисекунды
+      var doseRateInMicroSieverts = marker.doseRate;
+      var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
+
+      var date = new Date(marker.date * 1000);
       var formattedDate = date.toLocaleString();
 
-      // Оформляем текст всплывающей подсказки
       var tooltipContent = `
         <div class="custom-tooltip">
           <strong>Доза радиации:</strong><br>
@@ -109,41 +125,52 @@
         </div>
       `;
 
-      // Добавляем маркер с легендой
-      L.circleMarker([marker.lat, marker.lon], {
-        radius: radius,  // Радиус изменяется пропорционально дозе
+      var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+        radius: radius,
         fillColor: color,
-        color: color, // Цвет обводки совпадает с цветом заполнения
+        color: color,
         weight: 1,
-        opacity: 0.5, // Полупрозрачность обводки
-        fillOpacity: 0.5 // Полупрозрачность заполнения
+        opacity: 0.5,
+        fillOpacity: 0.5
       }).addTo(map)
         .bindTooltip(tooltipContent, { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
+
+      circleMarkers.push(circleMarker);
     });
 
-    // Устанавливаем карту так, чтобы все маркеры были видны
     map.fitBounds(bounds);
 
-    // Функция для получения градиентного цвета в зависимости от countRate
+    // Добавляем обработчик изменения масштаба карты
+    map.on('zoomend', function() {
+      var zoomLevel = map.getZoom();
+      console.log("Текущий уровень увеличения:", zoomLevel);
+
+      circleMarkers.forEach(function(circleMarker, index) {
+        var marker = markers[index];
+        var newRadius = getRadius(marker.countRate, zoomLevel);
+        console.log(`Маркер [${marker.lat}, ${marker.lon}] - новый радиус: ${newRadius}`);
+        circleMarker.setRadius(newRadius);
+      });
+    });
+
     function getGradientColor(countRate) {
       if (countRate <= 3) {
-        return "#006400"; // Темно-зеленый
+        return "#006400";
       } else if (countRate > 3 && countRate <= 8) {
-        return interpolateColor([0, 100, 0], [255, 255, 0], (countRate - 3) / (8 - 3)); // Переход от темно-зеленого к желтому
+        return interpolateColor([0, 100, 0], [255, 255, 0], (countRate - 3) / (8 - 3));
       } else if (countRate > 8 && countRate <= 11) {
-        return interpolateColor([255, 255, 0], [255, 165, 0], (countRate - 8) / (11 - 8)); // Переход от желтого к оранжевому
+        return interpolateColor([255, 255, 0], [255, 165, 0], (countRate - 8) / (11 - 8));
       } else if (countRate > 11 && countRate <= 20) {
-        return interpolateColor([255, 165, 0], [255, 0, 0], (countRate - 11) / (20 - 11)); // Переход от оранжевого к красному
+        return interpolateColor([255, 165, 0], [255, 0, 0], (countRate - 11) / (20 - 11));
       } else if (countRate > 20 && countRate <= 30) {
-        return interpolateColor([255, 0, 0], [139, 0, 0], (countRate - 20) / (30 - 20)); // Переход от красного к красно-черному
+        return interpolateColor([255, 0, 0], [139, 0, 0], (countRate - 20) / (30 - 20));
       } else if (countRate > 30 && countRate <= 99) {
-        return interpolateColor([139, 0, 0], [0, 0, 0], (countRate - 30) / (99 - 30)); // Переход от красно-черного к черному
+        return interpolateColor([139, 0, 0], [0, 0, 0], (countRate - 30) / (99 - 30));
       } else {
-        return "#000000"; // Черный для значений выше 99
+        return "#000000";
       }
     }
 
-    // Функция для интерполяции цвета
     function interpolateColor(color1, color2, factor) {
       if (factor < 0) factor = 0;
       if (factor > 1) factor = 1;
@@ -154,24 +181,6 @@
       return 'rgb(' + result.join(',') + ')';
     }
 
-    // Функция для расчета радиуса маркера на основе дозы
-    function getRadius(countRate) {
-      const minRadius = 8;   // Минимальный размер маркера
-      const maxRadius = 30;  // Максимальный размер маркера
-      const minRate = 3;     // Минимальный уровень радиации
-      const maxRate = 99;    // Максимальный уровень радиации
-
-      if (countRate <= minRate) {
-        return minRadius; // Минимальный размер для низких значений
-      } else if (countRate >= maxRate) {
-        return maxRadius; // Максимальный размер для высоких значений
-      } else {
-        // Пропорциональное увеличение радиуса
-        return minRadius + (countRate - minRate) * (maxRadius - minRadius) / (maxRate - minRate);
-      }
-    }
-
-    // Функция для загрузки файла
     function uploadFile() {
       var fileInput = document.getElementById('fileInput');
       var file = fileInput.files[0];
@@ -179,7 +188,6 @@
         var formData = new FormData();
         formData.append("file", file);
 
-        // Отправляем файл на сервер
         fetch('/upload', {
           method: 'POST',
           body: formData
@@ -187,7 +195,6 @@
         .then(response => response.json())
         .then(data => {
           console.log("Файл загружен:", data);
-          // После загрузки обновим карту
           location.reload();
         })
         .catch(error => console.error("Ошибка:", error));
@@ -198,5 +205,4 @@
   </script>
 </body>
 </html>
-
 
