@@ -10,10 +10,10 @@
       margin: 0;
       padding: 0;
       height: 100%;
-      overflow: hidden; /* Отключение прокрутки страницы */
+      overflow: hidden;
     }
     #map {
-      height: 100vh;  /* Карта занимает весь экран */
+      height: 100vh;
       margin: 0;
       overflow: hidden;
     }
@@ -24,18 +24,15 @@
       color: #333;
       box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
     }
-
     .upload-btn-container {
       position: absolute;
       top: 10px;
       right: 10px;
       z-index: 1000;
     }
-    
     .leaflet-control-container .leaflet-top.leaflet-right .upload-btn-container {
       margin-top: 40px;
     }
-    
     .upload-btn {
       background-color: white;
       border: 1px solid #ccc;
@@ -45,14 +42,12 @@
       font-size: 14px;
       box-shadow: 0 1px 5px rgba(0,0,0,0.65);
     }
-    
     .upload-btn:hover {
       background-color: #f4f4f4;
     }
   </style>
 </head>
 <body>
-
   <div class="upload-btn-container leaflet-control">
     <label for="fileInput" class="upload-btn">Upload File</label>
     <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">
@@ -69,8 +64,6 @@
       return marker.date > latest.date ? marker : latest;
     }, markers[0]);
 
-    console.log("Последний маркер:", lastMarker);
-
     var map = L.map('map').setView([lastMarker.lat, lastMarker.lon], 13);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -80,35 +73,11 @@
     var bounds = [];
     var circleMarkers = [];
 
-    // Функция для расчета радиуса маркера с учетом масштаба
-    function getRadius(countRate, zoomLevel) {
-      const baseRadius = getBaseRadius(countRate);
-      const scaleFactor = Math.pow(2, (zoomLevel/10)); // Пропорциональная зависимость от увеличения
-      return baseRadius / scaleFactor; // Корректируем радиус в зависимости от зума
-    }
-
-    // Базовый радиус в зависимости от уровня радиации (как было)
-    function getBaseRadius(countRate) {
-      const minRadius = 8;
-      const maxRadius = 30;
-      const minRate = 3;
-      const maxRate = 99;
-
-      if (countRate <= minRate) {
-        return minRadius;
-      } else if (countRate >= maxRate) {
-        return maxRadius;
-      } else {
-        return minRadius + (countRate - minRate) * (maxRadius - minRadius) / (maxRate - minRate);
-      }
-    }
-
     markers.forEach(function(marker) {
       bounds.push([marker.lat, marker.lon]);
-      var color = getGradientColor(marker.countRate);
-
+      var color = getGradientColor(marker.doseRate);
       var zoomLevel = map.getZoom();
-      var radius = getRadius(marker.countRate, zoomLevel);
+      var radius = getRadius(marker.doseRate, zoomLevel);
 
       var doseRateInMicroSieverts = marker.doseRate;
       var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
@@ -147,30 +116,38 @@
 
       circleMarkers.forEach(function(circleMarker, index) {
         var marker = markers[index];
-        var newRadius = getRadius(marker.countRate, zoomLevel);
-        console.log(`Маркер [${marker.lat}, ${marker.lon}] - новый радиус: ${newRadius}`);
+        var newRadius = getRadius(marker.doseRate, zoomLevel);
         circleMarker.setRadius(newRadius);
       });
     });
 
-    function getGradientColor(countRate) {
-      if (countRate <= 3) {
+// Функция для расчета радиуса маркера с учетом уровня радиации и зума
+function getRadius(doseRate, zoomLevel) {
+  const baseRadius = Math.log(doseRate + 3) * 3; // Логарифмическое увеличение радиуса
+  const scaleFactor = Math.exp((18 - zoomLevel) / 20); // Экспоненциальное увеличение радиуса с учетом зума
+  return baseRadius * scaleFactor;
+}
+
+    // Функция для определения цвета в зависимости от уровня радиации
+    function getGradientColor(doseRate) {
+      if (doseRate <= 0.04) {
         return "#006400";
-      } else if (countRate > 3 && countRate <= 8) {
-        return interpolateColor([0, 100, 0], [255, 255, 0], (countRate - 3) / (8 - 3));
-      } else if (countRate > 8 && countRate <= 11) {
-        return interpolateColor([255, 255, 0], [255, 165, 0], (countRate - 8) / (11 - 8));
-      } else if (countRate > 11 && countRate <= 20) {
-        return interpolateColor([255, 165, 0], [255, 0, 0], (countRate - 11) / (20 - 11));
-      } else if (countRate > 20 && countRate <= 30) {
-        return interpolateColor([255, 0, 0], [139, 0, 0], (countRate - 20) / (30 - 20));
-      } else if (countRate > 30 && countRate <= 99) {
-        return interpolateColor([139, 0, 0], [0, 0, 0], (countRate - 30) / (99 - 30));
+      } else if (doseRate > 0.04 && doseRate <= 0.08) {
+        return interpolateColor([0, 100, 0], [255, 255, 0], (doseRate - 0.04) / (0.08 - 0.04));
+      } else if (doseRate > 0.08 && doseRate <= 0.11) {
+        return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.08) / (0.11 - 0.08));
+      } else if (doseRate > 0.11 && doseRate <= 0.20) {
+        return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.11) / (0.20 - 0.11));
+      } else if (doseRate > 0.20 && doseRate <= 0.30) {
+        return interpolateColor([255, 0, 0], [139, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
+      } else if (doseRate > 0.30 && doseRate <= 0.99) {
+        return interpolateColor([139, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
       } else {
         return "#000000";
       }
     }
 
+    // Функция для интерполяции цвета между двумя значениями
     function interpolateColor(color1, color2, factor) {
       if (factor < 0) factor = 0;
       if (factor > 1) factor = 1;
@@ -181,6 +158,7 @@
       return 'rgb(' + result.join(',') + ')';
     }
 
+    // Функция для загрузки файла
     function uploadFile() {
       var fileInput = document.getElementById('fileInput');
       var file = fileInput.files[0];
