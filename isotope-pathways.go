@@ -1,7 +1,6 @@
 package main
 
 import (
-        "strings"
 	"archive/zip"
 	"bytes"
 	"embed"
@@ -18,8 +17,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
+	"isotope-pathways/pkg/config"
 	"isotope-pathways/pkg/database"
 )
 
@@ -34,6 +35,7 @@ var doseData database.Data
 var dbType = flag.String("db-type", "genji", "Тип базы данных: genji или sqlite")
 var dbPath = flag.String("db-path", "", "Путь к файлу базы данных (по умолчанию в текущей папке)")
 var port = flag.Int("port", 8765, "Порт для запуска сервера")
+var version = flag.Bool("version", false, "Показать версию программы")
 
 var db *database.Database
 
@@ -161,54 +163,53 @@ func parseDate(description string, loc *time.Location) int64 {
 
 // Функция для парсинга KML файла
 func parseKML(data []byte) ([]database.Marker, error) {
-    var markers []database.Marker
-    var longitudes []float64
+	var markers []database.Marker
+	var longitudes []float64
 
-    coordinatePattern := regexp.MustCompile(`<coordinates>(.*?)<\/coordinates>`)
-    descriptionPattern := regexp.MustCompile(`<description><!\[CDATA\[(.*?)\]\]><\/description>`)
+	coordinatePattern := regexp.MustCompile(`<coordinates>(.*?)<\/coordinates>`)
+	descriptionPattern := regexp.MustCompile(`<description><!\[CDATA\[(.*?)\]\]><\/description>`)
 
-    coordinates := coordinatePattern.FindAllStringSubmatch(string(data), -1)
-    descriptions := descriptionPattern.FindAllStringSubmatch(string(data), -1)
+	coordinates := coordinatePattern.FindAllStringSubmatch(string(data), -1)
+	descriptions := descriptionPattern.FindAllStringSubmatch(string(data), -1)
 
-    // Сбор всех долгот для определения временной зоны
-    for i := 0; i < len(coordinates) && i < len(descriptions); i++ {
-        coords := strings.Split(strings.TrimSpace(coordinates[i][1]), ",")
-        if len(coords) >= 2 {
-            lon := parseFloat(coords[0])
-            lat := parseFloat(coords[1])
-            longitudes = append(longitudes, lon)
+	// Сбор всех долгот для определения временной зоны
+	for i := 0; i < len(coordinates) && i < len(descriptions); i++ {
+		coords := strings.Split(strings.TrimSpace(coordinates[i][1]), ",")
+		if len(coords) >= 2 {
+			lon := parseFloat(coords[0])
+			lat := parseFloat(coords[1])
+			longitudes = append(longitudes, lon)
 
-            doseRate := extractDoseRate(descriptions[i][1])
-            countRate := extractCountRate(descriptions[i][1])
-            // Мы ещё не знаем точную временную зону, так что время пока не парсим
-            marker := database.Marker{
-                DoseRate:  doseRate,
-                Lat:       lat,
-                Lon:       lon,
-                CountRate: countRate,
-            }
-            markers = append(markers, marker)
-        }
-    }
+			doseRate := extractDoseRate(descriptions[i][1])
+			countRate := extractCountRate(descriptions[i][1])
+			// Мы ещё не знаем точную временную зону, так что время пока не парсим
+			marker := database.Marker{
+				DoseRate:  doseRate,
+				Lat:       lat,
+				Lon:       lon,
+				CountRate: countRate,
+			}
+			markers = append(markers, marker)
+		}
+	}
 
-    // Определение средней долготы для временной зоны
-    var avgLon float64
-    for _, lon := range longitudes {
-        avgLon += lon
-    }
-    avgLon /= float64(len(longitudes))
+	// Определение средней долготы для временной зоны
+	var avgLon float64
+	for _, lon := range longitudes {
+		avgLon += lon
+	}
+	avgLon /= float64(len(longitudes))
 
-    // Получаем временную зону по среднему значению долготы
-    loc := getTimeZoneByLongitude(avgLon)
+	// Получаем временную зону по среднему значению долготы
+	loc := getTimeZoneByLongitude(avgLon)
 
-    // Теперь пересчитываем время для каждого маркера
-    for i := range markers {
-        markers[i].Date = parseDate(descriptions[i][1], loc)
-    }
+	// Теперь пересчитываем время для каждого маркера
+	for i := range markers {
+		markers[i].Date = parseDate(descriptions[i][1], loc)
+	}
 
-    return markers, nil
+	return markers, nil
 }
-
 
 // Обработка KML файла
 func processKMLFile(file multipart.File) {
@@ -371,6 +372,12 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flag.Parse()
 
+	// Обработка флага версии
+	if *version {
+		fmt.Printf("isotope-pathways версия %s\n", config.CompileVersion)
+		return
+	}
+
 	// Инициализация базы данных
 	dbConfig := database.Config{
 		DBType: *dbType,
@@ -403,4 +410,3 @@ func main() {
 	log.Printf("Запуск сервера на порту :%d...", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
-

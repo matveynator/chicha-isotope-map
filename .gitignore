@@ -1,0 +1,4 @@
+*.genji
+*.sqlite
+binaries
+isotope-pathways
