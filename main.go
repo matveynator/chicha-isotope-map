@@ -1,11 +1,12 @@
 package main
 
 import (
-	"time"
+        "strings"
 	"archive/zip"
 	"bytes"
 	"embed"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"html/template"
 	"io"
@@ -17,35 +18,27 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
+	"time"
 
-//	"github.com/webview/webview_go"
+	"isotope-pathways/pkg/database"
 )
 
 // Встраивание файлов из папки public_html
+//
 //go:embed public_html/*
 var content embed.FS
 
-// Структура для хранения данных дозиметра
-type Marker struct {
-	DoseRate  float64 `json:"doseRate"`
-	Date      int64   `json:"date"`
-	Lon       float64 `json:"lon"`
-	Lat       float64 `json:"lat"`
-	CountRate float64 `json:"countRate"`
-}
-
-type Data struct {
-	ID      string   `json:"id"`
-	Markers []Marker `json:"markers"`
-	Title   string   `json:"title"`
-}
-
 // Переменная для хранения загруженных данных
-var doseData Data
+var doseData database.Data
+
+var dbType = flag.String("db-type", "genji", "Тип базы данных: genji или sqlite")
+var dbPath = flag.String("db-path", "", "Путь к файлу базы данных (по умолчанию в текущей папке)")
+var port = flag.Int("port", 8765, "Порт для запуска сервера")
+
+var db *database.Database
 
 // Функция для проверки, совпадают ли два маркера по всем полям
-func areMarkersEqual(m1, m2 Marker) bool {
+func areMarkersEqual(m1, m2 database.Marker) bool {
 	return m1.DoseRate == m2.DoseRate &&
 		m1.Date == m2.Date &&
 		m1.Lon == m2.Lon &&
@@ -54,8 +47,8 @@ func areMarkersEqual(m1, m2 Marker) bool {
 }
 
 // Фильтрация маркеров: удаляем маркеры с нулевой дозой радиации и дубликаты
-func filterUniqueMarkers(markers []Marker) []Marker {
-	var filteredMarkers []Marker
+func filterUniqueMarkers(markers []database.Marker) []database.Marker {
+	var filteredMarkers []database.Marker
 
 	for _, newMarker := range markers {
 		if newMarker.DoseRate == 0 {
@@ -79,8 +72,8 @@ func filterUniqueMarkers(markers []Marker) []Marker {
 }
 
 // Чтение данных из файла с удалением пустых значений и дубликатов
-func loadDataFromFile(filename string) (Data, error) {
-	var data Data
+func loadDataFromFile(filename string) (database.Data, error) {
+	var data database.Data
 
 	// Чтение содержимого файла
 	file, err := os.Open(filename)
@@ -107,46 +100,68 @@ func loadDataFromFile(filename string) (Data, error) {
 	return data, nil
 }
 
+// Функция для парсинга строки в float64
+func parseFloat(value string) float64 {
+	parsedValue, _ := strconv.ParseFloat(value, 64)
+	return parsedValue
+}
+
+// Вспомогательные функции для извлечения дозы радиации и счетчика из описания
+func extractDoseRate(description string) float64 {
+	re := regexp.MustCompile(`(\d+(\.\d+)?) µR/h`)
+	match := re.FindStringSubmatch(description)
+	if len(match) > 0 {
+		return parseFloat(match[1]) / 100 // Преобразуем из µR/h в µSv/h
+	}
+	return 0
+}
+
+func extractCountRate(description string) float64 {
+	re := regexp.MustCompile(`(\d+(\.\d+)?) cps`)
+	match := re.FindStringSubmatch(description)
+	if len(match) > 0 {
+		return parseFloat(match[1])
+	}
+	return 0
+}
+
 // Функция для приблизительного определения временной зоны по долготе
 func getTimeZoneByLongitude(lon float64) *time.Location {
-    // Примерное распределение часовых поясов по долготе
-    switch {
-    case lon >= 37 && lon <= 60: // Москва и часть России
-        loc, _ := time.LoadLocation("Europe/Moscow")
-        return loc
-    case lon >= -9 && lon <= 3: // Центральная Европа
-        loc, _ := time.LoadLocation("Europe/Berlin")
-        return loc
-    case lon >= -180 && lon < -60: // Северная Америка
-        loc, _ := time.LoadLocation("America/New_York")
-        return loc
-    default: // По умолчанию UTC
-        loc, _ := time.LoadLocation("UTC")
-        return loc
-    }
+	switch {
+	case lon >= 37 && lon <= 60: // Москва и часть России
+		loc, _ := time.LoadLocation("Europe/Moscow")
+		return loc
+	case lon >= -9 && lon <= 3: // Центральная Европа
+		loc, _ := time.LoadLocation("Europe/Berlin")
+		return loc
+	case lon >= -180 && lon < -60: // Северная Америка
+		loc, _ := time.LoadLocation("America/New_York")
+		return loc
+	default: // По умолчанию UTC
+		loc, _ := time.LoadLocation("UTC")
+		return loc
+	}
 }
 
 // Функция для парсинга времени в формате "Feb 3, 2024 19:44:03"
-// Обновим функцию parseDate, чтобы учитывать временную зону на основе долготы
 func parseDate(description string, loc *time.Location) int64 {
-    re := regexp.MustCompile(`<b>([A-Za-z]{3} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2})<\/b>`)
-    match := re.FindStringSubmatch(description)
-    if len(match) > 0 {
-        dateString := match[1]
-        layout := "Jan 2, 2006 15:04:05"
-        t, err := time.ParseInLocation(layout, dateString, loc)
-        if err == nil {
-            return t.Unix() // Возвращаем время в формате UNIX timestamp
-        } else {
-            log.Println("Ошибка парсинга даты:", err)
-        }
-    }
-    return 0
+	re := regexp.MustCompile(`<b>([A-Za-z]{3} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2})<\/b>`)
+	match := re.FindStringSubmatch(description)
+	if len(match) > 0 {
+		dateString := match[1]
+		layout := "Jan 2, 2006 15:04:05"
+		t, err := time.ParseInLocation(layout, dateString, loc)
+		if err == nil {
+			return t.Unix() // Возвращаем время в формате UNIX timestamp
+		}
+		log.Println("Ошибка парсинга даты:", err)
+	}
+	return 0
 }
 
-// Обновляем функцию parseKML для определения временной зоны на основе координат
-func parseKML(data []byte) ([]Marker, error) {
-    var markers []Marker
+// Функция для парсинга KML файла
+func parseKML(data []byte) ([]database.Marker, error) {
+    var markers []database.Marker
     var longitudes []float64
 
     coordinatePattern := regexp.MustCompile(`<coordinates>(.*?)<\/coordinates>`)
@@ -166,7 +181,7 @@ func parseKML(data []byte) ([]Marker, error) {
             doseRate := extractDoseRate(descriptions[i][1])
             countRate := extractCountRate(descriptions[i][1])
             // Мы ещё не знаем точную временную зону, так что время пока не парсим
-            marker := Marker{
+            marker := database.Marker{
                 DoseRate:  doseRate,
                 Lat:       lat,
                 Lon:       lon,
@@ -195,67 +210,122 @@ func parseKML(data []byte) ([]Marker, error) {
 }
 
 
-// Вспомогательные функции для извлечения дозы радиации и счетчика из описания
-func extractDoseRate(description string) float64 {
-	re := regexp.MustCompile(`(\d+(\.\d+)?) µR/h`)
-	match := re.FindStringSubmatch(description)
-	if len(match) > 0 {
-		return parseFloat(match[1]) / 100 // Преобразуем из µR/h в µSv/h
-	}
-	return 0
-}
-
-func extractCountRate(description string) float64 {
-	re := regexp.MustCompile(`(\d+(\.\d+)?) cps`)
-	match := re.FindStringSubmatch(description)
-	if len(match) > 0 {
-		return parseFloat(match[1])
-	}
-	return 0
-}
-
-func parseFloat(value string) float64 {
-	parsedValue, _ := strconv.ParseFloat(value, 64)
-	return parsedValue
-}
-
-// Функция для преобразования данных в JSON
-func toJSON(data interface{}) (string, error) {
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
-}
-
 // Обработка KML файла
 func processKMLFile(file multipart.File) {
-    // Чтение данных файла
-    data, err := ioutil.ReadAll(file)
-    if err != nil {
-        log.Println("Ошибка чтения KML файла:", err)
-        return
-    }
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Println("Ошибка чтения KML файла:", err)
+		return
+	}
 
-    // Парсим KML данные
-    markers, err := parseKML(data)
-    if err != nil {
-        log.Println("Ошибка парсинга KML файла:", err)
-        return
-    }
+	markers, err := parseKML(data)
+	if err != nil {
+		log.Println("Ошибка парсинга KML файла:", err)
+		return
+	}
 
-    // Добавляем к существующим данным
-    doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
+	uniqueMarkers := filterUniqueMarkers(markers)
+	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
+
+	// Сохраняем маркеры в базу данных
+	for _, marker := range uniqueMarkers {
+		if err := db.SaveMarker(marker); err != nil {
+			log.Printf("Ошибка сохранения маркера в БД: %v", err)
+		}
+	}
 }
 
+// Обработка KMZ файла
+func processKMZFile(file multipart.File) {
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Println("Ошибка чтения KMZ файла:", err)
+		return
+	}
 
-// Функция для отдачи HTML-страницы
+	// Открытие KMZ как zip-архива
+	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		log.Println("Ошибка при открытии KMZ файла как ZIP:", err)
+		return
+	}
+
+	// Ищем KML файл внутри архива
+	for _, zipFile := range zipReader.File {
+		if filepath.Ext(zipFile.Name) == ".kml" {
+			kmlFile, err := zipFile.Open()
+			if err != nil {
+				log.Println("Ошибка при открытии KML файла внутри KMZ:", err)
+				continue
+			}
+			defer kmlFile.Close()
+
+			// Чтение содержимого KML файла
+			kmlData, err := io.ReadAll(kmlFile)
+			if err != nil {
+				log.Println("Ошибка при чтении KML файла внутри KMZ:", err)
+				return
+			}
+
+			// Парсим KML данные
+			markers, err := parseKML(kmlData)
+			if err != nil {
+				log.Println("Ошибка парсинга KML файла из KMZ:", err)
+				return
+			}
+
+			// Добавляем к существующим данным
+			doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
+
+			// Сохраняем маркеры в базу данных
+			for _, marker := range markers {
+				if err := db.SaveMarker(marker); err != nil {
+					log.Printf("Ошибка сохранения маркера в БД: %v", err)
+				}
+			}
+		}
+	}
+}
+
+// Обработка RCTRK файла
+func processRCTRKFile(file multipart.File) {
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Println("Ошибка чтения RCTRK файла:", err)
+		return
+	}
+
+	// Парсинг RCTRK данных в структуру Data
+	var rctrkData database.Data
+	err = json.Unmarshal(data, &rctrkData)
+	if err != nil {
+		log.Println("Ошибка парсинга RCTRK файла:", err)
+		return
+	}
+
+	// Фильтрация уникальных маркеров
+	rctrkData.Markers = filterUniqueMarkers(rctrkData.Markers)
+
+	// Добавляем новые маркеры к существующим данным
+	doseData.Markers = append(doseData.Markers, rctrkData.Markers...)
+
+	// Сохраняем маркеры в базу данных
+	for _, marker := range rctrkData.Markers {
+		if err := db.SaveMarker(marker); err != nil {
+			log.Printf("Ошибка сохранения маркера в БД: %v", err)
+		}
+	}
+}
+
+// Функция для отображения карты
 func mapHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
-		"toJSON": toJSON,
+		"toJSON": func(data interface{}) (string, error) {
+			bytes, err := json.Marshal(data)
+			return string(bytes), err
+		},
 	}).ParseFS(content, "public_html/map.html"))
 
-	// Выполняем шаблон
 	err := tmpl.Execute(w, doseData)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -297,91 +367,40 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
-// Обработка KMZ файла
-func processKMZFile(file multipart.File) {
-	// Чтение данных файла
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Println("Ошибка чтения KMZ файла:", err)
-		return
-	}
-
-	// Открытие KMZ как zip-архива
-	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		log.Println("Ошибка при открытии KMZ файла как ZIP:", err)
-		return
-	}
-
-	// Ищем KML файл внутри архива
-	for _, zipFile := range zipReader.File {
-		if filepath.Ext(zipFile.Name) == ".kml" {
-			kmlFile, err := zipFile.Open()
-			if err != nil {
-				log.Println("Ошибка при открытии KML файла внутри KMZ:", err)
-				continue
-			}
-			defer kmlFile.Close()
-
-			// Чтение содержимого KML файла
-			kmlData, err := io.ReadAll(kmlFile)
-			if err != nil {
-				log.Println("Ошибка при чтении KML файла внутри KMZ:", err)
-				return
-			}
-
-			// Парсим KML данные
-			markers, err := parseKML(kmlData)
-			if err != nil {
-				log.Println("Ошибка парсинга KML файла из KMZ:", err)
-				return
-			}
-
-			// Добавляем к существующим данным
-			doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
-		}
-	}
-}
-
-// Обработка RCTRK файла
-func processRCTRKFile(file multipart.File) {
-	// Чтение данных файла
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Println("Ошибка чтения RCTRK файла:", err)
-		return
-	}
-
-	// Парсинг RCTRK данных в структуру Data
-	var rctrkData Data
-	err = json.Unmarshal(data, &rctrkData)
-	if err != nil {
-		log.Println("Ошибка парсинга RCTRK файла:", err)
-		return
-	}
-
-	// Фильтрация уникальных маркеров
-	rctrkData.Markers = filterUniqueMarkers(rctrkData.Markers)
-
-    // Добавляем новые маркеры к существующим данным
-    doseData.Markers = append(doseData.Markers, rctrkData.Markers...)
-}
-
+// Основная функция запуска сервера
 func main() {
-    // Загрузка данных из файла
-    var err error
-    doseData, err = loadDataFromFile("isotope-map-kmv-northcaucases.rctrk")
-    if err != nil {
-        log.Fatalf("Ошибка при чтении файла: %v", err)
-    }
+	flag.Parse()
 
-    fmt.Println("Данные успешно загружены:", doseData.Title)
+	// Инициализация базы данных
+	dbConfig := database.Config{
+		DBType: *dbType,
+		DBPath: *dbPath,
+		Port:   *port,
+	}
 
-    // Запуск веб-сервера
-        http.HandleFunc("/", mapHandler)
-        http.HandleFunc("/upload", uploadHandler)
-        log.Println("Запуск сервера на :8765...")
-        log.Fatal(http.ListenAndServe(":8765", nil))
+	var err error
+	db, err = database.NewDatabase(dbConfig)
+	if err != nil {
+		log.Fatalf("Не удалось инициализировать базу данных: %v", err)
+	}
 
+	// Инициализация схемы таблиц
+	if err := db.InitSchema(); err != nil {
+		log.Fatalf("Ошибка при инициализации схемы БД: %v", err)
+	}
+
+	// Загрузка данных из базы данных
+	markers, err := db.LoadMarkers()
+	if err != nil {
+		log.Printf("Ошибка загрузки маркеров из БД: %v", err)
+	} else {
+		doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
+	}
+
+	// Запуск веб-сервера
+	http.HandleFunc("/", mapHandler)
+	http.HandleFunc("/upload", uploadHandler)
+	log.Printf("Запуск сервера на порту :%d...", *port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
 

@@ -83,7 +83,7 @@
     // Функция для расчета радиуса маркера с учетом масштаба
     function getRadius(countRate, zoomLevel) {
       const baseRadius = getBaseRadius(countRate);
-      const scaleFactor = Math.pow(2, (zoomLevel/8)); // Пропорциональная зависимость от увеличения
+      const scaleFactor = Math.pow(2, (zoomLevel/10)); // Пропорциональная зависимость от увеличения
       return baseRadius / scaleFactor; // Корректируем радиус в зависимости от зума
     }
 
