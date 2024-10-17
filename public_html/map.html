@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{.Title}}</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-  <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-    }
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+body, html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
     #map {
       height: 100vh;
       margin: 0;
@@ -45,159 +45,183 @@
     .upload-btn:hover {
       background-color: #f4f4f4;
     }
-  </style>
-</head>
-<body>
-  <div class="upload-btn-container leaflet-control">
-    <label for="fileInput" class="upload-btn">Upload File</label>
-    <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">
-  </div>
+    </style>
+  </head>
+  <body>
+    <div class="upload-btn-container leaflet-control">
+      <label for="fileInput" class="upload-btn">Upload File</label>
+      <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">
+    </div>
 
-  <div id="map"></div>
+    <div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-  <script>
-    var markers = JSON.parse('{{ .Markers | toJSON }}');
-    console.log("Полученные маркеры:", markers);
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+      var markers = JSON.parse('{{ .Markers | toJSON }}');
+console.log("Полученные маркеры:", markers);
 
-    var map = L.map('map');
+var map = L.map('map');
 
-    // Устанавливаем начальные границы карты по всем маркерам
-    var bounds = markers.map(marker => [marker.lat, marker.lon]);
-    if (bounds.length > 0) {
-      map.fitBounds(bounds);
-    } else {
-      map.setView([44.0, 43.0], 5);
+// Устанавливаем начальные границы карты по всем маркерам
+var bounds = markers.map(marker => [marker.lat, marker.lon]);
+if (bounds.length > 0) {
+  map.fitBounds(bounds);
+} else {
+  map.setView([44.0, 43.0], 5);
+}
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18,
+}).addTo(map);
+
+var circleMarkers = {};
+
+// Обновляем маркеры при изменении масштаба или перемещении карты
+map.on('zoomend', updateMarkers);
+map.on('moveend', updateMarkers);
+
+function updateMarkers() {
+  var zoomLevel = map.getZoom();
+  var bounds = map.getBounds();
+
+  // Удаляем маркеры, которые вышли за пределы видимой области
+  for (let key in circleMarkers) {
+    if (!bounds.contains(circleMarkers[key].getLatLng())) {
+      map.removeLayer(circleMarkers[key]);
+      delete circleMarkers[key];
     }
+  }
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-    }).addTo(map);
+  // Добавляем маркеры, которые находятся в пределах видимой области
+  var filteredMarkers = filterMarkersByZoom(zoomLevel);
+  filteredMarkers.forEach(function(marker) {
+    var markerKey = `${marker.lat}-${marker.lon}`;
+    if (!circleMarkers[markerKey] && bounds.contains([marker.lat, marker.lon])) {
+      var color = getGradientColor(marker.doseRate, marker.countRate);
+      var radius = getRadius(marker.doseRate, zoomLevel);
 
-    var circleMarkers = {};
+      var doseRateInMicroSieverts = marker.doseRate;
+      var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
 
-    // Обновляем маркеры при изменении масштаба или перемещении карты
-    map.on('zoomend', updateMarkers);
-    map.on('moveend', updateMarkers);
+      var date = new Date(marker.date * 1000);
+      var formattedDate = date.toLocaleString();
 
-    function updateMarkers() {
-      var zoomLevel = map.getZoom();
-      var bounds = map.getBounds();
+      var tooltipContent = `
+	    <div class="custom-tooltip">
+	      <strong>Доза радиации:</strong><br>
+	      ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
+	      <strong>Дата и время:</strong><br>
+	      ${formattedDate}
+	    </div>
+	  `;
 
-      // Удаляем маркеры, которые вышли за пределы видимой области
-      for (let key in circleMarkers) {
-        if (!bounds.contains(circleMarkers[key].getLatLng())) {
-          map.removeLayer(circleMarkers[key]);
-          delete circleMarkers[key];
-        }
-      }
+      var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+	radius: radius,
+	fillColor: color,
+	color: color,
+	weight: 1,
+	opacity: 0.5,
+	fillOpacity: 0.5
+      }).addTo(map)
+	.bindTooltip(tooltipContent, { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
 
-      // Добавляем маркеры, которые находятся в пределах видимой области
-      var filteredMarkers = filterMarkersByZoom(zoomLevel);
-      filteredMarkers.forEach(function(marker) {
-        var markerKey = `${marker.lat}-${marker.lon}`;
-        if (!circleMarkers[markerKey] && bounds.contains([marker.lat, marker.lon])) {
-          var color = getGradientColor(marker.doseRate);
-          var radius = getRadius(marker.doseRate, zoomLevel);
-
-          var doseRateInMicroSieverts = marker.doseRate;
-          var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
-
-          var date = new Date(marker.date * 1000);
-          var formattedDate = date.toLocaleString();
-
-          var tooltipContent = `
-            <div class="custom-tooltip">
-              <strong>Доза радиации:</strong><br>
-              ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
-              <strong>Дата и время:</strong><br>
-              ${formattedDate}
-            </div>
-          `;
-
-          var circleMarker = L.circleMarker([marker.lat, marker.lon], {
-            radius: radius,
-            fillColor: color,
-            color: color,
-            weight: 1,
-            opacity: 0.5,
-            fillOpacity: 0.5
-          }).addTo(map)
-            .bindTooltip(tooltipContent, { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
-
-          circleMarkers[markerKey] = circleMarker;
-        }
-      });
+      circleMarkers[markerKey] = circleMarker;
     }
+  });
+}
 
-    function filterMarkersByZoom(zoomLevel) {
-      if (zoomLevel < 8) {
-        return markers.filter((_, index) => index % 10 === 0);
-      } else if (zoomLevel < 13) {
-        return markers.filter((_, index) => index % 3 === 0);
-      } else {
-        return markers;
-      }
-    }
+function filterMarkersByZoom(zoomLevel) {
+  if (zoomLevel < 8) {
+    return markers.filter((_, index) => index % 10 === 0);
+  } else if (zoomLevel < 13) {
+    return markers.filter((_, index) => index % 3 === 0);
+  } else {
+    return markers;
+  }
+}
 
-    function getRadius(doseRate, zoomLevel) {
-      const baseRadius = Math.log(doseRate + 3) * 3;
-      const scaleFactor = Math.exp((18 - zoomLevel) / 20);
-      return baseRadius * scaleFactor;
-    }
+function getRadius(doseRate, zoomLevel) {
+  const baseRadius = Math.log(doseRate + 3) * 3;
+  const scaleFactor = Math.exp((18 - zoomLevel) / 20);
+  return baseRadius * scaleFactor;
+}
 
-    function getGradientColor(doseRate) {
-      if (doseRate <= 0.04) {
-        return "#006400";
-      } else if (doseRate > 0.04 && doseRate <= 0.11) {
-        return interpolateColor([0, 100, 0], [255, 255, 0], (doseRate - 0.04) / (0.11 - 0.04));
-      } else if (doseRate > 0.11 && doseRate <= 0.20) {
-        return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
-      } else if (doseRate > 0.20 && doseRate <= 0.30) {
-        return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
-      } else if (doseRate > 0.30 && doseRate <= 0.40) {
-        return interpolateColor([255, 0, 0], [139, 0, 0], (doseRate - 0.30) / (0.40 - 0.30));
-      } else if (doseRate > 0.40 && doseRate <= 0.99) {
-        return interpolateColor([139, 0, 0], [0, 0, 0], (doseRate - 0.40) / (0.99 - 0.40));
-      } else {
-        return "#000000";
-      }
-    }
+// Функция для получения градиентного цвета на основе doseRate и countRate
+function getGradientColor(doseRate, countRate) {
+  // Рассчитываем значение colorRate: если countRate равен 0, берем doseRate * 100, иначе берем countRate
+  let colorRate = countRate === 0.0 ? (doseRate * 100) : countRate;
 
-    function interpolateColor(color1, color2, factor) {
-      if (factor < 0) factor = 0;
-      if (factor > 1) factor = 1;
-      var result = color1.slice();
-      for (var i = 0; i < 3; i++) {
-        result[i] = Math.round(result[i] + factor * (color2[i] - color1[i]));
-      }
-      return 'rgb(' + result.join(',') + ')';
-    }
+  // Если colorRate меньше 4, возвращаем темно-зеленый цвет
+  if (colorRate <= 4) {
+    return "#006400"; // Темно-зеленый
+  }
+  // Если colorRate от 4 до 8, делаем плавный переход от темно-зеленого к зелено-желтому
+  else if (colorRate > 4 && colorRate <= 8) {
+    return interpolateColor([0, 100, 0], [173, 255, 47], (colorRate - 4) / (8 - 4));
+    // Темно-зеленый (0, 100, 0) к зелено-желтому (173, 255, 47)
+  }
+  // Если colorRate от 8 до 11, делаем плавный переход от зелено-желтого к желтому
+  else if (colorRate > 8 && colorRate <= 11) {
+    return interpolateColor([173, 255, 47], [255, 255, 0], (colorRate - 8) / (11 - 8));
+    // Зелено-желтый (173, 255, 47) к желтому (255, 255, 0)
+  }
+  // Если colorRate от 11 до 20, делаем плавный переход от желтого к оранжевому
+  else if (colorRate > 11 && colorRate <= 20) {
+    return interpolateColor([255, 255, 0], [255, 165, 0], (colorRate - 11) / (20 - 11));
+    // Желтый (255, 255, 0) к оранжевому (255, 165, 0)
+  }
+  // Если colorRate от 20 до 30, делаем плавный переход от оранжевого к красному
+  else if (colorRate > 20 && colorRate <= 30) {
+    return interpolateColor([255, 165, 0], [255, 0, 0], (colorRate - 20) / (30 - 20));
+    // Оранжевый (255, 165, 0) к красному (255, 0, 0)
+  }
+  // Если colorRate от 30 до 99, делаем плавный переход от красного к черному
+  else if (colorRate > 30 && colorRate <= 99) {
+    return interpolateColor([255, 0, 0], [0, 0, 0], (colorRate - 30) / (99 - 30));
+    // Красный (255, 0, 0) к черному (0, 0, 0)
+  }
+  // Если colorRate выше 99, возвращаем черный цвет
+  else {
+    return "#000000"; // Черный
+  }
+}
 
-    function uploadFile() {
-      var fileInput = document.getElementById('fileInput');
-      var file = fileInput.files[0];
-      if (file) {
-        var formData = new FormData();
-        formData.append("file", file);
+// Функция для интерполяции цвета между двумя RGB значениями
+function interpolateColor(color1, color2, factor) {
+  if (factor < 0) factor = 0;
+  if (factor > 1) factor = 1;
 
-        fetch('/upload', {
-          method: 'POST',
-          body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-          console.log("Файл загружен:", data);
-          location.reload();
-        })
-        .catch(error => console.error("Ошибка:", error));
-      } else {
-        alert("Пожалуйста, выберите файл");
-      }
-    }
+  const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
+  const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
+  const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
 
-    updateMarkers();
-  </script>
-</body>
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function uploadFile() {
+  var fileInput = document.getElementById('fileInput');
+  var file = fileInput.files[0];
+  if (file) {
+    var formData = new FormData();
+    formData.append("file", file);
+
+    fetch('/upload', {
+      method: 'POST',
+      body: formData
+    })
+      .then(response => response.json())
+      .then(data => {
+	console.log("Файл загружен:", data);
+	location.reload();
+      })
+      .catch(error => console.error("Ошибка:", error));
+  } else {
+    alert("Пожалуйста, выберите файл");
+  }
+}
+
+updateMarkers();
+    </script>
+  </body>
 </html>
 

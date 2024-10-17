@@ -334,12 +334,11 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 
-// Обработка файла AtomFast
-// Обработка файла AtomFast
+// Обработка файла AtomFast JSON
 func processAtomFastFile(file multipart.File) {
     data, err := ioutil.ReadAll(file)
     if err != nil {
-        log.Println("Ошибка чтения AtomFast файла:", err)
+        log.Println("Ошибка чтения JSON AtomFast файла:", err)
         return
     }
 
@@ -365,7 +364,7 @@ func processAtomFastFile(file multipart.File) {
             Date:      record.T / 1000, // Преобразуем миллисекунды в секунды
             Lon:       record.Lng,
             Lat:       record.Lat,
-            CountRate: 0, // Устройство AtomFast не предоставляет CPS
+            CountRate: record.D * 100, // Устройство AtomFast не предоставляет CPS но по сути доза у них является CPS.
         }
         markers = append(markers, marker)
     }
