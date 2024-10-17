@@ -71,7 +71,12 @@ chmod +x ./isotope-pathways
 ### Запуск программы:
 
 ```bash
-isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
+
+./isotope-pathways
+
+или c дополнительными настройками:
+
+./isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
 - `--port`: Порт, на котором будет запущен сервер. По умолчанию `8765`.  
