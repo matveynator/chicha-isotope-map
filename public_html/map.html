@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Title}}</title>
+    <title>Isotope Pathways — следопыт невидимых дорог.</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
 body, html {
@@ -26,8 +26,8 @@ body, html {
     }
     .upload-btn-container {
       position: absolute;
-      top: 10px;
-      right: 10px;
+      top: 20px;
+      right: 20px;
       z-index: 1000;
     }
     .leaflet-control-container .leaflet-top.leaflet-right .upload-btn-container {
@@ -45,20 +45,41 @@ body, html {
     .upload-btn:hover {
       background-color: #f4f4f4;
     }
+    .github-link {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      z-index: 1000;
+    }
+    .github-icon {
+      width: 40px;
+      height: 40px;
+      opacity: 0.6;
+    }
+    .github-icon:hover {
+      opacity: 1;
+    }
     </style>
   </head>
   <body>
     <div class="upload-btn-container leaflet-control">
-      <label for="fileInput" class="upload-btn">Upload File</label>
+      <label for="fileInput" class="upload-btn">Upload [+]</label>
       <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">
     </div>
+
+    <a href="https://github.com/matveynator/isotope-pathways" class="github-link" target="_blank">
+      <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub" class="github-icon">
+    </a>
 
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
       var markers = JSON.parse('{{ .Markers | toJSON }}');
-console.log("Полученные маркеры:", markers);
+// Если markers пуст, присваиваем пустой массив
+if (!Array.isArray(markers) || markers.length === 0) {
+  markers = [];
+}
 
 var map = L.map('map');
 
@@ -148,45 +169,25 @@ function getRadius(doseRate, zoomLevel) {
 
 // Функция для получения градиентного цвета на основе doseRate и countRate
 function getGradientColor(doseRate, countRate) {
-  // Рассчитываем значение colorRate: если countRate равен 0, берем doseRate * 100, иначе берем countRate
   let colorRate = countRate === 0.0 ? (doseRate * 100) : countRate;
 
-  // Если colorRate меньше 4, возвращаем темно-зеленый цвет
   if (colorRate <= 4) {
-    return "#006400"; // Темно-зеленый
-  }
-  // Если colorRate от 4 до 8, делаем плавный переход от темно-зеленого к зелено-желтому
-  else if (colorRate > 4 && colorRate <= 8) {
+    return "#006400";
+  } else if (colorRate > 4 && colorRate <= 8) {
     return interpolateColor([0, 100, 0], [173, 255, 47], (colorRate - 4) / (8 - 4));
-    // Темно-зеленый (0, 100, 0) к зелено-желтому (173, 255, 47)
-  }
-  // Если colorRate от 8 до 11, делаем плавный переход от зелено-желтого к желтому
-  else if (colorRate > 8 && colorRate <= 11) {
+  } else if (colorRate > 8 && colorRate <= 11) {
     return interpolateColor([173, 255, 47], [255, 255, 0], (colorRate - 8) / (11 - 8));
-    // Зелено-желтый (173, 255, 47) к желтому (255, 255, 0)
-  }
-  // Если colorRate от 11 до 20, делаем плавный переход от желтого к оранжевому
-  else if (colorRate > 11 && colorRate <= 20) {
+  } else if (colorRate > 11 && colorRate <= 20) {
     return interpolateColor([255, 255, 0], [255, 165, 0], (colorRate - 11) / (20 - 11));
-    // Желтый (255, 255, 0) к оранжевому (255, 165, 0)
-  }
-  // Если colorRate от 20 до 30, делаем плавный переход от оранжевого к красному
-  else if (colorRate > 20 && colorRate <= 30) {
+  } else if (colorRate > 20 && colorRate <= 30) {
     return interpolateColor([255, 165, 0], [255, 0, 0], (colorRate - 20) / (30 - 20));
-    // Оранжевый (255, 165, 0) к красному (255, 0, 0)
-  }
-  // Если colorRate от 30 до 99, делаем плавный переход от красного к черному
-  else if (colorRate > 30 && colorRate <= 99) {
+  } else if (colorRate > 30 && colorRate <= 99) {
     return interpolateColor([255, 0, 0], [0, 0, 0], (colorRate - 30) / (99 - 30));
-    // Красный (255, 0, 0) к черному (0, 0, 0)
-  }
-  // Если colorRate выше 99, возвращаем черный цвет
-  else {
-    return "#000000"; // Черный
+  } else {
+    return "#000000";
   }
 }
 
-// Функция для интерполяции цвета между двумя RGB значениями
 function interpolateColor(color1, color2, factor) {
   if (factor < 0) factor = 0;
   if (factor > 1) factor = 1;
