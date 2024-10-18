@@ -162,7 +162,7 @@ function filterMarkersByZoom(zoomLevel) {
 }
 
 function getRadius(doseRate, zoomLevel) {
-  const baseRadius = Math.log(doseRate + 3) * 3;
+  const baseRadius = Math.log(doseRate + 3) * 5;
   const scaleFactor = Math.exp((18 - zoomLevel) / 20);
   return baseRadius * scaleFactor;
 }
