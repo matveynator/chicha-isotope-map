@@ -90,7 +90,8 @@
       <!-- Кнопка, которая открывает диалог выбора файла -->
       <label for="fileInput" class="upload-btn">Upload [+]</label>
       <!-- Элемент input для загрузки файла, скрытый с помощью display: none -->
-      <input type="file" id="fileInput" style="display: none;" onchange="uploadFile()">
+      <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()">
+
     </div>
 
     <!-- Ссылка на репозиторий GitHub, открываемая в новой вкладке -->
@@ -335,30 +336,34 @@ function getTooltipContent(marker) {
         return `rgb(${r}, ${g}, ${b})`;
       }
 
-      // Функция для загрузки файла на сервер
-      function uploadFile() {
-        var fileInput = document.getElementById('fileInput');  // Получаем элемент input для загрузки файла
-        var file = fileInput.files[0];  // Получаем выбранный файл
+// Функция для загрузки файла на сервер
+function uploadFiles() {
+  var fileInput = document.getElementById('fileInput');  // Получаем элемент input для выбора файлов
+  var files = fileInput.files;  // Получаем все выбранные файлы
 
-        if (file) {
-          var formData = new FormData();  // Создаем объект FormData для отправки данных
-          formData.append("file", file);  // Добавляем файл в объект FormData
+  if (files.length > 0) {
+    var formData = new FormData();  // Создаем объект FormData для отправки файлов
 
-          // Отправляем файл на сервер с помощью метода POST
-          fetch('/upload', {
-            method: 'POST',
-            body: formData  // Отправляем данные
-          })
-          .then(response => response.json())  // Обрабатываем ответ сервера в формате JSON
-          .then(data => {
-            console.log("Файл загружен:", data);  // Логируем успешную загрузку файла
-            location.reload();  // Перезагружаем страницу для обновления данных
-          })
-          .catch(error => console.error("Ошибка:", error));  // Логируем ошибки
-        } else {
-          alert("Пожалуйста, выберите файл");  // Если файл не выбран, показываем предупреждение
-        }
-      }
+    // Проходим по каждому выбранному файлу и добавляем его в formData
+    for (var i = 0; i < files.length; i++) {
+      formData.append("files[]", files[i]);  // Добавляем файлы в formData как массив
+    }
+
+    // Отправляем файлы на сервер с помощью метода POST
+    fetch('/upload', {
+      method: 'POST',
+      body: formData  // Отправляем данные
+    })
+    .then(response => response.json())  // Обрабатываем ответ сервера в формате JSON
+    .then(data => {
+      console.log("Файлы загружены:", data);  // Логируем успешную загрузку файлов
+      location.reload();  // Перезагружаем страницу для обновления данных
+    })
+    .catch(error => console.error("Ошибка:", error));  // Логируем ошибки
+  } else {
+    alert("Пожалуйста, выберите хотя бы один файл");  // Если файлы не выбраны, показываем предупреждение
+  }
+}
 
       // Вызываем функцию обновления маркеров сразу после загрузки карты
       updateMarkers();

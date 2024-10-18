@@ -380,41 +380,51 @@ func processAtomFastFile(file multipart.File) {
     }
 }
 
-// Обработчик загрузки файла
+// Обработчик загрузки нескольких файлов
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
-  err := r.ParseMultipartForm(100 << 20) // Ограничиваем до 100MB
-  if err != nil {
-    http.Error(w, "Ошибка загрузки файла", http.StatusInternalServerError)
-    return
-  }
+    err := r.ParseMultipartForm(100 << 20) // Ограничиваем до 100MB
+    if err != nil {
+        http.Error(w, "Ошибка загрузки файла", http.StatusInternalServerError)
+        return
+    }
 
-  // Получаем файл
-  file, header, err := r.FormFile("file")
-  if err != nil {
-    http.Error(w, "Не удалось загрузить файл", http.StatusBadRequest)
-    return
-  }
-  defer file.Close()
+    // Получаем список файлов
+    files := r.MultipartForm.File["files[]"]  // Это имя параметра, который мы передаем с клиента
 
-  // Определяем тип файла по расширению
-  ext := filepath.Ext(header.Filename)
-  switch ext {
-  case ".kml":
-    processKMLFile(file)
-  case ".kmz":
-    processKMZFile(file)
-  case ".rctrk":
-    processRCTRKFile(file)
-  case ".json":
-    processAtomFastFile(file) // Добавлено для обработки файлов AtomFast
-  default:
-    http.Error(w, "Неподдерживаемый тип файла", http.StatusBadRequest)
-    return
-  }
+    if len(files) == 0 {
+        http.Error(w, "Файлы не выбраны", http.StatusBadRequest)
+        return
+    }
 
-  // Успешная загрузка
-  w.WriteHeader(http.StatusOK)
-  json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+    for _, fileHeader := range files {
+        // Открываем файл
+        file, err := fileHeader.Open()
+        if err != nil {
+            http.Error(w, "Ошибка открытия файла", http.StatusBadRequest)
+            return
+        }
+        defer file.Close()
+
+        // Определяем тип файла по расширению
+        ext := filepath.Ext(fileHeader.Filename)
+        switch ext {
+        case ".kml":
+            processKMLFile(file)
+        case ".kmz":
+            processKMZFile(file)
+        case ".rctrk":
+            processRCTRKFile(file)
+        case ".json":
+            processAtomFastFile(file) // Обрабатываем AtomFast JSON
+        default:
+            http.Error(w, "Неподдерживаемый тип файла", http.StatusBadRequest)
+            return
+        }
+    }
+
+    // Успешная загрузка
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
 
