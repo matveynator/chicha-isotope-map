@@ -288,50 +288,57 @@ func processKMZFile(file multipart.File) {
   }
 }
 
-// Обработка RCTRK файла
-// Новая функция для обработки текстового формата RCTRK
+// Обработка текстового формата RCTRK с проверками на корректность данных
 func parseTextRCTRK(data []byte) ([]database.Marker, error) {
     var markers []database.Marker
     lines := strings.Split(string(data), "\n")
 
     // Пропускаем строки, которые не содержат данные
     for i, line := range lines {
-        // Пропускаем заголовок
-        if i == 0 || strings.HasPrefix(line, "Timestamp") || line == "" {
+        // Пропускаем заголовок и пустые строки
+        if i == 0 || strings.HasPrefix(line, "Timestamp") || strings.TrimSpace(line) == "" {
             continue
         }
 
         // Разбиваем строку на поля
         fields := strings.Fields(line)
         if len(fields) < 7 {
+            log.Printf("Пропуск строки %d: недостаточно полей. Строка: %s\n", i+1, line)
             continue // Если в строке недостаточно данных, пропускаем её
         }
-
-        // Парсим поля
 
         // Парсим данные
         timeStampStr := fields[1] + " " + fields[2] // Поле Time разделено на дату и время
         layout := "2006-01-02 15:04:05"
         parsedTime, err := time.Parse(layout, timeStampStr)
         if err != nil {
-            log.Println("Ошибка парсинга времени:", err)
+            log.Printf("Пропуск строки %d: ошибка парсинга времени. Строка: %s, Ошибка: %v\n", i+1, line, err)
             continue
         }
 
-
-
+        // Парсим широту и долготу
         lat := parseFloat(fields[3])
         lon := parseFloat(fields[4])
+        if lat == 0 || lon == 0 {
+            log.Printf("Пропуск строки %d: некорректные координаты. Latitude: %v, Longitude: %v\n", i+1, lat, lon)
+            continue
+        }
+
+        // Парсим DoseRate и CountRate
         doseRate := parseFloat(fields[6])
         countRate := parseFloat(fields[7])
+        if doseRate < 0 || countRate < 0 {
+            log.Printf("Пропуск строки %d: некорректные значения DoseRate или CountRate. DoseRate: %v, CountRate: %v\n", i+1, doseRate, countRate)
+            continue
+        }
 
         // Создаем маркер
         marker := database.Marker{
-            DoseRate:  doseRate/100,
+            DoseRate:  doseRate / 100, // Преобразуем в корректную единицу
             CountRate: countRate,
             Lat:       lat,
             Lon:       lon,
-						Date:      parsedTime.Unix(), // Время в формате UNIX timestamp
+            Date:      parsedTime.Unix(), // Время в формате UNIX timestamp
         }
         markers = append(markers, marker)
     }
