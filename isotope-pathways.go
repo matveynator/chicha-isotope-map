@@ -289,34 +289,90 @@ func processKMZFile(file multipart.File) {
 }
 
 // Обработка RCTRK файла
-func processRCTRKFile(file multipart.File) {
-  data, err := ioutil.ReadAll(file)
-  if err != nil {
-    log.Println("Ошибка чтения RCTRK файла:", err)
-    return
-  }
+// Новая функция для обработки текстового формата RCTRK
+func parseTextRCTRK(data []byte) ([]database.Marker, error) {
+    var markers []database.Marker
+    lines := strings.Split(string(data), "\n")
 
-  // Парсинг RCTRK данных в структуру Data
-  var rctrkData database.Data
-  err = json.Unmarshal(data, &rctrkData)
-  if err != nil {
-    log.Println("Ошибка парсинга RCTRK файла:", err)
-    return
-  }
+    // Пропускаем строки, которые не содержат данные
+    for i, line := range lines {
+        // Пропускаем заголовок
+        if i == 0 || strings.HasPrefix(line, "Timestamp") || line == "" {
+            continue
+        }
 
-  // Фильтрация уникальных маркеров
-  rctrkData.Markers = filterUniqueMarkers(rctrkData.Markers)
+        // Разбиваем строку на поля
+        fields := strings.Fields(line)
+        if len(fields) < 7 {
+            continue // Если в строке недостаточно данных, пропускаем её
+        }
 
-  // Добавляем новые маркеры к существующим данным
-  doseData.Markers = append(doseData.Markers, rctrkData.Markers...)
+        // Парсим поля
 
-  // Сохраняем маркеры в базу данных
-  for _, marker := range rctrkData.Markers {
-    if err := db.SaveMarker(marker); err != nil {
-      log.Printf("Ошибка сохранения маркера в БД: %v", err)
+        // Парсим данные
+        timeStampStr := fields[1] + " " + fields[2] // Поле Time разделено на дату и время
+        layout := "2006-01-02 15:04:05"
+        parsedTime, err := time.Parse(layout, timeStampStr)
+        if err != nil {
+            log.Println("Ошибка парсинга времени:", err)
+            continue
+        }
+
+
+
+        lat := parseFloat(fields[3])
+        lon := parseFloat(fields[4])
+        doseRate := parseFloat(fields[6])
+        countRate := parseFloat(fields[7])
+
+        // Создаем маркер
+        marker := database.Marker{
+            DoseRate:  doseRate/100,
+            CountRate: countRate,
+            Lat:       lat,
+            Lon:       lon,
+						Date:      parsedTime.Unix(), // Время в формате UNIX timestamp
+        }
+        markers = append(markers, marker)
     }
-  }
+
+    return markers, nil
 }
+
+// Модификация функции processRCTRKFile для поддержки как JSON, так и текстового формата
+func processRCTRKFile(file multipart.File) {
+    data, err := ioutil.ReadAll(file)
+    if err != nil {
+        log.Println("Ошибка чтения RCTRK файла:", err)
+        return
+    }
+
+    // Пробуем сначала парсить как JSON
+    var rctrkData database.Data
+    err = json.Unmarshal(data, &rctrkData)
+    if err == nil {
+        // Если парсинг JSON успешен, продолжаем
+        rctrkData.Markers = filterUniqueMarkers(rctrkData.Markers)
+        doseData.Markers = append(doseData.Markers, rctrkData.Markers...)
+    } else {
+        // Если это не JSON, пробуем парсить как текстовый файл
+        markers, err := parseTextRCTRK(data)
+        if err != nil {
+            log.Println("Ошибка парсинга текстового RCTRK файла:", err)
+            return
+        }
+        uniqueMarkers := filterUniqueMarkers(markers)
+        doseData.Markers = append(doseData.Markers, uniqueMarkers...)
+    }
+
+    // Сохраняем маркеры в базу данных
+    for _, marker := range doseData.Markers {
+        if err := db.SaveMarker(marker); err != nil {
+            log.Printf("Ошибка сохранения маркера в БД: %v", err)
+        }
+    }
+}
+
 
 // Функция для отображения карты
 func mapHandler(w http.ResponseWriter, r *http.Request) {
