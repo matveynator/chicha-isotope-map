@@ -80,17 +80,29 @@ func (db *Database) getNextID() (int64, error) {
 
 // SaveMarker сохраняет маркер в базу данных с новым ID.
 func (db *Database) SaveMarker(marker Marker) error {
-	nextID, err := db.getNextID()
-	if err != nil {
-		return fmt.Errorf("ошибка получения следующего ID: %v", err)
-	}
+    var count int
+    err := db.DB.QueryRow(`SELECT COUNT(1) FROM markers WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ?`,
+        marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate).Scan(&count)
+    if err != nil {
+        return err
+    }
+    //Маркер уже существует в базе данных. Пропускаем добавление.
+    if count > 0 {
+        log.Printf("Маркер (%f, %d, %f, %f, %f) уже существует в базе данных.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
+        return nil
+    }
 
-	_, err = db.DB.Exec(`
-  INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
-  VALUES (?, ?, ?, ?, ?, ?)
-  `, nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
+    nextID, err := db.getNextID()
+    if err != nil {
+        return fmt.Errorf("ошибка получения следующего ID: %v", err)
+    }
 
-	return err
+    _, err = db.DB.Exec(`
+        INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
+        VALUES (?, ?, ?, ?, ?, ?)`,
+        nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
+
+    return err
 }
 
 // LoadMarkers загружает все маркеры из базы данных.

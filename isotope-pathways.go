@@ -32,7 +32,7 @@ var content embed.FS
 // Переменная для хранения загруженных данных
 var doseData database.Data
 
-var dbType = flag.String("db-type", "genji", "Тип базы данных: genji или sqlite")
+var dbType = flag.String("db-type", "sqlite", "Тип базы данных: genji или sqlite")
 var dbPath = flag.String("db-path", "", "Путь к файлу базы данных (по умолчанию в текущей папке)")
 var port = flag.Int("port", 8765, "Порт для запуска сервера")
 var version = flag.Bool("version", false, "Показать версию программы")
@@ -530,6 +530,6 @@ func main() {
   // Запуск веб-сервера
   http.HandleFunc("/", mapHandler)
   http.HandleFunc("/upload", uploadHandler)
-  log.Printf("Запуск сервера на порту :%d...", *port)
+  log.Printf("Приложение работает по адресу: http://localhost:%d", *port)
   log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
