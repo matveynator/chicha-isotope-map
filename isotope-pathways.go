@@ -122,14 +122,20 @@ func parseFloat(value string) float64 {
 // Variable to store language translations
 var translations map[string]map[string]string
 
-// Load translations from a JSON file
-func loadTranslations(filename string) {
-	file, err := ioutil.ReadFile(filename)
+// Load translations from the embedded file system
+func loadTranslations(fs embed.FS, filename string) {
+	file, err := fs.Open(filename) // Open the file from the embedded FS
+	if err != nil {
+		log.Fatalf("Error opening translation file: %v", err)
+	}
+	defer file.Close()
+
+	data, err := ioutil.ReadAll(file) // Read data from the file
 	if err != nil {
 		log.Fatalf("Error reading translation file: %v", err)
 	}
 
-	err = json.Unmarshal(file, &translations)
+	err = json.Unmarshal(data, &translations) // Parse JSON data
 	if err != nil {
 		log.Fatalf("Error parsing translations: %v", err)
 	}
@@ -541,45 +547,45 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // Function to handle rendering the map with markers
 func mapHandler(w http.ResponseWriter, r *http.Request) {
-    lang := getPreferredLanguage(r)
+	lang := getPreferredLanguage(r)
 
-    // Add function toJSON for use in the template
-    tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
-        "translate": func(key string) string {
-            if val, ok := translations[lang][key]; ok {
-                return val
-            }
-            return translations["en"][key] // Fallback to English if not found
-        },
-        "toJSON": func(data interface{}) (string, error) {
-            bytes, err := json.Marshal(data)
-            return string(bytes), err
-        },
-    }).ParseFS(content, "public_html/map.html"))
+	// Add function toJSON for use in the template
+	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
+		"translate": func(key string) string {
+			if val, ok := translations[lang][key]; ok {
+				return val
+			}
+			return translations["en"][key] // Fallback to English if not found
+		},
+		"toJSON": func(data interface{}) (string, error) {
+			bytes, err := json.Marshal(data)
+			return string(bytes), err
+		},
+	}).ParseFS(content, "public_html/map.html"))
 
-    if config.CompileVersion == "dev" {
-        config.CompileVersion = "latest"
-    }
+	if config.CompileVersion == "dev" {
+		config.CompileVersion = "latest"
+	}
 
-    // Updated struct to include the Lang field
-data := struct {
-    Markers      []database.Marker
-    Version      string
-    Translations map[string]map[string]string // Pass the whole translations map
-    Lang         string
-}{
-    Markers:      doseData.Markers,
-    Version:      config.CompileVersion,
-    Translations: translations, // Pass the entire translation map, not just one language
-    Lang:         lang,
-}
+	// Updated struct to include the Lang field
+	data := struct {
+		Markers      []database.Marker
+		Version      string
+		Translations map[string]map[string]string // Pass the whole translations map
+		Lang         string
+	}{
+		Markers:      doseData.Markers,
+		Version:      config.CompileVersion,
+		Translations: translations, // Pass the entire translation map, not just one language
+		Lang:         lang,
+	}
 
-    // Execute the template and handle errors
-    if err := tmpl.Execute(w, data); err != nil {
-        log.Printf("Error executing template: %v", err)
-        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-        return
-    }
+	// Execute the template and handle errors
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing template: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
 // =====================
@@ -590,8 +596,8 @@ data := struct {
 func main() {
 	flag.Parse()
 
-	// Load translations from the file
-	loadTranslations("public_html/translations.json")
+	// Load translations from the embedded file system
+	loadTranslations(content, "public_html/translations.json")
 
 	// Handle version flag
 	if *version {
@@ -641,4 +647,3 @@ func main() {
 	log.Printf("Application running at: http://localhost:%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
-
