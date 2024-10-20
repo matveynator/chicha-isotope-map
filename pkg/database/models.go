@@ -16,4 +16,3 @@ type Data struct {
 	Markers []Marker `json:"markers"` // Slice of Marker structs representing individual measurements
 	Title   string   `json:"title"`   // Title or description of the dataset
 }
-

@@ -76,7 +76,7 @@ func (db *Database) InitSchema() error {
 // getNextID finds the maximum current id in the 'markers' table and returns the next available ID.
 func (db *Database) getNextID() (int64, error) {
 	var maxID sql.NullInt64 // Variable to hold the max ID (nullable)
-	
+
 	// Query to find the maximum ID in the 'markers' table
 	err := db.DB.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxID)
 	if err != nil {
@@ -148,4 +148,3 @@ func (db *Database) LoadMarkers() ([]Marker, error) {
 	}
 	return markers, nil // Return the slice of markers
 }
-
