@@ -591,7 +591,7 @@ func main() {
 	flag.Parse()
 
 	// Load translations from the file
-	loadTranslations("translations.json")
+	loadTranslations("public_html/translations.json")
 
 	// Handle version flag
 	if *version {
