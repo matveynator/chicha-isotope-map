@@ -332,32 +332,35 @@ function getTooltipContent(marker) {
       // Вызываем функцию обновления маркеров сразу после загрузки карты
       updateMarkers();
 
-      // Функция для загрузки файлов
-      function uploadFiles() {
-        var fileInput = document.getElementById('fileInput');
-        var files = fileInput.files;
+// Function to handle file uploads
+function uploadFiles() {
+  var fileInput = document.getElementById('fileInput');
+  var files = fileInput.files;
 
-        if (files.length > 0) {
-          var formData = new FormData();
+  if (files.length > 0) {
+    var formData = new FormData();
 
-          for (var i = 0; i < files.length; i++) {
-            formData.append("files[]", files[i]);
-          }
+    for (var i = 0; i < files.length; i++) {
+      formData.append("files[]", files[i]);
+    }
 
-          fetch('/upload', {
-            method: 'POST',
-            body: formData
-          })
-          .then(response => response.json())
-          .then(data => {
-            console.log("Файлы загружены:", data);
-            location.reload();
-          })
-          .catch(error => console.error("Ошибка:", error));
-        } else {
-          alert("Пожалуйста, выберите хотя бы один файл");
-        }
-      }
+    fetch('/upload', {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      console.log(translate("files_uploaded"), data); // Translated "Files uploaded"
+      location.reload(); // Reload after successful upload
+    })
+    .catch(error => console.error(translate("upload_error"), error)); // Translated "Error"
+  } else {
+    alert(translate("select_files")); // Translated "Please select at least one file"
+  }
+}
+
+
+
     </script>
   </body>
 </html>

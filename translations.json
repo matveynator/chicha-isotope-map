@@ -4,245 +4,350 @@
     "upload_button": "Upload [+]",
     "description": "Isotope Pathways",
     "radiation_dose": "Radiation dose",
-    "date_time": "Date and time"
+    "date_time": "Date and time",
+    "files_uploaded": "Files uploaded",
+    "upload_error": "Error",
+    "select_files": "Please select at least one file"
   },
   "zh": {
     "title": "同位素路径 - 无形之路的探索者",
     "upload_button": "上传 [+]",
     "description": "同位素路径",
     "radiation_dose": "辐射剂量",
-    "date_time": "日期和时间"
+    "date_time": "日期和时间",
+    "files_uploaded": "文件已上传",
+    "upload_error": "错误",
+    "select_files": "请选择至少一个文件"
   },
   "es": {
     "title": "Isotope Pathways — Explorador de Caminos Invisibles",
     "upload_button": "Subir [+]",
     "description": "Caminos de Isótopos",
     "radiation_dose": "Dosis de radiación",
-    "date_time": "Fecha y hora"
+    "date_time": "Fecha y hora",
+    "files_uploaded": "Archivos subidos",
+    "upload_error": "Error",
+    "select_files": "Por favor, seleccione al menos un archivo"
   },
   "hi": {
     "title": "आइसोटोप पाथवेज — अदृश्य रास्तों का अन्वेषक",
     "upload_button": "अपलोड करें [+]",
     "description": "आइसोटोप पाथवेज",
     "radiation_dose": "विकिरण खुराक",
-    "date_time": "तारीख और समय"
+    "date_time": "तारीख और समय",
+    "files_uploaded": "फ़ाइलें अपलोड की गईं",
+    "upload_error": "त्रुटि",
+    "select_files": "कृपया कम से कम एक फ़ाइल चुनें"
   },
   "ar": {
     "title": "مسارات النظائر — مستكشف الطرق غير المرئية",
     "upload_button": "تحميل [+]",
     "description": "مسارات النظائر",
     "radiation_dose": "جرعة الإشعاع",
-    "date_time": "التاريخ والوقت"
+    "date_time": "التاريخ والوقت",
+    "files_uploaded": "تم تحميل الملفات",
+    "upload_error": "خطأ",
+    "select_files": "يرجى تحديد ملف واحد على الأقل"
   },
   "fr": {
     "title": "Isotope Pathways — le guide des routes invisibles",
     "upload_button": "Téléverser [+]",
     "description": "Chemins d'isotopes",
     "radiation_dose": "Dose de radiation",
-    "date_time": "Date et heure"
+    "date_time": "Date et heure",
+    "files_uploaded": "Fichiers téléchargés",
+    "upload_error": "Erreur",
+    "select_files": "Veuillez sélectionner au moins un fichier"
   },
   "ru": {
     "title": "Isotope Pathways — следопыт невидимых дорог",
     "upload_button": "Загрузить [+]",
     "description": "Исотопные пути",
     "radiation_dose": "Доза радиации",
-    "date_time": "Дата и время"
+    "date_time": "Дата и время",
+    "files_uploaded": "Файлы загружены",
+    "upload_error": "Ошибка",
+    "select_files": "Пожалуйста, выберите хотя бы один файл"
   },
   "pt": {
     "title": "Isotope Pathways — Explorador de Caminhos Invisíveis",
     "upload_button": "Carregar [+]",
     "description": "Caminhos dos Isótopos",
     "radiation_dose": "Dose de radiação",
-    "date_time": "Data e hora"
+    "date_time": "Data e hora",
+    "files_uploaded": "Arquivos carregados",
+    "upload_error": "Erro",
+    "select_files": "Por favor, selecione pelo menos um arquivo"
   },
   "de": {
     "title": "Isotope Pathways — Der Pfadfinder der unsichtbaren Wege",
     "upload_button": "Hochladen [+]",
     "description": "Isotopenwege",
     "radiation_dose": "Strahlendosis",
-    "date_time": "Datum und Uhrzeit"
+    "date_time": "Datum und Uhrzeit",
+    "files_uploaded": "Dateien hochgeladen",
+    "upload_error": "Fehler",
+    "select_files": "Bitte wählen Sie mindestens eine Datei aus"
   },
   "ja": {
     "title": "同位体経路 - 見えない道の探検者",
     "upload_button": "アップロード [+]",
     "description": "同位体経路",
     "radiation_dose": "放射線量",
-    "date_time": "日付と時間"
+    "date_time": "日付と時間",
+    "files_uploaded": "ファイルがアップロードされました",
+    "upload_error": "エラー",
+    "select_files": "少なくとも1つのファイルを選択してください"
   },
   "tr": {
     "title": "İzotop Yolları — Görünmez Yolların İz Sürücüsü",
     "upload_button": "Yükle [+]",
     "description": "İzotop Yolları",
     "radiation_dose": "Radyasyon Dozu",
-    "date_time": "Tarih ve Saat"
+    "date_time": "Tarih ve Saat",
+    "files_uploaded": "Dosyalar yüklendi",
+    "upload_error": "Hata",
+    "select_files": "Lütfen en az bir dosya seçin"
   },
   "it": {
     "title": "Isotope Pathways — Esploratore delle Strade Invisibili",
     "upload_button": "Carica [+]",
     "description": "Percorsi Isotopici",
     "radiation_dose": "Dose di radiazioni",
-    "date_time": "Data e ora"
+    "date_time": "Data e ora",
+    "files_uploaded": "File caricati",
+    "upload_error": "Errore",
+    "select_files": "Seleziona almeno un file"
   },
   "ko": {
     "title": "동위원소 경로 - 보이지 않는 길의 탐색자",
     "upload_button": "업로드 [+]",
     "description": "동위원소 경로",
     "radiation_dose": "방사선량",
-    "date_time": "날짜 및 시간"
+    "date_time": "날짜 및 시간",
+    "files_uploaded": "파일이 업로드되었습니다",
+    "upload_error": "오류",
+    "select_files": "파일을 하나 이상 선택하세요"
   },
   "pl": {
     "title": "Isotope Pathways — Odkrywca Niewidzialnych Dróg",
     "upload_button": "Prześlij [+]",
     "description": "Ścieżki Izotopów",
     "radiation_dose": "Dawka promieniowania",
-    "date_time": "Data i czas"
+    "date_time": "Data i czas",
+    "files_uploaded": "Pliki zostały przesłane",
+    "upload_error": "Błąd",
+    "select_files": "Wybierz co najmniej jeden plik"
   },
   "uk": {
     "title": "Isotope Pathways — слідець невидимих шляхів",
     "upload_button": "Завантажити [+]",
     "description": "Ізотопні шляхи",
     "radiation_dose": "Доза радіації",
-    "date_time": "Дата і час"
-  },
-  "mn": {
-    "title": "Изотопын зам — Үл үзэгдэх замын мөрдөгч",
-    "upload_button": "Оруулах [+]",
-    "description": "Изотопын зам",
-    "radiation_dose": "Цацрагийн тун",
-    "date_time": "Огноо ба цаг"
-  },
-  "no": {
-    "title": "Isotope Pathways — Utforsker av Usynlige Veier",
-    "upload_button": "Last opp [+]",
-    "description": "Isotopiske Veier",
-    "radiation_dose": "Strålingsdose",
-    "date_time": "Dato og tid"
+    "date_time": "Дата і час",
+    "files_uploaded": "Файли завантажено",
+    "upload_error": "Помилка",
+    "select_files": "Будь ласка, виберіть хоча б один файл"
   },
   "fi": {
     "title": "Isotope Pathways — Näkymättömien Teiden Löytäjä",
     "upload_button": "Lataa [+]",
     "description": "Isotooppipolut",
     "radiation_dose": "Säteilyn annos",
-    "date_time": "Päivämäärä ja aika"
-  },
-  "ka": {
-    "title": "იზოტოპების გზები — უხილავი გზების მაძიებელი",
-    "upload_button": "ატვირთვა [+]",
-    "description": "იზოტოპების გზები",
-    "radiation_dose": "რადიაციის დოზა",
-    "date_time": "თარიღი და დრო"
+    "date_time": "Päivämäärä ja aika",
+    "files_uploaded": "Tiedostot ladattu",
+    "upload_error": "Virhe",
+    "select_files": "Valitse vähintään yksi tiedosto"
   },
   "sv": {
     "title": "Isotope Pathways — Utforskare av Osynliga Vägar",
     "upload_button": "Ladda upp [+]",
     "description": "Isotopvägar",
     "radiation_dose": "Strålningsdos",
-    "date_time": "Datum och tid"
+    "date_time": "Datum och tid",
+    "files_uploaded": "Filer uppladdade",
+    "upload_error": "Fel",
+    "select_files": "Vänligen välj minst en fil"
+  },
+  "mn": {
+    "title": "Изотопын зам — Үл үзэгдэх замын мөрдөгч",
+    "upload_button": "Оруулах [+]",
+    "description": "Изотопын зам",
+    "radiation_dose": "Цацрагийн тун",
+    "date_time": "Огноо ба цаг",
+    "files_uploaded": "Файлуудыг амжилттай оруулсан",
+    "upload_error": "Алдаа гарлаа",
+    "select_files": "Доод тал нь нэг файл сонгоно уу"
+  },
+  "no": {
+    "title": "Isotope Pathways — Utforsker av Usynlige Veier",
+    "upload_button": "Last opp [+]",
+    "description": "Isotopiske Veier",
+    "radiation_dose": "Strålingsdose",
+    "date_time": "Dato og tid",
+    "files_uploaded": "Filer lastet opp",
+    "upload_error": "Feil",
+    "select_files": "Vennligst velg minst én fil"
+  },
+  "ka": {
+    "title": "იზოტოპების გზები — უხილავი გზების მაძიებელი",
+    "upload_button": "ატვირთვა [+]",
+    "description": "იზოტოპების გზები",
+    "radiation_dose": "რადიაციის დოზა",
+    "date_time": "თარიღი და დრო",
+    "files_uploaded": "ფაილები ატვირთულია",
+    "upload_error": "შეცდომა",
+    "select_files": "გთხოვთ, აირჩიეთ მინიმუმ ერთი ფაილი"
   },
   "he": {
     "title": "מסלולי איזוטופים — חוקר הדרכים הבלתי נראות",
     "upload_button": "העלה [+]",
     "description": "מסלולי איזוטופים",
     "radiation_dose": "מנת קרינה",
-    "date_time": "תאריך ושעה"
+    "date_time": "תאריך ושעה",
+    "files_uploaded": "הקבצים הועלו",
+    "upload_error": "שגיאה",
+    "select_files": "אנא בחר לפחות קובץ אחד"
   },
   "nl": {
     "title": "Isotope Pathways — Verkenner van Onzichtbare Wegen",
     "upload_button": "Uploaden [+]",
     "description": "Isotoopwegen",
     "radiation_dose": "Stralingsdosis",
-    "date_time": "Datum en tijd"
+    "date_time": "Datum en tijd",
+    "files_uploaded": "Bestanden geüpload",
+    "upload_error": "Fout",
+    "select_files": "Selecteer minstens één bestand"
   },
   "el": {
     "title": "Διαδρομές Ισοτόπων — Ο Εξερευνητής των Αόρατων Δρόμων",
     "upload_button": "Ανέβασμα [+]",
     "description": "Διαδρομές Ισοτόπων",
     "radiation_dose": "Δόση Ακτινοβολίας",
-    "date_time": "Ημερομηνία και ώρα"
+    "date_time": "Ημερομηνία και ώρα",
+    "files_uploaded": "Αρχεία ανέβηκαν",
+    "upload_error": "Σφάλμα",
+    "select_files": "Επιλέξτε τουλάχιστον ένα αρχείο"
   },
   "hu": {
     "title": "Izotóp Ösvények — A Láthatatlan Utak Felfedezője",
     "upload_button": "Feltölt [+]",
     "description": "Izotóp Ösvények",
     "radiation_dose": "Sugárdózis",
-    "date_time": "Dátum és idő"
+    "date_time": "Dátum és idő",
+    "files_uploaded": "Fájlok feltöltve",
+    "upload_error": "Hiba",
+    "select_files": "Kérjük, válasszon legalább egy fájlt"
   },
   "cs": {
     "title": "Izotopové Cesty — Průzkumník Neviditelných Cest",
     "upload_button": "Nahrát [+]",
     "description": "Izotopové Cesty",
     "radiation_dose": "Dávka záření",
-    "date_time": "Datum a čas"
+    "date_time": "Datum a čas",
+    "files_uploaded": "Soubory nahrány",
+    "upload_error": "Chyba",
+    "select_files": "Vyberte alespoň jeden soubor"
   },
   "ro": {
     "title": "Căile Izotopilor — Explorator al Drumurilor Invizibile",
     "upload_button": "Încărcați [+]",
     "description": "Căile Izotopilor",
     "radiation_dose": "Doza de radiație",
-    "date_time": "Data și ora"
+    "date_time": "Data și ora",
+    "files_uploaded": "Fișiere încărcate",
+    "upload_error": "Eroare",
+    "select_files": "Vă rugăm să selectați cel puțin un fișier"
   },
   "th": {
     "title": "เส้นทางไอโซโทป — ผู้สำรวจเส้นทางที่มองไม่เห็น",
     "upload_button": "อัปโหลด [+]",
     "description": "เส้นทางไอโซโทป",
     "radiation_dose": "ปริมาณรังสี",
-    "date_time": "วันที่และเวลา"
+    "date_time": "วันที่และเวลา",
+    "files_uploaded": "ไฟล์ถูกอัปโหลดแล้ว",
+    "upload_error": "ข้อผิดพลาด",
+    "select_files": "โปรดเลือกไฟล์อย่างน้อยหนึ่งไฟล์"
   },
   "vi": {
     "title": "Isotope Pathways — Nhà thám hiểm những con đường vô hình",
     "upload_button": "Tải lên [+]",
     "description": "Những con đường đồng vị",
     "radiation_dose": "Liều lượng bức xạ",
-    "date_time": "Ngày và giờ"
+    "date_time": "Ngày và giờ",
+    "files_uploaded": "Tệp đã được tải lên",
+    "upload_error": "Lỗi",
+    "select_files": "Vui lòng chọn ít nhất một tệp"
   },
   "id": {
     "title": "Isotope Pathways — Penjelajah Jalan Tak Terlihat",
     "upload_button": "Unggah [+]",
     "description": "Jalur Isotop",
     "radiation_dose": "Dosis Radiasi",
-    "date_time": "Tanggal dan Waktu"
+    "date_time": "Tanggal dan Waktu",
+    "files_uploaded": "File telah diunggah",
+    "upload_error": "Kesalahan",
+    "select_files": "Pilih setidaknya satu file"
   },
   "ms": {
     "title": "Isotope Pathways — Penjelajah Jalan yang Tidak Kelihatan",
     "upload_button": "Muat naik [+]",
     "description": "Jalur Isotop",
     "radiation_dose": "Dos Radiasi",
-    "date_time": "Tarikh dan Masa"
+    "date_time": "Tarikh dan Masa",
+    "files_uploaded": "Fail telah dimuat naik",
+    "upload_error": "Ralat",
+    "select_files": "Sila pilih sekurang-kurangnya satu fail"
   },
   "bg": {
     "title": "Изотопни Пътеки — Изследовател на Невидимите Пътища",
     "upload_button": "Качи [+]",
     "description": "Изотопни Пътеки",
     "radiation_dose": "Доза Радиация",
-    "date_time": "Дата и Време"
+    "date_time": "Дата и Време",
+    "files_uploaded": "Файловете качени",
+    "upload_error": "Грешка",
+    "select_files": "Моля, изберете поне един файл"
   },
   "lt": {
     "title": "Izotopų Keliai — Nematomų Kelių Tyrinėtojas",
     "upload_button": "Įkelti [+]",
     "description": "Izotopų Keliai",
     "radiation_dose": "Radiacijos Dozė",
-    "date_time": "Data ir Laikas"
+    "date_time": "Data ir Laikas",
+    "files_uploaded": "Failai įkelti",
+    "upload_error": "Klaida",
+    "select_files": "Prašome pasirinkti bent vieną failą"
   },
   "et": {
     "title": "Isotoopide Teed — Nähtamatute Teede Uurija",
     "upload_button": "Laadi üles [+]",
     "description": "Isotoopide Teed",
     "radiation_dose": "Kiirgusdoos",
-    "date_time": "Kuupäev ja Kellaaeg"
+    "date_time": "Kuupäev ja Kellaaeg",
+    "files_uploaded": "Failid üles laaditud",
+    "upload_error": "Viga",
+    "select_files": "Valige vähemalt üks fail"
   },
   "lv": {
     "title": "Izotopu Ceļi — Neredzamo Ceļu Pētnieks",
     "upload_button": "Augšupielādēt [+]",
     "description": "Izotopu Ceļi",
     "radiation_dose": "Radiācijas Deva",
-    "date_time": "Datums un Laiks"
+    "date_time": "Datums un Laiks",
+    "files_uploaded": "Faili augšupielādēti",
+    "upload_error": "Kļūda",
+    "select_files": "Lūdzu, atlasiet vismaz vienu failu"
   },
   "sl": {
     "title": "Izotopske Poti — Raziskovalec Nevidnih Poti",
     "upload_button": "Naloži [+]",
     "description": "Izotopske Poti",
     "radiation_dose": "Doza Sevanja",
-    "date_time": "Datum in Čas"
+    "date_time": "Datum in Čas",
+    "files_uploaded": "Datoteke naložene",
+    "upload_error": "Napaka",
+    "select_files": "Prosimo, izberite vsaj eno datoteko"
   }
 }
 
