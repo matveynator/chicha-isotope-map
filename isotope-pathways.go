@@ -123,7 +123,6 @@ func loadTranslations(filename string) {
 	}
 }
 
-
 func getPreferredLanguage(r *http.Request) string {
 	// Заголовок Accept-Language может содержать несколько языков с приоритетами, например: "en-US,en;q=0.9,fr;q=0.8"
 	langHeader := r.Header.Get("Accept-Language")
