@@ -1,60 +1,68 @@
+# 🌐 **Isotope Pathways** — Language Selection
 
-# 🌌 **Isotope Pathways** — следопыт невидимых дорог
+Please choose your preferred language:
 
-> **"Есть ли на свете кто-то, кто умеет видеть невидимое? Нет? А программа умеет. Она берёт радиоактивные следы, как старый шаман читает по пеплу, и выводит их на экран — цветные, мерцающие, живые."**
-
----
-
-## 📖 **О проекте**
-
-**Isotope Pathways** — это не просто программа, это целый мир невидимых частиц, которые теперь становятся видимыми. Представьте себе: идёте по дороге, а под вашими ногами танцуют радиоактивные изотопы. И эта программа умеет их показывать. Она рисует карту, где каждый изотоп оставляет свой след, от зелёного до красного, от спокойствия до тревоги.
-
-Она может читать данные из файлов форматов AtomFast и RadiaCode `.kml`, `.kmz`, `.json` и `.rctrk`, хранить их в своей базе данных, чтобы потом, через много лет, вы могли бы сказать: «А вот тогда, в 2024 году, здесь было 4.1 µR/h».
-
-
-### 🌍 **Исходя из природы**
-
-Мы взяли за основу **природный фон радиации**. Если вы отправитесь в чистое, нетронутое место, там вы, скорее всего, увидите **3-4 микрорентгена в час**. Это — норма. На любой высоте свой уровень радиации, и планета этому радуется.
-
-Все, что выше этого фона — **чужеродное**. Это мы называем **радиоактивным загрязнением**. Здесь видно, как изотопы разбросаны по дорогам, унесены ветром, людьми и транспортом. И вот они, маленькие невидимые следы на карте, как следы сапог по свежевыпавшему снегу.
-
+- [🇺🇸 English](README.md)
+- [🇫🇷 Français](README_FR.md)
+- [🇯🇵 日本語](README_JP.md)
+- [🇷🇺 Русский](README_RU.md)
 
 ---
 
-### 📸 **Демо**
+# 🌌 **Isotope Pathways** — The Explorer of Invisible Roads
 
-<a href="https://jutsa.ru" target="_blank">Вот здесь можно посмотреть работу программы в реальном времени.</a>
+> **"Is there anyone who can see the invisible? No? Well, this program can. It takes radioactive traces, just like an old shaman reads from ashes, and brings them to life on the screen — colorful, glowing, alive."**
 
+---
 
+## 📖 **About the Project**
 
-### 📸 **Скриншоты**
+**Isotope Pathways** isn’t just a program; it’s a gateway to a world of invisible particles, now made visible. Imagine walking down the road, and beneath your feet, radioactive isotopes are dancing. This program reveals them. It creates a map where every isotope leaves a trace, from green to red, from calm to warning.
 
-... В советское время в Кисловодском парке строили открытый бассейн. Возможно, взяли бетон с завода в Пятигорске, где когда-то перерабатывали радиоактивную руду с горы Бештау. И вот, по дороге ездили грузовики, пыль с их колес оседала на асфальте, оставляя свои невидимые метки. Прошли годы, а эти следы всё ещё светятся, словно воспоминания о былом. Пыль, разлетевшаяся вокруг стройки, осела в парке — на карте она жёлтым цветом, словно пятна осенних листьев. Всё остальное в парке — чистое, спокойное, зелёное.
+It can read data from AtomFast and RadiaCode formats, such as `.kml`, `.kmz`, `.json`, and `.rctrk`, and store them in its own database. So, years later, you can look back and say, "Back in 2024, right here, the radiation was 4.1 µR/h."
+
+### 🌍 **Based on Nature**
+
+We’ve built this program using the **natural background radiation** as a baseline. If you go to a clean, untouched place, you’ll likely see **3-4 microroentgens per hour**. That’s normal. At different altitudes, radiation levels vary, and the planet dances along with it.
+
+Anything above this baseline is considered **foreign**. That’s what we call **radioactive contamination**. You can see how isotopes scatter across roads, carried by the wind, by people, and by vehicles. These small, invisible traces are like footprints left behind on freshly fallen snow.
+
+---
+
+### 📸 **Demo**
+
+<a href="https://jutsa.ru" target="_blank">Check out the program in real-time here.</a>
+
+---
+
+### 📸 **Screenshots**
+
+... In Soviet times, an open swimming pool was being built in Kislovodsk Park. Maybe they used concrete from a factory in Pyatigorsk, where radioactive ore from Mount Beshtau was once processed. Trucks drove down the roads, and dust from their wheels settled on the asphalt, leaving invisible marks. Years have passed, yet these traces still glow, like memories of the past. The dust that spread around the construction settled in the park — on the map, it shows up in yellow, like patches of autumn leaves. Everything else in the park remains clean, peaceful, and green.
 <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
 
 ---
 
-## 📥 **Скачать и начать** 📥
+## 📥 **Download and Get Started** 📥
 
-Выберите версию для своей платформы и начните следить за следами изотопов:
+Choose the version for your platform and start tracking isotope trails:
 
-| Платформа  | Ссылка для скачивания                                                                                 |
-|------------|-------------------------------------------------------------------------------------------------------|
-| AIX        | [Скачать для AIX](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/aix/)                      |
-| Android    | [Скачать для Android](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/android/)               |
-| Dragonfly  | [Скачать для Dragonfly](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/dragonfly/)           |
-| FreeBSD    | [Скачать для FreeBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/freebsd/)               |
-| Illumos    | [Скачать для Illumos](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/illumos/)               |
-| JavaScript | [Скачать для JavaScript](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/js/)                 |
-| Linux      | [Скачать для Linux](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/linux/)                   |
-| macOS      | [Скачать для macOS](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/mac/)                     |
-| NetBSD     | [Скачать для NetBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/netbsd/)                 |
-| OpenBSD    | [Скачать для OpenBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/openbsd/)               |
-| Plan9      | [Скачать для Plan9](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/plan9/)                   |
-| Solaris    | [Скачать для Solaris](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/solaris/)               |
-| Windows    | [Скачать для Windows](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/windows/)               |
+| Platform   | Download Link                                                                                           |
+|------------|--------------------------------------------------------------------------------------------------------|
+| AIX        | [Download for AIX](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/aix/)                      |
+| Android    | [Download for Android](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/android/)               |
+| Dragonfly  | [Download for Dragonfly](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/dragonfly/)           |
+| FreeBSD    | [Download for FreeBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/freebsd/)               |
+| Illumos    | [Download for Illumos](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/illumos/)               |
+| JavaScript | [Download for JavaScript](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/js/)                 |
+| Linux      | [Download for Linux](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/linux/)                   |
+| macOS      | [Download for macOS](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/mac/)                     |
+| NetBSD     | [Download for NetBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/netbsd/)                 |
+| OpenBSD    | [Download for OpenBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/openbsd/)               |
+| Plan9      | [Download for Plan9](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/plan9/)                   |
+| Solaris    | [Download for Solaris](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/solaris/)               |
+| Windows    | [Download for Windows](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/windows/)               |
 
-Или создайте её своими руками:
+Or build it yourself:
 
 ```bash
 git clone https://github.com/matveynator/isotope-pathways.git
@@ -66,44 +74,45 @@ chmod +x ./isotope-pathways
 
 ---
 
-## 🛠 **Как пользоваться?**
+## 🛠 **How to Use?**
 
-### Запуск программы:
+### Run the program:
 
 ```bash
-
 ./isotope-pathways
+```
 
-или c дополнительными настройками:
+or with additional settings:
 
+```bash
 ./isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
-- `--port`: Порт, на котором будет запущен сервер. По умолчанию `8765`.  
-  _"Хотите говорить с программой на другом языке? Измените порт, и она заговорит с вами по-новому."_
+- `--port`: The port number for the server to run on. Default is `8765`.  
+  _"Want to talk to the program on a different channel? Change the port, and it will speak a new language to you."_
 
-- `--db-type`: Тип базы данных: `genji` или `sqlite`. По умолчанию `genji`.  
-  _"Предпочитаете старую школу с SQLite или новаторский дух с Genji? Выбирайте."_
+- `--db-type`: The type of database: `genji` or `sqlite`. Default is `genji`.  
+  _"Prefer the old-school SQLite or the innovative Genji? The choice is yours."_
 
-- `--db-path`: Путь к файлу базы данных. Если не указан, используется файл в текущей директории.  
-  _"Где прятать следы? В каком углу диска? Укажите путь, и он станет их домом."_
+- `--db-path`: The path to the database file. If not specified, a file in the current directory is used.  
+  _"Where should it hide the trails? Specify the path, and it will call it home."_
 
-- `--version`: Показать версию программы и завершить выполнение.  
-  _"Как старый фокусник, программа расскажет вам, из какой эпохи она пришла."_
+- `--version`: Show the program version and exit.  
+  _"Like a magician revealing its era, the program will tell you where it comes from."_
 
-### Веб-интерфейс:
+### Web Interface:
 
-1. Откройте <a href="http://localhost:8765" target="new">http://localhost:8765</a> в вашем браузере.
-2. Загрузите данные, используя кнопку `Upload`.
-3. Наведите курсор на маркер — и перед вами откроется мир невидимого. Узнайте дозу радиации, время измерения и место, где изотопы решили оставить свои метки.
-
----
-
-## ☢️ **Радиация и её следы**
-
-Что такое радиация? Это как шёпот ветра в горах, который никто не слышит, но он там. А наша программа — это человек с необычным слухом. Она видит то, что вы не видите. Она расскажет вам, где и когда был тот самый лишний микрорентген. Она покажет, как изотопы разлетелись по городу, как они упали в тихий пруд или затерялись в старом лесу. Опасность их в том, что они не просто лежат на земле, как забытая монетка. Нет, они проникают в почву, воду, растения. Живешь себе спокойно, ешь яблочки, пьешь воду из колодца, а изотопы незаметно пробираются внутрь. И дозы растут, как маленькие зайчики, накапливаясь в вашем теле. Незаметно, тихо. Но все равно опасно. 
+1. Open <a href="http://localhost:8765" target="new">http://localhost:8765</a> in your browser.
+2. Upload your data using the `Upload` button.
+3. Hover over a marker — and the invisible world will open before you. Discover the radiation dose, the time of the measurement, and the location where isotopes left their marks.
 
 ---
 
-> **"Если бы изотопы могли говорить, они бы рассказывали вам свои истории. Но пока они молчат, наша программа за них всё расскажет."**
+## ☢️ **Radiation and Its Traces**
+
+What is radiation? It’s like a whispering wind in the mountains, something no one hears, yet it’s there. But our program is someone with extraordinary hearing. It sees what you cannot. It will tell you where and when that extra microroentgen appeared. It will show you how isotopes scattered through the city, fell into a quiet pond, or got lost in the old forest. Their danger lies in the fact that they don’t just sit on the ground like forgotten coins. No, they seep into the soil, the water, and the plants. You go about your life, eating apples, drinking water from a well, and isotopes quietly sneak inside. The doses accumulate, like little bunnies multiplying in your body. Quietly, unnoticed. But still dangerous.
+
+---
+
+> **"If isotopes could speak, they would tell you their stories. But since they are silent, our program will speak for them."**
 
