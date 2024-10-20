@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Isotope Pathways — следопыт невидимых дорог.</title>
+    <title>{{translate "title"}}</title>
     <link rel="stylesheet" href="/static/leaflet.css" />
     <style>
       body, html {
@@ -93,10 +93,18 @@
 }
 
     </style>
+
+<script>
+  var markers = JSON.parse('{{ .Markers | toJSON }}');
+  if (!Array.isArray(markers) || markers.length === 0) {
+    markers = [];
+  }
+</script>
+
   </head>
   <body>
     <div class="upload-btn-container leaflet-control">
-      <label for="fileInput" class="upload-btn">Upload [+]</label>
+      <label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
       <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()">
     </div>
 
@@ -105,8 +113,7 @@
     </a>
 
     <div class="program-info">
-    <strong>Isotope Pathways</strong><br>
-	Version: <a href="https://files.zabiyaka.net/isotope-pathways/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
+    <strong>{{translate "description"}}</strong> <a href="https://files.zabiyaka.net/isotope-pathways/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
     </div>
 
     <div id="map"></div>
@@ -172,22 +179,23 @@
         updateUrl();
       }
 
-      function getTooltipContent(marker) {
-        var doseRateInMicroSieverts = marker.doseRate;
-        var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
+function getTooltipContent(marker) {
+  var doseRateInMicroSieverts = marker.doseRate;
+  var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
 
-        var date = new Date(marker.date * 1000);
-        var formattedDate = date.toLocaleString();
+  var date = new Date(marker.date * 1000);
+  var formattedDate = date.toLocaleString(); // Локализованная дата
 
-        return `
-          <div class="custom-tooltip">
-            <strong>Доза радиации:</strong><br>
-            ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
-            <strong>Дата и время:</strong><br>
-            ${formattedDate}
-          </div>
-        `;
-      }
+  // Используем translate() для перевода
+  return `
+    <div class="custom-tooltip">
+      <strong>${translate('radiation_dose')}:</strong><br>
+      ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
+      <strong>${translate('date_time')}:</strong><br>
+      ${formattedDate}
+    </div>
+  `;
+}
 
       function filterMarkersByZoom(zoomLevel) {
         if (zoomLevel > 20) {
