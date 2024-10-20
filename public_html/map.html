@@ -94,13 +94,42 @@
 
     </style>
 
-<script>
-  var markers = JSON.parse('{{ .Markers | toJSON }}');
-  if (!Array.isArray(markers) || markers.length === 0) {
-    markers = [];
-  }
-</script>
+    <script>
+      // Pass translations from Go to JavaScript
+      var translations = JSON.parse('{{ .Translations | toJSON }}');
+      var currentLang = '{{ .Lang }}'; // Capture the language being used
 
+      // JavaScript translate function to handle translations in tooltips
+      function translate(key) {
+        // Ensure translations for 'en' exist
+        if (!translations['en']) {
+          console.error('English translations not available!');
+          return key; // Return the key itself as a fallback
+        }
+
+        // Return the translation if available, otherwise fallback to 'en' or return the key
+        if (translations[currentLang] && translations[currentLang][key]) {
+          return translations[currentLang][key];
+        } else if (translations['en'][key]) { // Fallback to English if translation is missing
+          return translations['en'][key];
+        }
+        return key; // Fallback: return the key itself if no translation is found
+      }
+
+      // Initialize the markers array with data from the Go template
+      var markers = [];
+      try {
+        markers = JSON.parse('{{ .Markers | toJSON }}');  // Safely attempt to parse the markers
+      } catch (e) {
+        console.error("Failed to parse markers: ", e);
+        markers = []; // Fallback to an empty array if there's a parsing error
+      }
+
+      // Ensure markers is an array (in case something goes wrong)
+      if (!Array.isArray(markers)) {
+        markers = [];
+      }
+    </script>
   </head>
   <body>
     <div class="upload-btn-container leaflet-control">

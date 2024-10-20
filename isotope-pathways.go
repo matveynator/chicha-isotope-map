@@ -25,22 +25,28 @@ import (
 	"isotope-pathways/pkg/database"
 )
 
-// Встраивание файлов из папки public_html
+// Embedding files from the public_html folder for static serving
 //
 //go:embed public_html/*
 var content embed.FS
 
-// Переменная для хранения загруженных данных
+// Variable to store the loaded radiation dose data
 var doseData database.Data
 
-var dbType = flag.String("db-type", "genji", "Тип базы данных: genji или sqlite")
-var dbPath = flag.String("db-path", "", "Путь к файлу базы данных (по умолчанию в текущей папке)")
-var port = flag.Int("port", 8765, "Порт для запуска сервера")
-var version = flag.Bool("version", false, "Показать версию программы")
+// Flags to specify database type, path, and server port
+var dbType = flag.String("db-type", "genji", "Type of the database: genji or sqlite")
+var dbPath = flag.String("db-path", "", "Path to the database file (defaults to the current folder)")
+var port = flag.Int("port", 8765, "Port for running the server")
+var version = flag.Bool("version", false, "Show the application version")
 
+// Database instance
 var db *database.Database
 
-// Функция для проверки, совпадают ли два маркера по всем полям
+// =====================
+// DATA PROCESSING HELPERS
+// =====================
+
+// Check if two markers are equal based on their attributes
 func areMarkersEqual(m1, m2 database.Marker) bool {
 	return m1.DoseRate == m2.DoseRate &&
 		m1.Date == m2.Date &&
@@ -49,13 +55,13 @@ func areMarkersEqual(m1, m2 database.Marker) bool {
 		m1.CountRate == m2.CountRate
 }
 
-// Фильтрация маркеров: удаляем маркеры с нулевой дозой радиации и дубликаты
+// Filter unique markers by removing those with zero radiation dose and duplicates
 func filterUniqueMarkers(markers []database.Marker) []database.Marker {
 	var filteredMarkers []database.Marker
 
 	for _, newMarker := range markers {
 		if newMarker.DoseRate == 0 {
-			continue // Игнорируем маркеры с нулевой дозой
+			continue // Ignore markers with zero dose
 		}
 
 		isDuplicate := false
@@ -74,70 +80,79 @@ func filterUniqueMarkers(markers []database.Marker) []database.Marker {
 	return filteredMarkers
 }
 
-// Чтение данных из файла с удалением пустых значений и дубликатов
+// Load data from a file, filter out empty values and duplicates
 func loadDataFromFile(filename string) (database.Data, error) {
 	var data database.Data
 
-	// Чтение содержимого файла
+	// Open the file
 	file, err := os.Open(filename)
 	if err != nil {
 		return data, err
 	}
 	defer file.Close()
 
-	// Чтение файла в байты
+	// Read the file content into bytes
 	byteValue, err := ioutil.ReadAll(file)
 	if err != nil {
 		return data, err
 	}
 
-	// Парсинг JSON данных
+	// Parse the JSON data
 	err = json.Unmarshal(byteValue, &data)
 	if err != nil {
 		return data, err
 	}
 
-	// Фильтрация уникальных маркеров
+	// Filter unique markers
 	data.Markers = filterUniqueMarkers(data.Markers)
 
 	return data, nil
 }
 
-// Функция для парсинга строки в float64
+// Parse a string value into a float64
 func parseFloat(value string) float64 {
 	parsedValue, _ := strconv.ParseFloat(value, 64)
 	return parsedValue
 }
 
+// =====================
+// TRANSLATION SUPPORT
+// =====================
+
+// Variable to store language translations
 var translations map[string]map[string]string
 
+// Load translations from a JSON file
 func loadTranslations(filename string) {
 	file, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Fatalf("Ошибка чтения файла переводов: %v", err)
+		log.Fatalf("Error reading translation file: %v", err)
 	}
 
 	err = json.Unmarshal(file, &translations)
 	if err != nil {
-		log.Fatalf("Ошибка парсинга переводов: %v", err)
+		log.Fatalf("Error parsing translations: %v", err)
 	}
 }
 
+// Get the preferred language from the HTTP request's Accept-Language header
 func getPreferredLanguage(r *http.Request) string {
-	// Заголовок Accept-Language может содержать несколько языков с приоритетами, например: "en-US,en;q=0.9,fr;q=0.8"
+	// Example of Accept-Language: "en-US,en;q=0.9,fr;q=0.8"
 	langHeader := r.Header.Get("Accept-Language")
 
-	// Поддерживаемые языки
-	supportedLanguages := []string{"en", "zh", "es", "hi", "ar", "fr", "ru", "pt", "de", "ja", "tr", "it", "ko", "pl", "uk", "mn", "no", "fi", "ka", "sv", "he", "nl", "el", "hu", "cs", "ro", "th", "vi", "id", "ms", "bg", "lt", "et", "lv", "sl"}
+	// Supported languages list
+	supportedLanguages := []string{
+		"en", "zh", "es", "hi", "ar", "fr", "ru", "pt", "de", "ja", "tr", "it",
+		"ko", "pl", "uk", "mn", "no", "fi", "ka", "sv", "he", "nl", "el", "hu",
+		"cs", "ro", "th", "vi", "id", "ms", "bg", "lt", "et", "lv", "sl",
+	}
 
-	// Разбиваем заголовок на языки с приоритетами
+	// Split languages by comma
 	langs := strings.Split(langHeader, ",")
 
+	// Try to find a matching language from the supported list
 	for _, lang := range langs {
-		// Извлекаем сам язык без приоритета (после "q=")
-		lang = strings.TrimSpace(strings.SplitN(lang, ";", 2)[0])
-
-		// Пробуем найти полное совпадение с поддерживаемым языком
+		lang = strings.TrimSpace(strings.SplitN(lang, ";", 2)[0]) // Remove priority (e.g., ";q=0.9")
 		for _, supported := range supportedLanguages {
 			if strings.HasPrefix(lang, supported) {
 				return supported
@@ -145,20 +160,25 @@ func getPreferredLanguage(r *http.Request) string {
 		}
 	}
 
-	// Если ни один язык не поддерживается, возвращаем язык по умолчанию — английский
+	// Default to English if no match found
 	return "en"
 }
 
-// Вспомогательные функции для извлечения дозы радиации и счетчика из описания
+// =====================
+// FILE PARSING
+// =====================
+
+// Helper to extract dose rate from description text
 func extractDoseRate(description string) float64 {
 	re := regexp.MustCompile(`(\d+(\.\d+)?) µR/h`)
 	match := re.FindStringSubmatch(description)
 	if len(match) > 0 {
-		return parseFloat(match[1]) / 100 // Преобразуем из µR/h в µSv/h
+		return parseFloat(match[1]) / 100 // Convert from µR/h to µSv/h
 	}
 	return 0
 }
 
+// Helper to extract count rate from description text
 func extractCountRate(description string) float64 {
 	re := regexp.MustCompile(`(\d+(\.\d+)?) cps`)
 	match := re.FindStringSubmatch(description)
@@ -168,25 +188,25 @@ func extractCountRate(description string) float64 {
 	return 0
 }
 
-// Функция для приблизительного определения временной зоны по долготе
+// Helper to estimate the time zone based on longitude
 func getTimeZoneByLongitude(lon float64) *time.Location {
 	switch {
-	case lon >= 37 && lon <= 60: // Москва и часть России
+	case lon >= 37 && lon <= 60: // Moscow and part of Russia
 		loc, _ := time.LoadLocation("Europe/Moscow")
 		return loc
-	case lon >= -9 && lon <= 3: // Центральная Европа
+	case lon >= -9 && lon <= 3: // Central Europe
 		loc, _ := time.LoadLocation("Europe/Berlin")
 		return loc
-	case lon >= -180 && lon < -60: // Северная Америка
+	case lon >= -180 && lon < -60: // North America
 		loc, _ := time.LoadLocation("America/New_York")
 		return loc
-	default: // По умолчанию UTC
+	default: // Default to UTC
 		loc, _ := time.LoadLocation("UTC")
 		return loc
 	}
 }
 
-// Функция для парсинга времени в формате "Feb 3, 2024 19:44:03"
+// Helper to parse a date in the format "Feb 3, 2024 19:44:03"
 func parseDate(description string, loc *time.Location) int64 {
 	re := regexp.MustCompile(`<b>([A-Za-z]{3} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2})<\/b>`)
 	match := re.FindStringSubmatch(description)
@@ -195,14 +215,14 @@ func parseDate(description string, loc *time.Location) int64 {
 		layout := "Jan 2, 2006 15:04:05"
 		t, err := time.ParseInLocation(layout, dateString, loc)
 		if err == nil {
-			return t.Unix() // Возвращаем время в формате UNIX timestamp
+			return t.Unix() // Return Unix timestamp
 		}
-		log.Println("Ошибка парсинга даты:", err)
+		log.Println("Error parsing date:", err)
 	}
 	return 0
 }
 
-// Функция для парсинга KML файла
+// Parse a KML file and extract markers
 func parseKML(data []byte) ([]database.Marker, error) {
 	var markers []database.Marker
 	var longitudes []float64
@@ -213,7 +233,7 @@ func parseKML(data []byte) ([]database.Marker, error) {
 	coordinates := coordinatePattern.FindAllStringSubmatch(string(data), -1)
 	descriptions := descriptionPattern.FindAllStringSubmatch(string(data), -1)
 
-	// Сбор всех долгот для определения временной зоны
+	// Collect longitudes to determine time zone
 	for i := 0; i < len(coordinates) && i < len(descriptions); i++ {
 		coords := strings.Split(strings.TrimSpace(coordinates[i][1]), ",")
 		if len(coords) >= 2 {
@@ -223,7 +243,8 @@ func parseKML(data []byte) ([]database.Marker, error) {
 
 			doseRate := extractDoseRate(descriptions[i][1])
 			countRate := extractCountRate(descriptions[i][1])
-			// Мы ещё не знаем точную временную зону, так что время пока не парсим
+
+			// Create a marker (we'll add the timestamp later)
 			marker := database.Marker{
 				DoseRate:  doseRate,
 				Lat:       lat,
@@ -234,17 +255,17 @@ func parseKML(data []byte) ([]database.Marker, error) {
 		}
 	}
 
-	// Определение средней долготы для временной зоны
+	// Calculate average longitude to determine the time zone
 	var avgLon float64
 	for _, lon := range longitudes {
 		avgLon += lon
 	}
 	avgLon /= float64(len(longitudes))
 
-	// Получаем временную зону по среднему значению долготы
+	// Get time zone based on the average longitude
 	loc := getTimeZoneByLongitude(avgLon)
 
-	// Теперь пересчитываем время для каждого маркера
+	// Now parse the date for each marker
 	for i := range markers {
 		markers[i].Date = parseDate(descriptions[i][1], loc)
 	}
@@ -252,134 +273,135 @@ func parseKML(data []byte) ([]database.Marker, error) {
 	return markers, nil
 }
 
-// Обработка KML файла
+// Process and extract data from a KML file
 func processKMLFile(file multipart.File) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Println("Ошибка чтения KML файла:", err)
+		log.Println("Error reading KML file:", err)
 		return
 	}
 
 	markers, err := parseKML(data)
 	if err != nil {
-		log.Println("Ошибка парсинга KML файла:", err)
+		log.Println("Error parsing KML file:", err)
 		return
 	}
 
 	uniqueMarkers := filterUniqueMarkers(markers)
 	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
-	// Сохраняем маркеры в базу данных
+	// Save the markers to the database
 	for _, marker := range uniqueMarkers {
 		if err := db.SaveMarker(marker); err != nil {
-			log.Printf("Ошибка сохранения маркера в БД: %v", err)
+			log.Printf("Error saving marker to database: %v", err)
 		}
 	}
 }
 
-// Обработка KMZ файла
+// Process and extract data from a KMZ file (a compressed version of KML)
 func processKMZFile(file multipart.File) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Println("Ошибка чтения KMZ файла:", err)
+		log.Println("Error reading KMZ file:", err)
 		return
 	}
 
-	// Открытие KMZ как zip-архива
+	// Open KMZ as a ZIP archive
 	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		log.Println("Ошибка при открытии KMZ файла как ZIP:", err)
+		log.Println("Error opening KMZ file as ZIP:", err)
 		return
 	}
 
-	// Ищем KML файл внутри архива
+	// Search for the KML file inside the ZIP archive
 	for _, zipFile := range zipReader.File {
 		if filepath.Ext(zipFile.Name) == ".kml" {
 			kmlFile, err := zipFile.Open()
 			if err != nil {
-				log.Println("Ошибка при открытии KML файла внутри KMZ:", err)
+				log.Println("Error opening KML file inside KMZ:", err)
 				continue
 			}
 			defer kmlFile.Close()
 
-			// Чтение содержимого KML файла
 			kmlData, err := io.ReadAll(kmlFile)
 			if err != nil {
-				log.Println("Ошибка при чтении KML файла внутри KMZ:", err)
+				log.Println("Error reading KML file inside KMZ:", err)
 				return
 			}
 
-			// Парсим KML данные
 			markers, err := parseKML(kmlData)
 			if err != nil {
-				log.Println("Ошибка парсинга KML файла из KMZ:", err)
+				log.Println("Error parsing KML file from KMZ:", err)
 				return
 			}
 
-			// Добавляем к существующим данным
 			doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
 
-			// Сохраняем маркеры в базу данных
+			// Save markers to the database
 			for _, marker := range markers {
 				if err := db.SaveMarker(marker); err != nil {
-					log.Printf("Ошибка сохранения маркера в БД: %v", err)
+					log.Printf("Error saving marker to database: %v", err)
 				}
 			}
 		}
 	}
 }
 
-// Обработка текстового формата RCTRK с проверками на корректность данных
+// =====================
+// FILE UPLOAD HANDLERS
+// =====================
+
+// parseTextRCTRK parses an RCTRK text file, where each line contains timestamp, coordinates, dose rate, and count rate
 func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 	var markers []database.Marker
 	lines := strings.Split(string(data), "\n")
 
-	// Пропускаем строки, которые не содержат данные
+	// Iterate over each line and parse its contents
 	for i, line := range lines {
-		// Пропускаем заголовок и пустые строки
+		// Skip the header and empty lines
 		if i == 0 || strings.HasPrefix(line, "Timestamp") || strings.TrimSpace(line) == "" {
 			continue
 		}
 
-		// Разбиваем строку на поля
+		// Split the line into fields
 		fields := strings.Fields(line)
 		if len(fields) < 7 {
-			log.Printf("Пропуск строки %d: недостаточно полей. Строка: %s\n", i+1, line)
-			continue // Если в строке недостаточно данных, пропускаем её
+			log.Printf("Skipping line %d: insufficient fields. Line: %s\n", i+1, line)
+			continue // If there are not enough fields, skip the line
 		}
 
-		// Парсим данные
-		timeStampStr := fields[1] + " " + fields[2] // Поле Time разделено на дату и время
+		// Parse timestamp (time field is split into date and time parts)
+		timeStampStr := fields[1] + " " + fields[2]
 		layout := "2006-01-02 15:04:05"
 		parsedTime, err := time.Parse(layout, timeStampStr)
 		if err != nil {
-			log.Printf("Пропуск строки %d: ошибка парсинга времени. Строка: %s, Ошибка: %v\n", i+1, line, err)
+			log.Printf("Skipping line %d: error parsing time. Line: %s, Error: %v\n", i+1, line, err)
 			continue
 		}
 
-		// Парсим широту и долготу
+		// Parse latitude and longitude
 		lat := parseFloat(fields[3])
 		lon := parseFloat(fields[4])
 		if lat == 0 || lon == 0 {
-			log.Printf("Пропуск строки %d: некорректные координаты. Latitude: %v, Longitude: %v\n", i+1, lat, lon)
+			log.Printf("Skipping line %d: invalid coordinates. Latitude: %v, Longitude: %v\n", i+1, lat, lon)
 			continue
 		}
 
-		// Парсим DoseRate и CountRate
+		// Parse dose rate and count rate
 		doseRate := parseFloat(fields[6])
 		countRate := parseFloat(fields[7])
 		if doseRate < 0 || countRate < 0 {
-			log.Printf("Пропуск строки %d: некорректные значения DoseRate или CountRate. DoseRate: %v, CountRate: %v\n", i+1, doseRate, countRate)
+			log.Printf("Skipping line %d: invalid DoseRate or CountRate. DoseRate: %v, CountRate: %v\n", i+1, doseRate, countRate)
 			continue
 		}
 
-		// Создаем маркер
+		// Create the marker object
 		marker := database.Marker{
-			DoseRate:  doseRate / 100, // Преобразуем в корректную единицу
+			DoseRate:  doseRate / 100, // Convert to the correct unit
 			CountRate: countRate,
 			Lat:       lat,
 			Lon:       lon,
-			Date:      parsedTime.Unix(), // Время в формате UNIX timestamp
+			Date:      parsedTime.Unix(), // Convert time to UNIX timestamp
 		}
 		markers = append(markers, marker)
 	}
@@ -387,98 +409,59 @@ func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 	return markers, nil
 }
 
-// Модификация функции processRCTRKFile для поддержки как JSON, так и текстового формата
+// Process a file in RCTRK format (either JSON or text)
 func processRCTRKFile(file multipart.File) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Println("Ошибка чтения RCTRK файла:", err)
+		log.Println("Error reading RCTRK file:", err)
 		return
 	}
 
-	// Пробуем сначала парсить как JSON
+	// Try parsing as JSON first
 	var rctrkData database.Data
 	err = json.Unmarshal(data, &rctrkData)
 	if err == nil {
-		// Если парсинг JSON успешен, продолжаем
 		rctrkData.Markers = filterUniqueMarkers(rctrkData.Markers)
 		doseData.Markers = append(doseData.Markers, rctrkData.Markers...)
 	} else {
-		// Если это не JSON, пробуем парсить как текстовый файл
+		// If it's not JSON, try parsing as a text format
 		markers, err := parseTextRCTRK(data)
 		if err != nil {
-			log.Println("Ошибка парсинга текстового RCTRK файла:", err)
+			log.Println("Error parsing text RCTRK file:", err)
 			return
 		}
 		uniqueMarkers := filterUniqueMarkers(markers)
 		doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 	}
 
-	// Сохраняем маркеры в базу данных
+	// Save markers to the database
 	for _, marker := range doseData.Markers {
 		if err := db.SaveMarker(marker); err != nil {
-			log.Printf("Ошибка сохранения маркера в БД: %v", err)
+			log.Printf("Error saving marker to database: %v", err)
 		}
 	}
 }
 
-// Функция для отображения карты
-func mapHandler(w http.ResponseWriter, r *http.Request) {
-	lang := getPreferredLanguage(r)
-
-	// Добавляем функцию toJSON для использования в шаблоне
-	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
-		"translate": func(key string) string {
-			if val, ok := translations[lang][key]; ok {
-				return val
-			}
-			return translations["en"][key] // если не найдено, показываем на английском
-		},
-		"toJSON": func(data interface{}) (string, error) {
-			bytes, err := json.Marshal(data)
-			return string(bytes), err
-		},
-	}).ParseFS(content, "public_html/map.html"))
-
-	if config.CompileVersion == "dev" {
-		config.CompileVersion = "latest"
-	}
-
-	data := struct {
-		Markers      []database.Marker
-		Version      string
-		Translations map[string]string
-	}{
-		Markers:      doseData.Markers,
-		Version:      config.CompileVersion,
-		Translations: translations[lang],
-	}
-
-	err := tmpl.Execute(w, data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// Обработка файла AtomFast JSON
+// Process AtomFast JSON file format
 func processAtomFastFile(file multipart.File) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Println("Ошибка чтения JSON AtomFast файла:", err)
+		log.Println("Error reading AtomFast JSON file:", err)
 		return
 	}
 
 	var atomFastData []struct {
-		DV  int     `json:"dv"`  // Устройство
-		D   float64 `json:"d"`   // Уровень радиации (µSv/h)
+		DV  int     `json:"dv"`  // Device ID
+		D   float64 `json:"d"`   // Radiation level (µSv/h)
 		R   int     `json:"r"`   // GPS accuracy
-		Lat float64 `json:"lat"` // Широта
-		Lng float64 `json:"lng"` // Долгота
-		T   int64   `json:"t"`   // Время в формате Unix (мс)
+		Lat float64 `json:"lat"` // Latitude
+		Lng float64 `json:"lng"` // Longitude
+		T   int64   `json:"t"`   // Timestamp in Unix format (ms)
 	}
 
 	err = json.Unmarshal(data, &atomFastData)
 	if err != nil {
-		log.Println("Ошибка парсинга AtomFast файла:", err)
+		log.Println("Error parsing AtomFast file:", err)
 		return
 	}
 
@@ -486,51 +469,51 @@ func processAtomFastFile(file multipart.File) {
 	for _, record := range atomFastData {
 		marker := database.Marker{
 			DoseRate:  record.D,
-			Date:      record.T / 1000, // Преобразуем миллисекунды в секунды
+			Date:      record.T / 1000, // Convert milliseconds to seconds
 			Lon:       record.Lng,
 			Lat:       record.Lat,
-			CountRate: record.D * 100, // Устройство AtomFast не предоставляет CPS но по сути доза у них является CPS.
+			CountRate: record.D * 100, // AtomFast devices don't provide CPS, assume dose is CPS
 		}
 		markers = append(markers, marker)
 	}
 
-	// Добавляем уникальные маркеры и сохраняем их в базу данных
 	uniqueMarkers := filterUniqueMarkers(markers)
 	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
+	// Save markers to the database
 	for _, marker := range uniqueMarkers {
 		if err := db.SaveMarker(marker); err != nil {
-			log.Printf("Ошибка сохранения маркера в БД: %v", err)
+			log.Printf("Error saving marker to database: %v", err)
 		}
 	}
 }
 
-// Обработчик загрузки нескольких файлов
+// Upload handler to process multiple file uploads
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(100 << 20) // Ограничиваем до 100MB
+	err := r.ParseMultipartForm(100 << 20) // Limit file upload to 100MB
 	if err != nil {
-		http.Error(w, "Ошибка загрузки файла", http.StatusInternalServerError)
+		http.Error(w, "Error uploading file", http.StatusInternalServerError)
 		return
 	}
 
-	// Получаем список файлов
-	files := r.MultipartForm.File["files[]"] // Это имя параметра, который мы передаем с клиента
+	// Get list of files
+	files := r.MultipartForm.File["files[]"] // Expecting "files[]" parameter from the client
 
 	if len(files) == 0 {
-		http.Error(w, "Файлы не выбраны", http.StatusBadRequest)
+		http.Error(w, "No files selected", http.StatusBadRequest)
 		return
 	}
 
 	for _, fileHeader := range files {
-		// Открываем файл
+		// Open the file
 		file, err := fileHeader.Open()
 		if err != nil {
-			http.Error(w, "Ошибка открытия файла", http.StatusBadRequest)
+			http.Error(w, "Error opening file", http.StatusBadRequest)
 			return
 		}
 		defer file.Close()
 
-		// Определяем тип файла по расширению
+		// Determine file type by extension
 		ext := filepath.Ext(fileHeader.Filename)
 		switch ext {
 		case ".kml":
@@ -540,32 +523,83 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		case ".rctrk":
 			processRCTRKFile(file)
 		case ".json":
-			processAtomFastFile(file) // Обрабатываем AtomFast JSON
+			processAtomFastFile(file) // AtomFast JSON
 		default:
-			http.Error(w, "Неподдерживаемый тип файла", http.StatusBadRequest)
+			http.Error(w, "Unsupported file type", http.StatusBadRequest)
 			return
 		}
 	}
 
-	// Успешная загрузка
+	// Successful upload
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
-// Основная функция запуска сервера
+// =====================
+// WEB SERVER HANDLERS
+// =====================
+
+// Function to handle rendering the map with markers
+func mapHandler(w http.ResponseWriter, r *http.Request) {
+    lang := getPreferredLanguage(r)
+
+    // Add function toJSON for use in the template
+    tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
+        "translate": func(key string) string {
+            if val, ok := translations[lang][key]; ok {
+                return val
+            }
+            return translations["en"][key] // Fallback to English if not found
+        },
+        "toJSON": func(data interface{}) (string, error) {
+            bytes, err := json.Marshal(data)
+            return string(bytes), err
+        },
+    }).ParseFS(content, "public_html/map.html"))
+
+    if config.CompileVersion == "dev" {
+        config.CompileVersion = "latest"
+    }
+
+    // Updated struct to include the Lang field
+data := struct {
+    Markers      []database.Marker
+    Version      string
+    Translations map[string]map[string]string // Pass the whole translations map
+    Lang         string
+}{
+    Markers:      doseData.Markers,
+    Version:      config.CompileVersion,
+    Translations: translations, // Pass the entire translation map, not just one language
+    Lang:         lang,
+}
+
+    // Execute the template and handle errors
+    if err := tmpl.Execute(w, data); err != nil {
+        log.Printf("Error executing template: %v", err)
+        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+        return
+    }
+}
+
+// =====================
+// MAIN ENTRY POINT
+// =====================
+
+// Main function to initialize the server
 func main() {
 	flag.Parse()
 
-	// Загрузка переводов из файла
+	// Load translations from the file
 	loadTranslations("translations.json")
 
-	// Обработка флага версии
+	// Handle version flag
 	if *version {
-		fmt.Printf("isotope-pathways версия %s\n", config.CompileVersion)
+		fmt.Printf("isotope-pathways version %s\n", config.CompileVersion)
 		return
 	}
 
-	// Инициализация базы данных
+	// Initialize the database
 	dbConfig := database.Config{
 		DBType: *dbType,
 		DBPath: *dbPath,
@@ -575,35 +609,36 @@ func main() {
 	var err error
 	db, err = database.NewDatabase(dbConfig)
 	if err != nil {
-		log.Fatalf("Не удалось инициализировать базу данных: %v", err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// Инициализация схемы таблиц
+	// Initialize the database schema
 	if err := db.InitSchema(); err != nil {
-		log.Fatalf("Ошибка при инициализации схемы БД: %v", err)
+		log.Fatalf("Error initializing database schema: %v", err)
 	}
 
-	// Загрузка данных из базы данных
+	// Load data from the database
 	markers, err := db.LoadMarkers()
 	if err != nil {
-		log.Printf("Ошибка загрузки маркеров из БД: %v", err)
+		log.Printf("Error loading markers from database: %v", err)
 	} else {
 		doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
 	}
 
-	// Запуск веб-сервера
+	// Set up the web server
 
-	// Настраиваем файловый сервер для раздачи содержимого public_html по пути /static
+	// Serve static files from /static path
 	staticFiles, err := fs.Sub(content, "public_html")
 	if err != nil {
-		log.Fatalf("Не удалось выделить поддиректорию public_html: %v", err)
+		log.Fatalf("Failed to extract public_html subdirectory: %v", err)
 	}
 
-	// Раздаём файлы через /static
+	// Serve static content through /static
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 
 	http.HandleFunc("/", mapHandler)
 	http.HandleFunc("/upload", uploadHandler)
-	log.Printf("Приложение работает по адресу: http://localhost:%d", *port)
+	log.Printf("Application running at: http://localhost:%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
+
