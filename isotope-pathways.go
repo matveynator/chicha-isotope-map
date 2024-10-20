@@ -406,10 +406,13 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
     Version: config.CompileVersion,
   }
 
-  // Выполнение шаблона с передачей данных
+  // Попытка выполнить шаблон
   err := tmpl.Execute(w, data)
+  
+  // Если произошла ошибка во время выполнения шаблона, отправляем ошибку
   if err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
+    return // Обязательно выходим после отправки ошибки, чтобы избежать двойного WriteHeader
   }
 }
 
