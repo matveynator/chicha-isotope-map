@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Isotope Pathways — следопыт невидимых дорог.</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="/static/leaflet.css" />
     <style>
       body, html {
         margin: 0;
@@ -68,6 +68,30 @@
       .github-icon:hover {
         opacity: 1;
       }
+
+.program-info {
+  position: absolute;
+  bottom: 20px;
+  left: 70px; /* Отступ от иконки GitHub */
+  z-index: 1000;
+  color: #333;
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.program-info a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.program-info a:hover {
+  text-decoration: underline;
+}
+
+.program-info:hover {
+  opacity: 1;
+}
+
     </style>
   </head>
   <body>
@@ -77,12 +101,17 @@
     </div>
 
     <a href="https://github.com/matveynator/isotope-pathways" class="github-link" target="_blank">
-      <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub" class="github-icon">
+    <img src="/static/GitHub-Mark.png" alt="GitHub" class="github-icon">
     </a>
+
+    <div class="program-info">
+    <strong>Isotope Pathways</strong><br>
+	Version: <a href="https://files.zabiyaka.net/isotope-pathways/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
+    </div>
 
     <div id="map"></div>
 
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="/static/leaflet.js"></script>
     <script>
       var markers = JSON.parse('{{ .Markers | toJSON }}');
       if (!Array.isArray(markers) || markers.length === 0) {

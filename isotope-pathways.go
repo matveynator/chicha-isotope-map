@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/fs"
   "archive/zip"
   "bytes"
   "embed"
@@ -390,7 +391,23 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
     },
   }).ParseFS(content, "public_html/map.html"))
 
-  err := tmpl.Execute(w, doseData)
+
+	//вместо dev сделаем latest в ссылке на сайте
+  if config.CompileVersion == "dev" {
+      config.CompileVersion = "latest"
+  }
+
+  // Подготовка данных для шаблона, включая маркеры и версию программы
+  data := struct {
+    Markers []database.Marker
+    Version string
+  }{
+    Markers: doseData.Markers,
+    Version: config.CompileVersion,
+  }
+
+  // Выполнение шаблона с передачей данных
+  err := tmpl.Execute(w, data)
   if err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
   }
@@ -528,6 +545,16 @@ func main() {
   }
 
   // Запуск веб-сервера
+
+	// Настраиваем файловый сервер для раздачи содержимого public_html по пути /static
+	staticFiles, err := fs.Sub(content, "public_html")
+		if err != nil {
+			log.Fatalf("Не удалось выделить поддиректорию public_html: %v", err)
+		}
+
+	// Раздаём файлы через /static
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
+
   http.HandleFunc("/", mapHandler)
   http.HandleFunc("/upload", uploadHandler)
   log.Printf("Приложение работает по адресу: http://localhost:%d", *port)
