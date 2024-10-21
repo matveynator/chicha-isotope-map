@@ -13,28 +13,32 @@ type Database struct {
 
 // Config holds the configuration details for initializing the database.
 type Config struct {
-	DBType string // The type of the database (e.g., "sqlite" or "genji")
-	DBPath string // The file path to the database file
-	Port   int    // The port number (used in database file naming if needed)
+	DBType    string // The type of the database driver (e.g., "sqlite", "genji", or "pgx" (postgres))
+	DBPath    string // The file path to the database file (for file-based databases)
+	DBHost    string // The host for PostgreSQL
+	DBPort    int    // The port for PostgreSQL
+	DBUser    string // The user for PostgreSQL
+	DBPass    string // The password for PostgreSQL
+	DBName    string // The name of the PostgreSQL database
+	PGSSLMode string // The SSL mode for PostgreSQL
+	Port      int    // The port number (used in database file naming if needed)
 }
 
 // NewDatabase creates and initializes a new database connection.
 func NewDatabase(config Config) (*Database, error) {
-	var dsn string // Data Source Name, the location of the database file
+	var dsn string // Data Source Name, the location of the database
 
-	// If the database type is "sqlite", set the DSN accordingly
-	if config.DBType == "sqlite" {
+	switch config.DBType {
+	case "sqlite", "genji":
 		dsn = config.DBPath
 		if dsn == "" {
-			// If no database path is provided, generate a default filename based on the port
-			dsn = fmt.Sprintf("database-%d.sqlite", config.Port)
+			dsn = fmt.Sprintf("database-%d.%s", config.Port, config.DBType)
 		}
-	} else { // For other database types (e.g., Genji), set the DSN
-		dsn = config.DBPath
-		if dsn == "" {
-			// If no database path is provided, generate a default filename based on the port
-			dsn = fmt.Sprintf("database-%d.genji", config.Port)
-		}
+	case "pgx":
+		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+			config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName, config.PGSSLMode)
+	default:
+		return nil, fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
 
 	// Open a connection to the database
@@ -49,9 +53,8 @@ func NewDatabase(config Config) (*Database, error) {
 	}
 
 	// Log the database type and location being used
-	log.Printf("Using database: %s at %s", config.DBType, dsn)
+	log.Printf("Using database driver: %s with DSN: %s", config.DBType, dsn)
 
-	// Return the initialized Database struct
 	return &Database{DB: db}, nil
 }
 
@@ -59,15 +62,15 @@ func NewDatabase(config Config) (*Database, error) {
 func (db *Database) InitSchema() error {
 	// SQL schema to create the 'markers' table if it doesn't exist
 	schema := `
-  CREATE TABLE IF NOT EXISTS markers (
-    id INTEGER PRIMARY KEY,
-    doseRate REAL,  -- Radiation dose rate (in µSv/h)
-    date INTEGER,   -- Timestamp (UNIX time format)
-    lon REAL,       -- Longitude of the marker
-    lat REAL,       -- Latitude of the marker
-    countRate REAL  -- Count rate (CPS)
-  );
-  `
+    CREATE TABLE IF NOT EXISTS markers (
+        id INTEGER PRIMARY KEY, -- Custom ID generated manually
+        doseRate REAL,  -- Radiation dose rate (in µSv/h)
+        date INTEGER,   -- Timestamp (UNIX time format)
+        lon REAL,       -- Longitude of the marker
+        lat REAL,       -- Latitude of the marker
+        countRate REAL  -- Count rate (CPS)
+    );
+    `
 	// Execute the schema creation statement
 	_, err := db.DB.Exec(schema)
 	return err // Return the error if any
@@ -90,39 +93,65 @@ func (db *Database) getNextID() (int64, error) {
 	return 1, nil // If no records exist, return 1 as the starting ID
 }
 
-// SaveMarker saves a new marker to the database, assigning it a new ID if it doesn't already exist.
-func (db *Database) SaveMarker(marker Marker) error {
-	var count int // Variable to count the number of matching records
+func (db *Database) SaveMarker(marker Marker, dbType string) error {
+	var count int
+	var query string
 
-	// Check if a marker with the same attributes already exists in the database
-	err := db.DB.QueryRow(`
-    SELECT COUNT(1) 
-    FROM markers 
-    WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ?`,
-		marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate).Scan(&count)
+	// Select SQL query based on the database type
+	switch dbType {
+	case "pgx":
+		query = `
+        SELECT COUNT(1)
+        FROM markers
+        WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5`
+	default: // SQLite, Genji
+		query = `
+        SELECT COUNT(1)
+        FROM markers
+        WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ?`
+	}
+
+	// Execute the query
+	err := db.DB.QueryRow(query,
+		marker.DoseRate,
+		marker.Date,
+		marker.Lon,
+		marker.Lat,
+		marker.CountRate).Scan(&count)
+
 	if err != nil {
 		return err
 	}
 
-	// If a matching marker is found, skip saving it and log the event
+	// If a matching marker already exists, log and return
 	if count > 0 {
-		log.Printf("Marker (%f, %d, %f, %f, %f) already exists in the database.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
+		log.Printf("Marker (%f, %d, %f, %f, %f) already exists.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
 		return nil
 	}
 
-	// Get the next available ID for the new marker
+	// Generate next ID manually
 	nextID, err := db.getNextID()
 	if err != nil {
 		return fmt.Errorf("error getting the next ID: %v", err)
 	}
 
-	// Insert the new marker into the 'markers' table
-	_, err = db.DB.Exec(`
+	// Insert new marker with manually generated ID
+	switch dbType {
+	case "pgx":
+		query = `
         INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
-        VALUES (?, ?, ?, ?, ?, ?)`,
+        VALUES ($1, $2, $3, $4, $5, $6)`
+	default: // SQLite, Genji
+		query = `
+        INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
+        VALUES (?, ?, ?, ?, ?, ?)`
+	}
+
+	// Execute the insert query
+	_, err = db.DB.Exec(query,
 		nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
 
-	return err // Return any errors encountered during the insert operation
+	return err
 }
 
 // LoadMarkers loads all markers from the 'markers' table in the database.

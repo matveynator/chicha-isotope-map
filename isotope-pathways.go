@@ -34,8 +34,14 @@ var content embed.FS
 var doseData database.Data
 
 // Flags to specify database type, path, and server port
-var dbType = flag.String("db-type", "genji", "Type of the database: genji or sqlite")
-var dbPath = flag.String("db-path", "", "Path to the database file (defaults to the current folder)")
+var dbType = flag.String("db-type", "genji", "Type of the database driver: genji, sqlite, or pgx (postgresql)")
+var dbPath = flag.String("db-path", "", "Path to the database file(defaults to the current folder, applicable for genji, sqlite drivers.)")
+var dbHost = flag.String("db-host", "127.0.0.1", "Database host (applicable for pgx driver)")
+var dbPort = flag.Int("db-port", 5432, "Database port (applicable for pgx driver)")
+var dbUser = flag.String("db-user", "postgres", "Database user (applicable for pgx driver)")
+var dbPass = flag.String("db-pass", "", "Database password (applicable for pgx driver)")
+var dbName = flag.String("db-name", "IsotopePathways", "Database name (applicable for pgx driver)")
+var pgSSLMode = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode: disable, allow, prefer, require, verify-ca, or verify-full")
 var port = flag.Int("port", 8765, "Port for running the server")
 var version = flag.Bool("version", false, "Show the application version")
 
@@ -298,8 +304,10 @@ func processKMLFile(file multipart.File) {
 
 	// Save the markers to the database
 	for _, marker := range uniqueMarkers {
-		if err := db.SaveMarker(marker); err != nil {
-			log.Printf("Error saving marker to database: %v", err)
+		// Pass the dbType to SaveMarker
+		err = db.SaveMarker(marker, *dbType)
+		if err != nil {
+			log.Fatalf("Error saving marker: %v", err)
 		}
 	}
 }
@@ -345,8 +353,10 @@ func processKMZFile(file multipart.File) {
 
 			// Save markers to the database
 			for _, marker := range markers {
-				if err := db.SaveMarker(marker); err != nil {
-					log.Printf("Error saving marker to database: %v", err)
+				// Pass the dbType to SaveMarker
+				err = db.SaveMarker(marker, *dbType)
+				if err != nil {
+					log.Fatalf("Error saving marker: %v", err)
 				}
 			}
 		}
@@ -442,8 +452,10 @@ func processRCTRKFile(file multipart.File) {
 
 	// Save markers to the database
 	for _, marker := range doseData.Markers {
-		if err := db.SaveMarker(marker); err != nil {
-			log.Printf("Error saving marker to database: %v", err)
+		// Pass the dbType to SaveMarker
+		err = db.SaveMarker(marker, *dbType)
+		if err != nil {
+			log.Fatalf("Error saving marker: %v", err)
 		}
 	}
 }
@@ -488,8 +500,10 @@ func processAtomFastFile(file multipart.File) {
 
 	// Save markers to the database
 	for _, marker := range uniqueMarkers {
-		if err := db.SaveMarker(marker); err != nil {
-			log.Printf("Error saving marker to database: %v", err)
+		// Pass the dbType to SaveMarker
+		err = db.SaveMarker(marker, *dbType)
+		if err != nil {
+			log.Fatalf("Error saving marker: %v", err)
 		}
 	}
 }
@@ -607,9 +621,15 @@ func main() {
 
 	// Initialize the database
 	dbConfig := database.Config{
-		DBType: *dbType,
-		DBPath: *dbPath,
-		Port:   *port,
+		DBType:    *dbType,
+		DBPath:    *dbPath,
+		DBHost:    *dbHost,
+		DBPort:    *dbPort,
+		DBUser:    *dbUser,
+		DBPass:    *dbPass,
+		DBName:    *dbName,
+		PGSSLMode: *pgSSLMode,
+		Port:      *port,
 	}
 
 	var err error
