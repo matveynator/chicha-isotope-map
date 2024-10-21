@@ -63,28 +63,46 @@ chmod +x ./isotope-pathways
 
 ## 🛠 **使い方**
 
-### プログラムを起動する:
+### プログラムを実行する:
 
 ```bash
-
 ./isotope-pathways
+```
 
-または追加オプション付きで:
+または追加設定付きで実行する:
 
+```bash
 ./isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
-- `--port`: サーバーを実行するポート番号。デフォルトは `8765`。  
-  _「別の言語でプログラムと会話したい？ ポートを変更すると、新しい方法で話しかけることができます。」_
+#### サポートされているデータベースタイプ:
+- `genji`: 軽量で高速な組み込みデータベース。外部依存はありません。
+- `sqlite`: ローカルストレージに人気のファイルベースデータベース。
+- `pgx` (PostgreSQL): `pgx`ドライバを使用してPostgreSQLサーバに接続。
 
-- `--db-type`: データベースの種類: `genji` または `sqlite`。デフォルトは `genji`。  
-  _「SQLite の古典的なアプローチを好むか、Genji の革新を試すか。選択はあなた次第です。」_
+#### PostgreSQLの例:
 
-- `--db-path`: データベースファイルへのパス。指定がない場合、現在のディレクトリに保存されます。  
-  _「どこにデータを保存するか？ パスを指定すれば、それがそのデータの家になります。」_
+```bash
+./isotope-pathways --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=あなたのパスワード --db-name=isotope_db --pg-ssl-mode=prefer
+```
 
-- `--version`: プログラムのバージョンを表示し、実行を終了します。  
-  _「まるで古い魔術師のように、プログラムはあなたにどの時代から来たかを教えてくれます。」_
+- `--db-type`: データベースのタイプ (`genji`, `sqlite` または `pgx`)。デフォルトは`genji`です。
+  - **pgx**: `pgx`ドライバを使用してPostgreSQLを利用します。
+- `--db-host`: PostgreSQLデータベースのホスト。デフォルトは`127.0.0.1`です。
+- `--db-port`: PostgreSQLのポート。デフォルトは`5432`です。
+- `--db-user`: PostgreSQLのユーザー名。デフォルトは`postgres`です。
+- `--db-pass`: PostgreSQLのパスワード。
+- `--db-name`: PostgreSQLデータベースの名前。デフォルトは`isotope_db`です。
+- `--pg-ssl-mode`: PostgreSQL用のSSLモード。デフォルトは`prefer`です。
+
+_デフォルトの設定を使用してカスタムデータベースでPostgreSQLを実行する例:_
+
+```bash
+./isotope-pathways --db-type=pgx --db-name=私のデータベース
+```
+
+これにより、ドライバ`pgx`を使用して、`localhost:5432`でユーザー`postgres`のパスワードなしで、`私のデータベース`という名前のPostgreSQLデータベースに接続します。
+
 
 ### ウェブインターフェース:
 

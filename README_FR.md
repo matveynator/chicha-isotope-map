@@ -62,7 +62,7 @@ chmod +x ./isotope-pathways
 
 ---
 
-## 🛠 **Comment utiliser ?**
+## 🛠 **Comment Utiliser ?**
 
 ### Lancer le programme :
 
@@ -70,23 +70,39 @@ chmod +x ./isotope-pathways
 ./isotope-pathways
 ```
 
-Ou avec des options supplémentaires :
+ou avec des paramètres supplémentaires :
 
 ```bash
 ./isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
-- `--port` : Le port sur lequel le serveur sera lancé. Par défaut `8765`.  
-  _"Envie de changer de port ? Changez-le, et le programme communiquera avec vous autrement."_
+#### Types de bases de données supportées :
+- `genji` : Base de données embarquée rapide et légère sans dépendances externes.
+- `sqlite` : Base de données basée sur des fichiers, populaire pour le stockage local.
+- `pgx` (PostgreSQL) : Connexion à un serveur PostgreSQL en utilisant le driver `pgx`.
 
-- `--db-type` : Type de base de données : `genji` ou `sqlite`. Par défaut `genji`.  
-  _"Préférez-vous le classique SQLite ou l'innovant Genji ? Faites votre choix."_
+#### Exemple pour PostgreSQL :
 
-- `--db-path` : Chemin vers le fichier de base de données. Si non précisé, il sera créé dans le répertoire actuel.  
-  _"Où cacher les traces ? Dans quel coin du disque ? Indiquez le chemin, et il deviendra leur refuge."_
+```bash
+./isotope-pathways --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=motdepasse --db-name=isotope_db --pg-ssl-mode=prefer
+```
 
-- `--version` : Affiche la version du programme et quitte.  
-  _"Comme un vieux magicien, le programme vous dira de quelle époque il vient."_
+- `--db-type` : Le type de base de données (`genji`, `sqlite` ou `pgx`). Par défaut, c'est `genji`.
+  - **pgx** : Utilisez cette option pour PostgreSQL avec le driver `pgx`.
+- `--db-host` : Hôte de la base de données PostgreSQL. Par défaut, `127.0.0.1`.
+- `--db-port` : Port PostgreSQL. Par défaut, `5432`.
+- `--db-user` : Nom d'utilisateur PostgreSQL. Par défaut, `postgres`.
+- `--db-pass` : Mot de passe PostgreSQL.
+- `--db-name` : Nom de la base de données PostgreSQL. Par défaut, `isotope_db`.
+- `--pg-ssl-mode` : Mode SSL pour PostgreSQL. Par défaut, `prefer`.
+
+_Exemple de lancement avec PostgreSQL en utilisant les paramètres par défaut mais une base de données personnalisée :_
+
+```bash
+./isotope-pathways --db-type=pgx --db-name=ma_base_de_données
+```
+
+Cela se connectera à une base de données PostgreSQL nommée `ma_base_de_données` sur `localhost:5432` avec l'utilisateur `postgres` sans mot de passe, en utilisant `pgx` comme driver.
 
 ### Interface Web :
 

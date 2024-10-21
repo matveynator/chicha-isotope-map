@@ -88,17 +88,35 @@ or with additional settings:
 ./isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
-- `--port`: The port number for the server to run on. Default is `8765`.  
-  _"Want to talk to the program on a different channel? Change the port, and it will speak a new language to you."_
+#### Supported Database Types:
+- `genji`: Fast, lightweight embedded database with no external dependencies.
+- `sqlite`: A file-based database popular for local storage.
+- `pgx` (PostgreSQL): Connect to a PostgreSQL server using the `pgx` driver.
 
-- `--db-type`: The type of database: `genji` or `sqlite`. Default is `genji`.  
-  _"Prefer the old-school SQLite or the innovative Genji? The choice is yours."_
+#### Example for PostgreSQL:
 
-- `--db-path`: The path to the database file. If not specified, a file in the current directory is used.  
-  _"Where should it hide the trails? Specify the path, and it will call it home."_
+```bash
+./isotope-pathways --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=yourpassword --db-name=isotope_db --pg-ssl-mode=prefer
+```
 
-- `--version`: Show the program version and exit.  
-  _"Like a magician revealing its era, the program will tell you where it comes from."_
+- `--db-type`: The type of the database (`genji`, `sqlite`, or `pgx`). Default is `genji`.
+  - **pgx**: Use this for PostgreSQL, powered by the `pgx` driver.
+- `--db-host`: PostgreSQL database host. Default is `127.0.0.1`.
+- `--db-port`: PostgreSQL port. Default is `5432`.
+- `--db-user`: PostgreSQL username. Default is `postgres`.
+- `--db-pass`: PostgreSQL password.
+- `--db-name`: PostgreSQL database name. Default is `isotope_db`.
+- `--pg-ssl-mode`: SSL mode for PostgreSQL. Default is `prefer`.
+
+_Example for running with PostgreSQL using default settings but a custom database:_
+
+```bash
+./isotope-pathways --db-type=pgx --db-name=my_custom_db
+```
+
+This will connect to a PostgreSQL database named `my_custom_db` on `localhost:5432` with user `postgres` and no password, using `pgx` as the driver.
+
+
 
 ### Web Interface:
 
