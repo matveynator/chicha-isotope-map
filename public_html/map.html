@@ -4,229 +4,274 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{translate "title"}}</title>
+
+    <!-- Include Leaflet CSS for map rendering -->
     <link rel="stylesheet" href="/static/leaflet.css" />
+
     <style>
+      /* Ensure body and html take up full height, no margin or padding */
       body, html {
         margin: 0;
         padding: 0;
         height: 100%;
-        overflow: hidden;
+        overflow: hidden; /* Prevents scrollbars */
       }
 
+      /* Full height map container */
       #map {
-        height: 100vh;
+        height: 100vh; /* Map takes up full viewport height */
         margin: 0;
-        overflow: hidden;
+        overflow: hidden; /* No overflow for map container */
       }
 
+      /* Custom tooltip styling */
       .custom-tooltip {
-        background-color: white;
-        border-radius: 5px;
-        padding: 10px;
-        color: #333;
-        box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
+        background-color: white; /* Tooltip background */
+        border-radius: 5px; /* Rounded corners */
+        padding: 10px; /* Padding inside the tooltip */
+        color: #333; /* Text color */
+        box-shadow: 0px 0px 3px rgba(0,0,0,0.3); /* Shadow for the tooltip */
       }
 
+      /* Upload button container styling, positioned top-right */
       .upload-btn-container {
         position: absolute;
         top: 20px;
         right: 20px;
-        z-index: 1000;
+        z-index: 1000; /* Ensures it's on top of other elements */
       }
 
+      /* Ensures the upload button aligns well within leaflet's controls */
       .leaflet-control-container .leaflet-top.leaflet-right .upload-btn-container {
-        margin-top: 40px;
+        margin-top: 40px; /* Adds extra margin for visual spacing */
       }
 
+      /* Upload button styling */
       .upload-btn {
-        background-color: white;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        padding: 5px 10px;
-        cursor: pointer;
-        font-size: 14px;
-        box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        background-color: white; /* Button background */
+        border: 1px solid #ccc; /* Button border */
+        border-radius: 4px; /* Rounded corners */
+        padding: 5px 10px; /* Padding inside the button */
+        cursor: pointer; /* Changes cursor on hover */
+        font-size: 14px; /* Font size of button text */
+        box-shadow: 0 1px 5px rgba(0,0,0,0.65); /* Adds shadow */
       }
 
+      /* Hover effect for upload button */
       .upload-btn:hover {
-        background-color: #f4f4f4;
+        background-color: #f4f4f4; /* Lightens background on hover */
       }
 
+      /* GitHub link container styling */
       .github-link {
         position: absolute;
         bottom: 20px;
         left: 20px;
-        z-index: 1000;
+        z-index: 1000; /* Ensures it remains visible on top */
       }
 
+      /* GitHub icon styling */
       .github-icon {
-        width: 40px;
-        height: 40px;
-        opacity: 0.6;
+        width: 40px; /* Icon width */
+        height: 40px; /* Icon height */
+        opacity: 0.6; /* Transparency for visual effect */
       }
 
+      /* Hover effect for GitHub icon */
       .github-icon:hover {
-        opacity: 1;
+        opacity: 1; /* Full opacity on hover */
       }
 
-.program-info {
-  position: absolute;
-  bottom: 20px;
-  left: 70px; /* Отступ от иконки GitHub */
-  z-index: 1000;
-  color: #333;
-  font-size: 14px;
-  opacity: 0.6;
-}
+      /* Program information section near GitHub icon */
+      .program-info {
+        position: absolute;
+        bottom: 20px;
+        left: 70px; /* Adjusted position relative to GitHub icon */
+        z-index: 1000; /* Ensures visibility */
+        color: #333; /* Text color */
+        font-size: 14px; /* Font size */
+        opacity: 0.6; /* Initial transparency */
+      }
 
-.program-info a {
-  color: #007bff;
-  text-decoration: none;
-}
+      /* Styling for program info links */
+      .program-info a {
+        color: #007bff; /* Blue color for links */
+        text-decoration: none; /* Removes underline from links */
+      }
 
-.program-info a:hover {
-  text-decoration: underline;
-}
+      /* Hover effect for links in program info */
+      .program-info a:hover {
+        text-decoration: underline; /* Adds underline on hover */
+      }
 
-.program-info:hover {
-  opacity: 1;
-}
-
+      /* Hover effect for the entire program info block */
+      .program-info:hover {
+        opacity: 1; /* Full opacity on hover */
+      }
     </style>
 
-    <script>
-      // Pass translations from Go to JavaScript
+    <!-- Script to handle translations and pass data from Go to JavaScript -->
+    <script id="translations-script">
+      // Translations passed from Go backend
       var translations = JSON.parse('{{ .Translations | toJSON }}');
-      var currentLang = '{{ .Lang }}'; // Capture the language being used
+      var currentLang = '{{ .Lang }}'; // Current language being used
 
-      // JavaScript translate function to handle translations in tooltips
+      // Translation function to return translated text for a given key
       function translate(key) {
-        // Ensure translations for 'en' exist
+        // Ensure English translations exist as a fallback
         if (!translations['en']) {
           console.error('English translations not available!');
-          return key; // Return the key itself as a fallback
+          return key; // Return the key itself if translation not found
         }
 
-        // Return the translation if available, otherwise fallback to 'en' or return the key
+        // Return translation for the current language, fallback to English, or return key
         if (translations[currentLang] && translations[currentLang][key]) {
           return translations[currentLang][key];
-        } else if (translations['en'][key]) { // Fallback to English if translation is missing
+        } else if (translations['en'][key]) {
           return translations['en'][key];
         }
-        return key; // Fallback: return the key itself if no translation is found
+        return key; // Fallback to the key if no translation found
       }
+    </script>
 
-      // Initialize the markers array with data from the Go template
-      var markers = [];
+    <!-- Script to initialize the markers array with data from Go -->
+    <script id="markers-init-script">
+      var markers = []; // Initialize an empty array for markers
+
+      // Try parsing markers data from Go template
       try {
-        markers = JSON.parse('{{ .Markers | toJSON }}');  // Safely attempt to parse the markers
+        markers = JSON.parse('{{ .Markers | toJSON }}');  
       } catch (e) {
         console.error("Failed to parse markers: ", e);
-        markers = []; // Fallback to an empty array if there's a parsing error
+        markers = []; // Default to an empty array if there's a parsing error
       }
 
-      // Ensure markers is an array (in case something goes wrong)
+      // Ensure markers is an array (if not, reset it to empty)
       if (!Array.isArray(markers)) {
         markers = [];
       }
     </script>
   </head>
+  
   <body>
+    <!-- Upload button container -->
     <div class="upload-btn-container leaflet-control">
       <label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
-      <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()">
+      <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()"> <!-- Hidden file input, triggered on upload -->
     </div>
 
+    <!-- GitHub link icon -->
     <a href="https://github.com/matveynator/isotope-pathways" class="github-link" target="_blank">
-    <img src="/static/GitHub-Mark.png" alt="GitHub" class="github-icon">
+      <img src="/static/GitHub-Mark.png" alt="GitHub" class="github-icon">
     </a>
 
+    <!-- Program information with version link -->
     <div class="program-info">
-    <strong>{{translate "description"}}</strong><br> v.<a href="https://files.zabiyaka.net/isotope-pathways/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
+      <strong>{{translate "description"}}</strong><br> 
+      v.<a href="https://files.zabiyaka.net/isotope-pathways/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
     </div>
 
+    <!-- Map container where the Leaflet map will be rendered -->
     <div id="map"></div>
 
+    <!-- Include Leaflet JS library for map functionality -->
     <script src="/static/leaflet.js"></script>
-    <script>
-      var markers = JSON.parse('{{ .Markers | toJSON }}');
-      if (!Array.isArray(markers) || markers.length === 0) {
-        markers = [];
-      }
 
-      var map = L.map('map');
-      var bounds = markers.map(marker => [marker.lat, marker.lon]);
-
-      if (bounds.length > 0) {
-        map.fitBounds(bounds);
-      } else {
-        map.setView([44.08832, 42.97577], 11);
-      }
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-      }).addTo(map);
-
-      var circleMarkers = {};
-
-      map.on('zoomend', updateMarkers);
-      map.on('moveend', updateMarkers);
-
+    <!-- Script to update markers on map based on current zoom and bounds -->
+    <script id="markers-update-script">
       function updateMarkers() {
-        var zoomLevel = map.getZoom();
-        var bounds = map.getBounds();
+        var zoomLevel = map.getZoom(); // Get current map zoom level
+        var bounds = map.getBounds(); // Get current map bounds
 
+        // Remove existing circle markers from the map
         for (let key in circleMarkers) {
           map.removeLayer(circleMarkers[key]);
         }
 
-        circleMarkers = {};
+        circleMarkers = {}; // Clear circle markers object
+
+        // Get filtered markers based on current zoom level
         var filteredMarkers = filterMarkersByZoom(zoomLevel);
 
+        // Loop through filtered markers and add them to the map
         filteredMarkers.forEach(function(marker) {
-          var markerKey = `${marker.lat}-${marker.lon}`;
+          var markerKey = `${marker.lat}-${marker.lon}`; // Unique key for each marker
 
           if (bounds.contains([marker.lat, marker.lon])) {
-            var color = getGradientColor(marker.doseRate, marker.countRate);
-            var radius = getRadius(marker.doseRate, zoomLevel);
+            var color = getGradientColor(marker.doseRate, marker.countRate); // Get color for marker
+            var radius = getRadius(marker.doseRate, zoomLevel); // Get radius for marker
 
+            // Create a circle marker with calculated properties
             var circleMarker = L.circleMarker([marker.lat, marker.lon], {
               radius: radius,
               fillColor: color,
               color: color,
-              weight: 1,
-              opacity: 0.7,
-              fillOpacity: 0.5
+              weight: 1, // Border thickness
+              opacity: 0.7, // Border opacity
+              fillOpacity: 0.5 // Fill opacity
             }).addTo(map)
               .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
 
-            circleMarkers[markerKey] = circleMarker;
+            circleMarkers[markerKey] = circleMarker; // Store circle marker in object
           }
         });
 
-        // Обновляем URL после обновления маркеров
+        // Update URL after markers have been updated
         updateUrl();
       }
+    </script>
 
-function getTooltipContent(marker) {
-  var doseRateInMicroSieverts = marker.doseRate;
-  var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
+    <!-- Script to setup the Leaflet map and add basic tile layer -->
+    <script id="map-setup-script">
+      var map = L.map('map'); // Initialize Leaflet map in the #map element
+      var bounds = markers.map(marker => [marker.lat, marker.lon]); // Extract bounds from markers' lat/lon
 
-  var date = new Date(marker.date * 1000);
-  var formattedDate = date.toLocaleString(); // Локализованная дата
+      // If markers exist, fit map to bounds, otherwise set a default view
+      if (bounds.length > 0) {
+        map.fitBounds(bounds); // Auto-fit map to marker bounds
+      } else {
+        map.setView([44.08832, 42.97577], 11); // Default map center and zoom
+      }
 
-  // Используем translate() для перевода
-  return `
-    <div class="custom-tooltip">
-      <strong>${translate('radiation_dose')}:</strong><br>
-      ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
-      <strong>${translate('date_time')}:</strong><br>
-      ${formattedDate}
-    </div>
-  `;
-}
+      // Add OpenStreetMap tiles to the map
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18, // Set the maximum zoom level
+      }).addTo(map);
 
+      var circleMarkers = {}; // Object to hold the rendered circle markers
+
+      // Listen for zoom and movement events to update markers
+      map.on('zoomend', updateMarkers);
+      map.on('moveend', updateMarkers);
+    </script>
+
+    <!-- Script to generate tooltip content for markers -->
+    <script id="tooltip-content-script">
+      function getTooltipContent(marker) {
+        // Convert dose rate to microRoentgens
+        var doseRateInMicroSieverts = marker.doseRate;
+        var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
+
+        // Convert UNIX timestamp to readable date format
+        var date = new Date(marker.date * 1000);
+        var formattedDate = date.toLocaleString(); // Format date using the local locale
+
+        // Return HTML content for tooltip with translated keys
+        return `
+          <div class="custom-tooltip">
+            <strong>${translate('radiation_dose')}:</strong><br>
+            ${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
+            <strong>${translate('date_time')}:</strong><br>
+            ${formattedDate}
+          </div>
+        `;
+      }
+    </script>
+
+    <!-- Script to filter markers based on zoom level -->
+    <script id="zoom-filter-script">
       function filterMarkersByZoom(zoomLevel) {
+        // Return different portions of markers based on zoom level to avoid overloading the map
         if (zoomLevel > 20) {
           return markers;
         } else if (zoomLevel == 18) {
@@ -240,7 +285,7 @@ function getTooltipContent(marker) {
         } else if (zoomLevel == 14) {
           return markers;
         } else if (zoomLevel == 13) {
-          return markers.filter((_, index) => index % 5 === 0);
+          return markers.filter((_, index) => index % 5 === 0); // Display fewer markers
         } else if (zoomLevel == 12) {
           return markers.filter((_, index) => index % 10 === 0);
         } else if (zoomLevel == 11) {
@@ -263,9 +308,14 @@ function getTooltipContent(marker) {
           return markers.filter((_, index) => index % 55 === 0);
         }
       }
+    </script>
 
+    <!-- Script to calculate marker radius based on zoom level -->
+    <script id="radius-calc-script">
       function getRadius(doseRate, zoomLevel) {
         let baseRadius;
+
+        // Define base radius based on zoom level, more zoom = bigger radius
         if (zoomLevel > 18) baseRadius = 9;
         else if (zoomLevel == 18) baseRadius = 9;
         else if (zoomLevel == 17) baseRadius = 8;
@@ -277,90 +327,104 @@ function getTooltipContent(marker) {
         else if (zoomLevel == 11) baseRadius = 2;
         else baseRadius = 1;
 
-        return baseRadius;
+        return baseRadius; // Return the appropriate radius
       }
+    </script>
 
+    <!-- Script to calculate color gradient based on radiation dose and count rate -->
+    <script id="color-gradient-script">
       function getGradientColor(doseRate, countRate) {
+        // If countRate is zero, base the color on doseRate
         let colorRate = countRate === 0.0 ? (doseRate * 100) : countRate;
-        if (colorRate <= 4) return "#006400";
-        else if (colorRate <= 8) return interpolateColor([0, 100, 0], [173, 255, 47], (colorRate - 4) / (8 - 4));
-        else if (colorRate <= 11) return interpolateColor([173, 255, 47], [255, 255, 0], (colorRate - 8) / (11 - 8));
-        else if (colorRate <= 20) return interpolateColor([255, 255, 0], [255, 165, 0], (colorRate - 11) / (20 - 11));
-        else if (colorRate <= 30) return interpolateColor([255, 165, 0], [255, 0, 0], (colorRate - 20) / (30 - 20));
-        else if (colorRate <= 99) return interpolateColor([255, 0, 0], [0, 0, 0], (colorRate - 30) / (99 - 30));
-        else return "#000000";
+
+        // Return the appropriate color based on the countRate
+        if (colorRate <= 4) return "#006400"; // Dark green for low values
+        else if (colorRate <= 8) return interpolateColor([0, 100, 0], [173, 255, 47], (colorRate - 4) / (8 - 4)); // Green gradient
+        else if (colorRate <= 11) return interpolateColor([173, 255, 47], [255, 255, 0], (colorRate - 8) / (11 - 8)); // Yellow gradient
+        else if (colorRate <= 20) return interpolateColor([255, 255, 0], [255, 165, 0], (colorRate - 11) / (20 - 11)); // Orange gradient
+        else if (colorRate <= 30) return interpolateColor([255, 165, 0], [255, 0, 0], (colorRate - 20) / (30 - 20)); // Red gradient
+        else if (colorRate <= 99) return interpolateColor([255, 0, 0], [0, 0, 0], (colorRate - 30) / (99 - 30)); // Black gradient
+        else return "#000000"; // Black for very high values
       }
 
+      // Function to interpolate between two colors
       function interpolateColor(color1, color2, factor) {
-        if (factor < 0) factor = 0;
+        if (factor < 0) factor = 0; // Ensure factor is within range
         if (factor > 1) factor = 1;
 
         const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
         const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
         const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
 
-        return `rgb(${r}, ${g}, ${b})`;
+        return `rgb(${r}, ${g}, ${b})`; // Return the interpolated color in rgb format
       }
+    </script>
 
-      // Функция для обновления URL при изменении вида карты
+    <!-- Script to update the URL based on map state (center and zoom) -->
+    <script id="url-update-script">
       function updateUrl() {
-        var center = map.getCenter();
-        var zoom = map.getZoom();
+        var center = map.getCenter(); // Get map center
+        var zoom = map.getZoom(); // Get map zoom
 
+        // Construct a new URL with map center and zoom parameters
         var newUrl = `${window.location.pathname}?lat=${center.lat.toFixed(5)}&lon=${center.lng.toFixed(5)}&zoom=${zoom}`;
 
+        // Update the browser's history to the new URL without reloading
         window.history.replaceState(null, '', newUrl);
       }
 
-      // Функция для чтения параметров из URL при загрузке страницы
+      // Function to read parameters from the URL and set map state on page load
       function loadMapFromUrl() {
-        var params = new URLSearchParams(window.location.search);
-        var lat = parseFloat(params.get('lat'));
-        var lon = parseFloat(params.get('lon'));
-        var zoom = parseInt(params.get('zoom'));
+        var params = new URLSearchParams(window.location.search); // Parse URL parameters
+        var lat = parseFloat(params.get('lat')); // Latitude from URL
+        var lon = parseFloat(params.get('lon')); // Longitude from URL
+        var zoom = parseInt(params.get('zoom')); // Zoom level from URL
 
+        // If valid parameters exist, set the map view accordingly, else default view
         if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
           map.setView([lat, lon], zoom);
         } else {
-          map.setView([44.08832, 42.97577], 11);
+          map.setView([44.08832, 42.97577], 11); // Default view if no valid params
         }
       }
 
-      // Вызываем функцию для установки карты по URL
+      // Load map state from the URL on page load
       loadMapFromUrl();
 
-      // Вызываем функцию обновления маркеров сразу после загрузки карты
+      // Update markers immediately after map is loaded
       updateMarkers();
+    </script>
 
-// Function to handle file uploads
-function uploadFiles() {
-  var fileInput = document.getElementById('fileInput');
-  var files = fileInput.files;
+    <!-- Script to handle file uploads -->
+    <script id="file-upload-script">
+      function uploadFiles() {
+        var fileInput = document.getElementById('fileInput'); // Get file input element
+        var files = fileInput.files; // Get selected files
 
-  if (files.length > 0) {
-    var formData = new FormData();
+        // If files are selected, proceed with upload
+        if (files.length > 0) {
+          var formData = new FormData(); // Create FormData object for file upload
 
-    for (var i = 0; i < files.length; i++) {
-      formData.append("files[]", files[i]);
-    }
+          // Append each selected file to the FormData object
+          for (var i = 0; i < files.length; i++) {
+            formData.append("files[]", files[i]);
+          }
 
-    fetch('/upload', {
-      method: 'POST',
-      body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-      console.log(translate("files_uploaded"), data); // Translated "Files uploaded"
-      location.reload(); // Reload after successful upload
-    })
-    .catch(error => console.error(translate("upload_error"), error)); // Translated "Error"
-  } else {
-    alert(translate("select_files")); // Translated "Please select at least one file"
-  }
-}
-
-
-
+          // Send files to server using POST request
+          fetch('/upload', {
+            method: 'POST',
+            body: formData
+          })
+          .then(response => response.json()) // Parse the response JSON
+          .then(data => {
+            console.log(translate("files_uploaded"), data); // Log success message
+            location.reload(); // Reload the page after successful upload
+          })
+          .catch(error => console.error(translate("upload_error"), error)); // Log any errors
+        } else {
+          alert(translate("select_files")); // Alert user if no files were selected
+        }
+      }
     </script>
   </body>
 </html>
