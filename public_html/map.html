@@ -177,73 +177,102 @@
     <!-- Include Leaflet JS library for map functionality -->
     <script src="/static/leaflet.js"></script>
 
-    <!-- Script to update markers on map based on current zoom and bounds -->
-    <script id="markers-update-script">
-      function updateMarkers() {
-        var zoomLevel = map.getZoom(); // Get current map zoom level
-        var bounds = map.getBounds(); // Get current map bounds
+<!-- Script to setup the Leaflet map and add base layers -->
+<script id="map-setup-script">
+  // Initialize the OpenStreetMap layer
+  var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap contributors'
+  });
 
-        // Remove existing circle markers from the map
-        for (let key in circleMarkers) {
-          map.removeLayer(circleMarkers[key]);
-        }
+  // Initialize the Google Satellite layer
+  var googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    attribution: '&copy; Google'
+  });
 
-        circleMarkers = {}; // Clear circle markers object
+  // Initialize the map with default center and zoom
+  var map = L.map('map', {
+    center: [44.08832, 42.97577], // Default center (latitude, longitude)
+    zoom: 11,                     // Default zoom level
+    layers: []                    // Start with no layers, we'll add them later
+  });
 
-        // Get filtered markers based on current zoom level
-        var filteredMarkers = filterMarkersByZoom(zoomLevel);
+  // Object to hold the available base layers
+  var baseLayers = {
+    "OpenStreetMap": osmLayer,
+    "Google Satellite": googleSatellite
+  };
 
-        // Loop through filtered markers and add them to the map
-        filteredMarkers.forEach(function(marker) {
-          var markerKey = `${marker.lat}-${marker.lon}`; // Unique key for each marker
+  // Add layer control to the map
+  var layerControl = L.control.layers(baseLayers, null, {
+    position: 'topleft',  // Place the control above zoom buttons
+    collapsed: false      // Show the control expanded by default
+  }).addTo(map);
 
-          if (bounds.contains([marker.lat, marker.lon])) {
-            var color = getGradientColor(marker.doseRate, marker.countRate); // Get color for marker
-            var radius = getRadius(marker.doseRate, zoomLevel); // Get radius for marker
+  var circleMarkers = {}; // Object to hold the rendered circle markers
+</script>
 
-            // Create a circle marker with calculated properties
-            var circleMarker = L.circleMarker([marker.lat, marker.lon], {
-              radius: radius,
-              fillColor: color,
-              color: color,
-              weight: 1, // Border thickness
-              opacity: 0.7, // Border opacity
-              fillOpacity: 0.5 // Fill opacity
-            }).addTo(map)
-              .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
+<!-- Script to update markers on map based on current zoom and bounds -->
+<script id="markers-update-script">
+  // Function to update markers based on current map zoom and bounds
+  function updateMarkers() {
+    // Проверяем, что карта инициализирована и доступна для работы
+    if (!map || !map.getZoom || !map.getBounds) {
+      console.error("Map is not yet initialized.");
+      return; // Exit the function if the map is not initialized
+    }
 
-            circleMarkers[markerKey] = circleMarker; // Store circle marker in object
-          }
-        });
+    var zoomLevel = map.getZoom(); // Get current map zoom level
+    var bounds = map.getBounds(); // Get current map bounds
 
-        // Update URL after markers have been updated
-        updateUrl();
+    // Remove existing circle markers from the map
+    for (let key in circleMarkers) {
+      map.removeLayer(circleMarkers[key]);
+    }
+
+    circleMarkers = {}; // Clear circle markers object
+
+    // Get filtered markers based on current zoom level
+    var filteredMarkers = filterMarkersByZoom(zoomLevel);
+
+    // Loop through filtered markers and add them to the map
+    filteredMarkers.forEach(function(marker) {
+      var markerKey = `${marker.lat}-${marker.lon}`; // Unique key for each marker
+
+      if (bounds.contains([marker.lat, marker.lon])) {
+        var color = getGradientColor(marker.doseRate, marker.countRate); // Get color for marker
+        var radius = getRadius(marker.doseRate, zoomLevel); // Get radius for marker
+
+        // Create a circle marker with calculated properties
+        var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+          radius: radius,
+          fillColor: color,
+          color: color,
+          weight: 1, // Border thickness
+          opacity: 0.7, // Border opacity
+          fillOpacity: 0.5 // Fill opacity
+        }).addTo(map)
+          .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
+
+        circleMarkers[markerKey] = circleMarker; // Store circle marker in object
       }
-    </script>
+    });
 
-    <!-- Script to setup the Leaflet map and add basic tile layer -->
-    <script id="map-setup-script">
-      var map = L.map('map'); // Initialize Leaflet map in the #map element
-      var bounds = markers.map(marker => [marker.lat, marker.lon]); // Extract bounds from markers' lat/lon
+    // Update URL after markers have been updated
+    updateUrl();
+  }
 
-      // If markers exist, fit map to bounds, otherwise set a default view
-      if (bounds.length > 0) {
-        map.fitBounds(bounds); // Auto-fit map to marker bounds
-      } else {
-        map.setView([44.08832, 42.97577], 11); // Default map center and zoom
-      }
+  // Call updateMarkers only after the map is fully initialized
+  map.on('load', function() {
+    updateMarkers(); // Ensure markers are updated once the map is ready
+  });
 
-      // Add OpenStreetMap tiles to the map
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18, // Set the maximum zoom level
-      }).addTo(map);
+  // Call updateMarkers on zoom or move events
+  map.on('zoomend', updateMarkers);
+  map.on('moveend', updateMarkers);
+</script>
 
-      var circleMarkers = {}; // Object to hold the rendered circle markers
-
-      // Listen for zoom and movement events to update markers
-      map.on('zoomend', updateMarkers);
-      map.on('moveend', updateMarkers);
-    </script>
 
     <!-- Script to generate tooltip content for markers -->
     <script id="tooltip-content-script">
@@ -272,7 +301,7 @@
     <script id="zoom-filter-script">
       function filterMarkersByZoom(zoomLevel) {
         // Return different portions of markers based on zoom level to avoid overloading the map
-        if (zoomLevel > 20) {
+        if (zoomLevel >= 19) {
           return markers;
         } else if (zoomLevel == 18) {
           return markers;
@@ -316,7 +345,7 @@
         let baseRadius;
 
         // Define base radius based on zoom level, more zoom = bigger radius
-        if (zoomLevel > 18) baseRadius = 9;
+        if (zoomLevel > 18) baseRadius = 10;
         else if (zoomLevel == 18) baseRadius = 9;
         else if (zoomLevel == 17) baseRadius = 8;
         else if (zoomLevel == 16) baseRadius = 7;
@@ -360,40 +389,65 @@
       }
     </script>
 
-    <!-- Script to update the URL based on map state (center and zoom) -->
-    <script id="url-update-script">
-      function updateUrl() {
-        var center = map.getCenter(); // Get map center
-        var zoom = map.getZoom(); // Get map zoom
+<!-- Script to update the URL based on map state (center, zoom, and layer) -->
+<script id="url-update-script">
+  // Function to update the URL with current map state (center, zoom, layer)
+  function updateUrl() {
+    var center = map.getCenter(); // Get map center
+    var zoom = map.getZoom(); // Get map zoom
 
-        // Construct a new URL with map center and zoom parameters
-        var newUrl = `${window.location.pathname}?lat=${center.lat.toFixed(5)}&lon=${center.lng.toFixed(5)}&zoom=${zoom}`;
+    // Get the current layer from the map
+    var currentLayer = '';
+    if (map.hasLayer(googleSatellite)) {
+      currentLayer = 'Google Satellite';
+    } else {
+      currentLayer = 'OpenStreetMap';
+    }
 
-        // Update the browser's history to the new URL without reloading
-        window.history.replaceState(null, '', newUrl);
-      }
+    // Construct the new URL with map center, zoom, and layer parameters
+    var newUrl = `${window.location.pathname}?lat=${center.lat.toFixed(5)}&lon=${center.lng.toFixed(5)}&zoom=${zoom}&layer=${encodeURIComponent(currentLayer)}`;
 
-      // Function to read parameters from the URL and set map state on page load
-      function loadMapFromUrl() {
-        var params = new URLSearchParams(window.location.search); // Parse URL parameters
-        var lat = parseFloat(params.get('lat')); // Latitude from URL
-        var lon = parseFloat(params.get('lon')); // Longitude from URL
-        var zoom = parseInt(params.get('zoom')); // Zoom level from URL
+    window.history.replaceState({}, '', newUrl);
+  }
 
-        // If valid parameters exist, set the map view accordingly, else default view
-        if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
-          map.setView([lat, lon], zoom);
-        } else {
-          map.setView([44.08832, 42.97577], 11); // Default view if no valid params
-        }
-      }
+  // Function to load map state from URL
+  function loadMapFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    var lat = parseFloat(params.get('lat'));
+    var lon = parseFloat(params.get('lon'));
+    var zoom = parseInt(params.get('zoom'));
+    var layer = params.get('layer');
 
-      // Load map state from the URL on page load
-      loadMapFromUrl();
+    // Set the map view if valid coordinates and zoom are provided
+    if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
+      map.setView([lat, lon], zoom);
+    } else {
+      map.setView([44.08832, 42.97577], 11); // Default view
+    }
 
-      // Update markers immediately after map is loaded
-      updateMarkers();
-    </script>
+    // Load the corresponding layer based on the URL
+    if (layer === 'Google Satellite') {
+      googleSatellite.addTo(map);
+    } else {
+      osmLayer.addTo(map); // Default to OpenStreetMap if no valid layer is specified
+    }
+  }
+
+  // Load map state from URL on page load
+  loadMapFromUrl();
+
+  // Ensure the URL is updated with the correct map state when the page is first loaded
+  updateUrl();
+
+  // Event listener for layer switch to update URL immediately
+  map.on('baselayerchange', function(event) {
+    updateUrl(); // Update the URL when the layer is changed
+  });
+
+  // Call updateUrl on map move or zoom events to update the URL with new center and zoom
+  map.on('moveend', updateUrl);
+  map.on('zoomend', updateUrl);
+</script>
 
     <!-- Script to handle file uploads -->
     <script id="file-upload-script">
