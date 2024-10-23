@@ -55,10 +55,10 @@ var db *database.Database
 // Check if two markers are equal based on their attributes
 func areMarkersEqual(m1, m2 database.Marker) bool {
 	return m1.DoseRate == m2.DoseRate &&
-		m1.Date == m2.Date &&
-		m1.Lon == m2.Lon &&
-		m1.Lat == m2.Lat &&
-		m1.CountRate == m2.CountRate
+	m1.Date == m2.Date &&
+	m1.Lon == m2.Lon &&
+	m1.Lat == m2.Lat &&
+	m1.CountRate == m2.CountRate
 }
 
 // Filter unique markers by removing those with zero radiation dose and duplicates
@@ -203,16 +203,16 @@ func extractCountRate(description string) float64 {
 // Helper to estimate the time zone based on longitude
 func getTimeZoneByLongitude(lon float64) *time.Location {
 	switch {
-	case lon >= 37 && lon <= 60: // Moscow and part of Russia
+		case lon >= 37 && lon <= 60: // Moscow and part of Russia
 		loc, _ := time.LoadLocation("Europe/Moscow")
 		return loc
-	case lon >= -9 && lon <= 3: // Central Europe
+		case lon >= -9 && lon <= 3: // Central Europe
 		loc, _ := time.LoadLocation("Europe/Berlin")
 		return loc
-	case lon >= -180 && lon < -60: // North America
+		case lon >= -180 && lon < -60: // North America
 		loc, _ := time.LoadLocation("America/New_York")
 		return loc
-	default: // Default to UTC
+		default: // Default to UTC
 		loc, _ := time.LoadLocation("UTC")
 		return loc
 	}
@@ -524,6 +524,10 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Initialize min/max lat/lon for calculating bounds
+	minLat, minLon := 90.0, 180.0
+	maxLat, maxLon := -90.0, -180.0
+
 	for _, fileHeader := range files {
 		// Open the file
 		file, err := fileHeader.Open()
@@ -550,10 +554,45 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Successful upload
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	// Calculate bounds of the markers from the current session
+	for _, marker := range doseData.Markers {
+		if marker.Lat < minLat {
+			minLat = marker.Lat
+		}
+		if marker.Lat > maxLat {
+			maxLat = marker.Lat
+		}
+		if marker.Lon < minLon {
+			minLon = marker.Lon
+		}
+		if marker.Lon > maxLon {
+			maxLon = marker.Lon
+		}
+	}
+
+	// Log the calculated bounds to verify they are correct
+	log.Printf("Bounds calculated: minLat=%f, minLon=%f, maxLat=%f, maxLon=%f", minLat, minLon, maxLat, maxLon)
+
+	// Check if we have valid bounds (in case there were no markers found)
+	if minLat == 90.0 || minLon == 180.0 || maxLat == -90.0 || maxLon == -180.0 {
+		http.Error(w, "No valid markers found in the file", http.StatusBadRequest)
+		return
+	}
+
+	// Return the bounds as part of the response
+	response := map[string]interface{}{
+		"status":  "success",
+		"minLat":  minLat,
+		"minLon":  minLon,
+		"maxLat":  maxLat,
+		"maxLon":  maxLon,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
+
+
 
 // =====================
 // WEB SERVER HANDLERS

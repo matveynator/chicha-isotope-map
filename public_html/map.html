@@ -57,6 +57,64 @@ body, html {
 				box-shadow: 0 1px 5px rgba(0,0,0,0.65); /* Adds shadow */
 			}
 
+			/* Overlay to cover the whole screen */
+			#fileOverlay {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
+				z-index: 10000; /* Ensure it's on top of everything */
+				display: flex;
+				justify-content: center;
+				align-items: center;
+			}
+
+			/* Container for file progress details */
+			#fileProgressContainer {
+				background-color: white;
+				padding: 20px;
+				border-radius: 10px;
+				max-width: 600px;
+				width: 100%;
+				box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+			}
+
+			/* Individual file progress block */
+			.file-progress {
+				margin-bottom: 15px;
+			}
+
+			/* File name */
+			.file-name {
+				font-weight: bold;
+				margin-bottom: 5px;
+			}
+
+			/* Progress bar */
+			.progress-bar {
+				width: 100%;
+				height: 10px;
+				background-color: #f4f4f4;
+				border-radius: 5px;
+				overflow: hidden;
+			}
+
+			.progress-bar-inner {
+				height: 100%;
+				background-color: #4caf50; /* Green bar for progress */
+				width: 0%;
+			}
+
+			/* Server processing indicator */
+			.server-processing {
+				margin-left: 10px;
+				font-size: 14px;
+				color: #ff9800; /* Orange color for processing indicator */
+			}
+
+
 			/* Hover effect for upload button */
 			.upload-btn:hover {
 				background-color: #f4f4f4; /* Lightens background on hover */
@@ -158,6 +216,13 @@ body, html {
 		<div class="upload-btn-container leaflet-control">
 			<label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
 			<input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()"> <!-- Hidden file input, triggered on upload -->
+		</div>	
+
+		<!-- Container for displaying selected files and their progress -->
+		<div id="fileOverlay" style="display: none;">
+			<div id="fileProgressContainer">
+				<!-- File progress details will be dynamically added here -->
+			</div>
 		</div>
 
 		<!-- GitHub link icon -->
@@ -453,32 +518,122 @@ body, html {
 		<script id="file-upload-script">
 			function uploadFiles() {
 				var fileInput = document.getElementById('fileInput'); // Get file input element
-				var files = fileInput.files; // Get selected files
+						var files = fileInput.files; // Get selected files
 
-				// If files are selected, proceed with upload
-				if (files.length > 0) {
-					var formData = new FormData(); // Create FormData object for file upload
+								// Get the file overlay and progress container
+										var fileOverlay = document.getElementById('fileOverlay');
+												var fileProgressContainer = document.getElementById('fileProgressContainer');
 
-					// Append each selected file to the FormData object
-					for (var i = 0; i < files.length; i++) {
-						formData.append("files[]", files[i]);
-						}
+														// Ensure fileProgressContainer exists before proceeding
+																if (!fileProgressContainer) {
+																				console.error("Error: File progress container not found.");
+																								return; // Exit if the container is not found
+																										}
 
-						// Send files to server using POST request
-						fetch('/upload', {
-						method: 'POST',
-						body: formData
-						})
-						.then(response => response.json()) // Parse the response JSON
-					.then(data => {
-						console.log(translate("files_uploaded"), data); // Log success message
-						location.reload(); // Reload the page after successful upload
-					})
-					.catch(error => console.error(translate("upload_error"), error)); // Log any errors
-				} else {
-					alert(translate("select_files")); // Alert user if no files were selected
-				}
-			}
+																												// Clear previous file list and progress bars
+																														fileProgressContainer.innerHTML = "";
+
+																																// If files are selected, proceed with upload
+																																		if (files.length > 0) {
+																																						var formData = new FormData(); // Create FormData object for file upload
+
+																																										// Display the overlay
+																																														fileOverlay.style.display = "flex";
+
+																																																		// Append each selected file to the FormData object and create a progress bar for each
+																																																						for (var i = 0; i < files.length; i++) {
+																																																												var file = files[i];
+																																																																		formData.append("files[]", file);
+
+																																																																								// Create a new progress block for the file
+																																																																														var fileBlock = document.createElement('div');
+																																																																																				fileBlock.className = 'file-progress';
+
+																																																																																										// File name
+																																																																																																var fileName = document.createElement('div');
+																																																																																																						fileName.className = 'file-name';
+																																																																																																												fileName.innerText = file.name;
+
+																																																																																																																		// Progress bar
+																																																																																																																								var progressBar = document.createElement('div');
+																																																																																																																														progressBar.className = 'progress-bar';
+																																																																																																																																				var progressBarInner = document.createElement('div');
+																																																																																																																																										progressBarInner.className = 'progress-bar-inner';
+																																																																																																																																																progressBar.appendChild(progressBarInner);
+
+																																																																																																																																																						// Server processing indicator
+																																																																																																																																																												var serverProcessing = document.createElement('div');
+																																																																																																																																																																		serverProcessing.className = 'server-processing';
+																																																																																																																																																																								serverProcessing.innerText = "Waiting for server..."; // Initial state
+
+																																																																																																																																																																														// Append file name, progress bar, and server processing indicator
+																																																																																																																																																																																				fileBlock.appendChild(fileName);
+																																																																																																																																																																																										fileBlock.appendChild(progressBar);
+																																																																																																																																																																																																fileBlock.appendChild(serverProcessing);
+
+																																																																																																																																																																																																						// Add the file block to the progress container
+																																																																																																																																																																																																												fileProgressContainer.appendChild(fileBlock);
+
+																																																																																																																																																																																																																		// Use XMLHttpRequest for file upload to track progress
+																																																																																																																																																																																																																								var xhr = new XMLHttpRequest();
+																																																																																																																																																																																																																														xhr.open('POST', '/upload', true); // Open a POST request
+
+																																																																																																																																																																																																																																				// Closure to capture progressBarInner and serverProcessing for this file
+																																																																																																																																																																																																																																										(function(progressBarInner, serverProcessing) {
+																																																																																																																																																																																																																																																		// Event listener for upload progress
+																																																																																																																																																																																																																																																										xhr.upload.onprogress = function(event) {
+																																																																																																																																																																																																																																																																				if (event.lengthComputable) {
+																																																																																																																																																																																																																																																																																var percentComplete = (event.loaded / event.total) * 100; // Calculate percentage
+																																																																																																																																																																																																																																																																																												progressBarInner.style.width = percentComplete + "%"; // Update progress bar
+																																																																																																																																																																																																																																																																																																						}
+																																																																																																																																																																																																																																																																																																														};
+
+																																																																																																																																																																																																																																																																																																																						// Event listener for upload completion
+																																																																																																																																																																																																																																																																																																																														xhr.onload = function() {
+																																																																																																																																																																																																																																																																																																																																								if (xhr.status === 200) {
+																																																																																																																																																																																																																																																																																																																																																				var response = JSON.parse(xhr.responseText);
+
+																																																																																																																																																																																																																																																																																																																																																																if (response.status === "success") {
+																																																																																																																																																																																																																																																																																																																																																																														serverProcessing.innerText = "Processing on server...";
+
+																																																																																																																																																																																																																																																																																																																																																																																												// Get bounds from the response
+																																																																																																																																																																																																																																																																																																																																																																																																										var minLat = response.minLat;
+																																																																																																																																																																																																																																																																																																																																																																																																																								var minLon = response.minLon;
+																																																																																																																																																																																																																																																																																																																																																																																																																																						var maxLat = response.maxLat;
+																																																																																																																																																																																																																																																																																																																																																																																																																																																				var maxLon = response.maxLon;
+
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																		// Simulate server processing with a timeout (replace with real server-side processing)
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																setTimeout(function() {
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																serverProcessing.innerText = "Processing complete!";
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																serverProcessing.style.color = "green"; // Change to green when done
+
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																// Fit the map view to the bounds of the uploaded data
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																var bounds = [[minLat, minLon], [maxLat, maxLon]];
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																console.log("minLat:", minLat, "minLon:", minLon, "maxLat:", maxLat, "maxLon:", maxLon);
+
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																map.fitBounds(bounds);
+
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																// Reload the page to update the URL with the new coordinates
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																location.reload();
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																														}, 2000); // Simulate 2 seconds server processing time
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																										} else {
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																								serverProcessing.innerText = "Error processing files!";
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																						serverProcessing.style.color = "red";
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																		}
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																												} else {
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																								serverProcessing.innerText = "Error during upload!";
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																				serverProcessing.style.color = "red";
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																														}
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																						};
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																												})(progressBarInner, serverProcessing);
+
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																		xhr.send(formData); // Send the form data
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																						}
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																								} else {
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																												alert(translate("select_files")); // Alert user if no files were selected
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																														}
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																														}
+
 		</script>
 	</body>
 </html>
