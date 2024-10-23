@@ -286,7 +286,7 @@ func parseKML(data []byte) ([]database.Marker, error) {
 }
 
 // Process and extract data from a KML file
-func processKMLFile(file multipart.File) {
+func processKMLFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		log.Println("Error reading KML file:", err)
@@ -299,7 +299,7 @@ func processKMLFile(file multipart.File) {
 		return
 	}
 
-	uniqueMarkers := filterUniqueMarkers(markers)
+	uniqueMarkers = filterUniqueMarkers(markers)
 	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
 	// Save the markers to the database
@@ -310,10 +310,11 @@ func processKMLFile(file multipart.File) {
 			log.Fatalf("Error saving marker: %v", err)
 		}
 	}
+	return
 }
 
 // Process and extract data from a KMZ file (a compressed version of KML)
-func processKMZFile(file multipart.File) {
+func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		log.Println("Error reading KMZ file:", err)
@@ -348,8 +349,8 @@ func processKMZFile(file multipart.File) {
 				log.Println("Error parsing KML file from KMZ:", err)
 				return
 			}
-
-			doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
+			uniqueMarkers := filterUniqueMarkers(markers)
+			doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
 			// Save markers to the database
 			for _, marker := range markers {
@@ -361,6 +362,7 @@ func processKMZFile(file multipart.File) {
 			}
 		}
 	}
+	return
 }
 
 // =====================
@@ -426,7 +428,7 @@ func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 }
 
 // Process a file in RCTRK format (either JSON or text)
-func processRCTRKFile(file multipart.File) {
+func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		log.Println("Error reading RCTRK file:", err)
@@ -437,8 +439,8 @@ func processRCTRKFile(file multipart.File) {
 	var rctrkData database.Data
 	err = json.Unmarshal(data, &rctrkData)
 	if err == nil {
-		rctrkData.Markers = filterUniqueMarkers(rctrkData.Markers)
-		doseData.Markers = append(doseData.Markers, rctrkData.Markers...)
+		uniqueMarkers = filterUniqueMarkers(rctrkData.Markers)
+		doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 	} else {
 		// If it's not JSON, try parsing as a text format
 		markers, err := parseTextRCTRK(data)
@@ -458,10 +460,11 @@ func processRCTRKFile(file multipart.File) {
 			log.Fatalf("Error saving marker: %v", err)
 		}
 	}
+	return
 }
 
 // Process AtomFast JSON file format
-func processAtomFastFile(file multipart.File) {
+func processAtomFastFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		log.Println("Error reading AtomFast JSON file:", err)
@@ -495,7 +498,7 @@ func processAtomFastFile(file multipart.File) {
 		markers = append(markers, marker)
 	}
 
-	uniqueMarkers := filterUniqueMarkers(markers)
+	uniqueMarkers = filterUniqueMarkers(markers)
 	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
 	// Save markers to the database
@@ -506,6 +509,7 @@ func processAtomFastFile(file multipart.File) {
 			log.Fatalf("Error saving marker: %v", err)
 		}
 	}
+	return
 }
 
 // Upload handler to process multiple file uploads
@@ -524,10 +528,12 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Initialize min/max lat/lon for calculating bounds
-	minLat, minLon := 90.0, 180.0
-	maxLat, maxLon := -90.0, -180.0
+	// Variables to store coordinates for bounds
+	var minLat, minLon, maxLat, maxLon float64
+	minLat, minLon = 90.0, 180.0
+	maxLat, maxLon = -90.0, -180.0
 
+	// Iterate over files
 	for _, fileHeader := range files {
 		// Open the file
 		file, err := fileHeader.Open()
@@ -537,47 +543,50 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
+		var markers []database.Marker
+
 		// Determine file type by extension
 		ext := filepath.Ext(fileHeader.Filename)
 		switch ext {
 		case ".kml":
-			processKMLFile(file)
+			markers = processKMLFile(file)
 		case ".kmz":
-			processKMZFile(file)
+			markers = processKMZFile(file)
 		case ".rctrk":
-			processRCTRKFile(file)
+			markers = processRCTRKFile(file)
 		case ".json":
-			processAtomFastFile(file) // AtomFast JSON
+			markers = processAtomFastFile(file)
 		default:
 			http.Error(w, "Unsupported file type", http.StatusBadRequest)
 			return
 		}
+
+		// Calculate bounds for the current file
+		for _, marker := range markers {
+			if marker.Lat < minLat {
+				minLat = marker.Lat
+			}
+			if marker.Lat > maxLat {
+				maxLat = marker.Lat
+			}
+			if marker.Lon < minLon {
+				minLon = marker.Lon
+			}
+			if marker.Lon > maxLon {
+				maxLon = marker.Lon
+			}
+		}
 	}
 
-	// Calculate bounds of the markers from the current session
-	for _, marker := range doseData.Markers {
-		if marker.Lat < minLat {
-			minLat = marker.Lat
-		}
-		if marker.Lat > maxLat {
-			maxLat = marker.Lat
-		}
-		if marker.Lon < minLon {
-			minLon = marker.Lon
-		}
-		if marker.Lon > maxLon {
-			maxLon = marker.Lon
-		}
-	}
-
-	// Log the calculated bounds to verify they are correct
-	log.Printf("Bounds calculated: minLat=%f, minLon=%f, maxLat=%f, maxLon=%f", minLat, minLon, maxLat, maxLon)
-
-	// Check if we have valid bounds (in case there were no markers found)
+	// Check if bounds have changed, otherwise return an error
 	if minLat == 90.0 || minLon == 180.0 || maxLat == -90.0 || maxLon == -180.0 {
-		http.Error(w, "No valid markers found in the file", http.StatusBadRequest)
+		log.Println("Error: Unable to calculate bounds, no valid markers found.")
+		http.Error(w, "No valid data in file", http.StatusBadRequest)
 		return
 	}
+
+	// Log bounds for debugging
+	log.Printf("Bounds calculated: minLat=%f, minLon=%f, maxLat=%f, maxLon=%f", minLat, minLon, maxLat, maxLon)
 
 	// Return the bounds as part of the response
 	response := map[string]interface{}{
@@ -591,8 +600,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
-
-
 
 // =====================
 // WEB SERVER HANDLERS
