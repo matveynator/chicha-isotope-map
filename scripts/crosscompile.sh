@@ -1,5 +1,5 @@
 #!/bin/bashi
-version="1.0-011"
+version="1.0-012"
 git_root_path=`git rev-parse --show-toplevel`
 execution_file="isotope-pathways"
 
