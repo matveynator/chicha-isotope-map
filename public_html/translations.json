@@ -7,7 +7,12 @@
     "date_time": "Date and time",
     "files_uploaded": "Files uploaded",
     "upload_error": "Error",
-    "select_files": "Please select at least one file"
+    "select_files": "Please select at least one file",
+    "waiting_for_server": "Waiting for server...",
+    "processing_on_server": "Processing on server...",
+    "processing_complete": "Processing complete!",
+    "error_processing_files": "Error processing files!",
+    "error_during_upload": "Error during upload!"
   },
   "zh": {
     "title": "同位素路径 - 无形之路的探索者",
@@ -17,7 +22,12 @@
     "date_time": "日期和时间",
     "files_uploaded": "文件已上传",
     "upload_error": "错误",
-    "select_files": "请选择至少一个文件"
+    "select_files": "请选择至少一个文件",
+    "waiting_for_server": "等待服务器...",
+    "processing_on_server": "服务器处理中...",
+    "processing_complete": "处理完成!",
+    "error_processing_files": "文件处理错误!",
+    "error_during_upload": "上传时出错!"
   },
   "es": {
     "title": "Isotope Pathways — Explorador de Caminos Invisibles",
@@ -27,7 +37,12 @@
     "date_time": "Fecha y hora",
     "files_uploaded": "Archivos subidos",
     "upload_error": "Error",
-    "select_files": "Por favor, seleccione al menos un archivo"
+    "select_files": "Por favor, seleccione al menos un archivo",
+    "waiting_for_server": "Esperando al servidor...",
+    "processing_on_server": "Procesando en el servidor...",
+    "processing_complete": "¡Procesamiento completo!",
+    "error_processing_files": "¡Error al procesar los archivos!",
+    "error_during_upload": "¡Error durante la subida!"
   },
   "hi": {
     "title": "आइसोटोप पाथवेज — अदृश्य रास्तों का अन्वेषक",
@@ -37,7 +52,12 @@
     "date_time": "तारीख और समय",
     "files_uploaded": "फ़ाइलें अपलोड की गईं",
     "upload_error": "त्रुटि",
-    "select_files": "कृपया कम से कम एक फ़ाइल चुनें"
+    "select_files": "कृपया कम से कम एक फ़ाइल चुनें",
+    "waiting_for_server": "सर्वर की प्रतीक्षा कर रहा है...",
+    "processing_on_server": "सर्वर पर प्रोसेसिंग हो रही है...",
+    "processing_complete": "प्रोसेसिंग पूरी हुई!",
+    "error_processing_files": "फ़ाइलों को प्रोसेस करने में त्रुटि!",
+    "error_during_upload": "अपलोड के दौरान त्रुटि!"
   },
   "ar": {
     "title": "مسارات النظائر — مستكشف الطرق غير المرئية",
@@ -47,7 +67,12 @@
     "date_time": "التاريخ والوقت",
     "files_uploaded": "تم تحميل الملفات",
     "upload_error": "خطأ",
-    "select_files": "يرجى تحديد ملف واحد على الأقل"
+    "select_files": "يرجى تحديد ملف واحد على الأقل",
+    "waiting_for_server": "انتظار الخادم...",
+    "processing_on_server": "المعالجة على الخادم...",
+    "processing_complete": "اكتملت المعالجة!",
+    "error_processing_files": "خطأ في معالجة الملفات!",
+    "error_during_upload": "خطأ أثناء التحميل!"
   },
   "fr": {
     "title": "Isotope Pathways — le guide des routes invisibles",
@@ -57,7 +82,12 @@
     "date_time": "Date et heure",
     "files_uploaded": "Fichiers téléchargés",
     "upload_error": "Erreur",
-    "select_files": "Veuillez sélectionner au moins un fichier"
+    "select_files": "Veuillez sélectionner au moins un fichier",
+    "waiting_for_server": "En attente du serveur...",
+    "processing_on_server": "Traitement sur le serveur...",
+    "processing_complete": "Traitement terminé !",
+    "error_processing_files": "Erreur lors du traitement des fichiers !",
+    "error_during_upload": "Erreur lors du téléchargement !"
   },
   "ru": {
     "title": "Isotope Pathways — следопыт невидимых дорог",
@@ -67,7 +97,12 @@
     "date_time": "Дата и время",
     "files_uploaded": "Файлы загружены",
     "upload_error": "Ошибка",
-    "select_files": "Пожалуйста, выберите хотя бы один файл"
+    "select_files": "Пожалуйста, выберите хотя бы один файл",
+    "waiting_for_server": "Ожидание сервера...",
+    "processing_on_server": "Обработка на сервере...",
+    "processing_complete": "Обработка завершена!",
+    "error_processing_files": "Ошибка обработки файлов!",
+    "error_during_upload": "Ошибка при загрузке!"
   },
   "pt": {
     "title": "Isotope Pathways — Explorador de Caminhos Invisíveis",
@@ -77,7 +112,12 @@
     "date_time": "Data e hora",
     "files_uploaded": "Arquivos carregados",
     "upload_error": "Erro",
-    "select_files": "Por favor, selecione pelo menos um arquivo"
+    "select_files": "Por favor, selecione pelo menos um arquivo",
+    "waiting_for_server": "Aguardando o servidor...",
+    "processing_on_server": "Processando no servidor...",
+    "processing_complete": "Processamento completo!",
+    "error_processing_files": "Erro ao processar os arquivos!",
+    "error_during_upload": "Erro durante o upload!"
   },
   "de": {
     "title": "Isotope Pathways — Der Pfadfinder der unsichtbaren Wege",
@@ -87,7 +127,12 @@
     "date_time": "Datum und Uhrzeit",
     "files_uploaded": "Dateien hochgeladen",
     "upload_error": "Fehler",
-    "select_files": "Bitte wählen Sie mindestens eine Datei aus"
+    "select_files": "Bitte wählen Sie mindestens eine Datei aus",
+    "waiting_for_server": "Warten auf den Server...",
+    "processing_on_server": "Verarbeitung auf dem Server...",
+    "processing_complete": "Verarbeitung abgeschlossen!",
+    "error_processing_files": "Fehler bei der Verarbeitung der Dateien!",
+    "error_during_upload": "Fehler beim Hochladen!"
   },
   "ja": {
     "title": "同位体経路 - 見えない道の探検者",
@@ -97,7 +142,12 @@
     "date_time": "日付と時間",
     "files_uploaded": "ファイルがアップロードされました",
     "upload_error": "エラー",
-    "select_files": "少なくとも1つのファイルを選択してください"
+    "select_files": "少なくとも1つのファイルを選択してください",
+    "waiting_for_server": "サーバーを待っています...",
+    "processing_on_server": "サーバーで処理中...",
+    "processing_complete": "処理完了!",
+    "error_processing_files": "ファイル処理エラー!",
+    "error_during_upload": "アップロードエラー!"
   },
   "tr": {
     "title": "İzotop Yolları — Görünmez Yolların İz Sürücüsü",
@@ -107,7 +157,12 @@
     "date_time": "Tarih ve Saat",
     "files_uploaded": "Dosyalar yüklendi",
     "upload_error": "Hata",
-    "select_files": "Lütfen en az bir dosya seçin"
+    "select_files": "Lütfen en az bir dosya seçin",
+    "waiting_for_server": "Sunucu bekleniyor...",
+    "processing_on_server": "Sunucuda işleniyor...",
+    "processing_complete": "İşleme tamamlandı!",
+    "error_processing_files": "Dosyalar işlenirken hata oluştu!",
+    "error_during_upload": "Yükleme sırasında hata!"
   },
   "it": {
     "title": "Isotope Pathways — Esploratore delle Strade Invisibili",
@@ -117,7 +172,12 @@
     "date_time": "Data e ora",
     "files_uploaded": "File caricati",
     "upload_error": "Errore",
-    "select_files": "Seleziona almeno un file"
+    "select_files": "Seleziona almeno un file",
+    "waiting_for_server": "Attesa del server...",
+    "processing_on_server": "Elaborazione sul server...",
+    "processing_complete": "Elaborazione completata!",
+    "error_processing_files": "Errore durante l'elaborazione dei file!",
+    "error_during_upload": "Errore durante il caricamento!"
   },
   "ko": {
     "title": "동위원소 경로 - 보이지 않는 길의 탐색자",
@@ -127,7 +187,12 @@
     "date_time": "날짜 및 시간",
     "files_uploaded": "파일이 업로드되었습니다",
     "upload_error": "오류",
-    "select_files": "파일을 하나 이상 선택하세요"
+    "select_files": "파일을 하나 이상 선택하세요",
+    "waiting_for_server": "서버 대기 중...",
+    "processing_on_server": "서버에서 처리 중...",
+    "processing_complete": "처리 완료!",
+    "error_processing_files": "파일 처리 오류!",
+    "error_during_upload": "업로드 중 오류 발생!"
   },
   "pl": {
     "title": "Isotope Pathways — Odkrywca Niewidzialnych Dróg",
@@ -137,7 +202,12 @@
     "date_time": "Data i czas",
     "files_uploaded": "Pliki zostały przesłane",
     "upload_error": "Błąd",
-    "select_files": "Wybierz co najmniej jeden plik"
+    "select_files": "Wybierz co najmniej jeden plik",
+    "waiting_for_server": "Czekam na serwer...",
+    "processing_on_server": "Przetwarzanie na serwerze...",
+    "processing_complete": "Przetwarzanie zakończone!",
+    "error_processing_files": "Błąd przetwarzania plików!",
+    "error_during_upload": "Błąd podczas przesyłania!"
   },
   "uk": {
     "title": "Isotope Pathways — слідець невидимих шляхів",
@@ -147,7 +217,12 @@
     "date_time": "Дата і час",
     "files_uploaded": "Файли завантажено",
     "upload_error": "Помилка",
-    "select_files": "Будь ласка, виберіть хоча б один файл"
+    "select_files": "Будь ласка, виберіть хоча б один файл",
+    "waiting_for_server": "Очікування сервера...",
+    "processing_on_server": "Обробка на сервері...",
+    "processing_complete": "Обробка завершена!",
+    "error_processing_files": "Помилка обробки файлів!",
+    "error_during_upload": "Помилка під час завантаження!"
   },
   "fi": {
     "title": "Isotope Pathways — Näkymättömien Teiden Löytäjä",
@@ -157,7 +232,12 @@
     "date_time": "Päivämäärä ja aika",
     "files_uploaded": "Tiedostot ladattu",
     "upload_error": "Virhe",
-    "select_files": "Valitse vähintään yksi tiedosto"
+    "select_files": "Valitse vähintään yksi tiedosto",
+    "waiting_for_server": "Odotetaan palvelinta...",
+    "processing_on_server": "Käsitellään palvelimella...",
+    "processing_complete": "Käsittely valmis!",
+    "error_processing_files": "Virhe tiedostojen käsittelyssä!",
+    "error_during_upload": "Virhe latauksen aikana!"
   },
   "sv": {
     "title": "Isotope Pathways — Utforskare av Osynliga Vägar",
@@ -167,7 +247,12 @@
     "date_time": "Datum och tid",
     "files_uploaded": "Filer uppladdade",
     "upload_error": "Fel",
-    "select_files": "Vänligen välj minst en fil"
+    "select_files": "Vänligen välj minst en fil",
+    "waiting_for_server": "Väntar på servern...",
+    "processing_on_server": "Bearbetar på servern...",
+    "processing_complete": "Bearbetning klar!",
+    "error_processing_files": "Fel vid bearbetning av filer!",
+    "error_during_upload": "Fel vid uppladdning!"
   },
   "mn": {
     "title": "Изотопын зам — Үл үзэгдэх замын мөрдөгч",
@@ -177,7 +262,12 @@
     "date_time": "Огноо ба цаг",
     "files_uploaded": "Файлуудыг амжилттай оруулсан",
     "upload_error": "Алдаа гарлаа",
-    "select_files": "Доод тал нь нэг файл сонгоно уу"
+    "select_files": "Доод тал нь нэг файл сонгоно уу",
+    "waiting_for_server": "Серверийн хүлээлт...",
+    "processing_on_server": "Сервер дээр боловсруулж байна...",
+    "processing_complete": "Боловсруулалт дууссан!",
+    "error_processing_files": "Файлуудыг боловсруулахад алдаа гарлаа!",
+    "error_during_upload": "Файлыг оруулахад алдаа гарлаа!"
   },
   "no": {
     "title": "Isotope Pathways — Utforsker av Usynlige Veier",
@@ -187,7 +277,12 @@
     "date_time": "Dato og tid",
     "files_uploaded": "Filer lastet opp",
     "upload_error": "Feil",
-    "select_files": "Vennligst velg minst én fil"
+    "select_files": "Vennligst velg minst én fil",
+    "waiting_for_server": "Venter på server...",
+    "processing_on_server": "Behandler på server...",
+    "processing_complete": "Behandling fullført!",
+    "error_processing_files": "Feil under filbehandling!",
+    "error_during_upload": "Feil under opplasting!"
   },
   "ka": {
     "title": "იზოტოპების გზები — უხილავი გზების მაძიებელი",
@@ -197,7 +292,12 @@
     "date_time": "თარიღი და დრო",
     "files_uploaded": "ფაილები ატვირთულია",
     "upload_error": "შეცდომა",
-    "select_files": "გთხოვთ, აირჩიეთ მინიმუმ ერთი ფაილი"
+    "select_files": "გთხოვთ, აირჩიეთ მინიმუმ ერთი ფაილი",
+    "waiting_for_server": "ელოდება სერვერს...",
+    "processing_on_server": "სერვერზე მიმდინარეობს დამუშავება...",
+    "processing_complete": "დამუშავება დასრულებულია!",
+    "error_processing_files": "ფაილების დამუშავების შეცდომა!",
+    "error_during_upload": "ატვირთვისას შეცდომა!"
   },
   "he": {
     "title": "מסלולי איזוטופים — חוקר הדרכים הבלתי נראות",
@@ -207,7 +307,12 @@
     "date_time": "תאריך ושעה",
     "files_uploaded": "הקבצים הועלו",
     "upload_error": "שגיאה",
-    "select_files": "אנא בחר לפחות קובץ אחד"
+    "select_files": "אנא בחר לפחות קובץ אחד",
+    "waiting_for_server": "ממתין לשרת...",
+    "processing_on_server": "מעבד על השרת...",
+    "processing_complete": "העיבוד הושלם!",
+    "error_processing_files": "שגיאה בעיבוד הקבצים!",
+    "error_during_upload": "שגיאה במהלך ההעלאה!"
   },
   "nl": {
     "title": "Isotope Pathways — Verkenner van Onzichtbare Wegen",
@@ -217,7 +322,12 @@
     "date_time": "Datum en tijd",
     "files_uploaded": "Bestanden geüpload",
     "upload_error": "Fout",
-    "select_files": "Selecteer minstens één bestand"
+    "select_files": "Selecteer minstens één bestand",
+    "waiting_for_server": "Wachten op server...",
+    "processing_on_server": "Verwerken op server...",
+    "processing_complete": "Verwerking voltooid!",
+    "error_processing_files": "Fout bij verwerken bestanden!",
+    "error_during_upload": "Fout tijdens uploaden!"
   },
   "el": {
     "title": "Διαδρομές Ισοτόπων — Ο Εξερευνητής των Αόρατων Δρόμων",
@@ -227,7 +337,12 @@
     "date_time": "Ημερομηνία και ώρα",
     "files_uploaded": "Αρχεία ανέβηκαν",
     "upload_error": "Σφάλμα",
-    "select_files": "Επιλέξτε τουλάχιστον ένα αρχείο"
+    "select_files": "Επιλέξτε τουλάχιστον ένα αρχείο",
+    "waiting_for_server": "Αναμονή για τον διακομιστή...",
+    "processing_on_server": "Επεξεργασία στον διακομιστή...",
+    "processing_complete": "Η επεξεργασία ολοκληρώθηκε!",
+    "error_processing_files": "Σφάλμα κατά την επεξεργασία αρχείων!",
+    "error_during_upload": "Σφάλμα κατά τη μεταφόρτωση!"
   },
   "hu": {
     "title": "Izotóp Ösvények — A Láthatatlan Utak Felfedezője",
@@ -237,7 +352,12 @@
     "date_time": "Dátum és idő",
     "files_uploaded": "Fájlok feltöltve",
     "upload_error": "Hiba",
-    "select_files": "Kérjük, válasszon legalább egy fájlt"
+    "select_files": "Kérjük, válasszon legalább egy fájlt",
+    "waiting_for_server": "Várakozás a szerverre...",
+    "processing_on_server": "Feldolgozás a szerveren...",
+    "processing_complete": "Feldolgozás befejeződött!",
+    "error_processing_files": "Hiba a fájlok feldolgozása során!",
+    "error_during_upload": "Hiba a feltöltés közben!"
   },
   "cs": {
     "title": "Izotopové Cesty — Průzkumník Neviditelných Cest",
@@ -247,7 +367,12 @@
     "date_time": "Datum a čas",
     "files_uploaded": "Soubory nahrány",
     "upload_error": "Chyba",
-    "select_files": "Vyberte alespoň jeden soubor"
+    "select_files": "Vyberte alespoň jeden soubor",
+    "waiting_for_server": "Čekání na server...",
+    "processing_on_server": "Zpracování na serveru...",
+    "processing_complete": "Zpracování dokončeno!",
+    "error_processing_files": "Chyba při zpracování souborů!",
+    "error_during_upload": "Chyba při nahrávání!"
   },
   "ro": {
     "title": "Căile Izotopilor — Explorator al Drumurilor Invizibile",
@@ -257,7 +382,12 @@
     "date_time": "Data și ora",
     "files_uploaded": "Fișiere încărcate",
     "upload_error": "Eroare",
-    "select_files": "Vă rugăm să selectați cel puțin un fișier"
+    "select_files": "Vă rugăm să selectați cel puțin un fișier",
+    "waiting_for_server": "Aștept serverul...",
+    "processing_on_server": "Se procesează pe server...",
+    "processing_complete": "Procesare completă!",
+    "error_processing_files": "Eroare la procesarea fișierelor!",
+    "error_during_upload": "Eroare la încărcare!"
   },
   "th": {
     "title": "เส้นทางไอโซโทป — ผู้สำรวจเส้นทางที่มองไม่เห็น",
@@ -267,7 +397,12 @@
     "date_time": "วันที่และเวลา",
     "files_uploaded": "ไฟล์ถูกอัปโหลดแล้ว",
     "upload_error": "ข้อผิดพลาด",
-    "select_files": "โปรดเลือกไฟล์อย่างน้อยหนึ่งไฟล์"
+    "select_files": "โปรดเลือกไฟล์อย่างน้อยหนึ่งไฟล์",
+    "waiting_for_server": "รอเซิร์ฟเวอร์...",
+    "processing_on_server": "กำลังประมวลผลบนเซิร์ฟเวอร์...",
+    "processing_complete": "การประมวลผลเสร็จสิ้น!",
+    "error_processing_files": "เกิดข้อผิดพลาดในการประมวลผลไฟล์!",
+    "error_during_upload": "เกิดข้อผิดพลาดขณะอัปโหลด!"
   },
   "vi": {
     "title": "Isotope Pathways — Nhà thám hiểm những con đường vô hình",
@@ -277,7 +412,12 @@
     "date_time": "Ngày và giờ",
     "files_uploaded": "Tệp đã được tải lên",
     "upload_error": "Lỗi",
-    "select_files": "Vui lòng chọn ít nhất một tệp"
+    "select_files": "Vui lòng chọn ít nhất một tệp",
+    "waiting_for_server": "Đang chờ máy chủ...",
+    "processing_on_server": "Đang xử lý trên máy chủ...",
+    "processing_complete": "Xử lý hoàn tất!",
+    "error_processing_files": "Lỗi khi xử lý tệp!",
+    "error_during_upload": "Lỗi trong quá trình tải lên!"
   },
   "id": {
     "title": "Isotope Pathways — Penjelajah Jalan Tak Terlihat",
@@ -287,7 +427,12 @@
     "date_time": "Tanggal dan Waktu",
     "files_uploaded": "File telah diunggah",
     "upload_error": "Kesalahan",
-    "select_files": "Pilih setidaknya satu file"
+    "select_files": "Pilih setidaknya satu file",
+    "waiting_for_server": "Menunggu server...",
+    "processing_on_server": "Memproses di server...",
+    "processing_complete": "Proses selesai!",
+    "error_processing_files": "Kesalahan saat memproses file!",
+    "error_during_upload": "Kesalahan selama pengunggahan!"
   },
   "ms": {
     "title": "Isotope Pathways — Penjelajah Jalan yang Tidak Kelihatan",
@@ -297,7 +442,12 @@
     "date_time": "Tarikh dan Masa",
     "files_uploaded": "Fail telah dimuat naik",
     "upload_error": "Ralat",
-    "select_files": "Sila pilih sekurang-kurangnya satu fail"
+    "select_files": "Sila pilih sekurang-kurangnya satu fail",
+    "waiting_for_server": "Menunggu pelayan...",
+    "processing_on_server": "Memproses di pelayan...",
+    "processing_complete": "Pemprosesan selesai!",
+    "error_processing_files": "Ralat dalam memproses fail!",
+    "error_during_upload": "Ralat semasa muat naik!"
   },
   "bg": {
     "title": "Изотопни Пътеки — Изследовател на Невидимите Пътища",
@@ -307,7 +457,12 @@
     "date_time": "Дата и Време",
     "files_uploaded": "Файловете качени",
     "upload_error": "Грешка",
-    "select_files": "Моля, изберете поне един файл"
+    "select_files": "Моля, изберете поне един файл",
+    "waiting_for_server": "Изчакване на сървъра...",
+    "processing_on_server": "Обработка на сървъра...",
+    "processing_complete": "Обработката завършена!",
+    "error_processing_files": "Грешка при обработката на файловете!",
+    "error_during_upload": "Грешка при качването!"
   },
   "lt": {
     "title": "Izotopų Keliai — Nematomų Kelių Tyrinėtojas",
@@ -317,7 +472,12 @@
     "date_time": "Data ir Laikas",
     "files_uploaded": "Failai įkelti",
     "upload_error": "Klaida",
-    "select_files": "Prašome pasirinkti bent vieną failą"
+    "select_files": "Prašome pasirinkti bent vieną failą",
+    "waiting_for_server": "Laukiama serverio...",
+    "processing_on_server": "Apdorojama serveryje...",
+    "processing_complete": "Apdorojimas baigtas!",
+    "error_processing_files": "Klaida apdorojant failus!",
+    "error_during_upload": "Klaida įkeliant!"
   },
   "et": {
     "title": "Isotoopide Teed — Nähtamatute Teede Uurija",
@@ -327,7 +487,12 @@
     "date_time": "Kuupäev ja Kellaaeg",
     "files_uploaded": "Failid üles laaditud",
     "upload_error": "Viga",
-    "select_files": "Valige vähemalt üks fail"
+    "select_files": "Valige vähemalt üks fail",
+    "waiting_for_server": "Ootan serverit...",
+    "processing_on_server": "Töötlemine serveris...",
+    "processing_complete": "Töötlemine lõpetatud!",
+    "error_processing_files": "Viga failide töötlemisel!",
+    "error_during_upload": "Viga üleslaadimisel!"
   },
   "lv": {
     "title": "Izotopu Ceļi — Neredzamo Ceļu Pētnieks",
@@ -337,7 +502,12 @@
     "date_time": "Datums un Laiks",
     "files_uploaded": "Faili augšupielādēti",
     "upload_error": "Kļūda",
-    "select_files": "Lūdzu, atlasiet vismaz vienu failu"
+    "select_files": "Lūdzu, atlasiet vismaz vienu failu",
+    "waiting_for_server": "Gaida serveri...",
+    "processing_on_server": "Apstrāde serverī...",
+    "processing_complete": "Apstrāde pabeigta!",
+    "error_processing_files": "Kļūda apstrādājot failus!",
+    "error_during_upload": "Kļūda augšupielādes laikā!"
   },
   "sl": {
     "title": "Izotopske Poti — Raziskovalec Nevidnih Poti",
@@ -347,7 +517,12 @@
     "date_time": "Datum in Čas",
     "files_uploaded": "Datoteke naložene",
     "upload_error": "Napaka",
-    "select_files": "Prosimo, izberite vsaj eno datoteko"
+    "select_files": "Prosimo, izberite vsaj eno datoteko",
+    "waiting_for_server": "Čakanje na strežnik...",
+    "processing_on_server": "Obdelava na strežniku...",
+    "processing_complete": "Obdelava končana!",
+    "error_processing_files": "Napaka pri obdelavi datotek!",
+    "error_during_upload": "Napaka pri nalaganju!"
   }
 }
 

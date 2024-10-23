@@ -590,7 +590,7 @@ body, html {
 						// Server processing indicator
 						var serverProcessing = document.createElement('div');
 						serverProcessing.className = 'server-processing';
-						serverProcessing.innerText = "Waiting for server..."; // Initial state
+						serverProcessing.innerText = {{translate "waiting_for_server"}}; // Initial state
 
 						// Append file name, progress bar, and server processing indicator
 						fileBlock.appendChild(fileName);
@@ -602,64 +602,64 @@ body, html {
 
 						// Create a new XMLHttpRequest for each file
 						(function(progressBarInner, serverProcessing, file) {
-								var xhr = new XMLHttpRequest();
-								xhr.open('POST', '/upload', true); // Open a POST request
+						var xhr = new XMLHttpRequest();
+						xhr.open('POST', '/upload', true); // Open a POST request
 
-								// Event listener for upload progress
-								xhr.upload.onprogress = function(event) {
-										if (event.lengthComputable) {
-												var percentComplete = (event.loaded / event.total) * 100; // Calculate percentage
-												progressBarInner.style.width = percentComplete + "%"; // Update progress bar
-										}
-								};
+						// Event listener for upload progress
+						xhr.upload.onprogress = function(event) {
+						if (event.lengthComputable) {
+						var percentComplete = (event.loaded / event.total) * 100; // Calculate percentage
+						progressBarInner.style.width = percentComplete + "%"; // Update progress bar
+						}
+						};
 
-								// Event listener for upload completion
-								xhr.onload = function() {
-										if (xhr.status === 200) {
-												var response = JSON.parse(xhr.responseText);
+						// Event listener for upload completion
+						xhr.onload = function() {
+						if (xhr.status === 200) {
+						var response = JSON.parse(xhr.responseText);
 
-												if (response.status === "success") {
-														serverProcessing.innerText = "Processing on server...";
+						if (response.status === "success") {
+						serverProcessing.innerText = {{translate "processing_on_server"}};
 
-														// Get bounds from the response
-														var minLat = response.minLat;
-														var minLon = response.minLon;
-														var maxLat = response.maxLat;
-														var maxLon = response.maxLon;
+						// Get bounds from the response
+						var minLat = response.minLat;
+						var minLon = response.minLon;
+						var maxLat = response.maxLat;
+						var maxLon = response.maxLon;
 
-														// Simulate server processing with a timeout (replace with real server-side processing)
-														setTimeout(function() {
-																serverProcessing.innerText = "Processing complete!";
-																serverProcessing.style.color = "green"; // Change to green when done
+						// Simulate server processing with a timeout (replace with real server-side processing)
+						setTimeout(function() {
+						serverProcessing.innerText = {{translate "processing_complete"}};
+						serverProcessing.style.color = "green"; // Change to green when done
 
-																// Update the map for this file's bounds
-																updateMapBounds(minLat, minLon, maxLat, maxLon);
+						// Update the map for this file's bounds
+						updateMapBounds(minLat, minLon, maxLat, maxLon);
 
-																// Check if all uploads are complete
-																checkIfAllUploadsComplete();
-														}, 2000); // Simulate 2 seconds server processing time
-												} else {
-														serverProcessing.innerText = "Error processing files!";
-														serverProcessing.style.color = "red";
-														checkIfAllUploadsComplete(); // Still count this file as "complete"
-												}
-										} else {
-												serverProcessing.innerText = "Error during upload!";
-												serverProcessing.style.color = "red";
-												checkIfAllUploadsComplete(); // Still count this file as "complete"
-										}
-								};
+// Check if all uploads are complete
+checkIfAllUploadsComplete();
+}, 2000); // Simulate 2 seconds server processing time
+} else {
+serverProcessing.innerText = {{translate "error_processing_files"}};
+															serverProcessing.style.color = "red";
+																															checkIfAllUploadsComplete(); // Still count this file as "complete"
+																																																												}
+																																																												} else {
+																																																												serverProcessing.innerText = {{translate "error_during_upload"}};
+																																																																											serverProcessing.style.color = "red";
+																																																																																											checkIfAllUploadsComplete(); // Still count this file as "complete"
+																																																																																																																								}
+																																																																																																																								};
 
-								// Send the file as FormData
-								var formData = new FormData();
-								formData.append("files[]", file);
-								xhr.send(formData); // Send the form data
-						})(progressBarInner, serverProcessing, file); // Capture the current file in closure
-				}
-		} else {
-				alert(translate("select_files")); // Alert user if no files were selected
-		}
-}
+// Send the file as FormData
+var formData = new FormData();
+formData.append("files[]", file);
+								 xhr.send(formData); // Send the form data
+								 })(progressBarInner, serverProcessing, file); // Capture the current file in closure
+								 }
+								 } else {
+								 alert(translate("select_files")); // Alert user if no files were selected
+																	}
+																	}
 
 		</script>
 	</body>

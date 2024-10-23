@@ -51,6 +51,9 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("error connecting to the database: %v", err)
 	}
 
+	// Log the database type and location being used
+	log.Printf("Using database driver: %s with DSN: %s", config.DBType, dsn)
+
 	// Initialize the idSyncChan with a buffer of 1
 	return &Database{
 		DB:         db,

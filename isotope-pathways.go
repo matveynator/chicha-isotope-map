@@ -202,20 +202,84 @@ func extractCountRate(description string) float64 {
 
 // Helper to estimate the time zone based on longitude
 func getTimeZoneByLongitude(lon float64) *time.Location {
-	switch {
-		case lon >= 37 && lon <= 60: // Moscow and part of Russia
-		loc, _ := time.LoadLocation("Europe/Moscow")
-		return loc
-		case lon >= -9 && lon <= 3: // Central Europe
-		loc, _ := time.LoadLocation("Europe/Berlin")
-		return loc
-		case lon >= -180 && lon < -60: // North America
-		loc, _ := time.LoadLocation("America/New_York")
-		return loc
-		default: // Default to UTC
-		loc, _ := time.LoadLocation("UTC")
-		return loc
-	}
+    switch {
+    // Europe and Africa
+    case lon >= -10 && lon <= 0: // UK, Portugal
+        loc, _ := time.LoadLocation("Europe/London")
+        return loc
+    case lon > 0 && lon <= 15: // Central Europe (Germany, France, Spain)
+        loc, _ := time.LoadLocation("Europe/Berlin")
+        return loc
+    case lon > 15 && lon <= 30: // Eastern Europe (Ukraine, Romania, Greece)
+        loc, _ := time.LoadLocation("Europe/Kiev")
+        return loc
+    case lon > 30 && lon <= 45: // Further East (Moscow, parts of Russia)
+        loc, _ := time.LoadLocation("Europe/Moscow")
+        return loc
+    case lon > 45 && lon <= 60: // Ural region
+        loc, _ := time.LoadLocation("Asia/Yekaterinburg")
+        return loc
+    case lon > 60 && lon <= 90: // Western Siberia
+        loc, _ := time.LoadLocation("Asia/Novosibirsk")
+        return loc
+    case lon > 90 && lon <= 120: // Eastern Siberia
+        loc, _ := time.LoadLocation("Asia/Irkutsk")
+        return loc
+    case lon > 120 && lon <= 135: // Far East (Yakutsk)
+        loc, _ := time.LoadLocation("Asia/Yakutsk")
+        return loc
+    case lon > 135 && lon <= 180: // Far East (Vladivostok)
+        loc, _ := time.LoadLocation("Asia/Vladivostok")
+        return loc
+
+    // Americas
+    case lon >= -180 && lon < -150: // Alaska
+        loc, _ := time.LoadLocation("America/Anchorage")
+        return loc
+    case lon >= -150 && lon < -120: // Pacific Time (USA West Coast)
+        loc, _ := time.LoadLocation("America/Los_Angeles")
+        return loc
+    case lon >= -120 && lon < -90: // Mountain Time
+        loc, _ := time.LoadLocation("America/Denver")
+        return loc
+    case lon >= -90 && lon < -60: // Central Time
+        loc, _ := time.LoadLocation("America/Chicago")
+        return loc
+    case lon >= -60 && lon < -30: // Eastern Time (East Coast USA)
+        loc, _ := time.LoadLocation("America/New_York")
+        return loc
+    case lon >= -30 && lon < 0: // Atlantic Time (Eastern Canada)
+        loc, _ := time.LoadLocation("America/Halifax")
+        return loc
+
+    // Asia
+    case lon >= 60 && lon < 75: // Pakistan
+        loc, _ := time.LoadLocation("Asia/Karachi")
+        return loc
+    case lon >= 75 && lon < 90: // India
+        loc, _ := time.LoadLocation("Asia/Kolkata")
+        return loc
+    case lon >= 90 && lon < 105: // Bangladesh
+        loc, _ := time.LoadLocation("Asia/Dhaka")
+        return loc
+    case lon >= 105 && lon < 120: // Thailand, Vietnam
+        loc, _ := time.LoadLocation("Asia/Bangkok")
+        return loc
+    case lon >= 120 && lon < 135: // China
+        loc, _ := time.LoadLocation("Asia/Shanghai")
+        return loc
+    case lon >= 135 && lon < 150: // Japan
+        loc, _ := time.LoadLocation("Asia/Tokyo")
+        return loc
+    case lon >= 150 && lon <= 180: // Australia East Coast
+        loc, _ := time.LoadLocation("Australia/Sydney")
+        return loc
+
+    // Default to UTC for undefined regions
+    default:
+        loc, _ := time.LoadLocation("UTC")
+        return loc
+    }
 }
 
 // Helper to parse a date in the format "Feb 3, 2024 19:44:03"
