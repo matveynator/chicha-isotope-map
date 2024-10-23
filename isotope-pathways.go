@@ -287,6 +287,10 @@ func parseKML(data []byte) ([]database.Marker, error) {
 
 // Process and extract data from a KML file
 func processKMLFile(file multipart.File) (uniqueMarkers []database.Marker) {
+
+	// Initialize uniqueMarkers as an empty slice at the start
+	uniqueMarkers = []database.Marker{}
+
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		log.Println("Error reading KML file:", err)
@@ -304,8 +308,8 @@ func processKMLFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
 	// Save the markers to the database
 	for _, marker := range uniqueMarkers {
-		// Pass the dbType to SaveMarker
-		err = db.SaveMarker(marker, *dbType)
+		// Pass the dbType to SaveMarkerAtomic
+		err = db.SaveMarkerAtomic(marker, *dbType)
 		if err != nil {
 			log.Fatalf("Error saving marker: %v", err)
 		}
@@ -315,6 +319,10 @@ func processKMLFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
 // Process and extract data from a KMZ file (a compressed version of KML)
 func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
+
+	// Initialize uniqueMarkers as an empty slice at the start
+	uniqueMarkers = []database.Marker{}
+
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		log.Println("Error reading KMZ file:", err)
@@ -354,8 +362,8 @@ func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
 			// Save markers to the database
 			for _, marker := range markers {
-				// Pass the dbType to SaveMarker
-				err = db.SaveMarker(marker, *dbType)
+				// Pass the dbType to SaveMarkerAtomic
+				err = db.SaveMarkerAtomic(marker, *dbType)
 				if err != nil {
 					log.Fatalf("Error saving marker: %v", err)
 				}
@@ -429,6 +437,10 @@ func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 
 // Process a file in RCTRK format (either JSON or text)
 func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
+
+	// Initialize uniqueMarkers as an empty slice at the start
+	uniqueMarkers = []database.Marker{}
+
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		log.Println("Error reading RCTRK file:", err)
@@ -454,8 +466,8 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
 	// Save markers to the database
 	for _, marker := range doseData.Markers {
-		// Pass the dbType to SaveMarker
-		err = db.SaveMarker(marker, *dbType)
+		// Pass the dbType to SaveMarkerAtomic
+		err = db.SaveMarkerAtomic(marker, *dbType)
 		if err != nil {
 			log.Fatalf("Error saving marker: %v", err)
 		}
@@ -465,6 +477,10 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
 // Process AtomFast JSON file format
 func processAtomFastFile(file multipart.File) (uniqueMarkers []database.Marker) {
+
+	// Initialize uniqueMarkers as an empty slice at the start
+	uniqueMarkers = []database.Marker{}
+
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		log.Println("Error reading AtomFast JSON file:", err)
@@ -503,8 +519,8 @@ func processAtomFastFile(file multipart.File) (uniqueMarkers []database.Marker) 
 
 	// Save markers to the database
 	for _, marker := range uniqueMarkers {
-		// Pass the dbType to SaveMarker
-		err = db.SaveMarker(marker, *dbType)
+		// Pass the dbType to SaveMarkerAtomic
+		err = db.SaveMarkerAtomic(marker, *dbType)
 		if err != nil {
 			log.Fatalf("Error saving marker: %v", err)
 		}

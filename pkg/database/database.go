@@ -8,7 +8,8 @@ import (
 
 // Database represents the interface for interacting with the database.
 type Database struct {
-	DB *sql.DB // The underlying SQL database connection
+	DB           *sql.DB    // The underlying SQL database connection
+	idSyncChan   chan bool  // Channel for synchronizing ID generation
 }
 
 // Config holds the configuration details for initializing the database.
@@ -26,7 +27,7 @@ type Config struct {
 
 // NewDatabase creates and initializes a new database connection.
 func NewDatabase(config Config) (*Database, error) {
-	var dsn string // Data Source Name, the location of the database
+	var dsn string
 
 	switch config.DBType {
 	case "sqlite", "genji":
@@ -36,41 +37,39 @@ func NewDatabase(config Config) (*Database, error) {
 		}
 	case "pgx":
 		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-			config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName, config.PGSSLMode)
+		config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName, config.PGSSLMode)
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
 
-	// Open a connection to the database
 	db, err := sql.Open(config.DBType, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("error opening the database: %v", err)
 	}
 
-	// Check the connection to ensure it's working
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("error connecting to the database: %v", err)
 	}
 
-	// Log the database type and location being used
-	log.Printf("Using database driver: %s with DSN: %s", config.DBType, dsn)
-
-	return &Database{DB: db}, nil
+	// Initialize the idSyncChan with a buffer of 1
+	return &Database{
+		DB:         db,
+		idSyncChan: make(chan bool, 1),
+	}, nil
 }
-
 // InitSchema initializes the database schema for storing data (markers).
 func (db *Database) InitSchema() error {
 	// SQL schema to create the 'markers' table if it doesn't exist
 	schema := `
-    CREATE TABLE IF NOT EXISTS markers (
-        id INTEGER PRIMARY KEY, -- Custom ID generated manually
-        doseRate REAL,  -- Radiation dose rate (in µSv/h)
-        date INTEGER,   -- Timestamp (UNIX time format)
-        lon REAL,       -- Longitude of the marker
-        lat REAL,       -- Latitude of the marker
-        countRate REAL  -- Count rate (CPS)
-    );
-    `
+	CREATE TABLE IF NOT EXISTS markers (
+		id INTEGER PRIMARY KEY, -- Custom ID generated manually
+		doseRate REAL,  -- Radiation dose rate (in µSv/h)
+		date INTEGER,   -- Timestamp (UNIX time format)
+		lon REAL,       -- Longitude of the marker
+		lat REAL,       -- Latitude of the marker
+		countRate REAL  -- Count rate (CPS)
+	);
+	`
 	// Execute the schema creation statement
 	_, err := db.DB.Exec(schema)
 	return err // Return the error if any
@@ -93,63 +92,69 @@ func (db *Database) getNextID() (int64, error) {
 	return 1, nil // If no records exist, return 1 as the starting ID
 }
 
-func (db *Database) SaveMarker(marker Marker, dbType string) error {
+// SaveMarkerAtomic uses a channel to ensure atomic access to ID generation and insertion.
+func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 	var count int
 	var query string
 
-	// Select SQL query based on the database type
+	// Заблокировать доступ через канал
+	db.idSyncChan <- true
+	defer func() {
+		<-db.idSyncChan // Освобождение канала после выполнения
+	}()
+
+	// Определение SQL-запроса в зависимости от типа базы данных
 	switch dbType {
 	case "pgx":
 		query = `
-        SELECT COUNT(1)
-        FROM markers
-        WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5`
-	default: // SQLite, Genji
+		SELECT COUNT(1)
+		FROM markers
+		WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5`
+	default:
 		query = `
-        SELECT COUNT(1)
-        FROM markers
-        WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ?`
+		SELECT COUNT(1)
+		FROM markers
+		WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ?`
 	}
 
-	// Execute the query
+	// Выполнение запроса для проверки существования маркера
 	err := db.DB.QueryRow(query,
-		marker.DoseRate,
-		marker.Date,
-		marker.Lon,
-		marker.Lat,
-		marker.CountRate).Scan(&count)
+	marker.DoseRate,
+	marker.Date,
+	marker.Lon,
+	marker.Lat,
+	marker.CountRate).Scan(&count)
 
 	if err != nil {
 		return err
 	}
 
-	// If a matching marker already exists, log and return
+	// Если маркер уже существует, возвращаем nil
 	if count > 0 {
 		log.Printf("Marker (%f, %d, %f, %f, %f) already exists.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
 		return nil
 	}
 
-	// Generate next ID manually
+	// Получаем следующий ID
 	nextID, err := db.getNextID()
 	if err != nil {
 		return fmt.Errorf("error getting the next ID: %v", err)
 	}
 
-	// Insert new marker with manually generated ID
+	// Вставляем новый маркер с вручную сгенерированным ID
 	switch dbType {
 	case "pgx":
 		query = `
-        INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
-        VALUES ($1, $2, $3, $4, $5, $6)`
-	default: // SQLite, Genji
+		INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+	default:
 		query = `
-        INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
-        VALUES (?, ?, ?, ?, ?, ?)`
+		INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
+		VALUES (?, ?, ?, ?, ?, ?)`
 	}
 
-	// Execute the insert query
 	_, err = db.DB.Exec(query,
-		nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
+	nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
 
 	return err
 }
@@ -158,8 +163,8 @@ func (db *Database) SaveMarker(marker Marker, dbType string) error {
 func (db *Database) LoadMarkers() ([]Marker, error) {
 	// Query to select all marker attributes from the 'markers' table
 	rows, err := db.DB.Query(`
-  SELECT id, doseRate, date, lon, lat, countRate FROM markers
-  `)
+	SELECT id, doseRate, date, lon, lat, countRate FROM markers
+	`)
 	if err != nil {
 		return nil, err
 	}
