@@ -52,33 +52,14 @@ var db *database.Database
 // DATA PROCESSING HELPERS
 // =====================
 
-// Check if two markers are equal based on their attributes
-func areMarkersEqual(m1, m2 database.Marker) bool {
-	return m1.DoseRate == m2.DoseRate &&
-	m1.Date == m2.Date &&
-	m1.Lon == m2.Lon &&
-	m1.Lat == m2.Lat &&
-	m1.CountRate == m2.CountRate
-}
-
-// Filter unique markers by removing those with zero radiation dose and duplicates
-func filterUniqueMarkers(markers []database.Marker) []database.Marker {
-	var filteredMarkers []database.Marker
+// Filter ZERO markers
+func filterZeroMarkers(markers []database.Marker) []database.Marker {
+	filteredMarkers := []database.Marker{}
 
 	for _, newMarker := range markers {
 		if newMarker.DoseRate == 0 {
 			continue // Ignore markers with zero dose
-		}
-
-		isDuplicate := false
-		for _, existingMarker := range filteredMarkers {
-			if areMarkersEqual(newMarker, existingMarker) {
-				isDuplicate = true
-				break
-			}
-		}
-
-		if !isDuplicate {
+		} else {
 			filteredMarkers = append(filteredMarkers, newMarker)
 		}
 	}
@@ -110,7 +91,7 @@ func loadDataFromFile(filename string) (database.Data, error) {
 	}
 
 	// Filter unique markers
-	data.Markers = filterUniqueMarkers(data.Markers)
+	data.Markers = filterZeroMarkers(data.Markers)
 
 	return data, nil
 }
@@ -367,7 +348,7 @@ func processKMLFile(file multipart.File) (uniqueMarkers []database.Marker) {
 		return
 	}
 
-	uniqueMarkers = filterUniqueMarkers(markers)
+	uniqueMarkers = filterZeroMarkers(markers)
 	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
 	// Save the markers to the database
@@ -422,7 +403,7 @@ func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 				return
 			}
 
-			uniqueMarkers =  append (uniqueMarkers, filterUniqueMarkers(markers)...)
+			uniqueMarkers =  append (uniqueMarkers, filterZeroMarkers(markers)...)
 
 			doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
@@ -521,7 +502,7 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
 	err = json.Unmarshal(data, &rctrkData)
 	if err == nil {
-		uniqueMarkers = filterUniqueMarkers(rctrkData.Markers)
+		uniqueMarkers = filterZeroMarkers(rctrkData.Markers)
 		doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 	} else {
 		// If it's not JSON, try parsing as a text format
@@ -530,7 +511,7 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 			log.Println("Error parsing text RCTRK file:", err)
 			return
 		}
-		uniqueMarkers := filterUniqueMarkers(markers)
+		uniqueMarkers := filterZeroMarkers(markers)
 		doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 	}
 
@@ -584,7 +565,7 @@ func processAtomFastFile(file multipart.File) (uniqueMarkers []database.Marker) 
 		markers = append(markers, marker)
 	}
 
-	uniqueMarkers = filterUniqueMarkers(markers)
+	uniqueMarkers = filterZeroMarkers(markers)
 	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
 	// Save markers to the database
@@ -780,7 +761,7 @@ func main() {
 	if err != nil {
 		log.Printf("Error loading markers from database: %v", err)
 	} else {
-		doseData.Markers = append(doseData.Markers, filterUniqueMarkers(markers)...)
+		doseData.Markers = append(doseData.Markers, filterZeroMarkers(markers)...)
 	}
 
 	// Set up the web server
