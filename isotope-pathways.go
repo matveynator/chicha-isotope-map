@@ -445,7 +445,8 @@ func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
 // parseTextRCTRK parses an RCTRK text file, where each line contains timestamp, coordinates, dose rate, and count rate
 func parseTextRCTRK(data []byte) ([]database.Marker, error) {
-	var markers []database.Marker
+	// Initialize markers as an empty slice at the start
+	markers := []database.Marker{}
 	lines := strings.Split(string(data), "\n")
 
 	// Iterate over each line and parse its contents
@@ -514,7 +515,10 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	}
 
 	// Try parsing as JSON first
-	var rctrkData database.Data
+
+	//init empty rctrkData
+	rctrkData := database.Data{}
+
 	err = json.Unmarshal(data, &rctrkData)
 	if err == nil {
 		uniqueMarkers = filterUniqueMarkers(rctrkData.Markers)
