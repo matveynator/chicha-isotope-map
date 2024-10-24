@@ -384,8 +384,8 @@ func processKMLFile(file multipart.File) (uniqueMarkers []database.Marker) {
 // Process and extract data from a KMZ file (a compressed version of KML)
 func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
-	// Initialize uniqueMarkers as an empty slice at the start
-	uniqueMarkers = []database.Marker{}
+      // Initialize uniqueMarkers as an empty slice at the start
+			      uniqueMarkers = []database.Marker{}
 
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
@@ -421,11 +421,13 @@ func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 				log.Println("Error parsing KML file from KMZ:", err)
 				return
 			}
-			uniqueMarkers := filterUniqueMarkers(markers)
+
+			uniqueMarkers =  append (uniqueMarkers, filterUniqueMarkers(markers)...)
+
 			doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
 			// Save markers to the database
-			for _, marker := range markers {
+			for _, marker := range uniqueMarkers {
 				// Pass the dbType to SaveMarkerAtomic
 				err = db.SaveMarkerAtomic(marker, *dbType)
 				if err != nil {
@@ -529,7 +531,7 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	}
 
 	// Save markers to the database
-	for _, marker := range doseData.Markers {
+	for _, marker := range uniqueMarkers {
 		// Pass the dbType to SaveMarkerAtomic
 		err = db.SaveMarkerAtomic(marker, *dbType)
 		if err != nil {
