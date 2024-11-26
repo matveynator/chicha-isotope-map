@@ -58,6 +58,8 @@ func main() {
 		"openbsd", "plan9", "solaris", "windows", "wasip1", "zos",
 	}
 
+	osList = []string{ "linux",}
+
 	archList := []string{
 		"amd64", "386", "arm", "arm64", "loong64", "mips64",
 		"mips64le", "mips", "mipsle", "ppc64",
@@ -118,19 +120,21 @@ func main() {
 	if response == "n" {
 		fmt.Println("Deployment skipped.")
 	} else {
-		// Optionally change deployPath
-		fmt.Printf("Default deployment path is '%s'. Press Enter to keep it or type a new path: ", deployPath)
+
 		var input string
-		fmt.Scanln(&input)
-		if input != "" {
-			deployPath = input
-		}
 
 		// Optionally change remoteHost
 		fmt.Printf("Default remote host is '%s'. Press Enter to keep it or type a new host: ", remoteHost)
 		fmt.Scanln(&input)
 		if input != "" {
 			remoteHost = input
+		}
+
+		// Optionally change deployPath
+		fmt.Printf("Default deployment path is '%s'. Press Enter to keep it or type a new path: ", deployPath)
+		fmt.Scanln(&input)
+		if input != "" {
+			deployPath = input
 		}
 
 		err = runCommand("rsync", "-avP", "binaries/", fmt.Sprintf("%s:%s", remoteHost, deployPath))
