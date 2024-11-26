@@ -1,5 +1,3 @@
-# 🌐 **Chicha Isotope Map** — Language Selection
-
 Please choose your preferred language:
 
 - [🇺🇸 English](README.md)
