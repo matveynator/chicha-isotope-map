@@ -1,4 +1,4 @@
-# 🌐 **Isotope Pathways** — Language Selection
+# 🌐 **Chicha Isotope Map** — Language Selection
 
 Please choose your preferred language:
 
@@ -9,7 +9,7 @@ Please choose your preferred language:
 
 ---
 
-# 🌌 **Isotope Pathways** — The Explorer of Invisible Roads
+# 🌌 **chicha-isotope-map** — The Explorer of Invisible Roads
 
 > **"Is there anyone who can see the invisible? No? Well, this program can. It takes radioactive traces, just like an old shaman reads from ashes, and brings them to life on the screen — colorful, glowing, alive."**
 
