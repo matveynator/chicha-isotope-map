@@ -51,10 +51,15 @@ func main() {
 	}
 
 	// Step 4: Build for multiple OS and architectures
+	/*
+		osList := []string{
+			"android", "aix", "darwin", "dragonfly", "freebsd",
+			"illumos", "ios", "js", "linux", "netbsd",
+			"openbsd", "plan9", "solaris", "windows", "wasip1", "zos",
+		}*/
+
 	osList := []string{
-		"android", "aix", "darwin", "dragonfly", "freebsd",
-		"illumos", "ios", "js", "linux", "netbsd",
-		"openbsd", "plan9", "solaris", "windows", "wasip1", "zos",
+		"linux",
 	}
 
 	archList := []string{
@@ -62,7 +67,6 @@ func main() {
 		"mips64le", "mips", "mipsle", "ppc64",
 		"ppc64le", "riscv64", "s390x", "wasm",
 	}
-
 
 	for _, osName := range osList {
 		for _, arch := range archList {
@@ -115,19 +119,19 @@ func main() {
 	fmt.Scanln(&response)
 	if strings.ToLower(response) == "y" {
 		// Optionally change deployPath
-		fmt.Printf("Default deployment path is '%s'. Do you want to change it? (y/n): ", deployPath)
-		fmt.Scanln(&response)
-		if strings.ToLower(response) == "y" {
-			fmt.Print("Enter new deployment path: ")
-			fmt.Scanln(&deployPath)
+		fmt.Printf("Default deployment path is '%s'. Press Enter to use the default or type a new path: ", deployPath)
+		var inputPath string
+		fmt.Scanln(&inputPath)
+		if strings.TrimSpace(inputPath) != "" {
+			deployPath = inputPath
 		}
 
 		// Optionally change remoteHost
-		fmt.Printf("Default remote host is '%s'. Do you want to change it? (y/n): ", remoteHost)
-		fmt.Scanln(&response)
-		if strings.ToLower(response) == "y" {
-			fmt.Print("Enter new remote host: ")
-			fmt.Scanln(&remoteHost)
+		fmt.Printf("Default remote host is '%s'. Press Enter to use the default or type a new host: ", remoteHost)
+		var inputHost string
+		fmt.Scanln(&inputHost)
+		if strings.TrimSpace(inputHost) != "" {
+			remoteHost = inputHost
 		}
 
 		err = runCommand("rsync", "-avP", "binaries/", fmt.Sprintf("%s:%s", remoteHost, deployPath))
@@ -200,4 +204,3 @@ func findMainGoFile() (string, error) {
 	}
 	return "", fmt.Errorf("No main Go file found in the current directory")
 }
-
