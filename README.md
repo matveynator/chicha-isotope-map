@@ -46,27 +46,36 @@ Choose the version for your platform and start tracking isotope trails:
 | Platform   | Download Link                                                                                           |
 |------------|--------------------------------------------------------------------------------------------------------|
 | AIX        | [Download for AIX](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/aix/)                      |
+|                                                                                                                        |
 | Android    | [Download for Android](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/android/)               |
+|                                                                                                                        |
 | Dragonfly  | [Download for Dragonfly](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/dragonfly/)           |
+|                                                                                                                        |
 | FreeBSD    | [Download for FreeBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/freebsd/)               |
+|                                                                                                                        |
 | Illumos    | [Download for Illumos](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/illumos/)               |
+|                                                                                                                        |
 | JavaScript | [Download for JavaScript](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/js/)                 |
+|                                                                                                                        |
 | Linux      | [Download for Linux](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/)                   |
+|                                                                                                                        |
 | macOS      | [Download for macOS](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/mac/)                     |
+|                                                                                                                        |
 | NetBSD     | [Download for NetBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/netbsd/)                 |
+|                                                                                                                        |
 | OpenBSD    | [Download for OpenBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/openbsd/)               |
+|                                                                                                                        |
 | Plan9      | [Download for Plan9](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/plan9/)                   |
+|                                                                                                                        |
 | Solaris    | [Download for Solaris](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/solaris/)               |
+|                                                                                                                        |
 | Windows    | [Download for Windows](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/windows/)               |
+|                                                                                                                        |
 
-Or build it yourself:
+## Install and run on Linux amd64:
 
 ```bash
-git clone https://github.com/matveynator/chicha-isotope-map.git
-cd chicha-isotope-map
-go build chicha-isotope-map.go
-chmod +x ./chicha-isotope-map
-./chicha-isotope-map
+curl https://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/amd64/chicha-isotope-map > /usr/local/bin/chicha-isotope-map; chmpod +x /usr/local/bin/chicha-isotope-map; /usr/local/bin/chicha-isotope-map;
 ```
 
 ---
@@ -76,13 +85,13 @@ chmod +x ./chicha-isotope-map
 ### Run the program:
 
 ```bash
-./chicha-isotope-map
+chicha-isotope-map
 ```
 
 or with additional settings:
 
 ```bash
-./chicha-isotope-map --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
+chicha-isotope-map --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
 #### Supported Database Types:
@@ -93,7 +102,7 @@ or with additional settings:
 #### Example for PostgreSQL:
 
 ```bash
-./chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=yourpassword --db-name=isotope_db --pg-ssl-mode=prefer
+chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=yourpassword --db-name=isotope_db --pg-ssl-mode=prefer
 ```
 
 - `--db-type`: The type of the database (`genji`, `sqlite`, or `pgx`). Default is `genji`.
@@ -108,7 +117,7 @@ or with additional settings:
 _Example for running with PostgreSQL using default settings but a custom database:_
 
 ```bash
-./chicha-isotope-map --db-type=pgx --db-name=my_custom_db
+chicha-isotope-map --db-type=pgx --db-name=my_custom_db
 ```
 
 This will connect to a PostgreSQL database named `my_custom_db` on `localhost:5432` with user `postgres` and no password, using `pgx` as the driver.
