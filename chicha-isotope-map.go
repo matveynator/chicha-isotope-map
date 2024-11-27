@@ -195,7 +195,7 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
     var wg sync.WaitGroup
 
     // Определяем максимальный уровень зума, при котором выполняется кластеризация
-    maxClusterZoomLevel := 13
+    maxClusterZoomLevel := 14
 
     // Обрабатываем каждый уровень зума от 1 до 20
     for zoomLevel := 1; zoomLevel <= 20; zoomLevel++ {
@@ -206,7 +206,7 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
             var zoomMarkers []database.Marker
 
             if zoomLevel <= maxClusterZoomLevel {
-                // Для уровней зума ниже или равных 13 выполняем кластеризацию
+                // Для уровней зума ≤13 выполняем кластеризацию
                 distanceThreshold := getDistanceThresholdForZoom(zoomLevel)
 
                 // Сортируем маркеры по широте и долготе
@@ -237,11 +237,17 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
                 }
             } else {
                 // Для уровней зума ≥14 используем все маркеры без кластеризации
-                for _, m := range markers {
+                // Копируем маркеры и устанавливаем уровень зума
+                zoomMarkers = make([]database.Marker, len(markers))
+                for i, m := range markers {
                     newMarker := m
                     newMarker.Zoom = zoomLevel
-                    zoomMarkers = append(zoomMarkers, newMarker)
+                    zoomMarkers[i] = newMarker
                 }
+
+                // Рассчитываем скорость для этих маркеров
+                windowSize := 10
+                zoomMarkers = calculateSpeedForMarkers(zoomMarkers, windowSize)
             }
 
             mu.Lock()
@@ -284,8 +290,10 @@ func getDistanceThresholdForZoom(zoomLevel int) float64 {
         return 1000    // 1 км
     case 13:
         return 500     // 500 м
+    case 14:
+        return 250     // 250 м
     default:
-        return 0 // Для уровней зума ≥14 кластеризация не нужна
+        return 0 // Для уровней зума ≥15 кластеризация не нужна
     }
 }
 
