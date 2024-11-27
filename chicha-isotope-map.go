@@ -20,7 +20,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"isotope-pathways/pkg/config"
@@ -189,35 +188,36 @@ func max(a, b int) int {
 
 // calculateZoomMarkers processes markers to create data for each zoom level using spatial clustering.
 func calculateZoomMarkers(markers []database.Marker) []database.Marker {
-    var resultMarkers []database.Marker
-    var mu sync.Mutex
-    var wg sync.WaitGroup
+    resultMarkers := []database.Marker{}
 
-    // Определяем максимальный уровень зума, при котором выполняется кластеризация
     maxClusterZoomLevel := 15
+    numZoomLevels := 20
 
-    // Обрабатываем каждый уровень зума от 1 до 20
-    for zoomLevel := 1; zoomLevel <= 20; zoomLevel++ {
-        wg.Add(1)
-        go func(zoomLevel int) {
-            defer wg.Done()
+    // Сортируем маркеры один раз перед запуском горутин
+    sortedMarkers := make([]database.Marker, len(markers))
+    copy(sortedMarkers, markers)
+    sort.Slice(sortedMarkers, func(i, j int) bool {
+        if sortedMarkers[i].Lat == sortedMarkers[j].Lat {
+            return sortedMarkers[i].Lon < sortedMarkers[j].Lon
+        }
+        return sortedMarkers[i].Lat < sortedMarkers[j].Lat
+    })
 
+    // Канал для сбора результатов от горутин
+    resultsChan := make(chan []database.Marker, numZoomLevels)
+
+    // Запускаем горутины для каждого уровня зума
+    for zoomLevel := 1; zoomLevel <= numZoomLevels; zoomLevel++ {
+        zoomLevel := zoomLevel // Захватываем значение переменной zoomLevel для горутины
+        go func() {
             var zoomMarkers []database.Marker
 
             if zoomLevel <= maxClusterZoomLevel {
-                // Для уровней зума ≤13 выполняем кластеризацию
+                // Для уровней зума ≤ maxClusterZoomLevel выполняем кластеризацию
                 distanceThreshold := getDistanceThresholdForZoom(zoomLevel)
 
-                // Сортируем маркеры по широте и долготе
-                sort.Slice(markers, func(i, j int) bool {
-                    if markers[i].Lat == markers[j].Lat {
-                        return markers[i].Lon < markers[j].Lon
-                    }
-                    return markers[i].Lat < markers[j].Lat
-                })
-
-                // Кластеризуем маркеры
-                clusters := clusterMarkers(markers, distanceThreshold)
+                // Используем предсортированный список маркеров
+                clusters := clusterMarkers(sortedMarkers, distanceThreshold)
 
                 // Обрабатываем каждый кластер для расчёта средних значений
                 for _, cluster := range clusters {
@@ -235,8 +235,7 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
                     zoomMarkers = append(zoomMarkers, newMarker)
                 }
             } else {
-                // Для уровней зума ≥16 используем все маркеры без кластеризации
-                // Копируем маркеры и устанавливаем уровень зума
+                // Для уровней зума > maxClusterZoomLevel используем все маркеры без кластеризации
                 zoomMarkers = make([]database.Marker, len(markers))
                 for i, m := range markers {
                     newMarker := m
@@ -249,13 +248,19 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
                 zoomMarkers = calculateSpeedForMarkers(zoomMarkers, windowSize)
             }
 
-            mu.Lock()
-            resultMarkers = append(resultMarkers, zoomMarkers...)
-            mu.Unlock()
-        }(zoomLevel)
+            // Отправляем результаты в канал
+            resultsChan <- zoomMarkers
+        }()
     }
 
-    wg.Wait()
+    // Собираем результаты от всех горутин
+    for i := 0; i < numZoomLevels; i++ {
+        zoomMarkers := <-resultsChan
+        resultMarkers = append(resultMarkers, zoomMarkers...)
+    }
+
+    // Закрываем канал
+    close(resultsChan)
 
     return resultMarkers
 }
