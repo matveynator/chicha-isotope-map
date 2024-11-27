@@ -195,7 +195,7 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
     var wg sync.WaitGroup
 
     // Определяем максимальный уровень зума, при котором выполняется кластеризация
-    maxClusterZoomLevel := 14
+    maxClusterZoomLevel := 15
 
     // Обрабатываем каждый уровень зума от 1 до 20
     for zoomLevel := 1; zoomLevel <= 20; zoomLevel++ {
@@ -236,7 +236,7 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
                     zoomMarkers = append(zoomMarkers, newMarker)
                 }
             } else {
-                // Для уровней зума ≥14 используем все маркеры без кластеризации
+                // Для уровней зума ≥16 используем все маркеры без кластеризации
                 // Копируем маркеры и устанавливаем уровень зума
                 zoomMarkers = make([]database.Marker, len(markers))
                 for i, m := range markers {
@@ -292,8 +292,10 @@ func getDistanceThresholdForZoom(zoomLevel int) float64 {
         return 500     // 500 м
     case 14:
         return 250     // 250 м
+    case 15:    
+		    return 125     // 125 м
     default:
-        return 0 // Для уровней зума ≥15 кластеризация не нужна
+        return 0 // Для уровней зума ≥16 кластеризация не нужна
     }
 }
 
