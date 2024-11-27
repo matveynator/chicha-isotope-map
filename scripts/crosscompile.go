@@ -14,6 +14,7 @@ func main() {
 
 	// Step 1: Automatically find the main Go file
 	goSourceFile, err := findMainGoFile()
+
 	if err != nil {
 		log.Fatalf("Error finding main Go file: %v", err)
 	}
@@ -51,16 +52,13 @@ func main() {
 	}
 
 	// Step 4: Build for multiple OS and architectures
-	/*
-		osList := []string{
-			"android", "aix", "darwin", "dragonfly", "freebsd",
-			"illumos", "ios", "js", "linux", "netbsd",
-			"openbsd", "plan9", "solaris", "windows", "wasip1", "zos",
-		}*/
-
 	osList := []string{
-		"linux",
+		"android", "aix", "darwin", "dragonfly", "freebsd",
+		"illumos", "ios", "js", "linux", "netbsd",
+		"openbsd", "plan9", "solaris", "windows", "wasip1", "zos",
 	}
+
+	//osList = []string{ "linux",}
 
 	archList := []string{
 		"amd64", "386", "arm", "arm64", "loong64", "mips64",
@@ -88,7 +86,8 @@ func main() {
 
 			outputPath := filepath.Join(outputDir, execFileName)
 
-			ldflags := fmt.Sprintf("-X main.version=%s", version)
+			//fmt.Printf("Builgding %s for %s/%s ...\n", goSourceFile, osName, arch)
+			ldflags := fmt.Sprintf("-X config.CompileVersion=%s", version)
 			buildCmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", outputPath, goSourceFile)
 			buildCmd.Env = append(os.Environ(), "GOOS="+osName, "GOARCH="+arch)
 			if err := buildCmd.Run(); err != nil {
@@ -114,24 +113,28 @@ func main() {
 	remoteHost := "files@files.zabiyaka.net"
 
 	// Step 5: Optional deployment over SSH
-	fmt.Println("Do you want to deploy the binaries over SSH? (y/n)")
+	fmt.Print("Do you want to deploy the binaries over SSH? (Y/n): ")
 	var response string
 	fmt.Scanln(&response)
-	if strings.ToLower(response) == "y" {
-		// Optionally change deployPath
-		fmt.Printf("Default deployment path is '%s'. Press Enter to use the default or type a new path: ", deployPath)
-		var inputPath string
-		fmt.Scanln(&inputPath)
-		if strings.TrimSpace(inputPath) != "" {
-			deployPath = inputPath
-		}
+	response = strings.ToLower(strings.TrimSpace(response))
+	if response == "n" {
+		fmt.Println("Deployment skipped.")
+	} else {
+
+		var input string
 
 		// Optionally change remoteHost
-		fmt.Printf("Default remote host is '%s'. Press Enter to use the default or type a new host: ", remoteHost)
-		var inputHost string
-		fmt.Scanln(&inputHost)
-		if strings.TrimSpace(inputHost) != "" {
-			remoteHost = inputHost
+		fmt.Printf("Default remote host is '%s'. Press Enter to keep it or type a new host: ", remoteHost)
+		fmt.Scanln(&input)
+		if input != "" {
+			remoteHost = input
+		}
+
+		// Optionally change deployPath
+		fmt.Printf("Default deployment path is '%s'. Press Enter to keep it or type a new path: ", deployPath)
+		fmt.Scanln(&input)
+		if input != "" {
+			deployPath = input
 		}
 
 		err = runCommand("rsync", "-avP", "binaries/", fmt.Sprintf("%s:%s", remoteHost, deployPath))
@@ -140,8 +143,6 @@ func main() {
 		} else {
 			fmt.Println("Deployment completed successfully.")
 		}
-	} else {
-		fmt.Println("Deployment skipped.")
 	}
 }
 
@@ -204,3 +205,4 @@ func findMainGoFile() (string, error) {
 	}
 	return "", fmt.Errorf("No main Go file found in the current directory")
 }
+

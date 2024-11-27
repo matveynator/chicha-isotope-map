@@ -36,28 +36,28 @@ Choisissez la version pour votre plateforme et commencez à suivre les traces de
 
 | Plateforme | Lien de téléchargement                                                                                 |
 |------------|-------------------------------------------------------------------------------------------------------|
-| AIX        | [Télécharger pour AIX](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/aix/)                  |
-| Android    | [Télécharger pour Android](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/android/)           |
-| Dragonfly  | [Télécharger pour Dragonfly](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/dragonfly/)       |
-| FreeBSD    | [Télécharger pour FreeBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/freebsd/)           |
-| Illumos    | [Télécharger pour Illumos](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/illumos/)           |
-| JavaScript | [Télécharger pour JavaScript](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/js/)             |
-| Linux      | [Télécharger pour Linux](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/linux/)               |
-| macOS      | [Télécharger pour macOS](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/mac/)                 |
-| NetBSD     | [Télécharger pour NetBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/netbsd/)             |
-| OpenBSD    | [Télécharger pour OpenBSD](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/openbsd/)           |
-| Plan9      | [Télécharger pour Plan9](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/plan9/)               |
-| Solaris    | [Télécharger pour Solaris](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/solaris/)           |
-| Windows    | [Télécharger pour Windows](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/windows/)           |
+| AIX        | [Télécharger pour AIX](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/aix/)                  |
+| Android    | [Télécharger pour Android](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/android/)           |
+| Dragonfly  | [Télécharger pour Dragonfly](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/dragonfly/)       |
+| FreeBSD    | [Télécharger pour FreeBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/freebsd/)           |
+| Illumos    | [Télécharger pour Illumos](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/illumos/)           |
+| JavaScript | [Télécharger pour JavaScript](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/js/)             |
+| Linux      | [Télécharger pour Linux](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/)               |
+| macOS      | [Télécharger pour macOS](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/mac/)                 |
+| NetBSD     | [Télécharger pour NetBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/netbsd/)             |
+| OpenBSD    | [Télécharger pour OpenBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/openbsd/)           |
+| Plan9      | [Télécharger pour Plan9](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/plan9/)               |
+| Solaris    | [Télécharger pour Solaris](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/solaris/)           |
+| Windows    | [Télécharger pour Windows](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/windows/)           |
 
 Ou compilez-le vous-même :
 
 ```bash
-git clone https://github.com/matveynator/isotope-pathways.git
-cd isotope-pathways
-go build isotope-pathways.go
-chmod +x ./isotope-pathways
-./isotope-pathways
+git clone https://github.com/matveynator/chicha-isotope-map.git
+cd chicha-isotope-map
+go build chicha-isotope-map.go
+chmod +x ./chicha-isotope-map
+./chicha-isotope-map
 ```
 
 ---
@@ -67,13 +67,13 @@ chmod +x ./isotope-pathways
 ### Lancer le programme :
 
 ```bash
-./isotope-pathways
+./chicha-isotope-map
 ```
 
 ou avec des paramètres supplémentaires :
 
 ```bash
-./isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
+./chicha-isotope-map --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
 #### Types de bases de données supportées :
@@ -84,7 +84,7 @@ ou avec des paramètres supplémentaires :
 #### Exemple pour PostgreSQL :
 
 ```bash
-./isotope-pathways --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=motdepasse --db-name=isotope_db --pg-ssl-mode=prefer
+./chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=motdepasse --db-name=isotope_db --pg-ssl-mode=prefer
 ```
 
 - `--db-type` : Le type de base de données (`genji`, `sqlite` ou `pgx`). Par défaut, c'est `genji`.
@@ -99,7 +99,7 @@ ou avec des paramètres supplémentaires :
 _Exemple de lancement avec PostgreSQL en utilisant les paramètres par défaut mais une base de données personnalisée :_
 
 ```bash
-./isotope-pathways --db-type=pgx --db-name=ma_base_de_données
+./chicha-isotope-map --db-type=pgx --db-name=ma_base_de_données
 ```
 
 Cela se connectera à une base de données PostgreSQL nommée `ma_base_de_données` sur `localhost:5432` avec l'utilisateur `postgres` sans mot de passe, en utilisant `pgx` comme driver.

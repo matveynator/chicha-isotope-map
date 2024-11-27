@@ -35,28 +35,28 @@ AtomFast や RadiaCode の形式（`.kml`, `.kmz`, `.json`, `.rctrk`）のデー
 
 | プラットフォーム  | ダウンロードリンク                                                                                  |
 |------------|--------------------------------------------------------------------------------------------------------|
-| AIX        | [AIX 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/aix/)                     |
-| Android    | [Android 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/android/)              |
-| Dragonfly  | [Dragonfly 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/dragonfly/)          |
-| FreeBSD    | [FreeBSD 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/freebsd/)              |
-| Illumos    | [Illumos 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/illumos/)              |
-| JavaScript | [JavaScript 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/js/)                |
-| Linux      | [Linux 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/linux/)                  |
-| macOS      | [macOS 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/mac/)                    |
-| NetBSD     | [NetBSD 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/netbsd/)                |
-| OpenBSD    | [OpenBSD 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/openbsd/)              |
-| Plan9      | [Plan9 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/plan9/)                  |
-| Solaris    | [Solaris 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/solaris/)              |
-| Windows    | [Windows 用ダウンロード](http://files.zabiyaka.net/isotope-pathways/latest/no-gui/windows/)              |
+| AIX        | [AIX 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/aix/)                     |
+| Android    | [Android 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/android/)              |
+| Dragonfly  | [Dragonfly 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/dragonfly/)          |
+| FreeBSD    | [FreeBSD 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/freebsd/)              |
+| Illumos    | [Illumos 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/illumos/)              |
+| JavaScript | [JavaScript 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/js/)                |
+| Linux      | [Linux 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/)                  |
+| macOS      | [macOS 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/mac/)                    |
+| NetBSD     | [NetBSD 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/netbsd/)                |
+| OpenBSD    | [OpenBSD 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/openbsd/)              |
+| Plan9      | [Plan9 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/plan9/)                  |
+| Solaris    | [Solaris 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/solaris/)              |
+| Windows    | [Windows 用ダウンロード](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/windows/)              |
 
 もしくは、自分でビルドしてみてください：
 
 ```bash
-git clone https://github.com/matveynator/isotope-pathways.git
-cd isotope-pathways
-go build isotope-pathways.go
-chmod +x ./isotope-pathways
-./isotope-pathways
+git clone https://github.com/matveynator/chicha-isotope-map.git
+cd chicha-isotope-map
+go build chicha-isotope-map.go
+chmod +x ./chicha-isotope-map
+./chicha-isotope-map
 ```
 
 ---
@@ -66,13 +66,13 @@ chmod +x ./isotope-pathways
 ### プログラムを実行する:
 
 ```bash
-./isotope-pathways
+./chicha-isotope-map
 ```
 
 または追加設定付きで実行する:
 
 ```bash
-./isotope-pathways --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
+./chicha-isotope-map --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
 #### サポートされているデータベースタイプ:
@@ -83,7 +83,7 @@ chmod +x ./isotope-pathways
 #### PostgreSQLの例:
 
 ```bash
-./isotope-pathways --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=あなたのパスワード --db-name=isotope_db --pg-ssl-mode=prefer
+./chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=あなたのパスワード --db-name=isotope_db --pg-ssl-mode=prefer
 ```
 
 - `--db-type`: データベースのタイプ (`genji`, `sqlite` または `pgx`)。デフォルトは`genji`です。
@@ -98,7 +98,7 @@ chmod +x ./isotope-pathways
 _デフォルトの設定を使用してカスタムデータベースでPostgreSQLを実行する例:_
 
 ```bash
-./isotope-pathways --db-type=pgx --db-name=私のデータベース
+./chicha-isotope-map --db-type=pgx --db-name=私のデータベース
 ```
 
 これにより、ドライバ`pgx`を使用して、`localhost:5432`でユーザー`postgres`のパスワードなしで、`私のデータベース`という名前のPostgreSQLデータベースに接続します。
