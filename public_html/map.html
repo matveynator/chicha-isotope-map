@@ -265,11 +265,6 @@
             var zoomLevel = map.getZoom();
             var bounds = map.getBounds();
 
-            // Если зум >= 15, используем данные для зума 15
-            //if (zoomLevel >= 15) {
-            //    zoomLevel = 15;
-            //}
-
             // Формируем параметры запроса
             var params = {
                 zoom: zoomLevel,
@@ -303,8 +298,8 @@
                             fillColor: color,
                             color: color,
                             weight: 1,       // Толщина обводки
-                            opacity: 0.7,    // Прозрачность обводки
-                            fillOpacity: 0.5 // Прозрачность заливки
+                            opacity: 0.7,    // Прозрачность обводки (остается неизменной)
+                            fillOpacity: getFillOpacity(marker.speed) // Прозрачность заливки зависит от скорости
                         }).addTo(map)
                             .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
 
@@ -393,6 +388,20 @@
             const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
 
             return `rgb(${r}, ${g}, ${b})`; // Возвращаем цвет в формате RGB
+        }
+    </script>
+
+    <!-- Скрипт для расчёта прозрачности заливки маркера на основе скорости -->
+    <script id="fill-opacity-script">
+        function getFillOpacity(speed) {
+            if (speed <= 10) {
+                return 0.5;
+            } else if (speed >= 30) {
+                return 0.1;
+            } else {
+                // Линейная интерполяция между 0.5 и 0.1
+                return 0.5 - ((speed - 10) * (0.4) / 20);
+            }
         }
     </script>
 

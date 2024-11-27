@@ -291,9 +291,9 @@ func getDistanceThresholdForZoom(zoomLevel int) float64 {
     case 13:
         return 500     // 500 м
     case 14:
-        return 250     // 250 м
+        return 100     // 100 м
     case 15:    
-		    return 125     // 125 м
+		    return 50      // 50 м
     default:
         return 0 // Для уровней зума ≥16 кластеризация не нужна
     }
