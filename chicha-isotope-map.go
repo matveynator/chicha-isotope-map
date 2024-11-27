@@ -274,17 +274,17 @@ func getDistanceThresholdForZoom(zoomLevel int) float64 {
     case 5:
         return 250000  // 250 км
     case 6:
-        return 100000  // 100 км
+        return 10000  // 10 км
     case 7:
-        return 50000   // 50 км
+        return 5000   // 5 км
     case 8:
-        return 25000   // 25 км
+        return 2500   // 2.5 км
     case 9:
-        return 10000   // 10 км
+        return 2000   // 2 км
     case 10:
-        return 5000    // 5 км
+        return 1500    // 1.5 км
     case 11:
-        return 2500    // 2.5 км
+        return 1200    // 1.2 км
     case 12:
         return 1000    // 1 км
     case 13:

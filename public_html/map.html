@@ -298,8 +298,8 @@
                             fillColor: color,
                             color: color,
                             weight: 1,       // Толщина обводки
-                            opacity: 0.7,    // Прозрачность обводки (остается неизменной)
-                            fillOpacity: getFillOpacity(marker.speed) // Прозрачность заливки зависит от скорости
+                            opacity: getFillOpacity(marker.speed) +0.1,  // Прозрачность обводки (чуть ярче)
+                            fillOpacity: getFillOpacity(marker.speed)    // Прозрачность заливки зависит от скорости
                         }).addTo(map)
                             .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
 
@@ -391,21 +391,46 @@
         }
     </script>
 
-    <!-- Скрипт для расчёта прозрачности заливки маркера на основе скорости -->
-    <script id="fill-opacity-script">
-        function getFillOpacity(speed) {
-            if (speed <= 10) {
-                return 0.5;
-            } else if (speed >= 30) {
-                return 0.1;
-            } else {
-                // Линейная интерполяция между 0.5 и 0.1
-                return 0.5 - ((speed - 10) * (0.4) / 20);
-            }
-        }
-    </script>
+		<!-- Скрипт для расчёта прозрачности заливки маркера на основе скорости -->
+		<script id="fill-opacity-script">
+			function getFillOpacity(speed) {
+				// Если скорость меньше или равна 5 м/с
+				if (speed <= 5) {
+						// Возвращаем максимальную непрозрачность заливки: 0.6
+						return 0.6;
+				}
+				// Если скорость больше или равна 20 м/с
+				else if (speed >= 20) {
+						// Возвращаем минимальную непрозрачность заливки: 0.1
+						return 0.1;
+				}
+				// Если скорость между 5 м/с и 20 м/с
+				else {
+						// Диапазон скоростей, где происходит изменение непрозрачности
+						var speedRange = 20 - 5; // 15 м/с
 
-    <!-- Скрипт для обновления URL на основе состояния карты (центр, зум, слой) -->
+						// Диапазон изменения непрозрачности
+						var opacityRange = 0.6 - 0.1; // 0.5
+
+						// Вычисляем снижение непрозрачности на каждый м/с
+						var opacityDecreasePerMs = opacityRange / speedRange; // 0.5 / 15 ≈ 0.0333333
+
+						// Вычисляем, насколько скорость превышает 5 м/с
+						var speedAboveFive = speed - 5;
+
+						// Вычисляем общую потерю непрозрачности для данной скорости
+						var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
+
+						// Вычисляем текущую непрозрачность заливки
+						var currentOpacity = 0.6 - totalOpacityDecrease;
+
+						// Возвращаем вычисленное значение непрозрачности
+						return currentOpacity;
+				}
+		}
+		</script>
+
+		<!-- Скрипт для обновления URL на основе состояния карты (центр, зум, слой) -->
     <script id="url-update-script">
         // Функция для обновления URL с текущим состоянием карты
         function updateUrl() {
