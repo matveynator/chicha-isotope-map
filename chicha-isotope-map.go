@@ -190,132 +190,135 @@ func max(a, b int) int {
 
 // calculateZoomMarkers processes markers to create data for each zoom level using spatial clustering.
 func calculateZoomMarkers(markers []database.Marker) []database.Marker {
-	var resultMarkers []database.Marker
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+    var resultMarkers []database.Marker
+    var mu sync.Mutex
+    var wg sync.WaitGroup
 
-	// Process each zoom level from 1 to 20
-	for zoomLevel := 1; zoomLevel <= 20; zoomLevel++ {
-		wg.Add(1)
-		go func(zoomLevel int) {
-			defer wg.Done()
+    // Определяем максимальный уровень зума, при котором выполняется кластеризация
+    maxClusterZoomLevel := 13
 
-			// Define the maximum distance threshold for clustering (in meters)
-			distanceThreshold := getDistanceThresholdForZoom(zoomLevel)
+    // Обрабатываем каждый уровень зума от 1 до 20
+    for zoomLevel := 1; zoomLevel <= 20; zoomLevel++ {
+        wg.Add(1)
+        go func(zoomLevel int) {
+            defer wg.Done()
 
-			// Sort markers by latitude and longitude
-			sort.Slice(markers, func(i, j int) bool {
-				if markers[i].Lat == markers[j].Lat {
-					return markers[i].Lon < markers[j].Lon
-				}
-				return markers[i].Lat < markers[j].Lat
-			})
+            var zoomMarkers []database.Marker
 
-			// Cluster markers based on proximity and group size
-			var clusters [][]database.Marker
-			visited := make([]bool, len(markers))
+            if zoomLevel <= maxClusterZoomLevel {
+                // Для уровней зума ниже или равных 13 выполняем кластеризацию
+                distanceThreshold := getDistanceThresholdForZoom(zoomLevel)
 
-			for i := 0; i < len(markers); i++ {
-				if visited[i] {
-					continue
-				}
-				cluster := []database.Marker{markers[i]}
-				visited[i] = true
+                // Сортируем маркеры по широте и долготе
+                sort.Slice(markers, func(i, j int) bool {
+                    if markers[i].Lat == markers[j].Lat {
+                        return markers[i].Lon < markers[j].Lon
+                    }
+                    return markers[i].Lat < markers[j].Lat
+                })
 
-				for j := i + 1; j < len(markers); j++ {
-					if visited[j] {
-						continue
-					}
-					distance := haversineDistance(markers[i].Lat, markers[i].Lon, markers[j].Lat, markers[j].Lon)
-					if distance <= distanceThreshold {
-						cluster = append(cluster, markers[j])
-						visited[j] = true
-						if len(cluster) >= 10 { // Limit cluster size to 10 markers
-							break
-						}
-					}
-				}
-				clusters = append(clusters, cluster)
-			}
+                // Кластеризуем маркеры
+                clusters := clusterMarkers(markers, distanceThreshold)
 
-			var zoomMarkers []database.Marker
+                // Обрабатываем каждый кластер для расчёта средних значений
+                for _, cluster := range clusters {
+                    avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon, date := calculateAverages(cluster)
 
-			// Process each cluster to calculate averages
-			for _, cluster := range clusters {
-				avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon, date := calculateAverages(cluster)
+                    newMarker := database.Marker{
+                        DoseRate:  avgDoseRate,
+                        Date:      date,
+                        Lon:       avgLon,
+                        Lat:       avgLat,
+                        CountRate: avgCountRate,
+                        Zoom:      zoomLevel,
+                        Speed:     avgSpeed,
+                    }
+                    zoomMarkers = append(zoomMarkers, newMarker)
+                }
+            } else {
+                // Для уровней зума ≥14 используем все маркеры без кластеризации
+                for _, m := range markers {
+                    newMarker := m
+                    newMarker.Zoom = zoomLevel
+                    zoomMarkers = append(zoomMarkers, newMarker)
+                }
+            }
 
-				newMarker := database.Marker{
-					DoseRate:  avgDoseRate,
-					Date:      date,
-					Lon:       avgLon,
-					Lat:       avgLat,
-					CountRate: avgCountRate,
-					Zoom:      zoomLevel,
-					Speed:     avgSpeed,
-				}
-				zoomMarkers = append(zoomMarkers, newMarker)
-			}
+            mu.Lock()
+            resultMarkers = append(resultMarkers, zoomMarkers...)
+            mu.Unlock()
+        }(zoomLevel)
+    }
 
-			mu.Lock()
-			resultMarkers = append(resultMarkers, zoomMarkers...)
-			mu.Unlock()
-		}(zoomLevel)
-	}
+    wg.Wait()
 
-	wg.Wait()
-
-	return resultMarkers
+    return resultMarkers
 }
 
 // getDistanceThresholdForZoom returns the distance threshold in meters for clustering at a given zoom level
 func getDistanceThresholdForZoom(zoomLevel int) float64 {
-	// You can adjust these values based on your requirements
-	// For example, at lower zoom levels, we have larger clusters
-	switch zoomLevel {
-	case 1:
-		return 5000000 // 5000 km
-	case 2:
-		return 2500000 // 2500 km
-	case 3:
-		return 1000000 // 1000 km
-	case 4:
-		return 500000  // 500 km
-	case 5:
-		return 250000  // 250 km
-	case 6:
-		return 100000  // 100 km
-	case 7:
-		return 50000   // 50 km
-	case 8:
-		return 25000   // 25 km
-	case 9:
-		return 10000   // 10 km
-	case 10:
-		return 5000    // 5 km
-	case 11:
-		return 2500    // 2.5 km
-	case 12:
-		return 1000    // 1 km
-	case 13:
-		return 500     // 500 m
-	case 14:
-		return 250     // 250 m
-	case 15:
-		return 100     // 100 m
-	case 16:
-		return 50      // 50 m
-	case 17:
-		return 25      // 25 m
-	case 18:
-		return 10      // 10 m
-	case 19:
-		return 5       // 5 m
-	case 20:
-		return 2       // 2 m
-	default:
-		return 1000 // Default to 1 km
-	}
+    switch zoomLevel {
+    case 1:
+        return 5000000 // 5000 км
+    case 2:
+        return 2500000 // 2500 км
+    case 3:
+        return 1000000 // 1000 км
+    case 4:
+        return 500000  // 500 км
+    case 5:
+        return 250000  // 250 км
+    case 6:
+        return 100000  // 100 км
+    case 7:
+        return 50000   // 50 км
+    case 8:
+        return 25000   // 25 км
+    case 9:
+        return 10000   // 10 км
+    case 10:
+        return 5000    // 5 км
+    case 11:
+        return 2500    // 2.5 км
+    case 12:
+        return 1000    // 1 км
+    case 13:
+        return 500     // 500 м
+    default:
+        return 0 // Для уровней зума ≥14 кластеризация не нужна
+    }
 }
+
+func clusterMarkers(markers []database.Marker, distanceThreshold float64) [][]database.Marker {
+    var clusters [][]database.Marker
+    visited := make([]bool, len(markers))
+
+    for i := 0; i < len(markers); i++ {
+        if visited[i] {
+            continue
+        }
+        cluster := []database.Marker{markers[i]}
+        visited[i] = true
+
+        for j := i + 1; j < len(markers); j++ {
+            if visited[j] {
+                continue
+            }
+            distance := haversineDistance(markers[i].Lat, markers[i].Lon, markers[j].Lat, markers[j].Lon)
+            if distance <= distanceThreshold {
+                cluster = append(cluster, markers[j])
+                visited[j] = true
+                if len(cluster) >= 10 { // Ограничиваем размер кластера до 10 маркеров
+                    break
+                }
+            }
+        }
+        clusters = append(clusters, cluster)
+    }
+
+    return clusters
+}
+
 
 // calculateAverages calculates average values for a cluster of markers
 func calculateAverages(markers []database.Marker) (avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon float64, date int64) {
