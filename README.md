@@ -1,6 +1,5 @@
 Please choose your preferred language:
 
-- [🇺🇸 English](README.md)
 - [🇫🇷 Français](/doc/README_FR.md)
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
