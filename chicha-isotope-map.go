@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"math"
 
 	"isotope-pathways/pkg/config"
 	"isotope-pathways/pkg/database"
@@ -96,6 +97,121 @@ func filterZeroMarkers(markers []database.Marker) []database.Marker {
 
 	return filteredMarkers
 }
+
+// haversineDistance рассчитывает расстояние между двумя географическими точками.
+func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
+	// Константа радиуса Земли в метрах
+	const R = 6371000
+	// Преобразуем широту и долготу в радианы
+	phi1 := lat1 * math.Pi / 180.0
+	phi2 := lat2 * math.Pi / 180.0
+	deltaPhi := (lat2 - lat1) * math.Pi / 180.0
+	deltaLambda := (lon2 - lon1) * math.Pi / 180.0
+
+	// Формула гаверсина
+	a := math.Sin(deltaPhi/2)*math.Sin(deltaPhi/2) +
+		math.Cos(phi1)*math.Cos(phi2)*math.Sin(deltaLambda/2)*math.Sin(deltaLambda/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+
+	// Возвращаем расстояние в метрах
+	return R * c
+}
+
+// calculateZoomLevels обрабатывает маркеры для создания коллекций по уровням зума.
+func calculateZoomMarkers(markers []database.Marker) []database.Marker {
+	// Процент маркеров для каждого уровня зума
+	zoomPercentages := map[int]int{
+		1:  1,
+		2:  2,
+		3:  3,
+		4:  5,
+		5:  5,
+		6:  10,
+		7:  20,
+		8:  30,
+		9:  40,
+		10: 50,
+		11: 60,
+		12: 70,
+		13: 80,
+		14: 90,
+		15: 100,
+	}
+
+	var resultMarkers []database.Marker
+
+	// Обрабатываем каждый уровень зума
+	for zoomLevel := 1; zoomLevel <= 15; zoomLevel++ {
+		percentage, exists := zoomPercentages[zoomLevel]
+		if !exists {
+			continue
+		}
+
+		if percentage < 100 {
+			groupSize := int(100 / percentage)
+			for i := 0; i < len(markers); i += groupSize {
+				end := i + groupSize
+				if end > len(markers) {
+					end = len(markers)
+				}
+				group := markers[i:end]
+
+				var sumDoseRate float64
+				var sumCountRate float64
+				for _, m := range group {
+					sumDoseRate += m.DoseRate
+					sumCountRate += m.CountRate
+				}
+				avgDoseRate := sumDoseRate / float64(len(group))
+				avgCountRate := sumCountRate / float64(len(group))
+
+				newMarker := database.Marker{
+					ID:        0, // Оставляем пустым, чтобы заполнить при добавлении в БД
+					DoseRate:  avgDoseRate,
+					Date:      group[0].Date,
+					Lon:       group[0].Lon,
+					Lat:       group[0].Lat,
+					CountRate: avgCountRate,
+					Zoom:      zoomLevel,
+					Speed:     0, // Будет рассчитано ниже
+				}
+				resultMarkers = append(resultMarkers, newMarker)
+			}
+		} else {
+			// Для 100% зума копируем все маркеры, но оставляем ID пустым
+			for _, m := range markers {
+				m.Zoom = zoomLevel
+				m.ID = 0 // Оставляем пустым
+				resultMarkers = append(resultMarkers, m)
+			}
+		}
+
+		// Расчёт скорости
+		for j := 1; j < len(resultMarkers); j++ {
+			prevMarker := resultMarkers[j-1]
+			currMarker := resultMarkers[j]
+
+			distance := haversineDistance(prevMarker.Lat, prevMarker.Lon, currMarker.Lat, currMarker.Lon)
+			timeDiff := float64(currMarker.Date - prevMarker.Date)
+
+			if timeDiff > 0 {
+				speed := distance / timeDiff
+				resultMarkers[j].Speed = speed
+			} else {
+				resultMarkers[j].Speed = 0
+			}
+		}
+
+		// Устанавливаем скорость первого маркера в 0 для текущего уровня
+		if len(resultMarkers) > 0 {
+			resultMarkers[len(resultMarkers)-1].Speed = 0
+		}
+	}
+
+	return resultMarkers
+}
+
+
 
 // Load data from a file, filter out empty values and duplicates
 func loadDataFromFile(filename string) (database.Data, error) {
@@ -533,10 +649,11 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	err = json.Unmarshal(data, &rctrkData)
 	if err == nil {
 		if rctrkData.IsSievert {
-			uniqueMarkers = filterZeroMarkers(convertSvToRh(rctrkData.Markers))
+			uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(convertSvToRh(rctrkData.Markers)))
 		} else {
-			uniqueMarkers = filterZeroMarkers(rctrkData.Markers)
+			uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(rctrkData.Markers))
 		}
+
 		doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 	} else {
 		// If it's not JSON, try parsing as a text format
@@ -749,6 +866,58 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Handler to serve markers based on zoom level and bounds
+func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	zoomStr := r.URL.Query().Get("zoom")
+	minLatStr := r.URL.Query().Get("minLat")
+	minLonStr := r.URL.Query().Get("minLon")
+	maxLatStr := r.URL.Query().Get("maxLat")
+	maxLonStr := r.URL.Query().Get("maxLon")
+
+	zoomLevel, err := strconv.Atoi(zoomStr)
+	if err != nil {
+		http.Error(w, "Invalid zoom level", http.StatusBadRequest)
+		return
+	}
+
+	minLat, err := strconv.ParseFloat(minLatStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid minLat", http.StatusBadRequest)
+		return
+	}
+
+	minLon, err := strconv.ParseFloat(minLonStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid minLon", http.StatusBadRequest)
+		return
+	}
+
+	maxLat, err := strconv.ParseFloat(maxLatStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid maxLat", http.StatusBadRequest)
+		return
+	}
+
+	maxLon, err := strconv.ParseFloat(maxLonStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid maxLon", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch markers from the database
+	markers, err := db.GetMarkersByZoomAndBounds(zoomLevel, minLat, minLon, maxLat, maxLon, *dbType)
+	if err != nil {
+		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
+		return
+	}
+
+	// Return markers as JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(markers)
+}
+
+
 // =====================
 // MAIN ENTRY POINT
 // =====================
@@ -811,6 +980,8 @@ func main() {
 
 	http.HandleFunc("/", mapHandler)
 	http.HandleFunc("/upload", uploadHandler)
+	http.HandleFunc("/get_markers", getMarkersHandler)
+
 	log.Printf("Application running at: http://localhost:%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }

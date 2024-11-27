@@ -1,667 +1,608 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>{{translate "title"}}</title>
-
-		<!-- Include Leaflet CSS for map rendering -->
-		<link rel="stylesheet" href="/static/leaflet.css" />
-
-		<style>
-/* Ensure body and html take up full height, no margin or padding */
-body, html {
-	margin: 0;
-	padding: 0;
-	height: 100%;
-	overflow: hidden; /* Prevents scrollbars */
-}
-
-			/* Full height map container */
-			#map {
-				height: 100vh; /* Map takes up full viewport height */
-				margin: 0;
-				overflow: hidden; /* No overflow for map container */
-			}
-
-			/* Custom tooltip styling */
-			.custom-tooltip {
-				background-color: white; /* Tooltip background */
-				border-radius: 5px; /* Rounded corners */
-				padding: 10px; /* Padding inside the tooltip */
-				color: #333; /* Text color */
-				box-shadow: 0px 0px 3px rgba(0,0,0,0.3); /* Shadow for the tooltip */
-			}
-
-			/* Upload button container styling, positioned top-right */
-			.upload-btn-container {
-				position: absolute;
-				top: 20px;
-				right: 20px;
-				z-index: 1000; /* Ensures it's on top of other elements */
-			}
-
-			/* Ensures the upload button aligns well within leaflet's controls */
-			.leaflet-control-container .leaflet-top.leaflet-right .upload-btn-container {
-				margin-top: 40px; /* Adds extra margin for visual spacing */
-			}
-
-			/* Upload button styling */
-			.upload-btn {
-				background-color: white; /* Button background */
-				border: 1px solid #ccc; /* Button border */
-				border-radius: 4px; /* Rounded corners */
-				padding: 5px 10px; /* Padding inside the button */
-				cursor: pointer; /* Changes cursor on hover */
-				font-size: 14px; /* Font size of button text */
-				box-shadow: 0 1px 5px rgba(0,0,0,0.65); /* Adds shadow */
-			}
-
-			/* Overlay to cover the whole screen */
-			#fileOverlay {
-				position: fixed;
-				top: 0;
-				left: 0;
-				width: 100%;
-				height: 100%;
-				background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
-				z-index: 10000; /* Ensure it's on top of everything */
-				display: flex;
-				justify-content: center;
-				align-items: center;
-			}
-
-			/* Container for file progress details */
-			#fileProgressContainer {
-				background-color: white;
-				padding: 20px;
-				border-radius: 10px;
-				max-width: 600px;
-				width: 100%;
-				box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-			}
-
-			/* Individual file progress block */
-			.file-progress {
-				margin-bottom: 15px;
-			}
-
-			/* File name */
-			.file-name {
-				font-weight: bold;
-				margin-bottom: 5px;
-			}
-
-			/* Progress bar */
-			.progress-bar {
-				width: 100%;
-				height: 10px;
-				background-color: #f4f4f4;
-				border-radius: 5px;
-				overflow: hidden;
-			}
-
-			.progress-bar-inner {
-				height: 100%;
-				background-color: #4caf50; /* Green bar for progress */
-				width: 0%;
-			}
-
-			/* Server processing indicator */
-			.server-processing {
-				margin-left: 10px;
-				font-size: 14px;
-				color: #ff9800; /* Orange color for processing indicator */
-			}
-
-
-			/* Hover effect for upload button */
-			.upload-btn:hover {
-				background-color: #f4f4f4; /* Lightens background on hover */
-			}
-
-			/* GitHub link container styling */
-			.github-link {
-				position: absolute;
-				bottom: 20px;
-				left: 20px;
-				z-index: 1000; /* Ensures it remains visible on top */
-			}
-
-			/* GitHub icon styling */
-			.github-icon {
-				width: 40px; /* Icon width */
-				height: 40px; /* Icon height */
-				opacity: 0.6; /* Transparency for visual effect */
-			}
-
-			/* Hover effect for GitHub icon */
-			.github-icon:hover {
-				opacity: 1; /* Full opacity on hover */
-			}
-
-			/* Program information section near GitHub icon */
-			.program-info {
-				position: absolute;
-				bottom: 20px;
-				left: 70px; /* Adjusted position relative to GitHub icon */
-				z-index: 1000; /* Ensures visibility */
-				color: #333; /* Text color */
-				font-size: 14px; /* Font size */
-				opacity: 0.6; /* Initial transparency */
-			}
-
-			/* Styling for program info links */
-			.program-info a {
-				color: #007bff; /* Blue color for links */
-				text-decoration: none; /* Removes underline from links */
-			}
-
-			/* Hover effect for links in program info */
-			.program-info a:hover {
-				text-decoration: underline; /* Adds underline on hover */
-			}
-
-			/* Hover effect for the entire program info block */
-			.program-info:hover {
-				opacity: 1; /* Full opacity on hover */
-			}
-		</style>
-
-		<!-- Script to handle translations and pass data from Go to JavaScript -->
-		<script id="translations-script">
-			// Translations passed from Go backend
-			var translations = JSON.parse('{{ .Translations | toJSON }}');
-			var currentLang = '{{ .Lang }}'; // Current language being used
-
-			// Translation function to return translated text for a given key
-			function translate(key) {
-				// Ensure English translations exist as a fallback
-				if (!translations['en']) {
-					console.error('English translations not available!');
-					return key; // Return the key itself if translation not found
-				}
-
-				// Return translation for the current language, fallback to English, or return key
-				if (translations[currentLang] && translations[currentLang][key]) {
-					return translations[currentLang][key];
-				} else if (translations['en'][key]) {
-					return translations['en'][key];
-				}
-				return key; // Fallback to the key if no translation found
-			}
-		</script>
-
-		<!-- Script to initialize the markers array with data from Go -->
-		<script id="markers-init-script">
-			var markers = []; // Initialize an empty array for markers
-
-			// Try parsing markers data from Go template
-			try {
-				markers = JSON.parse('{{ .Markers | toJSON }}');  
-			} catch (e) {
-				console.error("Failed to parse markers: ", e);
-				markers = []; // Default to an empty array if there's a parsing error
-			}
-
-			// Ensure markers is an array (if not, reset it to empty)
-			if (!Array.isArray(markers)) {
-				markers = [];
-			}
-		</script>
-	</head>
-
-	<body>
-		<!-- Upload button container -->
-		<div class="upload-btn-container leaflet-control">
-			<label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
-			<input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()"> <!-- Hidden file input, triggered on upload -->
-		</div>	
-
-		<!-- Container for displaying selected files and their progress -->
-		<div id="fileOverlay" style="display: none;">
-			<div id="fileProgressContainer">
-				<!-- File progress details will be dynamically added here -->
-			</div>
-		</div>
-
-		<!-- GitHub link icon -->
-		<a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
-			<img src="/static/GitHub-Mark.png" alt="GitHub" class="github-icon">
-		</a>
-
-		<!-- Program information with version link -->
-		<div class="program-info">
-			<strong>{{translate "description"}}</strong><br> 
-			v.<a href="https://files.zabiyaka.net/chicha-isotope-map/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
-		</div>
-
-		<!-- Map container where the Leaflet map will be rendered -->
-		<div id="map"></div>
-
-		<!-- Include Leaflet JS library for map functionality -->
-		<script src="/static/leaflet.js"></script>
-
-		<!-- Script to setup the Leaflet map and add base layers -->
-		<script id="map-setup-script">
-			// Initialize the OpenStreetMap layer
-			var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-		maxZoom: 18,
-		attribution: '&copy; OpenStreetMap contributors'
-	});
-
-	// Initialize the Google Satellite layer
-	var googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-		maxZoom: 20,
-		attribution: '&copy; Google'
-	});
-
-	// Initialize the map with default center and zoom
-	var map = L.map('map', {
-		center: [44.08832, 42.97577], // Default center (latitude, longitude)
-		zoom: 11,                     // Default zoom level
-		layers: []                    // Start with no layers, we'll add them later
-	});
-
-	// Object to hold the available base layers
-	var baseLayers = {
-		"OpenStreetMap": osmLayer,
-		"Google Satellite": googleSatellite
-	};
-
-	// Add layer control to the map
-	var layerControl = L.control.layers(baseLayers, null, {
-		position: 'topleft',  // Place the control above zoom buttons
-		collapsed: false      // Show the control expanded by default
-	}).addTo(map);
-
-	var circleMarkers = {}; // Object to hold the rendered circle markers
-		</script>
-
-		<!-- Script to update markers on map based on current zoom and bounds -->
-		<script id="markers-update-script">
-			// Function to update markers based on current map zoom and bounds
-			function updateMarkers() {
-		// Проверяем, что карта инициализирована и доступна для работы
-		if (!map || !map.getZoom || !map.getBounds) {
-			console.error("Map is not yet initialized.");
-			return; // Exit the function if the map is not initialized
-		}
-
-		var zoomLevel = map.getZoom(); // Get current map zoom level
-		var bounds = map.getBounds(); // Get current map bounds
-
-		// Remove existing circle markers from the map
-		for (let key in circleMarkers) {
-			map.removeLayer(circleMarkers[key]);
-		}
-
-		circleMarkers = {}; // Clear circle markers object
-
-		// Get filtered markers based on current zoom level
-		var filteredMarkers = filterMarkersByZoom(zoomLevel);
-
-		// Loop through filtered markers and add them to the map
-		filteredMarkers.forEach(function(marker) {
-			var markerKey = `${marker.lat}-${marker.lon}`; // Unique key for each marker
-
-			if (bounds.contains([marker.lat, marker.lon])) {
-				var color = getGradientColor(marker.doseRate, marker.countRate); // Get color for marker
-				var radius = getRadius(marker.doseRate, zoomLevel); // Get radius for marker
-
-				// Create a circle marker with calculated properties
-				var circleMarker = L.circleMarker([marker.lat, marker.lon], {
-					radius: radius,
-					fillColor: color,
-					color: color,
-					weight: 1, // Border thickness
-					opacity: 0.7, // Border opacity
-					fillOpacity: 0.5 // Fill opacity
-				}).addTo(map)
-					.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
-
-				circleMarkers[markerKey] = circleMarker; // Store circle marker in object
-			}
-		});
-
-		// Update URL after markers have been updated
-		updateUrl();
-	}
-
-	// Call updateMarkers only after the map is fully initialized
-	map.on('load', function() {
-		updateMarkers(); // Ensure markers are updated once the map is ready
-	});
-
-	// Call updateMarkers on zoom or move events
-	map.on('zoomend', updateMarkers);
-	map.on('moveend', updateMarkers);
-		</script>
-
-
-		<!-- Script to generate tooltip content for markers -->
-		<script id="tooltip-content-script">
-			function getTooltipContent(marker) {
-				// Convert dose rate to microSieverts (default is MicroRoentgens).
-				var doseRateInMicroRoentgens = marker.doseRate;
-				var doseRateInMicroSieverts = doseRateInMicroRoentgens/100;
-
-				// Convert UNIX timestamp to readable date format
-				var date = new Date(marker.date * 1000);
-				var formattedDate = date.toLocaleString(); // Format date using the local locale
-
-				// Return HTML content for tooltip with translated keys
-				return `
-					<div class="custom-tooltip">
-						<strong>${translate('radiation_dose')}:</strong><br>
-						${doseRateInMicroRoentgens.toFixed(2)} µR/h (${doseRateInMicroSieverts.toFixed(2)} µSv/h)<br>
-						<strong>${translate('date_time')}:</strong><br>
-						${formattedDate}
-					</div>
-				`;
-			}
-		</script>
-
-		<!-- Script to filter markers based on zoom level -->
-		<script id="zoom-filter-script">
-			function filterMarkersByZoom(zoomLevel) {
-				// Return different portions of markers based on zoom level to avoid overloading the map
-				if (zoomLevel >= 19) {
-					return markers;
-				} else if (zoomLevel == 18) {
-					return markers;
-				} else if (zoomLevel == 17) {
-					return markers;
-				} else if (zoomLevel == 16) {
-					return markers;
-				} else if (zoomLevel == 15) {
-					return markers;
-				} else if (zoomLevel == 14) {
-					return markers;
-				} else if (zoomLevel == 13) {
-					return markers;
-				} else if (zoomLevel == 12) {
-					return markers.filter((_, index) => index % 5 === 0);
-				} else if (zoomLevel == 11) {
-					return markers.filter((_, index) => index % 10 === 0);
-				} else if (zoomLevel == 10) {
-					return markers.filter((_, index) => index % 20 === 0);
-				} else if (zoomLevel == 9) {
-					return markers.filter((_, index) => index % 30 === 0);
-				} else if (zoomLevel == 8) {
-					return markers.filter((_, index) => index % 50 === 0);
-				} else if (zoomLevel == 7) {
-					return markers.filter((_, index) => index % 70 === 0);
-				} else if (zoomLevel == 6) {
-					return markers.filter((_, index) => index % 90 === 0);
-				} else if (zoomLevel == 5) {
-					return markers.filter((_, index) => index % 93 === 0);
-				} else if (zoomLevel == 4) {
-					return markers.filter((_, index) => index % 96 === 0);
-				} else {
-					return markers.filter((_, index) => index % 99 === 0);
-				}
-			}
-		</script>
-
-		<!-- Script to calculate marker radius based on zoom level -->
-		<script id="radius-calc-script">
-			function getRadius(doseRate, zoomLevel) {
-				let baseRadius;
-
-				// Define base radius based on zoom level, more zoom = bigger radius
-				if (zoomLevel > 18) baseRadius = 10;
-				else if (zoomLevel == 18) baseRadius = 9;
-				else if (zoomLevel == 17) baseRadius = 8;
-				else if (zoomLevel == 16) baseRadius = 7;
-				else if (zoomLevel == 15) baseRadius = 6;
-				else if (zoomLevel == 14) baseRadius = 5;
-				else if (zoomLevel == 13) baseRadius = 4;
-				else if (zoomLevel == 12) baseRadius = 3;
-				else if (zoomLevel == 11) baseRadius = 2;
-				else baseRadius = 1;
-
-				return baseRadius; // Return the appropriate radius
-			}
-		</script>
-
-		<!-- Script to calculate color gradient based on radiation dose and count rate -->
-		<script id="color-gradient-script">
-			function getGradientColor(doseRate, countRate) {
-				// If countRate is zero, base the color on doseRate
-				let colorRate = countRate === 0.0 ? (doseRate) : countRate;
-
-				// Return the appropriate color based on the countRate
-				if (colorRate <= 4) return "#006400"; // Dark green for low values
-				else if (colorRate <= 8) return interpolateColor([0, 100, 0], [173, 255, 47], (colorRate - 4) / (8 - 4)); // Green gradient
-				else if (colorRate <= 11) return interpolateColor([173, 255, 47], [255, 255, 0], (colorRate - 8) / (11 - 8)); // Yellow gradient
-				else if (colorRate <= 20) return interpolateColor([255, 255, 0], [255, 165, 0], (colorRate - 11) / (20 - 11)); // Orange gradient
-				else if (colorRate <= 30) return interpolateColor([255, 165, 0], [255, 0, 0], (colorRate - 20) / (30 - 20)); // Red gradient
-				else if (colorRate <= 99) return interpolateColor([255, 0, 0], [0, 0, 0], (colorRate - 30) / (99 - 30)); // Black gradient
-				else return "#000000"; // Black for very high values
-			}
-
-			// Function to interpolate between two colors
-			function interpolateColor(color1, color2, factor) {
-				if (factor < 0) factor = 0; // Ensure factor is within range
-				if (factor > 1) factor = 1;
-
-				const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
-				const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
-				const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
-
-				return `rgb(${r}, ${g}, ${b})`; // Return the interpolated color in rgb format
-			}
-		</script>
-
-		<!-- Script to update the URL based on map state (center, zoom, and layer) -->
-		<script id="url-update-script">
-			// Function to update the URL with current map state (center, zoom, layer)
-			function updateUrl() {
-		var center = map.getCenter(); // Get map center
-		var zoom = map.getZoom(); // Get map zoom
-
-		// Get the current layer from the map
-		var currentLayer = '';
-		if (map.hasLayer(googleSatellite)) {
-			currentLayer = 'Google Satellite';
-		} else {
-			currentLayer = 'OpenStreetMap';
-		}
-
-		// Construct the new URL with map center, zoom, and layer parameters
-		var newUrl = `${window.location.pathname}?lat=${center.lat.toFixed(5)}&lon=${center.lng.toFixed(5)}&zoom=${zoom}&layer=${encodeURIComponent(currentLayer)}`;
-
-		window.history.replaceState({}, '', newUrl);
-	}
-
-	// Function to load map state from URL
-	function loadMapFromUrl() {
-		var params = new URLSearchParams(window.location.search);
-		var lat = parseFloat(params.get('lat'));
-		var lon = parseFloat(params.get('lon'));
-		var zoom = parseInt(params.get('zoom'));
-		var layer = params.get('layer');
-
-		// Set the map view if valid coordinates and zoom are provided
-		if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
-			map.setView([lat, lon], zoom);
-		} else {
-			map.setView([44.08832, 42.97577], 11); // Default view
-		}
-
-		// Load the corresponding layer based on the URL
-		if (layer === 'Google Satellite') {
-			googleSatellite.addTo(map);
-		} else {
-			osmLayer.addTo(map); // Default to OpenStreetMap if no valid layer is specified
-		}
-	}
-
-	// Load map state from URL on page load
-	loadMapFromUrl();
-
-	// Ensure the URL is updated with the correct map state when the page is first loaded
-	updateUrl();
-
-	// Event listener for layer switch to update URL immediately
-	map.on('baselayerchange', function(event) {
-		updateUrl(); // Update the URL when the layer is changed
-	});
-
-	// Call updateUrl on map move or zoom events to update the URL with new center and zoom
-	map.on('moveend', updateUrl);
-	map.on('zoomend', updateUrl);
-		</script>
-
-		<script id="file-upload-script">
-			function uploadFiles() {
-		var fileInput = document.getElementById('fileInput'); // Get file input element
-		var files = fileInput.files; // Get selected files
-
-		// Get the file overlay and progress container
-		var fileOverlay = document.getElementById('fileOverlay');
-		var fileProgressContainer = document.getElementById('fileProgressContainer');
-
-		// Ensure fileProgressContainer exists before proceeding
-		if (!fileProgressContainer) {
-				console.error("Error: File progress container not found.");
-				return; // Exit if the container is not found
-		}
-
-		// Clear previous file list and progress bars
-		fileProgressContainer.innerHTML = "";
-
-		// Store bounds for all files
-		var globalBounds = L.latLngBounds(); // Leaflet bounds object to accumulate all bounds
-
-		// Counter for tracking completed uploads
-		var completedUploads = 0;
-		var totalFiles = files.length;
-
-		// If files are selected, proceed with upload
-		if (files.length > 0) {
-				var formData = new FormData(); // Create FormData object for file upload
-
-				// Display the overlay
-				fileOverlay.style.display = "flex";
-
-				// Function to update map bounds for each file
-				function updateMapBounds(minLat, minLon, maxLat, maxLon) {
-						var fileBounds = L.latLngBounds([[minLat, minLon], [maxLat, maxLon]]);
-						globalBounds.extend(fileBounds); // Extend global bounds with file's bounds
-						map.fitBounds(globalBounds); // Update map to fit the accumulated bounds
-				}
-
-				// Function to check if all files are uploaded and processed
-				function checkIfAllUploadsComplete() {
-						completedUploads++;
-						if (completedUploads === totalFiles) {
-								// All files have been uploaded and processed
-								setTimeout(function() {
-										// Close the file overlay
-										fileOverlay.style.display = "none";
-										// Reload the page to update the URL and map
-										location.reload();
-								}, 1000); // Wait for 1 second before closing and reloading
-						}
-				}
-
-				// Upload each file asynchronously
-				for (var i = 0; i < files.length; i++) {
-						var file = files[i];
-
-						// Create a new progress block for the file
-						var fileBlock = document.createElement('div');
-						fileBlock.className = 'file-progress';
-
-						// File name
-						var fileName = document.createElement('div');
-						fileName.className = 'file-name';
-						fileName.innerText = file.name;
-
-						// Progress bar
-						var progressBar = document.createElement('div');
-						progressBar.className = 'progress-bar';
-						var progressBarInner = document.createElement('div');
-						progressBarInner.className = 'progress-bar-inner';
-						progressBar.appendChild(progressBarInner);
-
-						// Server processing indicator
-						var serverProcessing = document.createElement('div');
-						serverProcessing.className = 'server-processing';
-						serverProcessing.innerText = {{translate "waiting_for_server"}}; // Initial state
-
-						// Append file name, progress bar, and server processing indicator
-						fileBlock.appendChild(fileName);
-						fileBlock.appendChild(progressBar);
-						fileBlock.appendChild(serverProcessing);
-
-						// Add the file block to the progress container
-						fileProgressContainer.appendChild(fileBlock);
-
-						// Create a new XMLHttpRequest for each file
-						(function(progressBarInner, serverProcessing, file) {
-						var xhr = new XMLHttpRequest();
-						xhr.open('POST', '/upload', true); // Open a POST request
-
-						// Event listener for upload progress
-						xhr.upload.onprogress = function(event) {
-						if (event.lengthComputable) {
-						var percentComplete = (event.loaded / event.total) * 100; // Calculate percentage
-						progressBarInner.style.width = percentComplete + "%"; // Update progress bar
-						}
-						};
-
-						// Event listener for upload completion
-						xhr.onload = function() {
-						if (xhr.status === 200) {
-						var response = JSON.parse(xhr.responseText);
-
-						if (response.status === "success") {
-						serverProcessing.innerText = {{translate "processing_on_server"}};
-
-						// Get bounds from the response
-						var minLat = response.minLat;
-						var minLon = response.minLon;
-						var maxLat = response.maxLat;
-						var maxLon = response.maxLon;
-
-						// Simulate server processing with a timeout (replace with real server-side processing)
-						setTimeout(function() {
-						serverProcessing.innerText = {{translate "processing_complete"}};
-						serverProcessing.style.color = "green"; // Change to green when done
-
-						// Update the map for this file's bounds
-						updateMapBounds(minLat, minLon, maxLat, maxLon);
-
-// Check if all uploads are complete
-checkIfAllUploadsComplete();
-}, 2000); // Simulate 2 seconds server processing time
-} else {
-serverProcessing.innerText = {{translate "error_processing_files"}};
-															serverProcessing.style.color = "red";
-																															checkIfAllUploadsComplete(); // Still count this file as "complete"
-																																																												}
-																																																												} else {
-																																																												serverProcessing.innerText = {{translate "error_during_upload"}};
-																																																																											serverProcessing.style.color = "red";
-																																																																																											checkIfAllUploadsComplete(); // Still count this file as "complete"
-																																																																																																																								}
-																																																																																																																								};
-
-// Send the file as FormData
-var formData = new FormData();
-formData.append("files[]", file);
-								 xhr.send(formData); // Send the form data
-								 })(progressBarInner, serverProcessing, file); // Capture the current file in closure
-								 }
-								 } else {
-								 alert(translate("select_files")); // Alert user if no files were selected
-																	}
-																	}
-
-		</script>
-	</body>
+<head>
+    <!-- Установка кодировки и масштабирования страницы -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{translate "title"}}</title>
+
+    <!-- Подключение CSS Leaflet для отображения карты -->
+    <link rel="stylesheet" href="/static/leaflet.css" />
+
+    <style>
+        /* Установка высоты для тела и html, удаление отступов и полей */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden; /* Убираем полосы прокрутки */
+        }
+
+        /* Контейнер карты на всю высоту экрана */
+        #map {
+            height: 100vh; /* Высота карты равна высоте окна браузера */
+            margin: 0;
+            overflow: hidden; /* Без переполнения для контейнера карты */
+        }
+
+        /* Стили для пользовательской подсказки (tooltip) */
+        .custom-tooltip {
+            background-color: white; /* Фон подсказки */
+            border-radius: 5px; /* Скругленные углы */
+            padding: 10px; /* Внутренние отступы */
+            color: #333; /* Цвет текста */
+            box-shadow: 0px 0px 3px rgba(0,0,0,0.3); /* Тень для подсказки */
+        }
+
+        /* Контейнер для кнопки загрузки файлов, позиционирован в правом верхнем углу */
+        .upload-btn-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000; /* Поверх других элементов */
+        }
+
+        /* Стили для кнопки загрузки файлов */
+        .upload-btn {
+            background-color: white; /* Фон кнопки */
+            border: 1px solid #ccc; /* Рамка кнопки */
+            border-radius: 4px; /* Скругленные углы */
+            padding: 5px 10px; /* Внутренние отступы */
+            cursor: pointer; /* Курсор при наведении */
+            font-size: 14px; /* Размер шрифта текста кнопки */
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65); /* Тень для кнопки */
+        }
+
+        /* Стили для оверлея загрузки файлов */
+        #fileOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7); /* Полупрозрачный фон */
+            z-index: 10000; /* Поверх всех элементов */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Контейнер для отображения прогресса загрузки файлов */
+        #fileProgressContainer {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Индивидуальный блок прогресса для каждого файла */
+        .file-progress {
+            margin-bottom: 15px;
+        }
+
+        /* Имя файла */
+        .file-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        /* Прогресс-бар */
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #f4f4f4;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .progress-bar-inner {
+            height: 100%;
+            background-color: #4caf50; /* Зеленый цвет для прогресса */
+            width: 0%;
+        }
+
+        /* Индикатор обработки на сервере */
+        .server-processing {
+            margin-left: 10px;
+            font-size: 14px;
+            color: #ff9800; /* Оранжевый цвет для индикатора */
+        }
+
+        /* Эффект наведения для кнопки загрузки */
+        .upload-btn:hover {
+            background-color: #f4f4f4; /* Осветляем фон при наведении */
+        }
+
+        /* Контейнер для ссылки на GitHub */
+        .github-link {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000; /* Поверх других элементов */
+        }
+
+        /* Стили для иконки GitHub */
+        .github-icon {
+            width: 40px; /* Ширина иконки */
+            height: 40px; /* Высота иконки */
+            opacity: 0.6; /* Прозрачность для эффекта */
+        }
+
+        /* Эффект наведения для иконки GitHub */
+        .github-icon:hover {
+            opacity: 1; /* Полная непрозрачность при наведении */
+        }
+
+        /* Информация о программе рядом с иконкой GitHub */
+        .program-info {
+            position: absolute;
+            bottom: 20px;
+            left: 70px; /* Позиционируем рядом с иконкой GitHub */
+            z-index: 1000; /* Поверх других элементов */
+            color: #333; /* Цвет текста */
+            font-size: 14px; /* Размер шрифта */
+            opacity: 0.6; /* Прозрачность для эффекта */
+        }
+
+        /* Стили для ссылок в информации о программе */
+        .program-info a {
+            color: #007bff; /* Синий цвет для ссылок */
+            text-decoration: none; /* Убираем подчеркивание */
+        }
+
+        /* Эффект наведения для ссылок */
+        .program-info a:hover {
+            text-decoration: underline; /* Подчеркивание при наведении */
+        }
+
+        /* Эффект наведения для блока информации о программе */
+        .program-info:hover {
+            opacity: 1; /* Полная непрозрачность при наведении */
+        }
+    </style>
+
+    <!-- Скрипт для обработки переводов и передачи данных из Go в JavaScript -->
+    <script id="translations-script">
+        // Объект переводов, переданный из Go
+        var translations = JSON.parse('{{ .Translations | toJSON }}');
+        var currentLang = '{{ .Lang }}'; // Текущий язык
+
+        // Функция для получения перевода по ключу
+        function translate(key) {
+            // Проверяем наличие переводов на английский язык как резерв
+            if (!translations['en']) {
+                console.error('English translations not available!');
+                return key; // Возвращаем ключ, если перевод не найден
+            }
+
+            // Возвращаем перевод на текущем языке или на английском, если нет перевода
+            if (translations[currentLang] && translations[currentLang][key]) {
+                return translations[currentLang][key];
+            } else if (translations['en'][key]) {
+                return translations['en'][key];
+            }
+            return key; // Возвращаем ключ, если перевод не найден
+        }
+    </script>
+
+</head>
+
+<body>
+    <!-- Контейнер для кнопки загрузки файлов -->
+    <div class="upload-btn-container leaflet-control">
+        <label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
+        <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()"> <!-- Скрытый input для файлов -->
+    </div>
+
+    <!-- Оверлей для отображения прогресса загрузки файлов -->
+    <div id="fileOverlay" style="display: none;">
+        <div id="fileProgressContainer">
+            <!-- Здесь динамически будут добавляться элементы прогресса загрузки -->
+        </div>
+    </div>
+
+    <!-- Ссылка на репозиторий GitHub -->
+    <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
+        <img src="/static/GitHub-Mark.png" alt="GitHub" class="github-icon">
+    </a>
+
+    <!-- Информация о программе с ссылкой на версию -->
+    <div class="program-info">
+        <strong>{{translate "description"}}</strong><br>
+        v.<a href="https://files.zabiyaka.net/chicha-isotope-map/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
+    </div>
+
+    <!-- Контейнер для карты -->
+    <div id="map"></div>
+
+    <!-- Подключение JavaScript библиотеки Leaflet для работы с картой -->
+    <script src="/static/leaflet.js"></script>
+
+    <!-- Скрипт для настройки карты и добавления базовых слоёв -->
+    <script id="map-setup-script">
+        // Инициализация слоя OpenStreetMap
+        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap contributors'
+        });
+
+        // Инициализация слоя Google Satellite
+        var googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            attribution: '&copy; Google'
+        });
+
+        // Инициализация карты с центром и зумом по умолчанию
+        var map = L.map('map', {
+            center: [44.08832, 42.97577], // Координаты центра карты
+            zoom: 11,                     // Уровень зума
+            layers: [osmLayer]            // Слой по умолчанию
+        });
+
+        // Объект с базовыми слоями
+        var baseLayers = {
+            "OpenStreetMap": osmLayer,
+            "Google Satellite": googleSatellite
+        };
+
+        // Добавление контроллера слоёв на карту
+        var layerControl = L.control.layers(baseLayers, null, {
+            position: 'topleft',  // Позиция контроллера
+            collapsed: false      // Оставляем контроллер раскрытым
+        }).addTo(map);
+
+        // Объект для хранения маркеров
+        var circleMarkers = {};
+    </script>
+
+    <!-- Скрипт для обновления маркеров на карте в зависимости от зума и границ -->
+    <script id="markers-update-script">
+        // Функция для обновления маркеров на карте
+        function updateMarkers() {
+            // Получаем текущий уровень зума и границы карты
+            var zoomLevel = map.getZoom();
+            var bounds = map.getBounds();
+
+            // Если зум >= 15, используем данные для зума 15
+            if (zoomLevel >= 15) {
+                zoomLevel = 15;
+            }
+
+            // Формируем параметры запроса
+            var params = {
+                zoom: zoomLevel,
+                minLat: bounds.getSouthWest().lat,
+                minLon: bounds.getSouthWest().lng,
+                maxLat: bounds.getNorthEast().lat,
+                maxLon: bounds.getNorthEast().lng
+            };
+
+            // Отправляем AJAX-запрос на сервер для получения маркеров
+            fetch('/get_markers?' + new URLSearchParams(params))
+                .then(response => response.json())
+                .then(data => {
+                    // Удаляем предыдущие маркеры с карты
+                    for (let key in circleMarkers) {
+                        map.removeLayer(circleMarkers[key]);
+                    }
+                    circleMarkers = {}; // Очищаем объект маркеров
+
+                    // Добавляем новые маркеры на карту
+                    data.forEach(function(marker) {
+                        var markerKey = marker.id; // Используем уникальный ID маркера
+
+                        // Получаем цвет и радиус маркера
+                        var color = getGradientColor(marker.doseRate, marker.countRate);
+                        var radius = getRadius(marker.doseRate, zoomLevel);
+
+                        // Создаём круговой маркер и добавляем его на карту
+                        var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+                            radius: radius,
+                            fillColor: color,
+                            color: color,
+                            weight: 1,       // Толщина обводки
+                            opacity: 0.7,    // Прозрачность обводки
+                            fillOpacity: 0.5 // Прозрачность заливки
+                        }).addTo(map)
+                            .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
+
+                        // Сохраняем маркер в объекте
+                        circleMarkers[markerKey] = circleMarker;
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching markers:', error);
+                });
+        }
+
+        // Обновляем маркеры при загрузке карты, изменении зума или перемещении карты
+        map.on('load', updateMarkers);
+        map.on('zoomend', updateMarkers);
+        map.on('moveend', updateMarkers);
+    </script>
+
+    <!-- Скрипт для отображения содержимого всплывающего окна маркера -->
+    <script id="tooltip-content-script">
+        function getTooltipContent(marker) {
+            // Преобразуем UNIX timestamp в читаемый формат даты и времени
+            var date = new Date(marker.date * 1000);
+            var formattedDate = date.toLocaleString(); // Форматируем дату в локальном формате
+
+            // Возвращаем HTML-содержимое для всплывающего окна
+            return `
+                <div class="custom-tooltip">
+                    <strong>${translate('radiation_dose')}:</strong><br>
+                    ${marker.doseRate.toFixed(2)} µSv/h<br>
+                    <strong>${translate('count_rate')}:</strong><br>
+                    ${marker.countRate.toFixed(2)} CPS<br>
+                    <strong>${translate('speed')}:</strong><br>
+                    ${marker.speed.toFixed(2)} m/s<br>
+                    <strong>${translate('date_time')}:</strong><br>
+                    ${formattedDate}
+                </div>
+            `;
+        }
+    </script>
+
+    <!-- Скрипт для расчёта радиуса маркера на основе уровня зума -->
+    <script id="radius-calc-script">
+        function getRadius(doseRate, zoomLevel) {
+            // Определяем базовый радиус в зависимости от уровня зума
+            let baseRadius;
+
+            if (zoomLevel > 18) baseRadius = 10;
+            else if (zoomLevel == 18) baseRadius = 9;
+            else if (zoomLevel == 17) baseRadius = 8;
+            else if (zoomLevel == 16) baseRadius = 7;
+            else if (zoomLevel == 15) baseRadius = 6;
+            else if (zoomLevel == 14) baseRadius = 5;
+            else if (zoomLevel == 13) baseRadius = 4;
+            else if (zoomLevel == 12) baseRadius = 3;
+            else if (zoomLevel == 11) baseRadius = 2;
+            else baseRadius = 1;
+
+            return baseRadius; // Возвращаем соответствующий радиус
+        }
+    </script>
+
+    <!-- Скрипт для расчёта цвета маркера на основе уровня радиации и частоты счёта -->
+    <script id="color-gradient-script">
+        function getGradientColor(doseRate, countRate) {
+            // Если countRate равно нулю, используем doseRate
+            let colorRate = countRate === 0.0 ? (doseRate) : countRate;
+
+            // Возвращаем соответствующий цвет на основе colorRate
+            if (colorRate <= 4) return "#006400"; // Тёмно-зелёный для низких значений
+            else if (colorRate <= 8) return interpolateColor([0, 100, 0], [173, 255, 47], (colorRate - 4) / (8 - 4)); // Градиент зелёного
+            else if (colorRate <= 11) return interpolateColor([173, 255, 47], [255, 255, 0], (colorRate - 8) / (11 - 8)); // Градиент жёлтого
+            else if (colorRate <= 20) return interpolateColor([255, 255, 0], [255, 165, 0], (colorRate - 11) / (20 - 11)); // Градиент оранжевого
+            else if (colorRate <= 30) return interpolateColor([255, 165, 0], [255, 0, 0], (colorRate - 20) / (30 - 20)); // Градиент красного
+            else if (colorRate <= 99) return interpolateColor([255, 0, 0], [0, 0, 0], (colorRate - 30) / (99 - 30)); // Градиент к чёрному
+            else return "#000000"; // Чёрный для очень высоких значений
+        }
+
+        // Функция для интерполяции между двумя цветами
+        function interpolateColor(color1, color2, factor) {
+            if (factor < 0) factor = 0; // Ограничиваем фактор интерполяции
+            if (factor > 1) factor = 1;
+
+            const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
+            const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
+            const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
+
+            return `rgb(${r}, ${g}, ${b})`; // Возвращаем цвет в формате RGB
+        }
+    </script>
+
+    <!-- Скрипт для обновления URL на основе состояния карты (центр, зум, слой) -->
+    <script id="url-update-script">
+        // Функция для обновления URL с текущим состоянием карты
+        function updateUrl() {
+            var center = map.getCenter(); // Получаем центр карты
+            var zoom = map.getZoom();     // Получаем уровень зума
+
+            // Определяем текущий слой карты
+            var currentLayer = '';
+            if (map.hasLayer(googleSatellite)) {
+                currentLayer = 'Google Satellite';
+            } else {
+                currentLayer = 'OpenStreetMap';
+            }
+
+            // Формируем новый URL с параметрами карты
+            var newUrl = `${window.location.pathname}?lat=${center.lat.toFixed(5)}&lon=${center.lng.toFixed(5)}&zoom=${zoom}&layer=${encodeURIComponent(currentLayer)}`;
+
+            window.history.replaceState({}, '', newUrl); // Обновляем URL без перезагрузки страницы
+        }
+
+        // Функция для загрузки состояния карты из URL
+        function loadMapFromUrl() {
+            var params = new URLSearchParams(window.location.search);
+            var lat = parseFloat(params.get('lat'));
+            var lon = parseFloat(params.get('lon'));
+            var zoom = parseInt(params.get('zoom'));
+            var layer = params.get('layer');
+
+            // Устанавливаем вид карты, если параметры валидны
+            if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
+                map.setView([lat, lon], zoom);
+            } else {
+                map.setView([44.08832, 42.97577], 11); // Вид по умолчанию
+            }
+
+            // Загружаем соответствующий слой карты
+            if (layer === 'Google Satellite') {
+                googleSatellite.addTo(map);
+            } else {
+                osmLayer.addTo(map); // По умолчанию OpenStreetMap
+            }
+        }
+
+        // Загружаем состояние карты из URL при загрузке страницы
+        loadMapFromUrl();
+
+        // Обновляем URL при изменении карты
+        updateUrl();
+
+        // Обработчик изменения базового слоя
+        map.on('baselayerchange', function(event) {
+            updateUrl(); // Обновляем URL при смене слоя
+        });
+
+        // Обновляем URL при перемещении или изменении зума
+        map.on('moveend', updateUrl);
+        map.on('zoomend', updateUrl);
+    </script>
+
+    <!-- Скрипт для загрузки файлов (остается без изменений) -->
+    <script id="file-upload-script">
+        function uploadFiles() {
+            // Получаем элемент input для файлов
+            var fileInput = document.getElementById('fileInput');
+            var files = fileInput.files;
+
+            // Получаем оверлей и контейнер для прогресса
+            var fileOverlay = document.getElementById('fileOverlay');
+            var fileProgressContainer = document.getElementById('fileProgressContainer');
+
+            // Проверяем наличие контейнера
+            if (!fileProgressContainer) {
+                console.error("Error: File progress container not found.");
+                return;
+            }
+
+            // Очищаем предыдущий список файлов и прогресс-баров
+            fileProgressContainer.innerHTML = "";
+
+            // Храним границы для всех файлов
+            var globalBounds = L.latLngBounds();
+
+            // Счетчик завершенных загрузок
+            var completedUploads = 0;
+            var totalFiles = files.length;
+
+            // Если файлы выбраны, начинаем загрузку
+            if (files.length > 0) {
+                // Отображаем оверлей
+                fileOverlay.style.display = "flex";
+
+                // Функция для обновления границ карты
+                function updateMapBounds(minLat, minLon, maxLat, maxLon) {
+                    var fileBounds = L.latLngBounds([[minLat, minLon], [maxLat, maxLon]]);
+                    globalBounds.extend(fileBounds); // Расширяем общие границы
+                    map.fitBounds(globalBounds);     // Обновляем вид карты
+                }
+
+                // Функция для проверки завершения всех загрузок
+                function checkIfAllUploadsComplete() {
+                    completedUploads++;
+                    if (completedUploads === totalFiles) {
+                        // Все файлы загружены и обработаны
+                        setTimeout(function() {
+                            // Скрываем оверлей
+                            fileOverlay.style.display = "none";
+                            // Перезагружаем страницу для обновления карты
+                            location.reload();
+                        }, 1000); // Задержка 1 секунда
+                    }
+                }
+
+                // Загрузка каждого файла асинхронно
+                for (var i = 0; i < files.length; i++) {
+                    var file = files[i];
+
+                    // Создаем блок прогресса для файла
+                    var fileBlock = document.createElement('div');
+                    fileBlock.className = 'file-progress';
+
+                    // Имя файла
+                    var fileName = document.createElement('div');
+                    fileName.className = 'file-name';
+                    fileName.innerText = file.name;
+
+                    // Прогресс-бар
+                    var progressBar = document.createElement('div');
+                    progressBar.className = 'progress-bar';
+                    var progressBarInner = document.createElement('div');
+                    progressBarInner.className = 'progress-bar-inner';
+                    progressBar.appendChild(progressBarInner);
+
+                    // Индикатор обработки на сервере
+                    var serverProcessing = document.createElement('div');
+                    serverProcessing.className = 'server-processing';
+                    serverProcessing.innerText = translate("waiting_for_server"); // Начальное состояние
+
+                    // Добавляем элементы в блок файла
+                    fileBlock.appendChild(fileName);
+                    fileBlock.appendChild(progressBar);
+                    fileBlock.appendChild(serverProcessing);
+
+                    // Добавляем блок файла в контейнер прогресса
+                    fileProgressContainer.appendChild(fileBlock);
+
+                    // Создаем новый XMLHttpRequest для каждого файла
+                    (function(progressBarInner, serverProcessing, file) {
+                        var xhr = new XMLHttpRequest();
+                        xhr.open('POST', '/upload', true);
+
+                        // Обработчик прогресса загрузки
+                        xhr.upload.onprogress = function(event) {
+                            if (event.lengthComputable) {
+                                var percentComplete = (event.loaded / event.total) * 100;
+                                progressBarInner.style.width = percentComplete + "%";
+                            }
+                        };
+
+                        // Обработчик завершения загрузки
+                        xhr.onload = function() {
+                            if (xhr.status === 200) {
+                                var response = JSON.parse(xhr.responseText);
+
+                                if (response.status === "success") {
+                                    serverProcessing.innerText = translate("processing_on_server");
+
+                                    // Получаем границы из ответа
+                                    var minLat = response.minLat;
+                                    var minLon = response.minLon;
+                                    var maxLat = response.maxLat;
+                                    var maxLon = response.maxLon;
+
+                                    // Симулируем обработку на сервере с задержкой
+                                    setTimeout(function() {
+                                        serverProcessing.innerText = translate("processing_complete");
+                                        serverProcessing.style.color = "green";
+
+                                        // Обновляем границы карты
+                                        updateMapBounds(minLat, minLon, maxLat, maxLon);
+
+                                        // Проверяем завершение всех загрузок
+                                        checkIfAllUploadsComplete();
+                                    }, 2000); // Задержка 2 секунды
+                                } else {
+                                    serverProcessing.innerText = translate("error_processing_files");
+                                    serverProcessing.style.color = "red";
+                                    checkIfAllUploadsComplete();
+                                }
+                            } else {
+                                serverProcessing.innerText = translate("error_during_upload");
+                                serverProcessing.style.color = "red";
+                                checkIfAllUploadsComplete();
+                            }
+                        };
+
+                        // Отправляем файл как FormData
+                        var formData = new FormData();
+                        formData.append("files[]", file);
+                        xhr.send(formData);
+                    })(progressBarInner, serverProcessing, file);
+                }
+            } else {
+                alert(translate("select_files")); // Уведомляем пользователя, если файлы не выбраны
+            }
+        }
+    </script>
+</body>
 </html>
 

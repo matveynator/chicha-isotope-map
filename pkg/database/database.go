@@ -70,7 +70,9 @@ func (db *Database) InitSchema() error {
 		date INTEGER,   -- Timestamp (UNIX time format)
 		lon REAL,       -- Longitude of the marker
 		lat REAL,       -- Latitude of the marker
-		countRate REAL  -- Count rate (CPS)
+		countRate REAL, -- Count rate (CPS)
+		zoom INTEGER,   -- Zoom level (1-20)
+		speed REAL      -- Current speed (m/s)  
 	);
 	`
 	// Execute the schema creation statement
@@ -112,12 +114,12 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 		query = `
 		SELECT COUNT(1)
 		FROM markers
-		WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5`
+		WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5 AND zoom = $6 AND speed = $7`
 	default:
 		query = `
 		SELECT COUNT(1)
 		FROM markers
-		WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ?`
+		WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ? AND zoom = ? AND speed = ?`
 	}
 
 	// Выполнение запроса для проверки существования маркера
@@ -126,7 +128,9 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 	marker.Date,
 	marker.Lon,
 	marker.Lat,
-	marker.CountRate).Scan(&count)
+	marker.CountRate,
+	marker.Zoom,
+	marker.Speed).Scan(&count)
 
 	if err != nil {
 		return err
@@ -134,7 +138,7 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 
 	// Если маркер уже существует, возвращаем nil
 	if count > 0 {
-		log.Printf("Marker (%f, %d, %f, %f, %f) already exists.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
+		log.Printf("Marker (%f, %d, %f, %f, %f, %d, %f) already exists.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate, marker.Zoom, marker.Speed)
 		return nil
 	}
 
@@ -148,16 +152,15 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 	switch dbType {
 	case "pgx":
 		query = `
-		INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+		INSERT INTO markers (id, doseRate, date, lon, lat, countRate, zoom, speed)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	default:
 		query = `
-		INSERT INTO markers (id, doseRate, date, lon, lat, countRate)
-		VALUES (?, ?, ?, ?, ?, ?)`
+		INSERT INTO markers (id, doseRate, date, lon, lat, countRate, zoom, speed)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	}
 
-	_, err = db.DB.Exec(query,
-	nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate)
+	_, err = db.DB.Exec(query, nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate, marker.Zoom, marker.Speed)
 
 	return err
 }
@@ -178,10 +181,58 @@ func (db *Database) LoadMarkers() ([]Marker, error) {
 	// Iterate over the result set and scan each row into a Marker struct
 	for rows.Next() {
 		var marker Marker
-		if err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate); err != nil {
+		if err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed); err != nil {
 			return nil, err
 		}
 		markers = append(markers, marker) // Add each marker to the slice
 	}
 	return markers, nil // Return the slice of markers
 }
+
+// GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.
+func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
+	var query string
+
+	// Use appropriate placeholders depending on the database type
+	switch dbType {
+	case "pgx": // PostgreSQL
+		query = `
+		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed
+		FROM markers
+		WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
+		`
+	default: // SQLite or Genji
+		query = `
+		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed
+		FROM markers
+		WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
+		`
+	}
+
+	// Execute the query with the appropriate placeholders
+	rows, err := db.DB.Query(query, zoom, minLat, maxLat, minLon, maxLon)
+	if err != nil {
+		return nil, fmt.Errorf("error querying markers: %v", err)
+	}
+	defer rows.Close()
+
+	var markers []Marker
+
+	// Iterate over the rows and scan each result into a Marker struct
+	for rows.Next() {
+		var marker Marker
+		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning marker: %v", err)
+		}
+		markers = append(markers, marker)
+	}
+
+	// Check for any errors encountered during iteration
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over result set: %v", err)
+	}
+
+	return markers, nil
+}
+
