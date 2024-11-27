@@ -15,7 +15,6 @@ import (
 	"math"
 	"mime/multipart"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -377,35 +376,6 @@ func calculateAverages(markers []database.Marker) (avgDoseRate, avgCountRate, av
 	return
 }
 
-// Load data from a file, filter out empty values and duplicates
-func loadDataFromFile(filename string) (database.Data, error) {
-	var data database.Data
-
-	// Open the file
-	file, err := os.Open(filename)
-	if err != nil {
-		return data, err
-	}
-	defer file.Close()
-
-	// Read the file content into bytes
-	byteValue, err := ioutil.ReadAll(file)
-	if err != nil {
-		return data, err
-	}
-
-	// Parse the JSON data
-	err = json.Unmarshal(byteValue, &data)
-	if err != nil {
-		return data, err
-	}
-
-	// Filter unique markers
-	data.Markers = filterZeroMarkers(data.Markers)
-
-	return data, nil
-}
-
 // Parse a string value into a float64
 func parseFloat(value string) float64 {
 	parsedValue, _ := strconv.ParseFloat(value, 64)
@@ -658,7 +628,7 @@ func processKMLFile(file multipart.File) (uniqueMarkers []database.Marker) {
 		return
 	}
 
-	uniqueMarkers = filterZeroMarkers(markers)
+	uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(markers))
 	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
 	// Save the markers to the database
@@ -713,7 +683,7 @@ func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 				return
 			}
 
-			uniqueMarkers = append(uniqueMarkers, filterZeroMarkers(markers)...)
+			uniqueMarkers = append(uniqueMarkers, calculateZoomMarkers(filterZeroMarkers(markers))...)
 
 			doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
@@ -826,7 +796,7 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 			log.Println("Error parsing text RCTRK file:", err)
 			return
 		}
-		uniqueMarkers = filterZeroMarkers(markers)
+		uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(markers))
 		doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 	}
 
@@ -880,7 +850,7 @@ func processAtomFastFile(file multipart.File) (uniqueMarkers []database.Marker) 
 		markers = append(markers, marker)
 	}
 
-	uniqueMarkers = filterZeroMarkers(markers)
+	uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(markers))
 	doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
 	// Save markers to the database
