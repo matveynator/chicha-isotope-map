@@ -3,7 +3,6 @@ package main
 import (
 	"archive/zip"
 	"bytes"
-	"sort"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -13,16 +12,17 @@ import (
 	"io/fs"
 	"io/ioutil"
 	"log"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
-	"time"
-	"math"
 	"sync"
+	"time"
 
 	"isotope-pathways/pkg/config"
 	"isotope-pathways/pkg/database"
@@ -57,33 +57,31 @@ var db *database.Database
 
 // Convert Rh to Sv
 func convertRhToSv(markers []database.Marker) []database.Marker {
-    filteredMarkers := []database.Marker{}
-    const conversionFactor = 0.01 // 1 Rh = 0.01 Sv
+	filteredMarkers := []database.Marker{}
+	const conversionFactor = 0.01 // 1 Rh = 0.01 Sv
 
-    for _, newMarker := range markers {
-        // Convert DoseRate to Sv
-        newMarker.DoseRate = newMarker.DoseRate * conversionFactor
-        filteredMarkers = append(filteredMarkers, newMarker)
-    }
+	for _, newMarker := range markers {
+		// Convert DoseRate to Sv
+		newMarker.DoseRate = newMarker.DoseRate * conversionFactor
+		filteredMarkers = append(filteredMarkers, newMarker)
+	}
 
-    return filteredMarkers
+	return filteredMarkers
 }
 
 // Convert Sv to Rh
 func convertSvToRh(markers []database.Marker) []database.Marker {
-    filteredMarkers := []database.Marker{}
-    const conversionFactor = 100.0 // 1 Sv = 100 Rh
+	filteredMarkers := []database.Marker{}
+	const conversionFactor = 100.0 // 1 Sv = 100 Rh
 
-    for _, newMarker := range markers {
-        // Convert DoseRate to Rh
-        newMarker.DoseRate = newMarker.DoseRate * conversionFactor
-        filteredMarkers = append(filteredMarkers, newMarker)
-    }
+	for _, newMarker := range markers {
+		// Convert DoseRate to Rh
+		newMarker.DoseRate = newMarker.DoseRate * conversionFactor
+		filteredMarkers = append(filteredMarkers, newMarker)
+	}
 
-    return filteredMarkers
+	return filteredMarkers
 }
-
-
 
 // Filter ZERO markers
 func filterZeroMarkers(markers []database.Marker) []database.Marker {
@@ -100,9 +98,9 @@ func filterZeroMarkers(markers []database.Marker) []database.Marker {
 	return filteredMarkers
 }
 
-// haversineDistance рассчитывает расстояние между двумя географическими точками.
+// haversineDistance calculates the distance between two geographic points.
 func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
-	const R = 6371000 // Радиус Земли в метрах
+	const R = 6371000 // Earth radius in meters
 	phi1 := lat1 * math.Pi / 180.0
 	phi2 := lat2 * math.Pi / 180.0
 	deltaPhi := (lat2 - lat1) * math.Pi / 180.0
@@ -115,174 +113,256 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	return R * c
 }
 
+// calculateSpeedForMarkers calculates the average speed using a sliding window.
 func calculateSpeedForMarkers(markers []database.Marker, windowSize int) []database.Marker {
-    // Проверяем, что количество маркеров больше 1
-    if len(markers) < 2 {
-        for i := range markers {
-            markers[i].Speed = 0
-        }
-        return markers
-    }
+	// Check if there are enough markers
+	if len(markers) < 2 {
+		for i := range markers {
+			markers[i].Speed = 0
+		}
+		return markers
+	}
 
-    // Сортируем маркеры по времени, если они не отсортированы
-    sort.Slice(markers, func(i, j int) bool {
-        return markers[i].Date < markers[j].Date
-    })
+	// Sort markers by date
+	sort.Slice(markers, func(i, j int) bool {
+		return markers[i].Date < markers[j].Date
+	})
 
-    // Инициализируем переменные для скользящего окна
-    var distances []float64
-    var timeDiffs []float64
+	// Initialize slices for distances and time differences
+	var distances []float64
+	var timeDiffs []float64
 
-    // Рассчитываем расстояния и временные интервалы между последовательными маркерами
-    for i := 1; i < len(markers); i++ {
-        prevMarker := markers[i-1]
-        currMarker := markers[i]
+	// Calculate distances and time differences between consecutive markers
+	for i := 1; i < len(markers); i++ {
+		prevMarker := markers[i-1]
+		currMarker := markers[i]
 
-        distance := haversineDistance(prevMarker.Lat, prevMarker.Lon, currMarker.Lat, currMarker.Lon)
-        timeDiff := float64(currMarker.Date - prevMarker.Date)
+		distance := haversineDistance(prevMarker.Lat, prevMarker.Lon, currMarker.Lat, currMarker.Lon)
+		timeDiff := float64(currMarker.Date - prevMarker.Date)
 
-        if timeDiff > 0 {
-            distances = append(distances, distance)
-            timeDiffs = append(timeDiffs, timeDiff)
-        } else {
-            distances = append(distances, 0)
-            timeDiffs = append(timeDiffs, 1) // Избегаем деления на ноль
-        }
-    }
+		if timeDiff > 0 {
+			distances = append(distances, distance)
+			timeDiffs = append(timeDiffs, timeDiff)
+		} else {
+			distances = append(distances, 0)
+			timeDiffs = append(timeDiffs, 1) // Avoid division by zero
+		}
+	}
 
-    // Рассчитываем среднюю скорость для каждого маркера с использованием скользящего окна
-    for i := 0; i < len(markers); i++ {
-        start := max(0, i-windowSize+1)
-        end := i
+	// Calculate average speed for each marker using sliding window
+	for i := 0; i < len(markers); i++ {
+		start := max(0, i-windowSize+1)
+		end := i
 
-        var totalDistance float64
-        var totalTime float64
+		var totalDistance float64
+		var totalTime float64
 
-        for j := start; j <= end && j < len(distances); j++ {
-            totalDistance += distances[j]
-            totalTime += timeDiffs[j]
-        }
+		for j := start; j <= end && j < len(distances); j++ {
+			totalDistance += distances[j]
+			totalTime += timeDiffs[j]
+		}
 
-        var avgSpeed float64
-        if totalTime > 0 {
-            avgSpeed = totalDistance / totalTime
-        } else {
-            avgSpeed = 0
-        }
+		var avgSpeed float64
+		if totalTime > 0 {
+			avgSpeed = totalDistance / totalTime
+		} else {
+			avgSpeed = 0
+		}
 
-        markers[i].Speed = avgSpeed
-    }
+		markers[i].Speed = avgSpeed
+	}
 
-    // Устанавливаем скорость первого маркера в 0
-    if len(markers) > 0 {
-        markers[0].Speed = 0
-    }
+	// Set speed of the first marker to 0
+	if len(markers) > 0 {
+		markers[0].Speed = 0
+	}
 
-    return markers
+	return markers
 }
 
-// Вспомогательная функция для нахождения максимума из двух чисел
+// Helper function to find the maximum of two integers
 func max(a, b int) int {
-    if a > b {
-        return a
-    }
-    return b
+	if a > b {
+		return a
+	}
+	return b
 }
 
-
-// calculateZoomMarkers обрабатывает маркеры для создания данных для каждого уровня зума с оптимизацией и улучшенным расчетом скорости.
+// calculateZoomMarkers processes markers to create data for each zoom level using spatial clustering.
 func calculateZoomMarkers(markers []database.Marker) []database.Marker {
-    zoomPercentages := map[int]int{
-        1:  1,
-        2:  2,
-        3:  3,
-        4:  4,
-        5:  5,
-        6:  6,
-        7:  7,
-        8:  8,
-        9:  9,
-        10: 10,
-        11: 11,
-        12: 12,
-        13: 13,
-        14: 60,
-        15: 70,
-				16: 80,
-				17: 90,
-				18: 100,
-				19: 100,
-				20: 100,
-    }
+	var resultMarkers []database.Marker
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
-    var resultMarkers []database.Marker
-    var mu sync.Mutex
-    var wg sync.WaitGroup
+	// Process each zoom level from 1 to 20
+	for zoomLevel := 1; zoomLevel <= 20; zoomLevel++ {
+		wg.Add(1)
+		go func(zoomLevel int) {
+			defer wg.Done()
 
-    for zoomLevel := 1; zoomLevel <= 15; zoomLevel++ {
-        percentage, exists := zoomPercentages[zoomLevel]
-        if !exists {
-            continue
-        }
+			// Define the maximum distance threshold for clustering (in meters)
+			distanceThreshold := getDistanceThresholdForZoom(zoomLevel)
 
-        wg.Add(1)
-        go func(zoomLevel, percentage int) {
-            defer wg.Done()
+			// Sort markers by latitude and longitude
+			sort.Slice(markers, func(i, j int) bool {
+				if markers[i].Lat == markers[j].Lat {
+					return markers[i].Lon < markers[j].Lon
+				}
+				return markers[i].Lat < markers[j].Lat
+			})
 
-            var zoomMarkers []database.Marker
+			// Cluster markers based on proximity and group size
+			var clusters [][]database.Marker
+			visited := make([]bool, len(markers))
 
-            if percentage < 100 {
-                groupSize := int(100 / percentage)
-                for i := 0; i < len(markers); i += groupSize {
-                    end := i + groupSize
-                    if end > len(markers) {
-                        end = len(markers)
-                    }
-                    group := markers[i:end]
+			for i := 0; i < len(markers); i++ {
+				if visited[i] {
+					continue
+				}
+				cluster := []database.Marker{markers[i]}
+				visited[i] = true
 
-                    var sumDoseRate float64
-                    var sumCountRate float64
+				for j := i + 1; j < len(markers); j++ {
+					if visited[j] {
+						continue
+					}
+					distance := haversineDistance(markers[i].Lat, markers[i].Lon, markers[j].Lat, markers[j].Lon)
+					if distance <= distanceThreshold {
+						cluster = append(cluster, markers[j])
+						visited[j] = true
+						if len(cluster) >= 10 { // Limit cluster size to 10 markers
+							break
+						}
+					}
+				}
+				clusters = append(clusters, cluster)
+			}
 
-                    for _, m := range group {
-                        sumDoseRate += m.DoseRate
-                        sumCountRate += m.CountRate
-                    }
-                    avgDoseRate := sumDoseRate / float64(len(group))
-                    avgCountRate := sumCountRate / float64(len(group))
+			var zoomMarkers []database.Marker
 
-                    newMarker := database.Marker{
-                        // ID будет заполнен при добавлении в БД
-                        DoseRate:  avgDoseRate,
-                        Date:      group[len(group)-1].Date, // Берём дату последнего маркера в группе
-                        Lon:       group[len(group)-1].Lon,
-                        Lat:       group[len(group)-1].Lat,
-                        CountRate: avgCountRate,
-                        Zoom:      zoomLevel,
-                        Speed:     0, // Будет рассчитано позже
-                    }
-                    zoomMarkers = append(zoomMarkers, newMarker)
-                }
-            } else {
-                // Для 100% зума копируем все маркеры, но оставляем ID пустым
-                zoomMarkers = append(zoomMarkers, markers...)
-            }
+			// Process each cluster to calculate averages
+			for _, cluster := range clusters {
+				avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon, date := calculateAverages(cluster)
 
-            // Рассчитываем скорость для маркеров текущего уровня зума
-            windowSize := 10 // Размер окна для скользящего среднего
-            zoomMarkers = calculateSpeedForMarkers(zoomMarkers, windowSize)
+				newMarker := database.Marker{
+					DoseRate:  avgDoseRate,
+					Date:      date,
+					Lon:       avgLon,
+					Lat:       avgLat,
+					CountRate: avgCountRate,
+					Zoom:      zoomLevel,
+					Speed:     avgSpeed,
+				}
+				zoomMarkers = append(zoomMarkers, newMarker)
+			}
 
-            // Добавляем рассчитанные маркеры в общий результат
-            mu.Lock()
-            resultMarkers = append(resultMarkers, zoomMarkers...)
-            mu.Unlock()
-        }(zoomLevel, percentage)
-    }
+			mu.Lock()
+			resultMarkers = append(resultMarkers, zoomMarkers...)
+			mu.Unlock()
+		}(zoomLevel)
+	}
 
-    wg.Wait()
+	wg.Wait()
 
-    return resultMarkers
+	return resultMarkers
 }
 
+// getDistanceThresholdForZoom returns the distance threshold in meters for clustering at a given zoom level
+func getDistanceThresholdForZoom(zoomLevel int) float64 {
+	// You can adjust these values based on your requirements
+	// For example, at lower zoom levels, we have larger clusters
+	switch zoomLevel {
+	case 1:
+		return 5000000 // 5000 km
+	case 2:
+		return 2500000 // 2500 km
+	case 3:
+		return 1000000 // 1000 km
+	case 4:
+		return 500000  // 500 km
+	case 5:
+		return 250000  // 250 km
+	case 6:
+		return 100000  // 100 km
+	case 7:
+		return 50000   // 50 km
+	case 8:
+		return 25000   // 25 km
+	case 9:
+		return 10000   // 10 km
+	case 10:
+		return 5000    // 5 km
+	case 11:
+		return 2500    // 2.5 km
+	case 12:
+		return 1000    // 1 km
+	case 13:
+		return 500     // 500 m
+	case 14:
+		return 250     // 250 m
+	case 15:
+		return 100     // 100 m
+	case 16:
+		return 50      // 50 m
+	case 17:
+		return 25      // 25 m
+	case 18:
+		return 10      // 10 m
+	case 19:
+		return 5       // 5 m
+	case 20:
+		return 2       // 2 m
+	default:
+		return 1000 // Default to 1 km
+	}
+}
+
+// calculateAverages calculates average values for a cluster of markers
+func calculateAverages(markers []database.Marker) (avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon float64, date int64) {
+	var sumDoseRate, sumCountRate, sumSpeed, sumLat, sumLon float64
+	var totalTime float64
+
+	// Sort markers by date
+	sort.Slice(markers, func(i, j int) bool {
+		return markers[i].Date < markers[j].Date
+	})
+
+	for i, m := range markers {
+		sumDoseRate += m.DoseRate
+		sumCountRate += m.CountRate
+		sumLat += m.Lat
+		sumLon += m.Lon
+
+		if i > 0 {
+			prevM := markers[i-1]
+			distance := haversineDistance(prevM.Lat, prevM.Lon, m.Lat, m.Lon)
+			timeDiff := float64(m.Date - prevM.Date)
+
+			if timeDiff > 0 {
+				speed := distance / timeDiff
+				sumSpeed += speed
+				totalTime += timeDiff
+			}
+		}
+	}
+
+	n := float64(len(markers))
+	avgDoseRate = sumDoseRate / n
+	avgCountRate = sumCountRate / n
+	avgLat = sumLat / n
+	avgLon = sumLon / n
+
+	if totalTime > 0 {
+		avgSpeed = sumSpeed / (n - 1)
+	} else {
+		avgSpeed = 0
+	}
+
+	// Use the date of the last marker
+	date = markers[len(markers)-1].Date
+
+	return
+}
 
 // Load data from a file, filter out empty values and duplicates
 func loadDataFromFile(filename string) (database.Data, error) {
@@ -400,84 +480,84 @@ func extractCountRate(description string) float64 {
 
 // Helper to estimate the time zone based on longitude
 func getTimeZoneByLongitude(lon float64) *time.Location {
-    switch {
-    // Europe and Africa
-    case lon >= -10 && lon <= 0: // UK, Portugal
-        loc, _ := time.LoadLocation("Europe/London")
-        return loc
-    case lon > 0 && lon <= 15: // Central Europe (Germany, France, Spain)
-        loc, _ := time.LoadLocation("Europe/Berlin")
-        return loc
-    case lon > 15 && lon <= 30: // Eastern Europe (Ukraine, Romania, Greece)
-        loc, _ := time.LoadLocation("Europe/Kiev")
-        return loc
-    case lon > 30 && lon <= 45: // Further East (Moscow, parts of Russia)
-        loc, _ := time.LoadLocation("Europe/Moscow")
-        return loc
-    case lon > 45 && lon <= 60: // Ural region
-        loc, _ := time.LoadLocation("Asia/Yekaterinburg")
-        return loc
-    case lon > 60 && lon <= 90: // Western Siberia
-        loc, _ := time.LoadLocation("Asia/Novosibirsk")
-        return loc
-    case lon > 90 && lon <= 120: // Eastern Siberia
-        loc, _ := time.LoadLocation("Asia/Irkutsk")
-        return loc
-    case lon > 120 && lon <= 135: // Far East (Yakutsk)
-        loc, _ := time.LoadLocation("Asia/Yakutsk")
-        return loc
-    case lon > 135 && lon <= 180: // Far East (Vladivostok)
-        loc, _ := time.LoadLocation("Asia/Vladivostok")
-        return loc
+	switch {
+	// Europe and Africa
+	case lon >= -10 && lon <= 0: // UK, Portugal
+		loc, _ := time.LoadLocation("Europe/London")
+		return loc
+	case lon > 0 && lon <= 15: // Central Europe (Germany, France, Spain)
+		loc, _ := time.LoadLocation("Europe/Berlin")
+		return loc
+	case lon > 15 && lon <= 30: // Eastern Europe (Ukraine, Romania, Greece)
+		loc, _ := time.LoadLocation("Europe/Kiev")
+		return loc
+	case lon > 30 && lon <= 45: // Further East (Moscow, parts of Russia)
+		loc, _ := time.LoadLocation("Europe/Moscow")
+		return loc
+	case lon > 45 && lon <= 60: // Ural region
+		loc, _ := time.LoadLocation("Asia/Yekaterinburg")
+		return loc
+	case lon > 60 && lon <= 90: // Western Siberia
+		loc, _ := time.LoadLocation("Asia/Novosibirsk")
+		return loc
+	case lon > 90 && lon <= 120: // Eastern Siberia
+		loc, _ := time.LoadLocation("Asia/Irkutsk")
+		return loc
+	case lon > 120 && lon <= 135: // Far East (Yakutsk)
+		loc, _ := time.LoadLocation("Asia/Yakutsk")
+		return loc
+	case lon > 135 && lon <= 180: // Far East (Vladivostok)
+		loc, _ := time.LoadLocation("Asia/Vladivostok")
+		return loc
 
-    // Americas
-    case lon >= -180 && lon < -150: // Alaska
-        loc, _ := time.LoadLocation("America/Anchorage")
-        return loc
-    case lon >= -150 && lon < -120: // Pacific Time (USA West Coast)
-        loc, _ := time.LoadLocation("America/Los_Angeles")
-        return loc
-    case lon >= -120 && lon < -90: // Mountain Time
-        loc, _ := time.LoadLocation("America/Denver")
-        return loc
-    case lon >= -90 && lon < -60: // Central Time
-        loc, _ := time.LoadLocation("America/Chicago")
-        return loc
-    case lon >= -60 && lon < -30: // Eastern Time (East Coast USA)
-        loc, _ := time.LoadLocation("America/New_York")
-        return loc
-    case lon >= -30 && lon < 0: // Atlantic Time (Eastern Canada)
-        loc, _ := time.LoadLocation("America/Halifax")
-        return loc
+	// Americas
+	case lon >= -180 && lon < -150: // Alaska
+		loc, _ := time.LoadLocation("America/Anchorage")
+		return loc
+	case lon >= -150 && lon < -120: // Pacific Time (USA West Coast)
+		loc, _ := time.LoadLocation("America/Los_Angeles")
+		return loc
+	case lon >= -120 && lon < -90: // Mountain Time
+		loc, _ := time.LoadLocation("America/Denver")
+		return loc
+	case lon >= -90 && lon < -60: // Central Time
+		loc, _ := time.LoadLocation("America/Chicago")
+		return loc
+	case lon >= -60 && lon < -30: // Eastern Time (East Coast USA)
+		loc, _ := time.LoadLocation("America/New_York")
+		return loc
+	case lon >= -30 && lon < 0: // Atlantic Time (Eastern Canada)
+		loc, _ := time.LoadLocation("America/Halifax")
+		return loc
 
-    // Asia
-    case lon >= 60 && lon < 75: // Pakistan
-        loc, _ := time.LoadLocation("Asia/Karachi")
-        return loc
-    case lon >= 75 && lon < 90: // India
-        loc, _ := time.LoadLocation("Asia/Kolkata")
-        return loc
-    case lon >= 90 && lon < 105: // Bangladesh
-        loc, _ := time.LoadLocation("Asia/Dhaka")
-        return loc
-    case lon >= 105 && lon < 120: // Thailand, Vietnam
-        loc, _ := time.LoadLocation("Asia/Bangkok")
-        return loc
-    case lon >= 120 && lon < 135: // China
-        loc, _ := time.LoadLocation("Asia/Shanghai")
-        return loc
-    case lon >= 135 && lon < 150: // Japan
-        loc, _ := time.LoadLocation("Asia/Tokyo")
-        return loc
-    case lon >= 150 && lon <= 180: // Australia East Coast
-        loc, _ := time.LoadLocation("Australia/Sydney")
-        return loc
+	// Asia
+	case lon >= 60 && lon < 75: // Pakistan
+		loc, _ := time.LoadLocation("Asia/Karachi")
+		return loc
+	case lon >= 75 && lon < 90: // India
+		loc, _ := time.LoadLocation("Asia/Kolkata")
+		return loc
+	case lon >= 90 && lon < 105: // Bangladesh
+		loc, _ := time.LoadLocation("Asia/Dhaka")
+		return loc
+	case lon >= 105 && lon < 120: // Thailand, Vietnam
+		loc, _ := time.LoadLocation("Asia/Bangkok")
+		return loc
+	case lon >= 120 && lon < 135: // China
+		loc, _ := time.LoadLocation("Asia/Shanghai")
+		return loc
+	case lon >= 135 && lon < 150: // Japan
+		loc, _ := time.LoadLocation("Asia/Tokyo")
+		return loc
+	case lon >= 150 && lon <= 180: // Australia East Coast
+		loc, _ := time.LoadLocation("Australia/Sydney")
+		return loc
 
-    // Default to UTC for undefined regions
-    default:
-        loc, _ := time.LoadLocation("UTC")
-        return loc
-    }
+	// Default to UTC for undefined regions
+	default:
+		loc, _ := time.LoadLocation("UTC")
+		return loc
+	}
 }
 
 // Helper to parse a date in the format "Feb 3, 2024 19:44:03"
@@ -582,8 +662,8 @@ func processKMLFile(file multipart.File) (uniqueMarkers []database.Marker) {
 // Process and extract data from a KMZ file (a compressed version of KML)
 func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
-      // Initialize uniqueMarkers as an empty slice at the start
-			      uniqueMarkers = []database.Marker{}
+	// Initialize uniqueMarkers as an empty slice at the start
+	uniqueMarkers = []database.Marker{}
 
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
@@ -620,7 +700,7 @@ func processKMZFile(file multipart.File) (uniqueMarkers []database.Marker) {
 				return
 			}
 
-			uniqueMarkers =  append (uniqueMarkers, filterZeroMarkers(markers)...)
+			uniqueMarkers = append(uniqueMarkers, filterZeroMarkers(markers)...)
 
 			doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 
@@ -733,7 +813,7 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 			log.Println("Error parsing text RCTRK file:", err)
 			return
 		}
-		uniqueMarkers := filterZeroMarkers(markers)
+		uniqueMarkers = filterZeroMarkers(markers)
 		doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 	}
 
@@ -879,11 +959,11 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Return the bounds as part of the response
 	response := map[string]interface{}{
-		"status":  "success",
-		"minLat":  minLat,
-		"minLon":  minLon,
-		"maxLat":  maxLat,
-		"maxLon":  maxLon,
+		"status": "success",
+		"minLat": minLat,
+		"minLon": minLon,
+		"maxLat": maxLat,
+		"maxLon": maxLon,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -988,7 +1068,6 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(markers)
 }
 
-
 // =====================
 // MAIN ENTRY POINT
 // =====================
@@ -1056,3 +1135,4 @@ func main() {
 	log.Printf("Application running at: http://localhost:%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
+
