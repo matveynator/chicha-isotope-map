@@ -12,7 +12,8 @@ type Marker struct {
 
 // Data represents a set of markers and associated metadata.
 type Data struct {
-	ID      string   `json:"id"`      // Unique identifier for the dataset (could be a UUID or string-based ID)
-	Markers []Marker `json:"markers"` // Slice of Marker structs representing individual measurements
-	Title   string   `json:"title"`   // Title or description of the dataset
+	ID          string   `json:"id"`      // Unique identifier for the dataset (could be a UUID or string-based ID)
+	Markers     []Marker `json:"markers"` // Slice of Marker structs representing individual measurements
+	Title       string   `json:"title"`   // Title or description of the dataset
+	IsSievert   bool     `json:"sv"`      // Is data in Sievert (1) or Roentgen (1/100)  format? 
 }

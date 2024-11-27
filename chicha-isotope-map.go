@@ -52,6 +52,36 @@ var db *database.Database
 // DATA PROCESSING HELPERS
 // =====================
 
+// Convert Rh to Sv
+func convertRhToSv(markers []database.Marker) []database.Marker {
+    filteredMarkers := []database.Marker{}
+    const conversionFactor = 0.01 // 1 Rh = 0.01 Sv
+
+    for _, newMarker := range markers {
+        // Convert DoseRate to Sv
+        newMarker.DoseRate = newMarker.DoseRate * conversionFactor
+        filteredMarkers = append(filteredMarkers, newMarker)
+    }
+
+    return filteredMarkers
+}
+
+// Convert Sv to Rh
+func convertSvToRh(markers []database.Marker) []database.Marker {
+    filteredMarkers := []database.Marker{}
+    const conversionFactor = 100.0 // 1 Sv = 100 Rh
+
+    for _, newMarker := range markers {
+        // Convert DoseRate to Rh
+        newMarker.DoseRate = newMarker.DoseRate * conversionFactor
+        filteredMarkers = append(filteredMarkers, newMarker)
+    }
+
+    return filteredMarkers
+}
+
+
+
 // Filter ZERO markers
 func filterZeroMarkers(markers []database.Marker) []database.Marker {
 	filteredMarkers := []database.Marker{}
@@ -502,7 +532,11 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 
 	err = json.Unmarshal(data, &rctrkData)
 	if err == nil {
-		uniqueMarkers = filterZeroMarkers(rctrkData.Markers)
+		if rctrkData.IsSievert {
+			uniqueMarkers = filterZeroMarkers(convertSvToRh(rctrkData.Markers))
+		} else {
+			uniqueMarkers = filterZeroMarkers(rctrkData.Markers)
+		}
 		doseData.Markers = append(doseData.Markers, uniqueMarkers...)
 	} else {
 		// If it's not JSON, try parsing as a text format
@@ -560,7 +594,7 @@ func processAtomFastFile(file multipart.File) (uniqueMarkers []database.Marker) 
 			Date:      record.T / 1000, // Convert milliseconds to seconds
 			Lon:       record.Lng,
 			Lat:       record.Lat,
-			CountRate: record.D * 100, // AtomFast devices don't provide CPS, assume dose is CPS
+			CountRate: record.D, // AtomFast devices don't provide CPS, assume dose is CPS
 		}
 		markers = append(markers, marker)
 	}

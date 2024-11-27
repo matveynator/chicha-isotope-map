@@ -342,9 +342,9 @@ body, html {
 		<!-- Script to generate tooltip content for markers -->
 		<script id="tooltip-content-script">
 			function getTooltipContent(marker) {
-				// Convert dose rate to microRoentgens
-				var doseRateInMicroSieverts = marker.doseRate;
-				var doseRateInMicroRoentgens = doseRateInMicroSieverts * 100;
+				// Convert dose rate to microSieverts (default is MicroRoentgens).
+				var doseRateInMicroRoentgens = marker.doseRate;
+				var doseRateInMicroSieverts = doseRateInMicroRoentgens/100;
 
 				// Convert UNIX timestamp to readable date format
 				var date = new Date(marker.date * 1000);
@@ -379,27 +379,27 @@ body, html {
 				} else if (zoomLevel == 14) {
 					return markers;
 				} else if (zoomLevel == 13) {
-					return markers.filter((_, index) => index % 5 === 0); // Display fewer markers
+					return markers;
 				} else if (zoomLevel == 12) {
-					return markers.filter((_, index) => index % 10 === 0);
+					return markers.filter((_, index) => index % 5 === 0);
 				} else if (zoomLevel == 11) {
-					return markers.filter((_, index) => index % 15 === 0);
+					return markers.filter((_, index) => index % 10 === 0);
 				} else if (zoomLevel == 10) {
 					return markers.filter((_, index) => index % 20 === 0);
 				} else if (zoomLevel == 9) {
-					return markers.filter((_, index) => index % 25 === 0);
-				} else if (zoomLevel == 8) {
 					return markers.filter((_, index) => index % 30 === 0);
-				} else if (zoomLevel == 7) {
-					return markers.filter((_, index) => index % 35 === 0);
-				} else if (zoomLevel == 6) {
-					return markers.filter((_, index) => index % 40 === 0);
-				} else if (zoomLevel == 5) {
-					return markers.filter((_, index) => index % 45 === 0);
-				} else if (zoomLevel == 4) {
+				} else if (zoomLevel == 8) {
 					return markers.filter((_, index) => index % 50 === 0);
+				} else if (zoomLevel == 7) {
+					return markers.filter((_, index) => index % 70 === 0);
+				} else if (zoomLevel == 6) {
+					return markers.filter((_, index) => index % 90 === 0);
+				} else if (zoomLevel == 5) {
+					return markers.filter((_, index) => index % 93 === 0);
+				} else if (zoomLevel == 4) {
+					return markers.filter((_, index) => index % 96 === 0);
 				} else {
-					return markers.filter((_, index) => index % 55 === 0);
+					return markers.filter((_, index) => index % 99 === 0);
 				}
 			}
 		</script>
@@ -429,7 +429,7 @@ body, html {
 		<script id="color-gradient-script">
 			function getGradientColor(doseRate, countRate) {
 				// If countRate is zero, base the color on doseRate
-				let colorRate = countRate === 0.0 ? (doseRate * 100) : countRate;
+				let colorRate = countRate === 0.0 ? (doseRate) : countRate;
 
 				// Return the appropriate color based on the countRate
 				if (colorRate <= 4) return "#006400"; // Dark green for low values
