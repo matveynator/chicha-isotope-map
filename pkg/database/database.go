@@ -169,7 +169,7 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 func (db *Database) LoadMarkers() ([]Marker, error) {
 	// Query to select all marker attributes from the 'markers' table
 	rows, err := db.DB.Query(`
-	SELECT id, doseRate, date, lon, lat, countRate FROM markers
+	SELECT id, doseRate, date, lon, lat, countRate, zoom, speed FROM markers
 	`)
 	if err != nil {
 		return nil, err
