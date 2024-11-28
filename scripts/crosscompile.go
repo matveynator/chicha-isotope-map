@@ -58,7 +58,7 @@ func main() {
 		"openbsd", "plan9", "solaris", "windows", "wasip1", "zos",
 	}
 
-	//osList = []string{ "linux",}
+	osList = []string{ "darwin",}
 
 	archList := []string{
 		"amd64", "386", "arm", "arm64", "loong64", "mips64",
@@ -86,9 +86,9 @@ func main() {
 
 			outputPath := filepath.Join(outputDir, execFileName)
 
-			//fmt.Printf("Builgding %s for %s/%s ...\n", goSourceFile, osName, arch)
-			ldflags := fmt.Sprintf("-X config.CompileVersion=%s", version)
+			ldflags := fmt.Sprintf("-X 'main.CompileVersion=%s'", version)
 			buildCmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", outputPath, goSourceFile)
+
 			buildCmd.Env = append(os.Environ(), "GOOS="+osName, "GOARCH="+arch)
 			if err := buildCmd.Run(); err != nil {
 				// Remove the directory if build fails

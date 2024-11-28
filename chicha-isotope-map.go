@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"isotope-pathways/pkg/config"
 	"isotope-pathways/pkg/database"
 )
 
@@ -45,6 +44,7 @@ var dbName = flag.String("db-name", "IsotopePathways", "Database name (applicabl
 var pgSSLMode = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode: disable, allow, prefer, require, verify-ca, or verify-full")
 var port = flag.Int("port", 8765, "Port for running the server")
 var version = flag.Bool("version", false, "Show the application version")
+var CompileVersion = "dev"
 
 // Database instance
 var db *database.Database
@@ -980,8 +980,8 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}).ParseFS(content, "public_html/map.html"))
 
-	if config.CompileVersion == "dev" {
-		config.CompileVersion = "latest"
+	if CompileVersion == "dev" {
+		CompileVersion = "latest"
 	}
 
 	// Updated struct to include the Lang field
@@ -992,7 +992,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		Lang         string
 	}{
 		Markers:      doseData.Markers,
-		Version:      config.CompileVersion,
+		Version:      CompileVersion,
 		Translations: translations, // Pass the entire translation map, not just one language
 		Lang:         lang,
 	}
@@ -1069,7 +1069,7 @@ func main() {
 
 	// Handle version flag
 	if *version {
-		fmt.Printf("isotope-pathways version %s\n", config.CompileVersion)
+		fmt.Printf("isotope-pathways version %s\n", CompileVersion)
 		return
 	}
 
