@@ -65,7 +65,7 @@ func main() {
 		"openbsd", "plan9", "solaris", "windows", "wasip1", "zos",
 	}
 
-	osList = []string{ "darwin",}
+	//osList = []string{ "darwin",}
 
 	archList := []string{
 		"amd64", "386", "arm", "arm64", "loong64", "mips64",
