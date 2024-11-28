@@ -190,7 +190,7 @@ func max(a, b int) int {
 func calculateZoomMarkers(markers []database.Marker) []database.Marker {
     resultMarkers := []database.Marker{}
 
-    maxClusterZoomLevel := 15
+    maxClusterZoomLevel := 17
     numZoomLevels := 20
 
     // Сортируем маркеры один раз перед запуском горутин
@@ -298,8 +298,12 @@ func getDistanceThresholdForZoom(zoomLevel int) float64 {
         return 100     // 100 м
     case 15:    
 		    return 50      // 50 м
+    case 16:
+        return 25      // 25 м
+    case 17:
+        return 10      // 10 м
     default:
-        return 0 // Для уровней зума ≥16 кластеризация не нужна
+        return 0 // Для уровней зума ≥18 кластеризация не нужна
     }
 }
 
@@ -788,9 +792,9 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	err = json.Unmarshal(data, &rctrkData)
 	if err == nil {
 		if rctrkData.IsSievert {
-			uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(convertSvToRh(rctrkData.Markers)))
-		} else {
 			uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(rctrkData.Markers))
+		} else {
+			uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(convertRhToSv(rctrkData.Markers)))
 		}
 
 		doseData.Markers = append(doseData.Markers, uniqueMarkers...)

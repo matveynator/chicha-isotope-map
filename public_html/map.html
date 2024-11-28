@@ -289,7 +289,7 @@
                         var markerKey = marker.id; // Используем уникальный ID маркера
 
                         // Получаем цвет и радиус маркера
-                        var color = getGradientColor(marker.doseRate, marker.countRate);
+                        var color = getGradientColor(marker.doseRate);
                         var radius = getRadius(marker.doseRate, zoomLevel);
 
                         // Создаём круговой маркер и добавляем его на карту
@@ -326,18 +326,18 @@
             var formattedDate = date.toLocaleString(); // Форматируем дату в локальном формате
 
             // Возвращаем HTML-содержимое для всплывающего окна
-            return `
-                <div class="custom-tooltip">
-                    <strong>${translate('radiation_dose')}:</strong><br>
-                    ${marker.doseRate.toFixed(2)} µSv/h<br>
-                    <strong>${translate('count_rate')}:</strong><br>
-                    ${marker.countRate.toFixed(2)} CPS<br>
-                    <strong>${translate('speed')}:</strong><br>
-                    ${marker.speed.toFixed(2)} m/s<br>
-                    <strong>${translate('date_time')}:</strong><br>
-                    ${formattedDate}
-                </div>
-            `;
+						return `
+<div class="custom-tooltip">
+		<div class="tooltip-row">
+				<strong>${translate('radiation_dose')}:</strong>
+				<span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
+		</div>
+		<div class="tooltip-row">
+				<strong>${translate('speed')}:</strong>
+				<span>${marker.speed.toFixed(2)} m/s</span>
+		</div>
+</div>
+						`;
         }
     </script>
 
@@ -362,34 +362,31 @@
         }
     </script>
 
-    <!-- Скрипт для расчёта цвета маркера на основе уровня радиации и частоты счёта -->
-    <script id="color-gradient-script">
-        function getGradientColor(doseRate, countRate) {
-            // Если countRate равно нулю, используем doseRate
-            let colorRate = countRate === 0.0 ? (doseRate) : countRate;
+		<!-- Скрипт для расчёта цвета маркера на основе уровня радиации и частоты счёта -->
+		<script id="color-gradient-script">
+			function getGradientColor(doseRate) {
+				// Возвращаем соответствующий цвет на основе doseRate
+				if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный для низких значений
+				else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04)); // Градиент зелёного
+				else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08)); // Градиент жёлтого
+				else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11)); // Градиент оранжевого
+				else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20)); // Градиент красного
+				else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30)); // Градиент к чёрному
+				else return "#000000"; // Чёрный для очень высоких значений
+		}
 
-            // Возвращаем соответствующий цвет на основе colorRate
-            if (colorRate <= 4) return "#006400"; // Тёмно-зелёный для низких значений
-            else if (colorRate <= 8) return interpolateColor([0, 100, 0], [173, 255, 47], (colorRate - 4) / (8 - 4)); // Градиент зелёного
-            else if (colorRate <= 11) return interpolateColor([173, 255, 47], [255, 255, 0], (colorRate - 8) / (11 - 8)); // Градиент жёлтого
-            else if (colorRate <= 20) return interpolateColor([255, 255, 0], [255, 165, 0], (colorRate - 11) / (20 - 11)); // Градиент оранжевого
-            else if (colorRate <= 30) return interpolateColor([255, 165, 0], [255, 0, 0], (colorRate - 20) / (30 - 20)); // Градиент красного
-            else if (colorRate <= 99) return interpolateColor([255, 0, 0], [0, 0, 0], (colorRate - 30) / (99 - 30)); // Градиент к чёрному
-            else return "#000000"; // Чёрный для очень высоких значений
-        }
+		// Функция для интерполяции между двумя цветами
+		function interpolateColor(color1, color2, factor) {
+				if (factor < 0) factor = 0; // Ограничиваем фактор интерполяции
+				if (factor > 1) factor = 1;
 
-        // Функция для интерполяции между двумя цветами
-        function interpolateColor(color1, color2, factor) {
-            if (factor < 0) factor = 0; // Ограничиваем фактор интерполяции
-            if (factor > 1) factor = 1;
+				const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
+				const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
+				const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
 
-            const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
-            const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
-            const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
-
-            return `rgb(${r}, ${g}, ${b})`; // Возвращаем цвет в формате RGB
-        }
-    </script>
+				return `rgb(${r}, ${g}, ${b})`; // Возвращаем цвет в формате RGB
+		}
+		</script>
 
 		<!-- Скрипт для расчёта прозрачности заливки маркера на основе скорости -->
 		<script id="fill-opacity-script">
