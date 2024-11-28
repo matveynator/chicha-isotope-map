@@ -75,7 +75,7 @@ Choose the version for your platform and start tracking isotope trails:
 ## Install and run on Linux amd64:
 
 ```bash
-curl https://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/amd64/chicha-isotope-map > /usr/local/bin/chicha-isotope-map; chmpod +x /usr/local/bin/chicha-isotope-map; /usr/local/bin/chicha-isotope-map;
+curl https://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/amd64/chicha-isotope-map > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; /usr/local/bin/chicha-isotope-map;
 ```
 
 ---
