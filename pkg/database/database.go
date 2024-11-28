@@ -8,8 +8,21 @@ import (
 
 // Database represents the interface for interacting with the database.
 type Database struct {
-	DB           *sql.DB    // The underlying SQL database connection
-	idSyncChan   chan bool  // Channel for synchronizing ID generation
+	DB          *sql.DB    // The underlying SQL database connection
+	idGenerator chan int64 // Channel for generating unique IDs
+}
+
+// Id generator routine with channel
+func startIDGenerator(initialID int64) chan int64 {
+	idChannel := make(chan int64)
+	go func(start int64) {
+		currentID := start
+		for {
+			idChannel <- currentID
+			currentID++
+		}
+	}(initialID)
+	return idChannel
 }
 
 // Config holds the configuration details for initializing the database.
@@ -37,7 +50,7 @@ func NewDatabase(config Config) (*Database, error) {
 		}
 	case "pgx":
 		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName, config.PGSSLMode)
+			config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName, config.PGSSLMode)
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
@@ -54,12 +67,28 @@ func NewDatabase(config Config) (*Database, error) {
 	// Log the database type and location being used
 	log.Printf("Using database driver: %s with DSN: %s", config.DBType, dsn)
 
-	// Initialize the idSyncChan with a buffer of 1
+	// Get the maximum current ID from the database
+	var maxID sql.NullInt64 // Variable to hold the max ID (nullable)
+
+	// Query to find the maximum ID in the 'markers' table
+	_ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxID)
+
+	// If a valid max ID is found, set initialID to maxID + 1
+	initialID := int64(1)
+	if maxID.Valid {
+		initialID = maxID.Int64 + 1
+	} 
+
+	// Start the ID generator goroutine
+	idChannel := startIDGenerator(initialID)
+
+	// Return the Database struct with the idGenerator channel
 	return &Database{
-		DB:         db,
-		idSyncChan: make(chan bool, 1),
+		DB:          db,
+		idGenerator: idChannel,
 	}, nil
 }
+
 // InitSchema initializes the database schema for storing data (markers).
 func (db *Database) InitSchema() error {
 	// SQL schema to create the 'markers' table if it doesn't exist
@@ -80,33 +109,10 @@ func (db *Database) InitSchema() error {
 	return err // Return the error if any
 }
 
-// getNextID finds the maximum current id in the 'markers' table and returns the next available ID.
-func (db *Database) getNextID() (int64, error) {
-	var maxID sql.NullInt64 // Variable to hold the max ID (nullable)
-
-	// Query to find the maximum ID in the 'markers' table
-	err := db.DB.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxID)
-	if err != nil {
-		return 0, fmt.Errorf("error retrieving the maximum ID: %v", err)
-	}
-
-	// If a valid max ID is found, return the next ID (maxID + 1)
-	if maxID.Valid {
-		return maxID.Int64 + 1, nil
-	}
-	return 1, nil // If no records exist, return 1 as the starting ID
-}
-
-// SaveMarkerAtomic uses a channel to ensure atomic access to ID generation and insertion.
+// SaveMarkerAtomic saves a marker atomically using the idGenerator channel for unique IDs.
 func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 	var count int
 	var query string
-
-	// Заблокировать доступ через канал
-	db.idSyncChan <- true
-	defer func() {
-		<-db.idSyncChan // Освобождение канала после выполнения
-	}()
 
 	// Определение SQL-запроса в зависимости от типа базы данных
 	switch dbType {
@@ -124,13 +130,13 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 
 	// Выполнение запроса для проверки существования маркера
 	err := db.DB.QueryRow(query,
-	marker.DoseRate,
-	marker.Date,
-	marker.Lon,
-	marker.Lat,
-	marker.CountRate,
-	marker.Zoom,
-	marker.Speed).Scan(&count)
+		marker.DoseRate,
+		marker.Date,
+		marker.Lon,
+		marker.Lat,
+		marker.CountRate,
+		marker.Zoom,
+		marker.Speed).Scan(&count)
 
 	if err != nil {
 		return err
@@ -142,11 +148,8 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 		return nil
 	}
 
-	// Получаем следующий ID
-	nextID, err := db.getNextID()
-	if err != nil {
-		return fmt.Errorf("error getting the next ID: %v", err)
-	}
+	// Получаем следующий ID из генератора
+	nextID := <-db.idGenerator
 
 	// Вставляем новый маркер с вручную сгенерированным ID
 	switch dbType {
