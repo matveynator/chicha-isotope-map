@@ -1,4 +1,4 @@
-module isotope-pathways
+module chicha-isotope-map
 
 go 1.23
 

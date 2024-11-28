@@ -12,6 +12,13 @@ import (
 
 func main() {
 
+	//download all modules
+	goModTidy := exec.Command("go", "mod", "tidy")
+	if err := goModTidy.Run(); err != nil {
+		fmt.Printf("go mod tidy - failed: %s\n;", err)
+	}
+
+
 	// Step 1: Automatically find the main Go file
 	goSourceFile, err := findMainGoFile()
 

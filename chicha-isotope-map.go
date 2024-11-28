@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"isotope-pathways/pkg/database"
+	"chicha-isotope-map/pkg/database"
 )
 
 // Embedding files from the public_html folder for static serving
