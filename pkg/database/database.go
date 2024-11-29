@@ -90,23 +90,64 @@ func NewDatabase(config Config) (*Database, error) {
 }
 
 // InitSchema initializes the database schema for storing data (markers).
-func (db *Database) InitSchema() error {
-	// SQL schema to create the 'markers' table if it doesn't exist
-	schema := `
-	CREATE TABLE IF NOT EXISTS markers (
-		id INTEGER PRIMARY KEY, -- Custom ID generated manually
-		doseRate REAL,  -- Radiation dose rate (in µSv/h)
-		date INTEGER,   -- Timestamp (UNIX time format)
-		lon REAL,       -- Longitude of the marker
-		lat REAL,       -- Latitude of the marker
-		countRate REAL, -- Count rate (CPS)
-		zoom INTEGER,   -- Zoom level (1-20)
-		speed REAL      -- Current speed (m/s)  
-	);
-	`
-	// Execute the schema creation statement
-	_, err := db.DB.Exec(schema)
-	return err // Return the error if any
+func (db *Database) InitSchema(config Config) error {
+    var schema string
+
+    switch config.DBType {
+    case "pgx": // PostgreSQL
+        schema = `
+        CREATE TABLE IF NOT EXISTS markers (
+            id SERIAL PRIMARY KEY,
+            doseRate REAL,
+            date BIGINT,
+            lon REAL,
+            lat REAL,
+            countRate REAL,
+            zoom INTEGER,
+            speed REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed);
+        CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
+        `
+
+    case "sqlite": // SQLite
+        schema = `
+        CREATE TABLE IF NOT EXISTS markers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doseRate REAL,
+            date INTEGER,
+            lon REAL,
+            lat REAL,
+            countRate REAL,
+            zoom INTEGER,
+            speed REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed);
+        CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
+        `
+
+    case "genji": // Genji
+        schema = `
+        CREATE TABLE IF NOT EXISTS markers (
+            id INTEGER PRIMARY KEY,
+            doseRate REAL,
+            date INTEGER,
+            lon REAL,
+            lat REAL,
+            countRate REAL,
+            zoom INTEGER,
+            speed REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed);
+        CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
+        `
+    default:
+        return fmt.Errorf("unsupported database type: %s", config.DBType)
+    }
+
+    // Выполняем создание таблиц и индексов
+    _, err := db.DB.Exec(schema)
+    return err
 }
 
 // SaveMarkerAtomic saves a marker atomically using the idGenerator channel for unique IDs.
@@ -166,30 +207,6 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 	_, err = db.DB.Exec(query, nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate, marker.Zoom, marker.Speed)
 
 	return err
-}
-
-// LoadMarkers loads all markers from the 'markers' table in the database.
-func (db *Database) LoadMarkers() ([]Marker, error) {
-	// Query to select all marker attributes from the 'markers' table
-	rows, err := db.DB.Query(`
-	SELECT id, doseRate, date, lon, lat, countRate, zoom, speed FROM markers
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close() // Ensure rows are closed after the function returns
-
-	var markers []Marker // Slice to hold the loaded markers
-
-	// Iterate over the result set and scan each row into a Marker struct
-	for rows.Next() {
-		var marker Marker
-		if err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed); err != nil {
-			return nil, err
-		}
-		markers = append(markers, marker) // Add each marker to the slice
-	}
-	return markers, nil // Return the slice of markers
 }
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.

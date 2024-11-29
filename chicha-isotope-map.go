@@ -1097,16 +1097,8 @@ func main() {
 	}
 
 	// Initialize the database schema
-	if err := db.InitSchema(); err != nil {
+	if err := db.InitSchema(dbConfig); err != nil {
 		log.Fatalf("Error initializing database schema: %v", err)
-	}
-
-	// Load data from the database
-	markers, err := db.LoadMarkers()
-	if err != nil {
-		log.Printf("Error loading markers from database: %v", err)
-	} else {
-		doseData.Markers = append(doseData.Markers, filterZeroMarkers(markers)...)
 	}
 
 	// Set up the web server
