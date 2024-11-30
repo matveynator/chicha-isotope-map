@@ -77,7 +77,7 @@ func NewDatabase(config Config) (*Database, error) {
 	initialID := int64(1)
 	if maxID.Valid {
 		initialID = maxID.Int64 + 1
-	} 
+	}
 
 	// Start the ID generator goroutine
 	idChannel := startIDGenerator(initialID)
@@ -91,11 +91,11 @@ func NewDatabase(config Config) (*Database, error) {
 
 // InitSchema initializes the database schema for storing data (markers).
 func (db *Database) InitSchema(config Config) error {
-    var schema string
+	var schema string
 
-    switch config.DBType {
-    case "pgx": // PostgreSQL
-        schema = `
+	switch config.DBType {
+	case "pgx": // PostgreSQL
+		schema = `
         CREATE TABLE IF NOT EXISTS markers (
             id SERIAL PRIMARY KEY,
             doseRate REAL,
@@ -110,8 +110,8 @@ func (db *Database) InitSchema(config Config) error {
         CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
         `
 
-    case "sqlite": // SQLite
-        schema = `
+	case "sqlite": // SQLite
+		schema = `
         CREATE TABLE IF NOT EXISTS markers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             doseRate REAL,
@@ -126,8 +126,8 @@ func (db *Database) InitSchema(config Config) error {
         CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
         `
 
-    case "genji": // Genji
-        schema = `
+	case "genji": // Genji
+		schema = `
         CREATE TABLE IF NOT EXISTS markers (
             id INTEGER PRIMARY KEY,
             doseRate REAL,
@@ -138,16 +138,14 @@ func (db *Database) InitSchema(config Config) error {
             zoom INTEGER,
             speed REAL
         );
-        CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed);
-        CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
         `
-    default:
-        return fmt.Errorf("unsupported database type: %s", config.DBType)
-    }
+	default:
+		return fmt.Errorf("unsupported database type: %s", config.DBType)
+	}
 
-    // Выполняем создание таблиц и индексов
-    _, err := db.DB.Exec(schema)
-    return err
+	// Выполняем создание таблиц и индексов
+	_, err := db.DB.Exec(schema)
+	return err
 }
 
 // SaveMarkerAtomic saves a marker atomically using the idGenerator channel for unique IDs.
@@ -255,4 +253,3 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 
 	return markers, nil
 }
-

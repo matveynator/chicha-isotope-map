@@ -18,7 +18,6 @@ func main() {
 		fmt.Printf("go mod tidy - failed: %s\n;", err)
 	}
 
-
 	// Step 1: Automatically find the main Go file
 	goSourceFile, err := findMainGoFile()
 
@@ -212,4 +211,3 @@ func findMainGoFile() (string, error) {
 	}
 	return "", fmt.Errorf("No main Go file found in the current directory")
 }
-

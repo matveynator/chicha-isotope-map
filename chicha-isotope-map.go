@@ -188,155 +188,154 @@ func max(a, b int) int {
 
 // calculateZoomMarkers processes markers to create data for each zoom level using spatial clustering.
 func calculateZoomMarkers(markers []database.Marker) []database.Marker {
-    resultMarkers := []database.Marker{}
+	resultMarkers := []database.Marker{}
 
-    maxClusterZoomLevel := 17
-    numZoomLevels := 20
+	maxClusterZoomLevel := 17
+	numZoomLevels := 20
 
-    // Сортируем маркеры один раз перед запуском горутин
-    sortedMarkers := make([]database.Marker, len(markers))
-    copy(sortedMarkers, markers)
-    sort.Slice(sortedMarkers, func(i, j int) bool {
-        if sortedMarkers[i].Lat == sortedMarkers[j].Lat {
-            return sortedMarkers[i].Lon < sortedMarkers[j].Lon
-        }
-        return sortedMarkers[i].Lat < sortedMarkers[j].Lat
-    })
+	// Сортируем маркеры один раз перед запуском горутин
+	sortedMarkers := make([]database.Marker, len(markers))
+	copy(sortedMarkers, markers)
+	sort.Slice(sortedMarkers, func(i, j int) bool {
+		if sortedMarkers[i].Lat == sortedMarkers[j].Lat {
+			return sortedMarkers[i].Lon < sortedMarkers[j].Lon
+		}
+		return sortedMarkers[i].Lat < sortedMarkers[j].Lat
+	})
 
-    // Канал для сбора результатов от горутин
-    resultsChan := make(chan []database.Marker, numZoomLevels)
+	// Канал для сбора результатов от горутин
+	resultsChan := make(chan []database.Marker, numZoomLevels)
 
-    // Запускаем горутины для каждого уровня зума
-    for zoomLevel := 1; zoomLevel <= numZoomLevels; zoomLevel++ {
-        zoomLevel := zoomLevel // Захватываем значение переменной zoomLevel для горутины
-        go func() {
-            var zoomMarkers []database.Marker
+	// Запускаем горутины для каждого уровня зума
+	for zoomLevel := 1; zoomLevel <= numZoomLevels; zoomLevel++ {
+		zoomLevel := zoomLevel // Захватываем значение переменной zoomLevel для горутины
+		go func() {
+			var zoomMarkers []database.Marker
 
-            if zoomLevel <= maxClusterZoomLevel {
-                // Для уровней зума ≤ maxClusterZoomLevel выполняем кластеризацию
-                distanceThreshold := getDistanceThresholdForZoom(zoomLevel)
+			if zoomLevel <= maxClusterZoomLevel {
+				// Для уровней зума ≤ maxClusterZoomLevel выполняем кластеризацию
+				distanceThreshold := getDistanceThresholdForZoom(zoomLevel)
 
-                // Используем предсортированный список маркеров
-                clusters := clusterMarkers(sortedMarkers, distanceThreshold)
+				// Используем предсортированный список маркеров
+				clusters := clusterMarkers(sortedMarkers, distanceThreshold)
 
-                // Обрабатываем каждый кластер для расчёта средних значений
-                for _, cluster := range clusters {
-                    avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon, date := calculateAverages(cluster)
+				// Обрабатываем каждый кластер для расчёта средних значений
+				for _, cluster := range clusters {
+					avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon, date := calculateAverages(cluster)
 
-                    newMarker := database.Marker{
-                        DoseRate:  avgDoseRate,
-                        Date:      date,
-                        Lon:       avgLon,
-                        Lat:       avgLat,
-                        CountRate: avgCountRate,
-                        Zoom:      zoomLevel,
-                        Speed:     avgSpeed,
-                    }
-                    zoomMarkers = append(zoomMarkers, newMarker)
-                }
-            } else {
-                // Для уровней зума > maxClusterZoomLevel используем все маркеры без кластеризации
-                zoomMarkers = make([]database.Marker, len(markers))
-                for i, m := range markers {
-                    newMarker := m
-                    newMarker.Zoom = zoomLevel
-                    zoomMarkers[i] = newMarker
-                }
+					newMarker := database.Marker{
+						DoseRate:  avgDoseRate,
+						Date:      date,
+						Lon:       avgLon,
+						Lat:       avgLat,
+						CountRate: avgCountRate,
+						Zoom:      zoomLevel,
+						Speed:     avgSpeed,
+					}
+					zoomMarkers = append(zoomMarkers, newMarker)
+				}
+			} else {
+				// Для уровней зума > maxClusterZoomLevel используем все маркеры без кластеризации
+				zoomMarkers = make([]database.Marker, len(markers))
+				for i, m := range markers {
+					newMarker := m
+					newMarker.Zoom = zoomLevel
+					zoomMarkers[i] = newMarker
+				}
 
-                // Рассчитываем скорость для этих маркеров
-                windowSize := 10
-                zoomMarkers = calculateSpeedForMarkers(zoomMarkers, windowSize)
-            }
+				// Рассчитываем скорость для этих маркеров
+				windowSize := 10
+				zoomMarkers = calculateSpeedForMarkers(zoomMarkers, windowSize)
+			}
 
-            // Отправляем результаты в канал
-            resultsChan <- zoomMarkers
-        }()
-    }
+			// Отправляем результаты в канал
+			resultsChan <- zoomMarkers
+		}()
+	}
 
-    // Собираем результаты от всех горутин
-    for i := 0; i < numZoomLevels; i++ {
-        zoomMarkers := <-resultsChan
-        resultMarkers = append(resultMarkers, zoomMarkers...)
-    }
+	// Собираем результаты от всех горутин
+	for i := 0; i < numZoomLevels; i++ {
+		zoomMarkers := <-resultsChan
+		resultMarkers = append(resultMarkers, zoomMarkers...)
+	}
 
-    // Закрываем канал
-    close(resultsChan)
+	// Закрываем канал
+	close(resultsChan)
 
-    return resultMarkers
+	return resultMarkers
 }
 
 // getDistanceThresholdForZoom returns the distance threshold in meters for clustering at a given zoom level
 func getDistanceThresholdForZoom(zoomLevel int) float64 {
-    switch zoomLevel {
-    case 1:
-        return 5000000 // 5000 км
-    case 2:
-        return 2500000 // 2500 км
-    case 3:
-        return 1000000 // 1000 км
-    case 4:
-        return 500000  // 500 км
-    case 5:
-        return 250000  // 250 км
-    case 6:
-        return 10000  // 10 км
-    case 7:
-        return 5000   // 5 км
-    case 8:
-        return 2500   // 2.5 км
-    case 9:
-        return 2000   // 2 км
-    case 10:
-        return 1500    // 1.5 км
-    case 11:
-        return 1200    // 1.2 км
-    case 12:
-        return 1000    // 1 км
-    case 13:
-        return 500     // 500 м
-    case 14:
-        return 100     // 100 м
-    case 15:    
-		    return 50      // 50 м
-    case 16:
-        return 25      // 25 м
-    case 17:
-        return 10      // 10 м
-    default:
-        return 0 // Для уровней зума ≥18 кластеризация не нужна
-    }
+	switch zoomLevel {
+	case 1:
+		return 5000000 // 5000 км
+	case 2:
+		return 2500000 // 2500 км
+	case 3:
+		return 1000000 // 1000 км
+	case 4:
+		return 500000 // 500 км
+	case 5:
+		return 250000 // 250 км
+	case 6:
+		return 10000 // 10 км
+	case 7:
+		return 5000 // 5 км
+	case 8:
+		return 2500 // 2.5 км
+	case 9:
+		return 2000 // 2 км
+	case 10:
+		return 1500 // 1.5 км
+	case 11:
+		return 1200 // 1.2 км
+	case 12:
+		return 1000 // 1 км
+	case 13:
+		return 500 // 500 м
+	case 14:
+		return 100 // 100 м
+	case 15:
+		return 50 // 50 м
+	case 16:
+		return 25 // 25 м
+	case 17:
+		return 10 // 10 м
+	default:
+		return 0 // Для уровней зума ≥18 кластеризация не нужна
+	}
 }
 
 func clusterMarkers(markers []database.Marker, distanceThreshold float64) [][]database.Marker {
-    var clusters [][]database.Marker
-    visited := make([]bool, len(markers))
+	var clusters [][]database.Marker
+	visited := make([]bool, len(markers))
 
-    for i := 0; i < len(markers); i++ {
-        if visited[i] {
-            continue
-        }
-        cluster := []database.Marker{markers[i]}
-        visited[i] = true
+	for i := 0; i < len(markers); i++ {
+		if visited[i] {
+			continue
+		}
+		cluster := []database.Marker{markers[i]}
+		visited[i] = true
 
-        for j := i + 1; j < len(markers); j++ {
-            if visited[j] {
-                continue
-            }
-            distance := haversineDistance(markers[i].Lat, markers[i].Lon, markers[j].Lat, markers[j].Lon)
-            if distance <= distanceThreshold {
-                cluster = append(cluster, markers[j])
-                visited[j] = true
-                if len(cluster) >= 10 { // Ограничиваем размер кластера до 10 маркеров
-                    break
-                }
-            }
-        }
-        clusters = append(clusters, cluster)
-    }
+		for j := i + 1; j < len(markers); j++ {
+			if visited[j] {
+				continue
+			}
+			distance := haversineDistance(markers[i].Lat, markers[i].Lon, markers[j].Lat, markers[j].Lon)
+			if distance <= distanceThreshold {
+				cluster = append(cluster, markers[j])
+				visited[j] = true
+				if len(cluster) >= 10 { // Ограничиваем размер кластера до 10 маркеров
+					break
+				}
+			}
+		}
+		clusters = append(clusters, cluster)
+	}
 
-    return clusters
+	return clusters
 }
-
 
 // calculateAverages calculates average values for a cluster of markers
 func calculateAverages(markers []database.Marker) (avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon float64, date int64) {
@@ -787,10 +786,13 @@ func processRCTRKFile(file multipart.File) (uniqueMarkers []database.Marker) {
 	// Try parsing as JSON first
 
 	//init empty rctrkData
-	rctrkData := database.Data{}
+	rctrkData := database.Data{
+		IsSievert: true, // Устанавливаем значение по умолчанию
+	}
 
 	err = json.Unmarshal(data, &rctrkData)
 	if err == nil {
+
 		if rctrkData.IsSievert {
 			uniqueMarkers = calculateZoomMarkers(filterZeroMarkers(rctrkData.Markers))
 		} else {
@@ -1119,4 +1121,3 @@ func main() {
 	log.Printf("Application running at: http://localhost:%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
-
