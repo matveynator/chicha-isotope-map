@@ -2,4 +2,4 @@
 *.sqlite
 binaries
 chicha-isotope-map
-.go.sum
+go.sum
