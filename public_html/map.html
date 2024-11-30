@@ -224,14 +224,12 @@
     </div>
 
     <!-- Контейнер для кнопки центрирования карты по текущему местоположению -->
-    <div class="locate-btn-container leaflet-control">
-        <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
-            <!-- Стандартная иконка геолокации (используется SVG) -->
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#000000" viewBox="0 0 24 24">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5 14.5 7.62 14.5 9 13.38 11.5 12 11.5z"/>
-            </svg>
-        </button>
-    </div>
+		<div class="locate-btn-container leaflet-control">
+			<button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
+				<img src="/static/images/marker-icon-2x.png" alt="Locate" style="width: 30px;">
+			</button>
+		</div>
+
 
     <!-- Оверлей для отображения прогресса загрузки файлов -->
     <div id="fileOverlay" style="display: none;">
@@ -242,7 +240,7 @@
 
     <!-- Ссылка на репозиторий GitHub -->
     <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
-        <img src="/static/GitHub-Mark.png" alt="GitHub" class="github-icon">
+        <img src="/static/images/GitHub-Mark.png" alt="GitHub" class="github-icon">
     </a>
 
     <!-- Информация о программе с ссылкой на версию -->
