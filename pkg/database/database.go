@@ -6,13 +6,26 @@ import (
 	"log"
 )
 
-// Database represents the interface for interacting with the database.
+// Database представляет интерфейс для взаимодействия с базой данных.
 type Database struct {
-	DB          *sql.DB    // The underlying SQL database connection
-	idGenerator chan int64 // Channel for generating unique IDs
+	DB          *sql.DB    // Подключение к базе данных
+	idGenerator chan int64 // Канал для генерации уникальных ID
 }
 
-// Id generator routine with channel
+// Config содержит конфигурационные параметры для инициализации базы данных.
+type Config struct {
+	DBType    string // Тип драйвера базы данных (например, "sqlite", "genji", "pgx" (postgres))
+	DBPath    string // Путь к файлу базы данных (для файловых баз данных)
+	DBHost    string // Хост для PostgreSQL
+	DBPort    int    // Порт для PostgreSQL
+	DBUser    string // Пользователь для PostgreSQL
+	DBPass    string // Пароль для PostgreSQL
+	DBName    string // Имя базы данных PostgreSQL
+	PGSSLMode string // Режим SSL для PostgreSQL
+	Port      int    // Номер порта (используется при именовании файла базы данных, если необходимо)
+}
+
+// startIDGenerator запускает горутину для генерации уникальных ID.
 func startIDGenerator(initialID int64) chan int64 {
 	idChannel := make(chan int64)
 	go func(start int64) {
@@ -25,20 +38,7 @@ func startIDGenerator(initialID int64) chan int64 {
 	return idChannel
 }
 
-// Config holds the configuration details for initializing the database.
-type Config struct {
-	DBType    string // The type of the database driver (e.g., "sqlite", "genji", or "pgx" (postgres))
-	DBPath    string // The file path to the database file (for file-based databases)
-	DBHost    string // The host for PostgreSQL
-	DBPort    int    // The port for PostgreSQL
-	DBUser    string // The user for PostgreSQL
-	DBPass    string // The password for PostgreSQL
-	DBName    string // The name of the PostgreSQL database
-	PGSSLMode string // The SSL mode for PostgreSQL
-	Port      int    // The port number (used in database file naming if needed)
-}
-
-// NewDatabase creates and initializes a new database connection.
+// NewDatabase создает и инициализирует новое подключение к базе данных.
 func NewDatabase(config Config) (*Database, error) {
 	var dsn string
 
@@ -64,110 +64,120 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("error connecting to the database: %v", err)
 	}
 
-	// Log the database type and location being used
+	// Логируем используемый драйвер и DSN
 	log.Printf("Using database driver: %s with DSN: %s", config.DBType, dsn)
 
-	// Get the maximum current ID from the database
-	var maxID sql.NullInt64 // Variable to hold the max ID (nullable)
+	// Получаем максимальный текущий ID из таблицы markers
+	var maxID sql.NullInt64
 
-	// Query to find the maximum ID in the 'markers' table
+	// Запрос для получения максимального ID
 	_ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxID)
 
-	// If a valid max ID is found, set initialID to maxID + 1
+	// Если найдено значение, устанавливаем начальное значение генератора
 	initialID := int64(1)
 	if maxID.Valid {
 		initialID = maxID.Int64 + 1
 	}
 
-	// Start the ID generator goroutine
+	// Запускаем генератор ID
 	idChannel := startIDGenerator(initialID)
 
-	// Return the Database struct with the idGenerator channel
+	// Возвращаем экземпляр Database
 	return &Database{
 		DB:          db,
 		idGenerator: idChannel,
 	}, nil
 }
 
-// InitSchema initializes the database schema for storing data (markers).
+// InitSchema инициализирует схему базы данных для хранения маркеров.
 func (db *Database) InitSchema(config Config) error {
 	var schema string
 
 	switch config.DBType {
 	case "pgx": // PostgreSQL
 		schema = `
-        CREATE TABLE IF NOT EXISTS markers (
-            id SERIAL PRIMARY KEY,
-            doseRate REAL,
-            date BIGINT,
-            lon REAL,
-            lat REAL,
-            countRate REAL,
-            zoom INTEGER,
-            speed REAL
-        );
-        CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed);
-        CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
-        `
+		CREATE TABLE IF NOT EXISTS markers (
+			id SERIAL PRIMARY KEY,
+			doseRate REAL,
+			date BIGINT,
+			lon REAL,
+			lat REAL,
+			countRate REAL,
+			zoom INTEGER,
+			speed REAL,
+			trackID VARCHAR(30)
+		);
+		CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID);
+		CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
+		CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
+		`
 
 	case "sqlite": // SQLite
 		schema = `
-        CREATE TABLE IF NOT EXISTS markers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            doseRate REAL,
-            date INTEGER,
-            lon REAL,
-            lat REAL,
-            countRate REAL,
-            zoom INTEGER,
-            speed REAL
-        );
-        CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed);
-        CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
-        `
+		CREATE TABLE IF NOT EXISTS markers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			doseRate REAL,
+			date INTEGER,
+			lon REAL,
+			lat REAL,
+			countRate REAL,
+			zoom INTEGER,
+			speed REAL,
+			trackID TEXT
+		);
+		CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID);
+		CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
+		CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
+		`
 
 	case "genji": // Genji
 		schema = `
-        CREATE TABLE IF NOT EXISTS markers (
-            id INTEGER PRIMARY KEY,
-            doseRate REAL,
-            date INTEGER,
-            lon REAL,
-            lat REAL,
-            countRate REAL,
-            zoom INTEGER,
-            speed REAL
-        );
-        `
+		CREATE TABLE IF NOT EXISTS markers (
+			id INTEGER PRIMARY KEY,
+			doseRate REAL,
+			date INTEGER,
+			lon REAL,
+			lat REAL,
+			countRate REAL,
+			zoom INTEGER,
+			speed REAL,
+			trackID TEXT
+		);
+		CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
+		`
 	default:
 		return fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
 
-	// Выполняем создание таблиц и индексов
+	// Выполняем SQL-запрос для создания таблиц и индексов
 	_, err := db.DB.Exec(schema)
-	return err
+	if err != nil {
+		return fmt.Errorf("error initializing database schema: %v", err)
+	}
+
+	return nil
 }
 
-// SaveMarkerAtomic saves a marker atomically using the idGenerator channel for unique IDs.
+// SaveMarkerAtomic сохраняет маркер атомарно, используя канал генератора ID для уникальных идентификаторов.
 func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 	var count int
 	var query string
 
-	// Определение SQL-запроса в зависимости от типа базы данных
+	// Определяем SQL-запрос для проверки существования маркера
 	switch dbType {
 	case "pgx":
 		query = `
 		SELECT COUNT(1)
 		FROM markers
-		WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5 AND zoom = $6 AND speed = $7`
+		WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5 AND zoom = $6 AND speed = $7 AND trackID = $8`
 	default:
 		query = `
 		SELECT COUNT(1)
 		FROM markers
-		WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ? AND zoom = ? AND speed = ?`
+		WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ? AND zoom = ? AND speed = ? AND trackID = ?`
 	}
 
-	// Выполнение запроса для проверки существования маркера
+	// Выполняем запрос для проверки существования маркера
 	err := db.DB.QueryRow(query,
 		marker.DoseRate,
 		marker.Date,
@@ -175,59 +185,87 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 		marker.Lat,
 		marker.CountRate,
 		marker.Zoom,
-		marker.Speed).Scan(&count)
+		marker.Speed,
+		marker.TrackID).Scan(&count)
 
 	if err != nil {
 		return err
 	}
 
-	// Если маркер уже существует, возвращаем nil
+	// Если маркер уже существует, не сохраняем его повторно
 	if count > 0 {
-		log.Printf("Marker (%f, %d, %f, %f, %f, %d, %f) already exists.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate, marker.Zoom, marker.Speed)
+		log.Printf("Marker (%f, %d, %f, %f, %f, %d, %f, %s) already exists.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate, marker.Zoom, marker.Speed, marker.TrackID)
 		return nil
 	}
 
-	// Получаем следующий ID из генератора
-	nextID := <-db.idGenerator
+	// Генерируем уникальный ID, если не используем SERIAL (PostgreSQL)
+	if dbType != "pgx" {
+		nextID := <-db.idGenerator
+		marker.ID = nextID
+	}
 
-	// Вставляем новый маркер с вручную сгенерированным ID
+	// Определяем SQL-запрос для вставки маркера
 	switch dbType {
 	case "pgx":
 		query = `
-		INSERT INTO markers (id, doseRate, date, lon, lat, countRate, zoom, speed)
+		INSERT INTO markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	default:
 		query = `
-		INSERT INTO markers (id, doseRate, date, lon, lat, countRate, zoom, speed)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		INSERT INTO markers (id, doseRate, date, lon, lat, countRate, zoom, speed, trackID)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	}
 
-	_, err = db.DB.Exec(query, nextID, marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate, marker.Zoom, marker.Speed)
+	// Выполняем вставку маркера в базу данных
+	if dbType == "pgx" {
+		_, err = db.DB.Exec(query,
+			marker.DoseRate,
+			marker.Date,
+			marker.Lon,
+			marker.Lat,
+			marker.CountRate,
+			marker.Zoom,
+			marker.Speed,
+			marker.TrackID)
+	} else {
+		_, err = db.DB.Exec(query,
+			marker.ID,
+			marker.DoseRate,
+			marker.Date,
+			marker.Lon,
+			marker.Lat,
+			marker.CountRate,
+			marker.Zoom,
+			marker.Speed,
+			marker.TrackID)
+	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("error inserting marker: %v", err)
+	}
+
+	return nil
 }
 
-// GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.
+// GetMarkersByZoomAndBounds извлекает маркеры, фильтруя их по уровню зума и географическим границам.
 func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
 	var query string
 
-	// Use appropriate placeholders depending on the database type
+	// Определяем SQL-запрос в зависимости от типа базы данных
 	switch dbType {
-	case "pgx": // PostgreSQL
+	case "pgx":
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed
+		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
 		FROM markers
-		WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
-		`
-	default: // SQLite or Genji
+		WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;`
+	default:
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed
+		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
 		FROM markers
-		WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
-		`
+		WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;`
 	}
 
-	// Execute the query with the appropriate placeholders
+	// Выполняем запрос с переданными параметрами
 	rows, err := db.DB.Query(query, zoom, minLat, maxLat, minLon, maxLon)
 	if err != nil {
 		return nil, fmt.Errorf("error querying markers: %v", err)
@@ -236,20 +274,68 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 
 	var markers []Marker
 
-	// Iterate over the rows and scan each result into a Marker struct
+	// Итерация по результатам запроса и сканирование в структуру Marker
 	for rows.Next() {
 		var marker Marker
-		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed)
+		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning marker: %v", err)
 		}
 		markers = append(markers, marker)
 	}
 
-	// Check for any errors encountered during iteration
+	// Проверяем наличие ошибок после итерации
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over result set: %v", err)
 	}
 
 	return markers, nil
 }
+
+// GetMarkersByTrackID возвращает маркеры для конкретного TrackID, отсортированные по дате.
+func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker, error) {
+	var query string
+
+	// Определяем SQL-запрос в зависимости от типа базы данных
+	switch dbType {
+	case "pgx":
+		query = `
+		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+		FROM markers
+		WHERE trackID = $1
+		ORDER BY date ASC;`
+	default:
+		query = `
+		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+		FROM markers
+		WHERE trackID = ?
+		ORDER BY date ASC;`
+	}
+
+	// Выполняем запрос с переданным TrackID
+	rows, err := db.DB.Query(query, trackID)
+	if err != nil {
+		return nil, fmt.Errorf("error querying markers by TrackID: %v", err)
+	}
+	defer rows.Close()
+
+	var markers []Marker
+
+	// Итерация по результатам запроса и сканирование в структуру Marker
+	for rows.Next() {
+		var marker Marker
+		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning marker: %v", err)
+		}
+		markers = append(markers, marker)
+	}
+
+	// Проверяем наличие ошибок после итерации
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over result set: %v", err)
+	}
+
+	return markers, nil
+}
+

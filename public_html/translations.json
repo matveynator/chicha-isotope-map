@@ -22,6 +22,7 @@
     "location_timeout": "Время запроса местоположения истекло.",
     "location_error": "Произошла ошибка при получении местоположения.",
     "geolocation_not_supported": "Ваш браузер не поддерживает геолокацию."
+		"track_id": "ID Трека"
   },
   "en": {
     "title": "Chicha Isotope Map — Hidden Radioactive Pathways",

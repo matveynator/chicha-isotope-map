@@ -115,7 +115,7 @@
             background-color: #f4f4f4; /* Осветляем фон при наведении */
         }
 
-        /* Контейнер для кнопки геолокации */
+        /* Контейнер для кнопки центрирования карты по текущему местоположению */
         .locate-btn-container {
             position: absolute;
             top: 60px; /* Сдвиг вниз от кнопки загрузки */
@@ -188,6 +188,29 @@
         .program-info:hover {
             opacity: 1; /* Полная непрозрачность при наведении */
         }
+
+        /* Стили для кнопки "Вернуться ко всем трекам" */
+        .back-to-all-container {
+            position: absolute;
+            top: 100px; /* Расположено ниже кнопки геолокации */
+            right: 20px;
+            z-index: 1000;
+            display: none; /* Изначально скрыта */
+        }
+
+        .back-to-all-btn {
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        }
+
+        .back-to-all-btn:hover {
+            background-color: #f4f4f4;
+        }
     </style>
 
     <!-- Скрипт для обработки переводов и передачи данных из Go в JavaScript -->
@@ -198,19 +221,17 @@
 
         // Функция для получения перевода по ключу
         function translate(key) {
-            // Проверяем наличие переводов на английский язык как резерв
             if (!translations['en']) {
                 console.error('English translations not available!');
-                return key; // Возвращаем ключ, если перевод не найден
+                return key;
             }
 
-            // Возвращаем перевод на текущем языке или на английском, если нет перевода
             if (translations[currentLang] && translations[currentLang][key]) {
                 return translations[currentLang][key];
             } else if (translations['en'][key]) {
                 return translations['en'][key];
             }
-            return key; // Возвращаем ключ, если перевод не найден
+            return key;
         }
     </script>
 
@@ -223,13 +244,17 @@
         <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()"> <!-- Скрытый input для файлов -->
     </div>
 
-    <!-- Контейнер для кнопки центрирования карты по текущему местоположению -->
-		<div class="locate-btn-container leaflet-control">
-			<button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
-				<img src="/static/images/marker-icon-2x.png" alt="Locate" style="width: 20px;">
-			</button>
-		</div>
+    <!-- Контейнер для кнопки центрирования карты по текущему местоположению пользователя -->
+    <div class="locate-btn-container leaflet-control">
+        <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
+            <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width: 20px;">
+        </button>
+    </div>
 
+    <!-- Контейнер для кнопки "Вернуться ко всем трекам" -->
+    <div class="back-to-all-container leaflet-control">
+        <button id="backToAllButton" class="back-to-all-btn">{{translate "back_to_all_tracks"}}</button>
+    </div>
 
     <!-- Оверлей для отображения прогресса загрузки файлов -->
     <div id="fileOverlay" style="display: none;">
@@ -284,23 +309,24 @@
 
         // Добавление контроллера слоёв на карту
         var layerControl = L.control.layers(baseLayers, null, {
-            position: 'topleft',  // Позиция контроллера
-            collapsed: false      // Оставляем контроллер раскрытым
+            position: 'topleft',
+            collapsed: false
         }).addTo(map);
 
         // Объект для хранения маркеров
         var circleMarkers = {};
+
+        // Флаг, указывающий на отображение отдельного трека
+        var isTrackView = false;
     </script>
 
     <!-- Скрипт для обновления маркеров на карте в зависимости от зума и границ -->
     <script id="markers-update-script">
         // Функция для обновления маркеров на карте
         function updateMarkers() {
-            // Получаем текущий уровень зума и границы карты
             var zoomLevel = map.getZoom();
             var bounds = map.getBounds();
 
-            // Формируем параметры запроса
             var params = {
                 zoom: zoomLevel,
                 minLat: bounds.getSouthWest().lat,
@@ -309,36 +335,33 @@
                 maxLon: bounds.getNorthEast().lng
             };
 
-            // Отправляем AJAX-запрос на сервер для получения маркеров
             fetch('/get_markers?' + new URLSearchParams(params))
                 .then(response => response.json())
                 .then(data => {
-                    // Удаляем предыдущие маркеры с карты
                     for (let key in circleMarkers) {
                         map.removeLayer(circleMarkers[key]);
                     }
-                    circleMarkers = {}; // Очищаем объект маркеров
+                    circleMarkers = {};
 
-                    // Добавляем новые маркеры на карту
                     data.forEach(function(marker) {
-                        var markerKey = marker.id; // Используем уникальный ID маркера
+                        var markerKey = marker.id;
 
-                        // Получаем цвет и радиус маркера
                         var color = getGradientColor(marker.doseRate);
                         var radius = getRadius(marker.doseRate, zoomLevel);
 
-                        // Создаём круговой маркер и добавляем его на карту
                         var circleMarker = L.circleMarker([marker.lat, marker.lon], {
                             radius: radius,
                             fillColor: color,
                             color: color,
-                            weight: 1,       // Толщина обводки
-                            opacity: getFillOpacity(marker.speed) +0.1,  // Прозрачность обводки (чуть ярче)
-                            fillOpacity: getFillOpacity(marker.speed)    // Прозрачность заливки зависит от скорости
+                            weight: 1,
+                            opacity: getFillOpacity(marker.speed) + 0.1,
+                            fillOpacity: getFillOpacity(marker.speed)
                         }).addTo(map)
-                            .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false });
+                            .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
+                            .on('click', function() {
+                                viewTrack(marker.trackID);
+                            });
 
-                        // Сохраняем маркер в объекте
                         circleMarkers[markerKey] = circleMarker;
                     });
                 })
@@ -356,11 +379,9 @@
     <!-- Скрипт для отображения содержимого всплывающего окна маркера -->
     <script id="tooltip-content-script">
         function getTooltipContent(marker) {
-            // Преобразуем UNIX timestamp в читаемый формат даты и времени
             var date = new Date(marker.date * 1000);
-            var formattedDate = date.toLocaleString(); // Форматируем дату в локальном формате
+            var formattedDate = date.toLocaleString();
 
-            // Возвращаем HTML-содержимое для всплывающего окна
             return `
 <div class="custom-tooltip">
     <div class="tooltip-row">
@@ -371,6 +392,10 @@
         <strong>${translate('speed')}:</strong>
         <span>${marker.speed.toFixed(2)} m/s</span>
     </div>
+    <div class="tooltip-row">
+        <strong>${translate('track_id')}:</strong>
+        <span>${marker.trackID}</span>
+    </div>
 </div>
             `;
         }
@@ -379,7 +404,6 @@
     <!-- Скрипт для расчёта радиуса маркера на основе уровня зума -->
     <script id="radius-calc-script">
         function getRadius(doseRate, zoomLevel) {
-            // Определяем базовый радиус в зависимости от уровня зума
             let baseRadius;
 
             if (zoomLevel > 18) baseRadius = 9;
@@ -397,83 +421,59 @@
             else if (zoomLevel == 7) baseRadius = 2;
             else baseRadius = 1;
 
-            return baseRadius; // Возвращаем соответствующий радиус
+            return baseRadius;
         }
     </script>
 
-    <!-- Скрипт для расчёта цвета маркера на основе уровня радиации и частоты счёта -->
+    <!-- Скрипт для расчёта цвета маркера на основе уровня радиации -->
     <script id="color-gradient-script">
         function getGradientColor(doseRate) {
-            // Возвращаем соответствующий цвет на основе doseRate
-            if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный для низких значений
-            else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04)); // Градиент зелёного
-            else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08)); // Градиент жёлтого
-            else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11)); // Градиент оранжевого
-            else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20)); // Градиент красного
-            else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30)); // Градиент к чёрному
-            else return "#000000"; // Чёрный для очень высоких значений
+            if (doseRate <= 0.04) return "#006400";
+            else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
+            else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
+            else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
+            else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
+            else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
+            else return "#000000";
         }
 
-        // Функция для интерполяции между двумя цветами
         function interpolateColor(color1, color2, factor) {
-            if (factor < 0) factor = 0; // Ограничиваем фактор интерполяции
+            if (factor < 0) factor = 0;
             if (factor > 1) factor = 1;
 
             const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
             const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
             const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
 
-            return `rgb(${r}, ${g}, ${b})`; // Возвращаем цвет в формате RGB
+            return `rgb(${r}, ${g}, ${b})`;
         }
     </script>
 
     <!-- Скрипт для расчёта прозрачности заливки маркера на основе скорости -->
     <script id="fill-opacity-script">
         function getFillOpacity(speed) {
-            // Если скорость меньше или равна 5 м/с
             if (speed <= 5) {
-                // Возвращаем максимальную непрозрачность заливки: 0.6
                 return 0.6;
-            }
-            // Если скорость больше или равна 20 м/с
-            else if (speed >= 20) {
-                // Возвращаем минимальную непрозрачность заливки: 0.1
+            } else if (speed >= 20) {
                 return 0.1;
-            }
-            // Если скорость между 5 м/с и 20 м/с
-            else {
-                // Диапазон скоростей, где происходит изменение непрозрачности
-                var speedRange = 20 - 5; // 15 м/с
-
-                // Диапазон изменения непрозрачности
-                var opacityRange = 0.6 - 0.1; // 0.5
-
-                // Вычисляем снижение непрозрачности на каждый м/с
-                var opacityDecreasePerMs = opacityRange / speedRange; // 0.5 / 15 ≈ 0.0333333
-
-                // Вычисляем, насколько скорость превышает 5 м/с
+            } else {
+                var speedRange = 20 - 5;
+                var opacityRange = 0.6 - 0.1;
+                var opacityDecreasePerMs = opacityRange / speedRange;
                 var speedAboveFive = speed - 5;
-
-                // Вычисляем общую потерю непрозрачности для данной скорости
                 var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
-
-                // Вычисляем текущую непрозрачность заливки
                 var currentOpacity = 0.6 - totalOpacityDecrease;
-
-                // Возвращаем вычисленное значение непрозрачности
                 return currentOpacity;
             }
         }
     </script>
 
-    <!-- Скрипт для обновления URL на основе состояния карты (центр, зум, слой) -->
+    <!-- Скрипт для обновления URL на основе состояния карты -->
     <script id="url-update-script">
-        // Функция для обновления URL с текущим состоянием карты
         function updateUrl() {
-            var center = map.getCenter(); // Получаем центр карты
-            var zoom = map.getZoom();     // Получаем уровень зума
+            var center = map.getCenter();
+            var zoom = map.getZoom();
 
-            // Определяем текущий слой карты
             var currentLayer = '';
             if (map.hasLayer(googleSatellite)) {
                 currentLayer = 'Google Satellite';
@@ -481,13 +481,11 @@
                 currentLayer = 'OpenStreetMap';
             }
 
-            // Формируем новый URL с параметрами карты
             var newUrl = `${window.location.pathname}?lat=${center.lat.toFixed(5)}&lon=${center.lng.toFixed(5)}&zoom=${zoom}&layer=${encodeURIComponent(currentLayer)}`;
 
-            window.history.replaceState({}, '', newUrl); // Обновляем URL без перезагрузки страницы
+            window.history.replaceState({}, '', newUrl);
         }
 
-        // Функция для загрузки состояния карты из URL
         function loadMapFromUrl() {
             var params = new URLSearchParams(window.location.search);
             var lat = parseFloat(params.get('lat'));
@@ -495,129 +493,101 @@
             var zoom = parseInt(params.get('zoom'));
             var layer = params.get('layer');
 
-            // Устанавливаем вид карты, если параметры валидны
             if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
                 map.setView([lat, lon], zoom);
             } else {
-                map.setView([44.08832, 42.97577], 11); // Вид по умолчанию
+                map.setView([44.08832, 42.97577], 11);
             }
 
-            // Загружаем соответствующий слой карты
             if (layer === 'Google Satellite') {
                 googleSatellite.addTo(map);
             } else {
-                osmLayer.addTo(map); // По умолчанию OpenStreetMap
+                osmLayer.addTo(map);
             }
         }
 
-        // Загружаем состояние карты из URL при загрузке страницы
         loadMapFromUrl();
 
-        // Обновляем URL при изменении карты
         updateUrl();
 
-        // Обработчик изменения базового слоя
         map.on('baselayerchange', function(event) {
-            updateUrl(); // Обновляем URL при смене слоя
+            updateUrl();
         });
 
-        // Обновляем URL при перемещении или изменении зума
         map.on('moveend', updateUrl);
         map.on('zoomend', updateUrl);
     </script>
 
-    <!-- Скрипт для загрузки файлов (остается без изменений) -->
+    <!-- Скрипт для загрузки файлов -->
     <script id="file-upload-script">
         function uploadFiles() {
-            // Получаем элемент input для файлов
             var fileInput = document.getElementById('fileInput');
             var files = fileInput.files;
 
-            // Получаем оверлей и контейнер для прогресса
             var fileOverlay = document.getElementById('fileOverlay');
             var fileProgressContainer = document.getElementById('fileProgressContainer');
 
-            // Проверяем наличие контейнера
             if (!fileProgressContainer) {
                 console.error("Error: File progress container not found.");
                 return;
             }
 
-            // Очищаем предыдущий список файлов и прогресс-баров
             fileProgressContainer.innerHTML = "";
 
-            // Храним границы для всех файлов
             var globalBounds = L.latLngBounds();
 
-            // Счетчик завершенных загрузок
             var completedUploads = 0;
             var totalFiles = files.length;
 
-            // Если файлы выбраны, начинаем загрузку
             if (files.length > 0) {
-                // Отображаем оверлей
                 fileOverlay.style.display = "flex";
 
-                // Функция для обновления границ карты
                 function updateMapBounds(minLat, minLon, maxLat, maxLon) {
                     var fileBounds = L.latLngBounds([[minLat, minLon], [maxLat, maxLon]]);
-                    globalBounds.extend(fileBounds); // Расширяем общие границы
-                    map.fitBounds(globalBounds);     // Обновляем вид карты
+                    globalBounds.extend(fileBounds);
+                    map.fitBounds(globalBounds);
                 }
 
-                // Функция для проверки завершения всех загрузок
                 function checkIfAllUploadsComplete() {
                     completedUploads++;
                     if (completedUploads === totalFiles) {
-                        // Все файлы загружены и обработаны
                         setTimeout(function() {
-                            // Скрываем оверлей
                             fileOverlay.style.display = "none";
-                            // Перезагружаем страницу для обновления карты
                             location.reload();
-                        }, 1000); // Задержка 1 секунда
+                        }, 1000);
                     }
                 }
 
-                // Загрузка каждого файла асинхронно
                 for (var i = 0; i < files.length; i++) {
                     var file = files[i];
 
-                    // Создаем блок прогресса для файла
                     var fileBlock = document.createElement('div');
                     fileBlock.className = 'file-progress';
 
-                    // Имя файла
                     var fileName = document.createElement('div');
                     fileName.className = 'file-name';
                     fileName.innerText = file.name;
 
-                    // Прогресс-бар
                     var progressBar = document.createElement('div');
                     progressBar.className = 'progress-bar';
                     var progressBarInner = document.createElement('div');
                     progressBarInner.className = 'progress-bar-inner';
                     progressBar.appendChild(progressBarInner);
 
-                    // Индикатор обработки на сервере
                     var serverProcessing = document.createElement('div');
                     serverProcessing.className = 'server-processing';
-                    serverProcessing.innerText = translate("waiting_for_server"); // Начальное состояние
+                    serverProcessing.innerText = translate("waiting_for_server");
 
-                    // Добавляем элементы в блок файла
                     fileBlock.appendChild(fileName);
                     fileBlock.appendChild(progressBar);
                     fileBlock.appendChild(serverProcessing);
 
-                    // Добавляем блок файла в контейнер прогресса
                     fileProgressContainer.appendChild(fileBlock);
 
-                    // Создаем новый XMLHttpRequest для каждого файла
                     (function(progressBarInner, serverProcessing, file) {
                         var xhr = new XMLHttpRequest();
                         xhr.open('POST', '/upload', true);
 
-                        // Обработчик прогресса загрузки
                         xhr.upload.onprogress = function(event) {
                             if (event.lengthComputable) {
                                 var percentComplete = (event.loaded / event.total) * 100;
@@ -625,7 +595,6 @@
                             }
                         };
 
-                        // Обработчик завершения загрузки
                         xhr.onload = function() {
                             if (xhr.status === 200) {
                                 var response = JSON.parse(xhr.responseText);
@@ -633,23 +602,17 @@
                                 if (response.status === "success") {
                                     serverProcessing.innerText = translate("processing_on_server");
 
-                                    // Получаем границы из ответа
-                                    var minLat = response.minLat;
-                                    var minLon = response.minLon;
-                                    var maxLat = response.maxLat;
-                                    var maxLon = response.maxLon;
+                                    var trackURL = response.trackURL;
 
-                                    // Симулируем обработку на сервере с задержкой
                                     setTimeout(function() {
                                         serverProcessing.innerText = translate("processing_complete");
                                         serverProcessing.style.color = "green";
 
-                                        // Обновляем границы карты
-                                        updateMapBounds(minLat, minLon, maxLat, maxLon);
+                                        // Дополнительно можно добавить функциональность для отображения TrackURL
+                                        // Например, отображение ссылки пользователю
 
-                                        // Проверяем завершение всех загрузок
                                         checkIfAllUploadsComplete();
-                                    }, 2000); // Задержка 2 секунды
+                                    }, 2000);
                                 } else {
                                     serverProcessing.innerText = translate("error_processing_files");
                                     serverProcessing.style.color = "red";
@@ -662,21 +625,19 @@
                             }
                         };
 
-                        // Отправляем файл как FormData
                         var formData = new FormData();
                         formData.append("files[]", file);
                         xhr.send(formData);
                     })(progressBarInner, serverProcessing, file);
                 }
             } else {
-                alert(translate("select_files")); // Уведомляем пользователя, если файлы не выбраны
+                alert(translate("select_files"));
             }
         }
     </script>
 
     <!-- Скрипт для центрирования карты по текущему местоположению пользователя -->
     <script id="locate-button-script">
-        // Функция для центрирования карты по местоположению пользователя
         function centerMapToLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
@@ -684,10 +645,8 @@
                         var userLat = position.coords.latitude;
                         var userLon = position.coords.longitude;
 
-                        // Центрируем карту и увеличиваем зум
                         map.setView([userLat, userLon], 15);
 
-                        // Добавляем маркер для текущего местоположения пользователя
                         var userMarker = L.marker([userLat, userLon]).addTo(map)
                             .bindPopup(translate("your_location")).openPopup();
                     },
@@ -709,11 +668,10 @@
                     }
                 );
             } else {
-                alert(translate("geolocation_not_supported")); // Если геолокация не поддерживается
+                alert(translate("geolocation_not_supported"));
             }
         }
 
-        // Добавляем обработчик клика на кнопку геолокации после загрузки DOM
         document.addEventListener('DOMContentLoaded', function() {
             var locateButton = document.getElementById('locateButton');
             if (locateButton) {
@@ -721,7 +679,41 @@
             } else {
                 console.error("Locate button not found!");
             }
+
+            var backToAllButton = document.getElementById('backToAllButton');
+            if (backToAllButton) {
+                backToAllButton.addEventListener('click', function() {
+                    isTrackView = false;
+                    updateMarkers();
+                    document.querySelector('.back-to-all-container').style.display = 'none';
+                });
+            }
         });
+    </script>
+
+    <!-- Скрипт для просмотра конкретного трека -->
+    <script id="track-view-script">
+        function viewTrack(trackID) {
+            isTrackView = true;
+            var bounds = map.getBounds();
+            var zoom = map.getZoom();
+            var layer = '';
+
+            if (map.hasLayer(googleSatellite)) {
+                layer = 'Google Satellite';
+            } else {
+                layer = 'OpenStreetMap';
+            }
+
+            // Формируем URL для просмотра конкретного трека
+            var trackURL = `/trackid/${trackID}?minLat=${bounds.getSouthWest().lat}&minLon=${bounds.getSouthWest().lng}&maxLat=${bounds.getNorthEast().lat}&maxLon=${bounds.getNorthEast().lng}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+
+            // Перенаправляем пользователя на страницу конкретного трека
+            window.location.href = trackURL;
+
+            // Показываем кнопку "Вернуться ко всем трекам"
+            document.querySelector('.back-to-all-container').style.display = 'block';
+        }
     </script>
 </body>
 </html>
