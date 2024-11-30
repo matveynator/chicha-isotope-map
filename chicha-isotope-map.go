@@ -269,31 +269,31 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
 func getDistanceThresholdForZoom(zoomLevel int) float64 {
 	switch zoomLevel {
 	case 1:
-		return 5000000 // 5000 км
+		return 10000000 // 5000 км
 	case 2:
-		return 2500000 // 2500 км
+		return 5000000 // 2500 км
 	case 3:
-		return 1000000 // 1000 км
+		return 2500000 // 1000 км
 	case 4:
-		return 500000 // 500 км
+		return 1000000 // 500 км
 	case 5:
-		return 250000 // 250 км
-	case 6:
-		return 10000 // 10 км
+		return 500000 // 250 км
+	case 6:	
+		return 100000 // 10 км
 	case 7:
-		return 5000 // 5 км
+		return 10000 // 5 км
 	case 8:
-		return 2500 // 2.5 км
+		return 7500 // 2.5 км
 	case 9:
-		return 2000 // 2 км
+		return 5000 // 2 км
 	case 10:
-		return 1500 // 1.5 км
+		return 3000 // 1.5 км
 	case 11:
-		return 1200 // 1.2 км
+		return 1000 // 1.2 км
 	case 12:
-		return 1000 // 1 км
+		return 700 // 1 км
 	case 13:
-		return 500 // 500 м
+		return 400 // 500 м
 	case 14:
 		return 100 // 100 м
 	case 15:
@@ -301,7 +301,7 @@ func getDistanceThresholdForZoom(zoomLevel int) float64 {
 	case 16:
 		return 25 // 25 м
 	case 17:
-		return 10 // 10 м
+		return 17 // 10 м
 	default:
 		return 0 // Для уровней зума ≥18 кластеризация не нужна
 	}
