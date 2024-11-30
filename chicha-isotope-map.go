@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
@@ -23,7 +24,6 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/database"
-	"github.com/google/uuid" // Используем для генерации UUID
 )
 
 // Embedding files from the public_html folder for static serving
@@ -48,7 +48,7 @@ var (
 	dbPass    = flag.String("dbpass", "password", "Database password (PostgreSQL)")
 	dbName    = flag.String("dbname", "isotope_map", "Database name (PostgreSQL)")
 	pgSSLMode = flag.String("pgsslmode", "disable", "PostgreSQL SSL mode")
-	port      = flag.Int("port", 8080, "Port to run the web server on")
+	port      = flag.Int("port", 8765, "Port to run the web server on")
 )
 
 // Database instance
@@ -57,6 +57,32 @@ var db *database.Database
 // =====================
 // DATA PROCESSING HELPERS
 // =====================
+
+// GenerateSerialNumber генерирует серийный номер длиной не более 6 символов
+func GenerateSerialNumber() string {
+	const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	const maxLength = 6
+
+	// Получаем текущее время в миллисекундах (чтобы сократить размер числа)
+	timestamp := uint64(time.Now().UnixNano() / 1e6)
+
+	// Кодируем временную метку в Base62
+	encoded := ""
+	base := uint64(len(base62Chars))
+	for timestamp > 0 && len(encoded) < maxLength {
+		remainder := timestamp % base
+		encoded = string(base62Chars[remainder]) + encoded
+		timestamp = timestamp / base
+	}
+
+	// Если длина меньше 6, добавляем случайные символы
+	rand.Seed(time.Now().UnixNano())
+	for len(encoded) < maxLength {
+		encoded += string(base62Chars[rand.Intn(len(base62Chars))])
+	}
+
+	return encoded
+}
 
 // Function to convert Rh to Sv
 func convertRhToSv(markers []database.Marker) []database.Marker {
@@ -897,7 +923,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate a unique TrackID for the group of uploaded files
-	trackID := uuid.New().String()
+	trackID := GenerateSerialNumber()
 
 	// Variables to store coordinates for bounds
 	var minLat, minLon, maxLat, maxLon float64

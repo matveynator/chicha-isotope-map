@@ -22,7 +22,7 @@
     "location_timeout": "Время запроса местоположения истекло.",
     "location_error": "Произошла ошибка при получении местоположения.",
     "geolocation_not_supported": "Ваш браузер не поддерживает геолокацию.",
-		"track_id": "ID Трека"
+    "track_id": "ID Трека"
   },
   "en": {
     "title": "Chicha Isotope Map — Hidden Radioactive Pathways",
@@ -46,7 +46,8 @@
     "location_unavailable": "Location unavailable.",
     "location_timeout": "Location request timed out.",
     "location_error": "An error occurred while obtaining location.",
-    "geolocation_not_supported": "Your browser does not support geolocation."
+    "geolocation_not_supported": "Your browser does not support geolocation.",
+    "track_id": "Track ID"
   },
   "zh": {
     "title": "Chicha 同位素地图 — 隐藏的放射性路径",
@@ -70,7 +71,8 @@
     "location_unavailable": "位置不可用。",
     "location_timeout": "位置请求超时。",
     "location_error": "获取位置时发生错误。",
-    "geolocation_not_supported": "您的浏览器不支持地理定位。"
+    "geolocation_not_supported": "您的浏览器不支持地理定位。",
+    "track_id": "追踪ID"
   },
   "es": {
     "title": "Chicha Mapa de Isótopos — Rutas Radiactivas Ocultas",
@@ -94,7 +96,8 @@
     "location_unavailable": "Ubicación no disponible.",
     "location_timeout": "Tiempo de solicitud de ubicación agotado.",
     "location_error": "Ocurrió un error al obtener la ubicación.",
-    "geolocation_not_supported": "Tu navegador no soporta la geolocalización."
+    "geolocation_not_supported": "Tu navegador no soporta la geolocalización.",
+    "track_id": "ID de Pista"
   },
   "hi": {
     "title": "Chicha समस्थानिक मानचित्र — छिपे हुए रेडियोधर्मी मार्ग",
@@ -118,7 +121,8 @@
     "location_unavailable": "स्थान उपलब्ध नहीं।",
     "location_timeout": "स्थान अनुरोध का समय समाप्त हो गया।",
     "location_error": "स्थान प्राप्त करते समय त्रुटि हुई।",
-    "geolocation_not_supported": "आपका ब्राउज़र भू-स्थान का समर्थन नहीं करता।"
+    "geolocation_not_supported": "आपका ब्राउज़र भू-स्थान का समर्थन नहीं करता।",
+    "track_id": "ट्रैक आईडी"
   },
   "ar": {
     "title": "خريطة النظائر Chicha — المسارات المشعة المخفية",
@@ -142,7 +146,8 @@
     "location_unavailable": "الموقع غير متاح.",
     "location_timeout": "انتهت مهلة طلب الموقع.",
     "location_error": "حدث خطأ أثناء الحصول على الموقع.",
-    "geolocation_not_supported": "متصفحك لا يدعم تحديد الموقع الجغرافي."
+    "geolocation_not_supported": "متصفحك لا يدعم تحديد الموقع الجغرافي.",
+    "track_id": "معرف المسار"
   },
   "fr": {
     "title": "Carte Isotopique Chicha — Chemins Radioactifs Cachés",
@@ -166,7 +171,8 @@
     "location_unavailable": "Localisation indisponible.",
     "location_timeout": "La demande de localisation a expiré.",
     "location_error": "Une erreur s'est produite lors de l'obtention de la localisation.",
-    "geolocation_not_supported": "Votre navigateur ne prend pas en charge la géolocalisation."
+    "geolocation_not_supported": "Votre navigateur ne prend pas en charge la géolocalisation.",
+    "track_id": "ID de Piste"
   },
   "pt": {
     "title": "Mapa de Isótopos Chicha — Caminhos Radioativos Ocultos",
@@ -190,7 +196,8 @@
     "location_unavailable": "Localização indisponível.",
     "location_timeout": "Tempo da solicitação de localização esgotado.",
     "location_error": "Ocorreu um erro ao obter a localização.",
-    "geolocation_not_supported": "Seu navegador não suporta geolocalização."
+    "geolocation_not_supported": "Seu navegador não suporta geolocalização.",
+    "track_id": "ID da Trilha"
   },
   "de": {
     "title": "Chicha Isotopenkarte — Verborgene Radioaktive Pfade",
@@ -214,7 +221,8 @@
     "location_unavailable": "Standort nicht verfügbar.",
     "location_timeout": "Standortanfrage abgelaufen.",
     "location_error": "Beim Abrufen des Standorts ist ein Fehler aufgetreten.",
-    "geolocation_not_supported": "Ihr Browser unterstützt keine Geolokalisierung."
+    "geolocation_not_supported": "Ihr Browser unterstützt keine Geolokalisierung.",
+    "track_id": "Spur-ID"
   },
   "ja": {
     "title": "Chicha 同位体マップ — 隠された放射性経路",
@@ -238,7 +246,8 @@
     "location_unavailable": "位置情報が利用できません。",
     "location_timeout": "位置情報のリクエストがタイムアウトしました。",
     "location_error": "位置情報の取得中にエラーが発生しました。",
-    "geolocation_not_supported": "お使いのブラウザはジオロケーションをサポートしていません。"
+    "geolocation_not_supported": "お使いのブラウザはジオロケーションをサポートしていません。",
+    "track_id": "トラックID"
   },
   "tr": {
     "title": "Chicha İzotop Haritası — Gizli Radyoaktif Yollar",
@@ -262,7 +271,8 @@
     "location_unavailable": "Konum kullanılamıyor.",
     "location_timeout": "Konum isteği zaman aşımına uğradı.",
     "location_error": "Konum alınırken bir hata oluştu.",
-    "geolocation_not_supported": "Tarayıcınız konum bilgisini desteklemiyor."
+    "geolocation_not_supported": "Tarayıcınız konum bilgisini desteklemiyor.",
+    "track_id": "Parça Kimliği"
   },
   "it": {
     "title": "Mappa Isotopica Chicha — Percorsi Radioattivi Nascosti",
@@ -286,7 +296,8 @@
     "location_unavailable": "Posizione non disponibile.",
     "location_timeout": "Timeout della richiesta di posizione.",
     "location_error": "Si è verificato un errore durante l'ottenimento della posizione.",
-    "geolocation_not_supported": "Il tuo browser non supporta la geolocalizzazione."
+    "geolocation_not_supported": "Il tuo browser non supporta la geolocalizzazione.",
+    "track_id": "ID Traccia"
   },
   "ko": {
     "title": "Chicha 동위원소 지도 — 숨겨진 방사성 경로",
@@ -310,7 +321,8 @@
     "location_unavailable": "위치를 사용할 수 없습니다.",
     "location_timeout": "위치 요청 시간이 초과되었습니다.",
     "location_error": "위치 정보를 가져오는 중 오류가 발생했습니다.",
-    "geolocation_not_supported": "귀하의 브라우저는 지리적 위치 정보를 지원하지 않습니다."
+    "geolocation_not_supported": "귀하의 브라우저는 지리적 위치 정보를 지원하지 않습니다.",
+    "track_id": "트랙 ID"
   },
   "pl": {
     "title": "Mapa Izotopów Chicha — Ukryte Radioaktywne Ścieżki",
@@ -334,7 +346,8 @@
     "location_unavailable": "Lokalizacja niedostępna.",
     "location_timeout": "Upłynął czas oczekiwania na lokalizację.",
     "location_error": "Wystąpił błąd podczas uzyskiwania lokalizacji.",
-    "geolocation_not_supported": "Twoja przeglądarka nie obsługuje geolokalizacji."
+    "geolocation_not_supported": "Twoja przeglądarka nie obsługuje geolokalizacji.",
+    "track_id": "ID Ścieżki"
   },
   "uk": {
     "title": "Карта ізотопів Чiчi — приховані радіоактивні шляхи",
@@ -358,7 +371,8 @@
     "location_unavailable": "Місцезнаходження недоступне.",
     "location_timeout": "Час очікування запиту місцезнаходження закінчився.",
     "location_error": "Сталася помилка під час отримання місцезнаходження.",
-    "geolocation_not_supported": "Ваш браузер не підтримує геолокацію."
+    "geolocation_not_supported": "Ваш браузер не підтримує геолокацію.",
+    "track_id": "ID Треку"
   },
   "fi": {
     "title": "Chicha Isotooppikartta — Piilotetut Radioaktiiviset Polut",
@@ -382,7 +396,8 @@
     "location_unavailable": "Paikannus ei saatavilla.",
     "location_timeout": "Paikannuksen pyyntö aikakatkaistiin.",
     "location_error": "Sijainnin hakemisessa tapahtui virhe.",
-    "geolocation_not_supported": "Selaimesi ei tue paikannusta."
+    "geolocation_not_supported": "Selaimesi ei tue paikannusta.",
+    "track_id": "Seurannan ID"
   },
   "sv": {
     "title": "Chicha Isotopkarta — Dolda Radioaktiva Vägar",
@@ -406,7 +421,8 @@
     "location_unavailable": "Plats ej tillgänglig.",
     "location_timeout": "Tidsgränsen för platsförfrågan överskreds.",
     "location_error": "Ett fel uppstod vid hämtning av plats.",
-    "geolocation_not_supported": "Din webbläsare stöder inte geolokalisering."
+    "geolocation_not_supported": "Din webbläsare stöder inte geolokalisering.",
+    "track_id": "Spår-ID"
   },
   "mn": {
     "title": "Chicha Изотопын Газрын Зураг — Нууцлаг Цацрагтай Замууд",
@@ -430,7 +446,8 @@
     "location_unavailable": "Байршил олдохгүй байна.",
     "location_timeout": "Байршил хүсэлтийн хугацаа дууссан.",
     "location_error": "Байршил авахад алдаа гарсан.",
-    "geolocation_not_supported": "Таны вэб хөтөч газар дээр байрлах мэдээллийг дэмждэггүй."
+    "geolocation_not_supported": "Таны вэб хөтөч газар дээр байрлах мэдээллийг дэмждэггүй.",
+    "track_id": "Трек ID"
   },
   "no": {
     "title": "Chicha Isotopkart — Skjulte Radioaktive Stier",
@@ -454,7 +471,8 @@
     "location_unavailable": "Posisjon utilgjengelig.",
     "location_timeout": "Posisjonforespørsel timeout.",
     "location_error": "En feil oppstod ved henting av posisjon.",
-    "geolocation_not_supported": "Nettleseren din støtter ikke geolokalisering."
+    "geolocation_not_supported": "Nettleseren din støtter ikke geolokalisering.",
+    "track_id": "Spor-ID"
   },
   "ka": {
     "title": "Chicha იზოტოპების რუკა — ფარული რადიოაქტიური გზები",
@@ -478,7 +496,8 @@
     "location_unavailable": "ადგილმდებარეობა მიუწვდომელია.",
     "location_timeout": "ადგილმდებარეობის მოთხოვნის დრო დასრულდა.",
     "location_error": "ადგილმდებარეობის მიღების დროს შეცდომა მოხდა.",
-    "geolocation_not_supported": "თქვენი ბრაუზერი არ უჭერს ადგილმდებარეობის მხარდაჭერას."
+    "geolocation_not_supported": "თქვენი ბრაუზერი არ უჭერს ადგილმდებარეობის მხარდაჭერას.",
+    "track_id": "ტრეკის ID"
   },
   "he": {
     "title": "מפת האיזוטופים Chicha — מסלולים רדיואקטיביים נסתרים",
@@ -502,7 +521,8 @@
     "location_unavailable": "המיקום אינו זמין.",
     "location_timeout": "הבקשה למיקום פג תוקפה.",
     "location_error": "אירעה שגיאה בעת קבלת המיקום.",
-    "geolocation_not_supported": "הדפדפן שלך אינו תומך בגיאולוקציה."
+    "geolocation_not_supported": "הדפדפן שלך אינו תומך בגיאולוקציה.",
+    "track_id": "מזהה מסלול"
   },
   "nl": {
     "title": "Chicha Isotopenkaart — Verborgen Radioactieve Paden",
@@ -526,7 +546,8 @@
     "location_unavailable": "Locatie niet beschikbaar.",
     "location_timeout": "Locatieverzoek time-out.",
     "location_error": "Er is een fout opgetreden bij het verkrijgen van de locatie.",
-    "geolocation_not_supported": "Je browser ondersteunt geen geolocatie."
+    "geolocation_not_supported": "Je browser ondersteunt geen geolocatie.",
+    "track_id": "Track-ID"
   },
   "el": {
     "title": "Χάρτης Ισοτόπων Chicha — Κρυμμένες Ραδιενεργές Διαδρομές",
@@ -550,7 +571,8 @@
     "location_unavailable": "Η θέση δεν είναι διαθέσιμη.",
     "location_timeout": "Η αίτηση θέσης έληξε.",
     "location_error": "Παρουσιάστηκε σφάλμα κατά την απόκτηση θέσης.",
-    "geolocation_not_supported": "Ο περιηγητής σας δεν υποστηρίζει γεωεντοπισμό."
+    "geolocation_not_supported": "Ο περιηγητής σας δεν υποστηρίζει γεωεντοπισμό.",
+    "track_id": "Αναγνωριστικό Διαδρομής"
   },
   "hu": {
     "title": "Chicha Izotóptérkép — Rejtett Radioaktív Útvonalak",
@@ -574,7 +596,8 @@
     "location_unavailable": "Helyzet nem elérhető.",
     "location_timeout": "A helyzetkérés időtúllépett.",
     "location_error": "Hiba történt a helyzet megszerzése során.",
-    "geolocation_not_supported": "A böngésződ nem támogatja a geolokációt."
+    "geolocation_not_supported": "A böngésződ nem támogatja a geolokációt.",
+    "track_id": "Nyom ID"
   },
   "cs": {
     "title": "Mapa Izotopů Chicha — Skryté Radioaktivní Cesty",
@@ -598,7 +621,8 @@
     "location_unavailable": "Poloha nedostupná.",
     "location_timeout": "Časový limit požadavku na polohu vypršel.",
     "location_error": "Došlo k chybě při získávání polohy.",
-    "geolocation_not_supported": "Váš prohlížeč nepodporuje geolokaci."
+    "geolocation_not_supported": "Váš prohlížeč nepodporuje geolokaci.",
+    "track_id": "ID Sledování"
   },
   "ro": {
     "title": "Harta Izotopilor Chicha — Căi Radioactive Ascunse",
@@ -622,7 +646,8 @@
     "location_unavailable": "Locație indisponibilă.",
     "location_timeout": "Timpul de așteptare pentru cererea de locație a expirat.",
     "location_error": "A apărut o eroare la obținerea locației.",
-    "geolocation_not_supported": "Browserul dvs. nu acceptă geolocația."
+    "geolocation_not_supported": "Browserul dvs. nu acceptă geolocația.",
+    "track_id": "ID Traseu"
   },
   "th": {
     "title": "แผนที่ไอโซโทป Chicha — เส้นทางกัมมันตภาพรังสีที่ซ่อนอยู่",
@@ -646,7 +671,8 @@
     "location_unavailable": "ตำแหน่งไม่สามารถใช้งานได้.",
     "location_timeout": "หมดเวลาการขอตำแหน่ง.",
     "location_error": "เกิดข้อผิดพลาดขณะรับตำแหน่ง.",
-    "geolocation_not_supported": "เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง."
+    "geolocation_not_supported": "เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง.",
+    "track_id": "รหัสแทร็ก"
   },
   "vi": {
     "title": "Bản Đồ Đồng Vị Chicha — Những Con Đường Phóng Xạ Ẩn",
@@ -670,7 +696,8 @@
     "location_unavailable": "Vị trí không có sẵn.",
     "location_timeout": "Yêu cầu vị trí đã hết thời gian.",
     "location_error": "Đã xảy ra lỗi khi lấy vị trí.",
-    "geolocation_not_supported": "Trình duyệt của bạn không hỗ trợ định vị địa lý."
+    "geolocation_not_supported": "Trình duyệt của bạn không hỗ trợ định vị địa lý.",
+    "track_id": "ID Theo dõi"
   },
   "id": {
     "title": "Peta Isotop Chicha — Jalur Radioaktif Tersembunyi",
@@ -694,7 +721,8 @@
     "location_unavailable": "Lokasi tidak tersedia.",
     "location_timeout": "Waktu permintaan lokasi habis.",
     "location_error": "Terjadi kesalahan saat memperoleh lokasi.",
-    "geolocation_not_supported": "Browser Anda tidak mendukung geolokasi."
+    "geolocation_not_supported": "Browser Anda tidak mendukung geolokasi.",
+    "track_id": "ID Trek"
   },
   "ms": {
     "title": "Peta Isotop Chicha — Laluan Radioaktif Tersembunyi",
@@ -718,7 +746,8 @@
     "location_unavailable": "Lokasi tidak tersedia.",
     "location_timeout": "Masa permintaan lokasi tamat.",
     "location_error": "Ralat berlaku semasa mendapatkan lokasi.",
-    "geolocation_not_supported": "Pelayar anda tidak menyokong geolokasi."
+    "geolocation_not_supported": "Pelayar anda tidak menyokong geolokasi.",
+    "track_id": "ID Trek"
   },
   "bg": {
     "title": "Карта на Изотопите Chicha — Скритите Радиоактивни Пътеки",
@@ -742,7 +771,8 @@
     "location_unavailable": "Локацията е недостъпна.",
     "location_timeout": "Времето за заявка на локация изтече.",
     "location_error": "Възникна грешка при получаването на локацията.",
-    "geolocation_not_supported": "Вашият браузър не поддържа геолокация."
+    "geolocation_not_supported": "Вашият браузър не поддържа геолокация.",
+    "track_id": "ID на път"
   },
   "lt": {
     "title": "Chicha Izotopų Žemėlapis — Paslėpti Radioaktyvūs Keliai",
@@ -766,7 +796,8 @@
     "location_unavailable": "Vieta neprieinama.",
     "location_timeout": "Vietos užklausos laikas pasibaigė.",
     "location_error": "Įvyko klaida gaunant vietą.",
-    "geolocation_not_supported": "Jūsų naršyklė nepalaiko geolokacijos."
+    "geolocation_not_supported": "Jūsų naršyklė nepalaiko geolokacijos.",
+    "track_id": "Trako ID"
   },
   "et": {
     "title": "Chicha Isotoopide Kaart — Varjatud Radioaktiivsed Teed",
@@ -790,7 +821,8 @@
     "location_unavailable": "Asukoht pole saadaval.",
     "location_timeout": "Asukoha päringu aeg on läbi.",
     "location_error": "Asukoha saamisel tekkis viga.",
-    "geolocation_not_supported": "Teie brauser ei toeta geolokatsiooni."
+    "geolocation_not_supported": "Teie brauser ei toeta geolokatsiooni.",
+    "track_id": "Rada ID"
   },
   "lv": {
     "title": "Chicha Izotopu Karte — Slēptie Radioaktīvie Ceļi",
@@ -814,7 +846,8 @@
     "location_unavailable": "Atrašanās vieta nav pieejama.",
     "location_timeout": "Atrašanās vietas pieprasījuma laiks ir beidzies.",
     "location_error": "Radās kļūda apgūstot atrašanās vietu.",
-    "geolocation_not_supported": "Jūsu pārlūkprogramma neatbalsta ģeolokāciju."
+    "geolocation_not_supported": "Jūsu pārlūkprogramma neatbalsta ģeolokāciju.",
+    "track_id": "Trases ID"
   },
   "sl": {
     "title": "Chicha Izotopski Zemljevid — Skrite Radioaktivne Poti",
@@ -838,7 +871,8 @@
     "location_unavailable": "Lokacija ni na voljo.",
     "location_timeout": "Čas za zahtevo lokacije je potekel.",
     "location_error": "Pri pridobivanju lokacije je prišlo do napake.",
-    "geolocation_not_supported": "Vaš brskalnik ne podpira geolokacije."
+    "geolocation_not_supported": "Vaš brskalnik ne podpira geolokacije.",
+    "track_id": "ID Sledenja"
   }
 }
 
