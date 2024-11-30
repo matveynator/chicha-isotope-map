@@ -1002,87 +1002,12 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// Новый обработчик для получения маркеров по TrackID
-func getMarkersByTrackIDHandler(w http.ResponseWriter, r *http.Request) {
-	// Extract TrackID from URL
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 3 {
-		http.Error(w, "TrackID not provided", http.StatusBadRequest)
-		return
-	}
-	trackID := pathParts[2]
-
-	// Extract query parameters
-	zoomStr := r.URL.Query().Get("zoom")
-	minLatStr := r.URL.Query().Get("minLat")
-	minLonStr := r.URL.Query().Get("minLon")
-	maxLatStr := r.URL.Query().Get("maxLat")
-	maxLonStr := r.URL.Query().Get("maxLon")
-
-	zoomLevel, err := strconv.Atoi(zoomStr)
-	if err != nil {
-		http.Error(w, "Invalid zoom level", http.StatusBadRequest)
-		return
-	}
-
-	minLat, err := strconv.ParseFloat(minLatStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid minLat", http.StatusBadRequest)
-		return
-	}
-
-	minLon, err := strconv.ParseFloat(minLonStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid minLon", http.StatusBadRequest)
-		return
-	}
-
-	maxLat, err := strconv.ParseFloat(maxLatStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid maxLat", http.StatusBadRequest)
-		return
-	}
-
-	maxLon, err := strconv.ParseFloat(maxLonStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid maxLon", http.StatusBadRequest)
-		return
-	}
-
-	// Fetch markers by TrackID
-	markers, err := db.GetMarkersByTrackID(trackID, *dbType)
-	if err != nil {
-		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
-		return
-	}
-
-	// Filter markers by geographical bounds and zoom
-	var filteredMarkers []database.Marker
-	for _, marker := range markers {
-		if marker.Zoom == zoomLevel &&
-			marker.Lat >= minLat && marker.Lat <= maxLat &&
-			marker.Lon >= minLon && marker.Lon <= maxLon {
-			filteredMarkers = append(filteredMarkers, marker)
-		}
-	}
-
-	// Return markers as JSON
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(filteredMarkers)
-}
-
 // =====================
 // WEB SERVER HANDLERS
 // =====================
 
 // Function to handle rendering the map with markers
 func mapHandler(w http.ResponseWriter, r *http.Request) {
-	// Check if a specific TrackID is requested
-	if strings.HasPrefix(r.URL.Path, "/trackid/") {
-		trackHandler(w, r)
-		return
-	}
-
 	lang := getPreferredLanguage(r)
 
 	// Add function toJSON for use in the template
@@ -1329,7 +1254,7 @@ func main() {
 	http.HandleFunc("/", mapHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
-	http.HandleFunc("/trackid/", getMarkersByTrackIDHandler) // Новый маршрут
+	http.HandleFunc("/trackid/", trackHandler)
 
 	log.Printf("Application running at: http://localhost:%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
