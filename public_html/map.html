@@ -115,6 +115,33 @@
             background-color: #f4f4f4; /* Осветляем фон при наведении */
         }
 
+        /* Контейнер для кнопки геолокации */
+        .locate-btn-container {
+            position: absolute;
+            top: 60px; /* Сдвиг вниз от кнопки загрузки */
+            right: 20px;
+            z-index: 1000; /* Поверх других элементов */
+        }
+
+        /* Стили для кнопки геолокации */
+        .locate-btn {
+            background-color: white; /* Фон кнопки */
+            border: 1px solid #ccc; /* Рамка кнопки */
+            border-radius: 4px; /* Скругленные углы */
+            padding: 5px 10px; /* Внутренние отступы */
+            cursor: pointer; /* Курсор при наведении */
+            font-size: 16px; /* Размер текста (иконки) */
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65); /* Тень для кнопки */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Эффект наведения для кнопки геолокации */
+        .locate-btn:hover {
+            background-color: #f4f4f4; /* Осветляем фон при наведении */
+        }
+
         /* Контейнер для ссылки на GitHub */
         .github-link {
             position: absolute;
@@ -194,6 +221,16 @@
     <div class="upload-btn-container leaflet-control">
         <label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
         <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()"> <!-- Скрытый input для файлов -->
+    </div>
+
+    <!-- Контейнер для кнопки центрирования карты по текущему местоположению -->
+    <div class="locate-btn-container leaflet-control">
+        <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
+            <!-- Стандартная иконка геолокации (используется SVG) -->
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#000000" viewBox="0 0 24 24">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5 14.5 7.62 14.5 9 13.38 11.5 12 11.5z"/>
+            </svg>
+        </button>
     </div>
 
     <!-- Оверлей для отображения прогресса загрузки файлов -->
@@ -326,18 +363,18 @@
             var formattedDate = date.toLocaleString(); // Форматируем дату в локальном формате
 
             // Возвращаем HTML-содержимое для всплывающего окна
-						return `
+            return `
 <div class="custom-tooltip">
-		<div class="tooltip-row">
-				<strong>${translate('radiation_dose')}:</strong>
-				<span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
-		</div>
-		<div class="tooltip-row">
-				<strong>${translate('speed')}:</strong>
-				<span>${marker.speed.toFixed(2)} m/s</span>
-		</div>
+    <div class="tooltip-row">
+        <strong>${translate('radiation_dose')}:</strong>
+        <span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
+    </div>
+    <div class="tooltip-row">
+        <strong>${translate('speed')}:</strong>
+        <span>${marker.speed.toFixed(2)} m/s</span>
+    </div>
 </div>
-						`;
+            `;
         }
     </script>
 
@@ -356,82 +393,82 @@
             else if (zoomLevel == 13) baseRadius = 4;
             else if (zoomLevel == 12) baseRadius = 4;
             else if (zoomLevel == 11) baseRadius = 3;
-	    else if (zoomLevel == 10) baseRadius = 3;
-	    else if (zoomLevel == 9) baseRadius = 2;
-	    else if (zoomLevel == 8) baseRadius = 2;
-	    else if (zoomLevel == 7) baseRadius = 2;
+            else if (zoomLevel == 10) baseRadius = 3;
+            else if (zoomLevel == 9) baseRadius = 2;
+            else if (zoomLevel == 8) baseRadius = 2;
+            else if (zoomLevel == 7) baseRadius = 2;
             else baseRadius = 1;
 
             return baseRadius; // Возвращаем соответствующий радиус
         }
     </script>
 
-		<!-- Скрипт для расчёта цвета маркера на основе уровня радиации и частоты счёта -->
-		<script id="color-gradient-script">
-			function getGradientColor(doseRate) {
-				// Возвращаем соответствующий цвет на основе doseRate
-				if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный для низких значений
-				else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04)); // Градиент зелёного
-				else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08)); // Градиент жёлтого
-				else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11)); // Градиент оранжевого
-				else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20)); // Градиент красного
-				else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30)); // Градиент к чёрному
-				else return "#000000"; // Чёрный для очень высоких значений
-		}
+    <!-- Скрипт для расчёта цвета маркера на основе уровня радиации и частоты счёта -->
+    <script id="color-gradient-script">
+        function getGradientColor(doseRate) {
+            // Возвращаем соответствующий цвет на основе doseRate
+            if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный для низких значений
+            else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04)); // Градиент зелёного
+            else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08)); // Градиент жёлтого
+            else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11)); // Градиент оранжевого
+            else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20)); // Градиент красного
+            else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30)); // Градиент к чёрному
+            else return "#000000"; // Чёрный для очень высоких значений
+        }
 
-		// Функция для интерполяции между двумя цветами
-		function interpolateColor(color1, color2, factor) {
-				if (factor < 0) factor = 0; // Ограничиваем фактор интерполяции
-				if (factor > 1) factor = 1;
+        // Функция для интерполяции между двумя цветами
+        function interpolateColor(color1, color2, factor) {
+            if (factor < 0) factor = 0; // Ограничиваем фактор интерполяции
+            if (factor > 1) factor = 1;
 
-				const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
-				const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
-				const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
+            const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
+            const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
+            const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
 
-				return `rgb(${r}, ${g}, ${b})`; // Возвращаем цвет в формате RGB
-		}
-		</script>
+            return `rgb(${r}, ${g}, ${b})`; // Возвращаем цвет в формате RGB
+        }
+    </script>
 
-		<!-- Скрипт для расчёта прозрачности заливки маркера на основе скорости -->
-		<script id="fill-opacity-script">
-			function getFillOpacity(speed) {
-				// Если скорость меньше или равна 5 м/с
-				if (speed <= 5) {
-						// Возвращаем максимальную непрозрачность заливки: 0.6
-						return 0.6;
-				}
-				// Если скорость больше или равна 20 м/с
-				else if (speed >= 20) {
-						// Возвращаем минимальную непрозрачность заливки: 0.1
-						return 0.1;
-				}
-				// Если скорость между 5 м/с и 20 м/с
-				else {
-						// Диапазон скоростей, где происходит изменение непрозрачности
-						var speedRange = 20 - 5; // 15 м/с
+    <!-- Скрипт для расчёта прозрачности заливки маркера на основе скорости -->
+    <script id="fill-opacity-script">
+        function getFillOpacity(speed) {
+            // Если скорость меньше или равна 5 м/с
+            if (speed <= 5) {
+                // Возвращаем максимальную непрозрачность заливки: 0.6
+                return 0.6;
+            }
+            // Если скорость больше или равна 20 м/с
+            else if (speed >= 20) {
+                // Возвращаем минимальную непрозрачность заливки: 0.1
+                return 0.1;
+            }
+            // Если скорость между 5 м/с и 20 м/с
+            else {
+                // Диапазон скоростей, где происходит изменение непрозрачности
+                var speedRange = 20 - 5; // 15 м/с
 
-						// Диапазон изменения непрозрачности
-						var opacityRange = 0.6 - 0.1; // 0.5
+                // Диапазон изменения непрозрачности
+                var opacityRange = 0.6 - 0.1; // 0.5
 
-						// Вычисляем снижение непрозрачности на каждый м/с
-						var opacityDecreasePerMs = opacityRange / speedRange; // 0.5 / 15 ≈ 0.0333333
+                // Вычисляем снижение непрозрачности на каждый м/с
+                var opacityDecreasePerMs = opacityRange / speedRange; // 0.5 / 15 ≈ 0.0333333
 
-						// Вычисляем, насколько скорость превышает 5 м/с
-						var speedAboveFive = speed - 5;
+                // Вычисляем, насколько скорость превышает 5 м/с
+                var speedAboveFive = speed - 5;
 
-						// Вычисляем общую потерю непрозрачности для данной скорости
-						var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
+                // Вычисляем общую потерю непрозрачности для данной скорости
+                var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
 
-						// Вычисляем текущую непрозрачность заливки
-						var currentOpacity = 0.6 - totalOpacityDecrease;
+                // Вычисляем текущую непрозрачность заливки
+                var currentOpacity = 0.6 - totalOpacityDecrease;
 
-						// Возвращаем вычисленное значение непрозрачности
-						return currentOpacity;
-				}
-		}
-		</script>
+                // Возвращаем вычисленное значение непрозрачности
+                return currentOpacity;
+            }
+        }
+    </script>
 
-		<!-- Скрипт для обновления URL на основе состояния карты (центр, зум, слой) -->
+    <!-- Скрипт для обновления URL на основе состояния карты (центр, зум, слой) -->
     <script id="url-update-script">
         // Функция для обновления URL с текущим состоянием карты
         function updateUrl() {
@@ -637,6 +674,56 @@
                 alert(translate("select_files")); // Уведомляем пользователя, если файлы не выбраны
             }
         }
+    </script>
+
+    <!-- Скрипт для центрирования карты по текущему местоположению пользователя -->
+    <script id="locate-button-script">
+        // Функция для центрирования карты по местоположению пользователя
+        function centerMapToLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        var userLat = position.coords.latitude;
+                        var userLon = position.coords.longitude;
+
+                        // Центрируем карту и увеличиваем зум
+                        map.setView([userLat, userLon], 14);
+
+                        // Добавляем маркер для текущего местоположения пользователя
+                        var userMarker = L.marker([userLat, userLon]).addTo(map)
+                            .bindPopup(translate("your_location")).openPopup();
+                    },
+                    function(error) {
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                alert(translate("location_permission_denied"));
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                alert(translate("location_unavailable"));
+                                break;
+                            case error.TIMEOUT:
+                                alert(translate("location_timeout"));
+                                break;
+                            default:
+                                alert(translate("location_error"));
+                                break;
+                        }
+                    }
+                );
+            } else {
+                alert(translate("geolocation_not_supported")); // Если геолокация не поддерживается
+            }
+        }
+
+        // Добавляем обработчик клика на кнопку геолокации после загрузки DOM
+        document.addEventListener('DOMContentLoaded', function() {
+            var locateButton = document.getElementById('locateButton');
+            if (locateButton) {
+                locateButton.addEventListener('click', centerMapToLocation);
+            } else {
+                console.error("Locate button not found!");
+            }
+        });
     </script>
 </body>
 </html>
