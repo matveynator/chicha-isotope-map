@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ .Lang }}">
 <head>
     <!-- Установка кодировки и масштабирования страницы -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{translate "title"}}</title>
+    <title>{{ translate "title" }}</title>
 
     <!-- Подключение CSS Leaflet для отображения карты -->
     <link rel="stylesheet" href="/static/leaflet.css" />
@@ -115,7 +115,7 @@
             background-color: #f4f4f4; /* Осветляем фон при наведении */
         }
 
-        /* Контейнер для кнопки центрирования карты по текущему местоположению */
+        /* Контейнер для кнопки центрирования карты по текущему местоположению пользователя */
         .locate-btn-container {
             position: absolute;
             top: 60px; /* Сдвиг вниз от кнопки загрузки */
@@ -240,20 +240,20 @@
 <body>
     <!-- Контейнер для кнопки загрузки файлов -->
     <div class="upload-btn-container leaflet-control">
-        <label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
+        <label for="fileInput" class="upload-btn">{{ translate "upload_button" }}</label>
         <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()"> <!-- Скрытый input для файлов -->
     </div>
 
     <!-- Контейнер для кнопки центрирования карты по текущему местоположению пользователя -->
     <div class="locate-btn-container leaflet-control">
-        <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
+        <button id="locateButton" class="locate-btn" title="{{ translate "locate_button_tooltip" }}">
             <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width: 20px;">
         </button>
     </div>
 
     <!-- Контейнер для кнопки "Вернуться ко всем трекам" -->
     <div class="back-to-all-container leaflet-control">
-        <button id="backToAllButton" class="back-to-all-btn">{{translate "back_to_all_tracks"}}</button>
+        <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
     </div>
 
     <!-- Оверлей для отображения прогресса загрузки файлов -->
@@ -270,7 +270,7 @@
 
     <!-- Информация о программе с ссылкой на версию -->
     <div class="program-info">
-        <strong>{{translate "description"}}</strong><br>
+        <strong>{{ translate "description" }}</strong><br>
         v.<a href="https://files.zabiyaka.net/chicha-isotope-map/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
     </div>
 
@@ -280,153 +280,9 @@
     <!-- Подключение JavaScript библиотеки Leaflet для работы с картой -->
     <script src="/static/leaflet.js"></script>
 
-    <!-- Скрипт для настройки карты и добавления базовых слоёв -->
-    <script id="map-setup-script">
-        // Инициализация слоя OpenStreetMap
-        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '&copy; OpenStreetMap contributors'
-        });
-
-        // Инициализация слоя Google Satellite
-        var googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-            maxZoom: 20,
-            attribution: '&copy; Google'
-        });
-
-        // Инициализация карты с центром и зумом по умолчанию
-        var map = L.map('map', {
-            center: [44.08832, 42.97577], // Координаты центра карты
-            zoom: 11,                     // Уровень зума
-            layers: [osmLayer]            // Слой по умолчанию
-        });
-
-        // Объект с базовыми слоями
-        var baseLayers = {
-            "OpenStreetMap": osmLayer,
-            "Google Satellite": googleSatellite
-        };
-
-        // Добавление контроллера слоёв на карту
-        var layerControl = L.control.layers(baseLayers, null, {
-            position: 'topleft',
-            collapsed: false
-        }).addTo(map);
-
-        // Объект для хранения маркеров
-        var circleMarkers = {};
-
-        // Флаг, указывающий на отображение отдельного трека
-        var isTrackView = false;
-    </script>
-
-    <!-- Скрипт для обновления маркеров на карте в зависимости от зума и границ -->
-    <script id="markers-update-script">
-        // Функция для обновления маркеров на карте
-        function updateMarkers() {
-            var zoomLevel = map.getZoom();
-            var bounds = map.getBounds();
-
-            var params = {
-                zoom: zoomLevel,
-                minLat: bounds.getSouthWest().lat,
-                minLon: bounds.getSouthWest().lng,
-                maxLat: bounds.getNorthEast().lat,
-                maxLon: bounds.getNorthEast().lng
-            };
-
-            fetch('/get_markers?' + new URLSearchParams(params))
-                .then(response => response.json())
-                .then(data => {
-                    for (let key in circleMarkers) {
-                        map.removeLayer(circleMarkers[key]);
-                    }
-                    circleMarkers = {};
-
-                    data.forEach(function(marker) {
-                        var markerKey = marker.id;
-
-                        var color = getGradientColor(marker.doseRate);
-                        var radius = getRadius(marker.doseRate, zoomLevel);
-
-                        var circleMarker = L.circleMarker([marker.lat, marker.lon], {
-                            radius: radius,
-                            fillColor: color,
-                            color: color,
-                            weight: 1,
-                            opacity: getFillOpacity(marker.speed) + 0.1,
-                            fillOpacity: getFillOpacity(marker.speed)
-                        }).addTo(map)
-                            .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-                            .on('click', function() {
-                                viewTrack(marker.trackID);
-                            });
-
-                        circleMarkers[markerKey] = circleMarker;
-                    });
-                })
-                .catch(error => {
-                    console.error('Error fetching markers:', error);
-                });
-        }
-
-        // Обновляем маркеры при загрузке карты, изменении зума или перемещении карты
-        map.on('load', updateMarkers);
-        map.on('zoomend', updateMarkers);
-        map.on('moveend', updateMarkers);
-    </script>
-
-    <!-- Скрипт для отображения содержимого всплывающего окна маркера -->
-    <script id="tooltip-content-script">
-        function getTooltipContent(marker) {
-            var date = new Date(marker.date * 1000);
-            var formattedDate = date.toLocaleString();
-
-            return `
-<div class="custom-tooltip">
-    <div class="tooltip-row">
-        <strong>${translate('radiation_dose')}:</strong>
-        <span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
-    </div>
-    <div class="tooltip-row">
-        <strong>${translate('speed')}:</strong>
-        <span>${marker.speed.toFixed(2)} m/s</span>
-    </div>
-    <div class="tooltip-row">
-        <strong>${translate('track_id')}:</strong>
-        <span>${marker.trackID}</span>
-    </div>
-</div>
-            `;
-        }
-    </script>
-
-    <!-- Скрипт для расчёта радиуса маркера на основе уровня зума -->
-    <script id="radius-calc-script">
-        function getRadius(doseRate, zoomLevel) {
-            let baseRadius;
-
-            if (zoomLevel > 18) baseRadius = 9;
-            else if (zoomLevel == 18) baseRadius = 8;
-            else if (zoomLevel == 17) baseRadius = 7;
-            else if (zoomLevel == 16) baseRadius = 6;
-            else if (zoomLevel == 15) baseRadius = 4;
-            else if (zoomLevel == 14) baseRadius = 3;
-            else if (zoomLevel == 13) baseRadius = 3;
-            else if (zoomLevel == 12) baseRadius = 2;
-            else if (zoomLevel == 11) baseRadius = 2;
-            else if (zoomLevel == 10) baseRadius = 2;
-            else if (zoomLevel == 9) baseRadius = 2;
-            else if (zoomLevel == 8) baseRadius = 2;
-            else if (zoomLevel == 7) baseRadius = 2;
-            else baseRadius = 1;
-
-            return baseRadius;
-        }
-    </script>
-
     <!-- Скрипт для расчёта цвета маркера на основе уровня радиации -->
     <script id="color-gradient-script">
+
         function getGradientColor(doseRate) {
             if (doseRate <= 0.04) return "#006400";
             else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
@@ -468,33 +324,264 @@
         }
     </script>
 
+    <!-- Скрипт для расчёта радиуса маркера на основе уровня зума -->
+    <script id="radius-calc-script">
+        function getRadius(doseRate, zoomLevel) {
+            let baseRadius;
+
+            if (zoomLevel > 18) baseRadius = 10;
+            else if (zoomLevel === 18) baseRadius = 9;
+            else if (zoomLevel === 17) baseRadius = 8;
+            else if (zoomLevel === 16) baseRadius = 7;
+            else if (zoomLevel === 15) baseRadius = 6;
+            else if (zoomLevel === 14) baseRadius = 5;
+            else if (zoomLevel === 13) baseRadius = 4;
+            else if (zoomLevel === 12) baseRadius = 3;
+            else if (zoomLevel === 11) baseRadius = 2;
+            else if (zoomLevel === 10) baseRadius = 2;
+            else if (zoomLevel === 9) baseRadius = 2;
+            else if (zoomLevel === 8) baseRadius = 2;
+            else if (zoomLevel === 7) baseRadius = 2;
+            else baseRadius = 1;
+
+            return baseRadius;
+        }
+    </script>
+
+    <!-- Скрипт для просмотра конкретного трека -->
+    <script id="track-view-script">
+        function viewTrack(trackID) {
+            isTrackView = true;
+            var bounds = map.getBounds();
+            var layer = '';
+            var zoom = map.getZoom(); // Получаем текущий зум
+
+            if (map.hasLayer(googleSatellite)) {
+                layer = 'Google Satellite';
+            } else {
+                layer = 'OpenStreetMap';
+            }
+
+            // Формируем URL для просмотра конкретного трека без параметра zoom
+            var trackURL = `/trackid/${trackID}?minLat=${bounds.getSouthWest().lat}&minLon=${bounds.getSouthWest().lng}&maxLat=${bounds.getNorthEast().lat}&maxLon=${bounds.getNorthEast().lng}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+
+            // Перенаправляем пользователя на страницу конкретного трека
+            window.location.href = trackURL;
+
+            // Показываем кнопку "Вернуться ко всем трекам"
+            document.querySelector('.back-to-all-container').style.display = 'block';
+        }
+    </script>
+
+	    <!-- Скрипт для обновления маркеров на карте в зависимости от границ -->
+    <script id="markers-update-script">
+        // Функция для обновления маркеров на карте
+    function updateMarkers() {
+    if (isTrackView) {
+        return; // Не обновляем маркеры в режиме просмотра трека
+    }
+
+    var bounds = map.getBounds();
+    var zoom = map.getZoom(); // Получаем текущий уровень зума карты
+
+    var params = {
+        minLat: bounds.getSouthWest().lat,
+        minLon: bounds.getSouthWest().lng,
+        maxLat: bounds.getNorthEast().lat,
+        maxLon: bounds.getNorthEast().lng,
+        zoom: zoom // Добавляем уровень зума в параметры
+    };
+
+    fetch('/get_markers?' + new URLSearchParams(params))
+        .then(response => response.json())
+        .then(data => {
+            // Очистка существующих маркеров
+            for (let key in circleMarkers) {
+                map.removeLayer(circleMarkers[key]);
+            }
+            circleMarkers = {};
+
+            var newBounds = new L.LatLngBounds();
+
+            // Добавление новых маркеров
+            data.forEach(function(marker) {
+                var markerKey = marker.id;
+
+                var color = getGradientColor(marker.doseRate);
+                var radius = getRadius(marker.doseRate, map.getZoom());
+
+                var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+                    radius: radius,
+                    fillColor: color,
+                    color: color,
+                    weight: 1,
+                    opacity: getFillOpacity(marker.speed) + 0.1,
+                    fillOpacity: getFillOpacity(marker.speed)
+                }).addTo(map)
+                    .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
+                    .on('click', function() {
+                        viewTrack(marker.trackID);
+                    });
+
+                circleMarkers[markerKey] = circleMarker;
+                newBounds.extend([marker.lat, marker.lon]);
+            });
+
+            if (data.length > 0) {
+                map.fitBounds(newBounds);
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching markers:', error);
+        });
+}
+
+		</script>
+
+		<!-- Скрипт для отображения содержимого всплывающего окна маркера -->
+		<script id="tooltip-content-script">
+			function getTooltipContent(marker) {
+						var date = new Date(marker.date * 1000);
+						var formattedDate = date.toLocaleString();
+
+						return `
+<div class="custom-tooltip">
+		<div class="tooltip-row">
+				<strong>${translate('radiation_dose')}:</strong>
+				<span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
+		</div>
+		<div class="tooltip-row">
+				<strong>${translate('speed')}:</strong>
+				<span>${marker.speed.toFixed(2)} m/s</span>
+		</div>
+		<div class="tooltip-row">
+				<strong>${translate('track_id')}:</strong>
+				<span>${marker.trackID}</span>
+		</div>
+</div>
+						`;
+				}
+		</script>
+
+
+
+   <!-- Скрипт для настройки карты и добавления базовых слоёв -->
+    <script id="map-setup-script">
+        // Инициализация слоя OpenStreetMap
+        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap contributors'
+        });
+
+        // Инициализация слоя Google Satellite
+        var googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            attribution: '&copy; Google'
+        });
+
+        // Инициализация карты с центром и зумом по умолчанию
+        var map = L.map('map', {
+            center: [44.08832, 42.97577], // Координаты центра карты
+            zoom: 11,                     // Уровень зума
+            layers: [osmLayer]            // Слой по умолчанию
+        });
+
+        // Объект с базовыми слоями
+        var baseLayers = {
+            "OpenStreetMap": osmLayer,
+            "Google Satellite": googleSatellite
+        };
+
+        // Добавление контроллера слоёв на карту
+        var layerControl = L.control.layers(baseLayers, null, {
+            position: 'topleft',
+            collapsed: false
+        }).addTo(map);
+
+        // Объект для хранения маркеров
+        var circleMarkers = {};
+
+        // Флаг, указывающий на отображение отдельного трека
+        var isTrackView = false;
+
+        // Предзагруженные маркеры, переданные сервером
+				var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
+
+        // Проверка, является ли initialMarkers массивом
+        if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
+            isTrackView = true;
+            var bounds = new L.LatLngBounds();
+
+            initialMarkers.forEach(function(marker) {
+                var markerKey = marker.id || marker.trackID; // Используйте уникальный ключ
+
+                var color = getGradientColor(marker.doseRate);
+                var radius = getRadius(marker.doseRate, map.getZoom());
+
+                var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+                    radius: radius,
+                    fillColor: color,
+                    color: color,
+                    weight: 1,
+                    opacity: getFillOpacity(marker.speed) + 0.1,
+                    fillOpacity: getFillOpacity(marker.speed)
+                }).addTo(map)
+                    .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
+                    .on('click', function() {
+                        viewTrack(marker.trackID);
+                    });
+
+                circleMarkers[markerKey] = circleMarker;
+                bounds.extend([marker.lat, marker.lon]);
+            });
+
+            // Автоматическая фокусировка на предзагруженных маркерах
+            map.fitBounds(bounds);
+
+            // Показать кнопку "Вернуться ко всем трекам"
+            document.querySelector('.back-to-all-container').style.display = 'block';
+        } else {
+            updateMarkers();
+        }
+    </script>
+
+
+
+
     <!-- Скрипт для обновления URL на основе состояния карты -->
     <script id="url-update-script">
         function updateUrl() {
-            var center = map.getCenter();
-            var zoom = map.getZoom();
+            var bounds = map.getBounds();
+            var layer = '';
 
-            var currentLayer = '';
             if (map.hasLayer(googleSatellite)) {
-                currentLayer = 'Google Satellite';
+                layer = 'Google Satellite';
             } else {
-                currentLayer = 'OpenStreetMap';
+                layer = 'OpenStreetMap';
             }
 
-            var newUrl = `${window.location.pathname}?lat=${center.lat.toFixed(5)}&lon=${center.lng.toFixed(5)}&zoom=${zoom}&layer=${encodeURIComponent(currentLayer)}`;
+            var minLat = bounds.getSouthWest().lat.toFixed(5);
+            var minLon = bounds.getSouthWest().lng.toFixed(5);
+            var maxLat = bounds.getNorthEast().lat.toFixed(5);
+            var maxLon = bounds.getNorthEast().lng.toFixed(5);
+						var zoom = map.getZoom(); // Получаем текущий зум
+
+            var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
 
             window.history.replaceState({}, '', newUrl);
         }
 
         function loadMapFromUrl() {
             var params = new URLSearchParams(window.location.search);
-            var lat = parseFloat(params.get('lat'));
-            var lon = parseFloat(params.get('lon'));
-            var zoom = parseInt(params.get('zoom'));
+            var minLat = parseFloat(params.get('minLat'));
+            var minLon = parseFloat(params.get('minLon'));
+            var maxLat = parseFloat(params.get('maxLat'));
+            var maxLon = parseFloat(params.get('maxLon'));
             var layer = params.get('layer');
 
-            if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
-                map.setView([lat, lon], zoom);
+            if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
+                var bounds = [[minLat, minLon], [maxLat, maxLon]];
+                map.fitBounds(bounds);
             } else {
                 map.setView([44.08832, 42.97577], 11);
             }
@@ -534,29 +621,11 @@
 
             fileProgressContainer.innerHTML = "";
 
-            var globalBounds = L.latLngBounds();
-
             var completedUploads = 0;
             var totalFiles = files.length;
 
             if (files.length > 0) {
                 fileOverlay.style.display = "flex";
-
-                function updateMapBounds(minLat, minLon, maxLat, maxLon) {
-                    var fileBounds = L.latLngBounds([[minLat, minLon], [maxLat, maxLon]]);
-                    globalBounds.extend(fileBounds);
-                    map.fitBounds(globalBounds);
-                }
-
-                function checkIfAllUploadsComplete() {
-                    completedUploads++;
-                    if (completedUploads === totalFiles) {
-                        setTimeout(function() {
-                            fileOverlay.style.display = "none";
-                            location.reload();
-                        }, 1000);
-                    }
-                }
 
                 for (var i = 0; i < files.length; i++) {
                     var file = files[i];
@@ -608,10 +677,8 @@
                                         serverProcessing.innerText = translate("processing_complete");
                                         serverProcessing.style.color = "green";
 
-                                        // Дополнительно можно добавить функциональность для отображения TrackURL
-                                        // Например, отображение ссылки пользователю
-
-                                        checkIfAllUploadsComplete();
+                                        // Перенаправляем пользователя на URL трека
+                                        window.location.href = trackURL;
                                     }, 2000);
                                 } else {
                                     serverProcessing.innerText = translate("error_processing_files");
@@ -634,7 +701,18 @@
                 alert(translate("select_files"));
             }
         }
+
+        function checkIfAllUploadsComplete() {
+            completedUploads++;
+            if (completedUploads === totalFiles) {
+                setTimeout(function() {
+                    fileOverlay.style.display = "none";
+                    location.reload();
+                }, 1000);
+            }
+        }
     </script>
+	
 
     <!-- Скрипт для центрирования карты по текущему местоположению пользователя -->
     <script id="locate-button-script">
@@ -684,37 +762,17 @@
             if (backToAllButton) {
                 backToAllButton.addEventListener('click', function() {
                     isTrackView = false;
-                    updateMarkers();
+                    for (let key in circleMarkers) {
+                        map.removeLayer(circleMarkers[key]);
+                    }
+                    circleMarkers = {};
                     document.querySelector('.back-to-all-container').style.display = 'none';
+                    updateMarkers();
                 });
             }
         });
     </script>
 
-    <!-- Скрипт для просмотра конкретного трека -->
-    <script id="track-view-script">
-        function viewTrack(trackID) {
-            isTrackView = true;
-            var bounds = map.getBounds();
-            var zoom = map.getZoom();
-            var layer = '';
-
-            if (map.hasLayer(googleSatellite)) {
-                layer = 'Google Satellite';
-            } else {
-                layer = 'OpenStreetMap';
-            }
-
-            // Формируем URL для просмотра конкретного трека
-            var trackURL = `/trackid/${trackID}?minLat=${bounds.getSouthWest().lat}&minLon=${bounds.getSouthWest().lng}&maxLat=${bounds.getNorthEast().lat}&maxLon=${bounds.getNorthEast().lng}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
-
-            // Перенаправляем пользователя на страницу конкретного трека
-            window.location.href = trackURL;
-
-            // Показываем кнопку "Вернуться ко всем трекам"
-            document.querySelector('.back-to-all-container').style.display = 'block';
-        }
-    </script>
 </body>
 </html>
 

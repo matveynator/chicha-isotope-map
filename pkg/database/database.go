@@ -159,6 +159,7 @@ func (db *Database) InitSchema(config Config) error {
 }
 
 // SaveMarkerAtomic сохраняет маркер атомарно, используя канал генератора ID для уникальных идентификаторов.
+// SaveMarkerAtomic сохраняет маркер атомарно, используя канал генератора ID для уникальных идентификаторов.
 func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 	var count int
 	var query string
@@ -170,7 +171,7 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 		SELECT COUNT(1)
 		FROM markers
 		WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5 AND zoom = $6 AND speed = $7 AND trackID = $8`
-	default:
+	default: // sqlite и другие
 		query = `
 		SELECT COUNT(1)
 		FROM markers
@@ -210,7 +211,7 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 		query = `
 		INSERT INTO markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	default:
+	default: // sqlite и другие
 		query = `
 		INSERT INTO markers (id, doseRate, date, lon, lat, countRate, zoom, speed, trackID)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -227,7 +228,7 @@ func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
 			marker.Zoom,
 			marker.Speed,
 			marker.TrackID)
-	} else {
+	} else { // sqlite и другие
 		_, err = db.DB.Exec(query,
 			marker.ID,
 			marker.DoseRate,
@@ -258,7 +259,7 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
 		FROM markers
 		WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;`
-	default:
+	default: // sqlite и другие
 		query = `
 		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
 		FROM markers
@@ -292,50 +293,82 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 	return markers, nil
 }
 
-// GetMarkersByTrackID возвращает маркеры для конкретного TrackID, отсортированные по дате.
+// GetMarkersByTrackID извлекает маркеры по заданному trackID
 func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker, error) {
+	var markers []Marker
 	var query string
 
-	// Определяем SQL-запрос в зависимости от типа базы данных
 	switch dbType {
 	case "pgx":
-		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = $1
-		ORDER BY date ASC;`
-	default:
-		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = ?
-		ORDER BY date ASC;`
+		query = "SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID FROM markers WHERE trackID = $1"
+	default: // sqlite и другие
+		query = "SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID FROM markers WHERE trackID = ?"
 	}
 
-	// Выполняем запрос с переданным TrackID
 	rows, err := db.DB.Query(query, trackID)
 	if err != nil {
-		return nil, fmt.Errorf("error querying markers by TrackID: %v", err)
+		return nil, fmt.Errorf("error querying markers by trackID: %v", err)
 	}
 	defer rows.Close()
 
-	var markers []Marker
-
-	// Итерация по результатам запроса и сканирование в структуру Marker
 	for rows.Next() {
-		var marker Marker
-		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID)
+		var m Marker
+		err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning marker: %v", err)
 		}
-		markers = append(markers, marker)
+		markers = append(markers, m)
 	}
 
-	// Проверяем наличие ошибок после итерации
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over result set: %v", err)
 	}
 
 	return markers, nil
+}
+
+// GetMarkersByTrackIDAndBounds извлекает маркеры по trackID и границам, без фильтрации по zoom
+func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
+    var markers []Marker
+    var query string
+
+    switch dbType {
+    case "pgx":
+        query = `
+            SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+            FROM markers 
+            WHERE trackID = $1 
+            AND lat BETWEEN $2 AND $3 
+            AND lon BETWEEN $4 AND $5;`
+    default: // sqlite и другие
+        query = `
+            SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+            FROM markers 
+            WHERE trackID = ? 
+            AND lat BETWEEN ? AND ? 
+            AND lon BETWEEN ? AND ?;`
+    }
+
+    rows, err := db.DB.Query(query, trackID, minLat, maxLat, minLon, maxLon)
+    if err != nil {
+        return nil, fmt.Errorf("error querying markers by trackID and bounds: %v", err)
+    }
+    defer rows.Close()
+
+    for rows.Next() {
+        var m Marker
+        err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID)
+        if err != nil {
+            return nil, fmt.Errorf("error scanning marker: %v", err)
+        }
+        markers = append(markers, m)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, fmt.Errorf("error iterating over result set: %v", err)
+    }
+
+    log.Printf("Found %d markers for TrackID=%s", len(markers), trackID)
+    return markers, nil
 }
 
