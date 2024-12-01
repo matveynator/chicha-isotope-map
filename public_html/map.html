@@ -188,29 +188,6 @@
         .program-info:hover {
             opacity: 1; /* Полная непрозрачность при наведении */
         }
-
-        /* Стили для кнопки "Вернуться ко всем трекам" */
-        .back-to-all-container {
-            position: absolute;
-            top: 100px; /* Расположено ниже кнопки геолокации */
-            right: 20px;
-            z-index: 1000;
-            display: none; /* Изначально скрыта */
-        }
-
-        .back-to-all-btn {
-            background-color: white;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 14px;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-        }
-
-        .back-to-all-btn:hover {
-            background-color: #f4f4f4;
-        }
     </style>
 
     <!-- Скрипт для обработки переводов и передачи данных из Go в JavaScript -->
@@ -249,11 +226,6 @@
         <button id="locateButton" class="locate-btn" title="{{ translate "locate_button_tooltip" }}">
             <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width: 20px;">
         </button>
-    </div>
-
-    <!-- Контейнер для кнопки "Вернуться ко всем трекам" -->
-    <div class="back-to-all-container leaflet-control">
-        <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
     </div>
 
     <!-- Оверлей для отображения прогресса загрузки файлов -->
@@ -368,8 +340,6 @@
             // Перенаправляем пользователя на страницу конкретного трека
             window.location.href = trackURL;
 
-            // Показываем кнопку "Вернуться ко всем трекам"
-            document.querySelector('.back-to-all-container').style.display = 'block';
         }
     </script>
 
@@ -538,8 +508,6 @@
             // Автоматическая фокусировка на предзагруженных маркерах
             map.fitBounds(bounds);
 
-            // Показать кнопку "Вернуться ко всем трекам"
-            document.querySelector('.back-to-all-container').style.display = 'block';
         } else {
             updateMarkers();
         }
@@ -766,7 +734,6 @@
                         map.removeLayer(circleMarkers[key]);
                     }
                     circleMarkers = {};
-                    document.querySelector('.back-to-all-container').style.display = 'none';
                     updateMarkers();
                 });
             }

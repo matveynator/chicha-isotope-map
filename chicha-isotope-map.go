@@ -40,14 +40,14 @@ var CompileVersion = "dev"
 // Flags для конфигурации приложения
 var (
 	version   = flag.Bool("version", false, "Print the version and exit")
-	dbType    = flag.String("dbtype", "sqlite", "Database type (sqlite, genji, pgx)")
-	dbPath    = flag.String("dbpath", "database.sqlite", "Path to the database file")
-	dbHost    = flag.String("dbhost", "localhost", "Database host (PostgreSQL)")
-	dbPort    = flag.Int("dbport", 5432, "Database port (PostgreSQL)")
-	dbUser    = flag.String("dbuser", "user", "Database user (PostgreSQL)")
-	dbPass    = flag.String("dbpass", "password", "Database password (PostgreSQL)")
-	dbName    = flag.String("dbname", "isotope_map", "Database name (PostgreSQL)")
-	pgSSLMode = flag.String("pgsslmode", "disable", "PostgreSQL SSL mode")
+	dbType    = flag.String("db-type", "sqlite", "Database type (sqlite, genji, pgx)")
+	dbPath    = flag.String("db-path", "database.sqlite", "Path to the database file")
+	dbHost    = flag.String("db-host", "localhost", "Database host (PostgreSQL)")
+	dbPort    = flag.Int("db-port", 5432, "Database port (PostgreSQL)")
+	dbUser    = flag.String("db-user", "user", "Database user (PostgreSQL)")
+	dbPass    = flag.String("db-pass", "password", "Database password (PostgreSQL)")
+	dbName    = flag.String("db-name", "isotope_map", "Database name (PostgreSQL)")
+	pgSSLMode = flag.String("pg-ssl-mode", "disable", "PostgreSQL SSL mode")
 	port      = flag.Int("port", 8765, "Port to run the web server on")
 )
 
@@ -280,6 +280,8 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
 
 	return resultMarkers
 }
+
+
 
 // getDistanceThresholdForZoom returns the distance threshold in meters for clustering at a given zoom level
 func getDistanceThresholdForZoom(zoomLevel int) float64 {
