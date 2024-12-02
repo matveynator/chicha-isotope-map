@@ -24,7 +24,7 @@
 
 <a href="https://jutsa.ru" target="_blank">Вот здесь можно посмотреть работу программы в реальном времени.</a>
 
-
+---
 
 ### 📸 **Скриншоты**
 
@@ -34,6 +34,12 @@
 ---
 
 ## 📥 **Скачать и начать** 📥
+
+
+Установить на Linux 64bit x68:  
+```bash
+sudo curl https://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/amd64/chicha-isotope-map > /usr/local/bin/chicha-isotope-map; sudo chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map -v;
+```
 
 Выберите версию для своей платформы и начните следить за следами изотопов:
 
@@ -53,15 +59,6 @@
 | Solaris    | [Скачать для Solaris](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/solaris/)               |
 | Windows    | [Скачать для Windows](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/windows/)               |
 
-Или создайте её своими руками:
-
-```bash
-git clone https://github.com/matveynator/chicha-isotope-map.git
-cd chicha-isotope-map
-go build chicha-isotope-map.go
-chmod +x ./chicha-isotope-map
-./chicha-isotope-map
-```
 
 ---
 
@@ -70,13 +67,13 @@ chmod +x ./chicha-isotope-map
 ### Запуск программы:
 
 ```bash
-./chicha-isotope-map
+chicha-isotope-map
 ```
 
 или с дополнительными настройками:
 
 ```bash
-./chicha-isotope-map --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
+chicha-isotope-map --port=8765 --db-type=genji --db-path=./path-to-database-file.8765.genji
 ```
 
 #### Поддерживаемые типы баз данных:
@@ -87,7 +84,7 @@ chmod +x ./chicha-isotope-map
 #### Пример для PostgreSQL:
 
 ```bash
-./chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=ваш_пароль --db-name=isotope_db --pg-ssl-mode=prefer
+chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=ваш_пароль --db-name=isotope_db --pg-ssl-mode=prefer
 ```
 
 - `--db-type`: Тип базы данных (`genji`, `sqlite` или `pgx`). По умолчанию используется `genji`.
@@ -98,14 +95,6 @@ chmod +x ./chicha-isotope-map
 - `--db-pass`: Пароль PostgreSQL.
 - `--db-name`: Имя базы данных PostgreSQL. По умолчанию `isotope_db`.
 - `--pg-ssl-mode`: Режим SSL для PostgreSQL. По умолчанию `prefer`.
-
-_Пример запуска с использованием PostgreSQL и кастомной базы данных:_
-
-```bash
-./chicha-isotope-map --db-type=pgx --db-name=моя_база_данных
-```
-
-Это подключится к базе данных PostgreSQL с именем `моя_база_данных` на `localhost:5432` с пользователем `postgres` без пароля, используя драйвер `pgx`.
 
 
 ### Веб-интерфейс:
