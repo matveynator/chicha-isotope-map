@@ -4,7 +4,7 @@
 
 ### 🌌 **chicha-isotope-map** — explorer of radiation's hidden paths.
 
-> **"Who can see the invisible? No one? This program can. It takes radioactive traces, like a shaman reading ashes, and brings them to life on your screen—vivid, glowing, alive."**
+> **"See the unseen." This program visualizes radioactive traces, turning invisible pathways into vibrant maps.**
 
 ---
 
