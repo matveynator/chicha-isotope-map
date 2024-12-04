@@ -1,748 +1,748 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <!-- Установка метаданных и подключение CSS -->
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{translate "title"}}</title>
+	<head>
+		<!-- Установка метаданных и подключение CSS -->
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>{{translate "title"}}</title>
 
-    <!-- Подключение CSS Leaflet -->
-    <link rel="stylesheet" href="/static/leaflet.css" />
+		<!-- Подключение CSS Leaflet -->
+		<link rel="stylesheet" href="/static/leaflet.css" />
 
-    <style>
-        /* Общие стили */
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            overflow: hidden; /* Убираем полосы прокрутки */
-        }
+		<style>
+/* Общие стили */
+body, html {
+	margin: 0;
+	padding: 0;
+	height: 100%;
+	overflow: hidden; /* Убираем полосы прокрутки */
+}
 
-        /* Контейнер карты */
-        #map {
-            height: 100vh; /* Высота карты на весь экран */
-            margin: 0;
-            overflow: hidden;
-        }
+				/* Контейнер карты */
+				#map {
+					height: 100vh; /* Высота карты на весь экран */
+					margin: 0;
+					overflow: hidden;
+				}
 
-        /* Стили для пользовательской подсказки (tooltip) */
-        .custom-tooltip {
-            background-color: white;
-            border-radius: 5px;
-            padding: 10px;
-            color: #333;
-            box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
-        }
+				/* Стили для пользовательской подсказки (tooltip) */
+				.custom-tooltip {
+					background-color: white;
+					border-radius: 5px;
+					padding: 10px;
+					color: #333;
+					box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
+				}
 
-        /* Контейнер для кнопки загрузки файлов */
-        .upload-btn-container {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
+				/* Контейнер для кнопки загрузки файлов */
+				.upload-btn-container {
+					position: absolute;
+					top: 20px;
+					right: 20px;
+					z-index: 1000;
+				}
 
-        /* Стили для кнопки загрузки файлов */
-        .upload-btn {
-            background-color: white;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 14px;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-        }
+				/* Стили для кнопки загрузки файлов */
+				.upload-btn {
+					background-color: white;
+					border: 1px solid #ccc;
+					border-radius: 4px;
+					padding: 5px 10px;
+					cursor: pointer;
+					font-size: 14px;
+					box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+				}
 
-        /* Оверлей для загрузки файлов */
-        #fileOverlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            z-index: 10000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
+				/* Оверлей для загрузки файлов */
+				#fileOverlay {
+					position: fixed;
+					top: 0;
+					left: 0;
+					width: 100%;
+					height: 100%;
+					background-color: rgba(0, 0, 0, 0.7);
+					z-index: 10000;
+					display: flex;
+					justify-content: center;
+					align-items: center;
+				}
 
-        /* Контейнер прогресса загрузки файлов */
-        #fileProgressContainer {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            max-width: 600px;
-            width: 100%;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-        }
+				/* Контейнер прогресса загрузки файлов */
+				#fileProgressContainer {
+					background-color: white;
+					padding: 20px;
+					border-radius: 10px;
+					max-width: 600px;
+					width: 100%;
+					box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+				}
 
-        /* Индивидуальный прогресс загрузки файла */
-        .file-progress {
-            margin-bottom: 15px;
-        }
+				/* Индивидуальный прогресс загрузки файла */
+				.file-progress {
+					margin-bottom: 15px;
+				}
 
-        .file-name {
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
+				.file-name {
+					font-weight: bold;
+					margin-bottom: 5px;
+				}
 
-        /* Прогресс-бар */
-        .progress-bar {
-            width: 100%;
-            height: 10px;
-            background-color: #f4f4f4;
-            border-radius: 5px;
-            overflow: hidden;
-        }
+				/* Прогресс-бар */
+				.progress-bar {
+					width: 100%;
+					height: 10px;
+					background-color: #f4f4f4;
+					border-radius: 5px;
+					overflow: hidden;
+				}
 
-        .progress-bar-inner {
-            height: 100%;
-            background-color: #4caf50;
-            width: 0%;
-        }
+				.progress-bar-inner {
+					height: 100%;
+					background-color: #4caf50;
+					width: 0%;
+				}
 
-        /* Индикатор обработки на сервере */
-        .server-processing {
-            margin-left: 10px;
-            font-size: 14px;
-            color: #ff9800;
-        }
+				/* Индикатор обработки на сервере */
+				.server-processing {
+					margin-left: 10px;
+					font-size: 14px;
+					color: #ff9800;
+				}
 
-        /* Эффект наведения для кнопки загрузки */
-        .upload-btn:hover {
-            background-color: #f4f4f4;
-        }
+				/* Эффект наведения для кнопки загрузки */
+				.upload-btn:hover {
+					background-color: #f4f4f4;
+				}
 
-        /* Контейнер для кнопки геолокации */
-        .locate-btn-container {
-            position: absolute;
-            top: 60px;
-            right: 20px;
-            z-index: 1000;
-        }
+				/* Контейнер для кнопки геолокации */
+				.locate-btn-container {
+					position: absolute;
+					top: 60px;
+					right: 20px;
+					z-index: 1000;
+				}
 
-        /* Стили для кнопки геолокации */
-        .locate-btn {
-            background-color: white;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 16px;
-            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+				/* Стили для кнопки геолокации */
+				.locate-btn {
+					background-color: white;
+					border: 1px solid #ccc;
+					border-radius: 4px;
+					padding: 5px 10px;
+					cursor: pointer;
+					font-size: 16px;
+					box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
+					display: flex;
+					align-items: center;
+					justify-content: center;
+				}
 
-        /* Эффект наведения для кнопки геолокации */
-        .locate-btn:hover {
-            background-color: #f4f4f4;
-        }
+				/* Эффект наведения для кнопки геолокации */
+				.locate-btn:hover {
+					background-color: #f4f4f4;
+				}
 
-        /* Стили для ссылки на GitHub */
-        .github-link {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            z-index: 1000;
-        }
+				/* Стили для ссылки на GitHub */
+				.github-link {
+					position: absolute;
+					bottom: 20px;
+					left: 20px;
+					z-index: 1000;
+				}
 
-        .github-icon {
-            width: 40px;
-            height: 40px;
-            opacity: 0.6;
-        }
+				.github-icon {
+					width: 40px;
+					height: 40px;
+					opacity: 0.6;
+				}
 
-        .github-icon:hover {
-            opacity: 1;
-        }
+				.github-icon:hover {
+					opacity: 1;
+				}
 
-        /* Информация о программе */
-        .program-info {
-            position: absolute;
-            bottom: 20px;
-            left: 70px;
-            z-index: 1000;
-            color: #333;
-            font-size: 14px;
-            opacity: 0.6;
-        }
+				/* Информация о программе */
+				.program-info {
+					position: absolute;
+					bottom: 20px;
+					left: 70px;
+					z-index: 1000;
+					color: #333;
+					font-size: 14px;
+					opacity: 0.6;
+				}
 
-        .program-info a {
-            color: #007bff;
-            text-decoration: none;
-        }
+				.program-info a {
+					color: #007bff;
+					text-decoration: none;
+				}
 
-        .program-info a:hover {
-            text-decoration: underline;
-        }
+				.program-info a:hover {
+					text-decoration: underline;
+				}
 
-        .program-info:hover {
-            opacity: 1;
-        }
+				.program-info:hover {
+					opacity: 1;
+				}
 
-        /* Кнопка "Вернуться ко всем трекам" */
-        .back-to-all-container {
-            position: absolute;
-            top: 120px;
-            right: 20px;
-            z-index: 1000;
-            display: none;
-        }
+				/* Кнопка "Вернуться ко всем трекам" */
+				.back-to-all-container {
+					position: absolute;
+					top: 120px;
+					right: 20px;
+					z-index: 1000;
+					display: none;
+				}
 
-        .back-to-all-btn {
-            background-color: white;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 14px;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-        }
+				.back-to-all-btn {
+					background-color: white;
+					border: 1px solid #ccc;
+					border-radius: 4px;
+					padding: 5px 10px;
+					cursor: pointer;
+					font-size: 14px;
+					box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+				}
 
-        .back-to-all-btn:hover {
-            background-color: #f4f4f4;
-        }
-    </style>
+				.back-to-all-btn:hover {
+					background-color: #f4f4f4;
+				}
+		</style>
 
-    <!-- Скрипт переводов -->
-    <script id="translations-script">
-        // Объект переводов, переданный из Go
-        var translations = JSON.parse('{{ .Translations | toJSON }}');
-        var currentLang = '{{ .Lang }}'; // Текущий язык
+		<!-- Скрипт переводов -->
+		<script id="translations-script">
+			// Объект переводов, переданный из Go
+			var translations = JSON.parse('{{ .Translations | toJSON }}');
+				var currentLang = '{{ .Lang }}'; // Текущий язык
 
-        // Функция для получения перевода по ключу
-        function translate(key) {
-            if (!translations['en']) {
-                console.error('English translations not available!');
-                return key;
-            }
+				// Функция для получения перевода по ключу
+				function translate(key) {
+						if (!translations['en']) {
+								console.error('English translations not available!');
+								return key;
+						}
 
-            if (translations[currentLang] && translations[currentLang][key]) {
-                return translations[currentLang][key];
-            } else if (translations['en'][key]) {
-                return translations['en'][key];
-            }
-            return key;
-        }
-    </script>
+						if (translations[currentLang] && translations[currentLang][key]) {
+								return translations[currentLang][key];
+						} else if (translations['en'][key]) {
+								return translations['en'][key];
+						}
+						return key;
+				}
+		</script>
 
-</head>
+	</head>
 
-<body>
-    <!-- Контейнер для кнопки загрузки файлов -->
-    <div class="upload-btn-container leaflet-control">
-        <label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
-        <input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()">
-    </div>
+	<body>
+		<!-- Контейнер для кнопки загрузки файлов -->
+		<div class="upload-btn-container leaflet-control">
+			<label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
+			<input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()">
+		</div>
 
-    <!-- Контейнер для кнопки геолокации -->
-    <div class="locate-btn-container leaflet-control">
-        <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
-            <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width: 20px;">
-        </button>
-    </div>
+		<!-- Контейнер для кнопки геолокации -->
+		<div class="locate-btn-container leaflet-control">
+			<button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
+				<img src="/static/images/marker-icon-2x.png" alt="Locate" style="width: 20px;">
+			</button>
+		</div>
 
-    <!-- Контейнер для кнопки "Вернуться ко всем трекам" -->
-    <div class="back-to-all-container leaflet-control">
-        <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
-    </div>
+		<!-- Контейнер для кнопки "Вернуться ко всем трекам" -->
+		<div class="back-to-all-container leaflet-control" style="display: none;">
+			<button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
+		</div>
 
-    <!-- Оверлей для загрузки файлов -->
-    <div id="fileOverlay" style="display: none;">
-        <div id="fileProgressContainer">
-            <!-- Прогресс загрузки файлов будет добавляться сюда динамически -->
-        </div>
-    </div>
+		<!-- Оверлей для загрузки файлов -->
+		<div id="fileOverlay" style="display: none;">
+			<div id="fileProgressContainer">
+				<!-- Прогресс загрузки файлов будет добавляться сюда динамически -->
+			</div>
+		</div>
 
-    <!-- Ссылка на GitHub и информация о программе -->
-    <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
-        <img src="/static/images/GitHub-Mark.png" alt="GitHub" class="github-icon">
-    </a>
+		<!-- Ссылка на GitHub и информация о программе -->
+		<a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
+			<img src="/static/images/GitHub-Mark.png" alt="GitHub" class="github-icon">
+		</a>
 
-    <div class="program-info">
-        <strong>{{translate "description"}}</strong><br>
-        v.<a href="https://files.zabiyaka.net/chicha-isotope-map/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
-    </div>
+		<div class="program-info">
+			<strong>{{translate "description"}}</strong><br>
+			v.<a href="https://files.zabiyaka.net/chicha-isotope-map/{{ .Version }}/no-gui" target="_blank">{{ .Version }}</a>
+		</div>
 
-    <!-- Контейнер для карты -->
-    <div id="map"></div>
+		<!-- Контейнер для карты -->
+		<div id="map"></div>
 
-    <!-- Подключение JavaScript библиотеки Leaflet -->
-    <script src="/static/leaflet.js"></script>
+		<!-- Подключение JavaScript библиотеки Leaflet -->
+		<script src="/static/leaflet.js"></script>
 
-    <!-- Вспомогательные функции -->
-    <script>
-        // Функция для расчёта цвета маркера на основе уровня радиации
-        function getGradientColor(doseRate) {
-            if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный
-            else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
-            else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
-            else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
-            else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
-            else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
-            else return "#000000"; // Чёрный для очень высоких значений
-        }
+		<!-- Вспомогательные функции -->
+		<script>
+			// Функция для расчёта цвета маркера на основе уровня радиации
+			function getGradientColor(doseRate) {
+				if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный
+				else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
+				else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
+				else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
+				else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
+				else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
+				else return "#000000"; // Чёрный для очень высоких значений
+			}
 
-        // Функция интерполяции между двумя цветами
-        function interpolateColor(color1, color2, factor) {
-            if (factor < 0) factor = 0;
-            if (factor > 1) factor = 1;
+// Функция интерполяции между двумя цветами
+function interpolateColor(color1, color2, factor) {
+	if (factor < 0) factor = 0;
+	if (factor > 1) factor = 1;
 
-            const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
-            const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
-            const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
+	const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
+	const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
+	const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
 
-            return `rgb(${r}, ${g}, ${b})`;
-        }
+	return `rgb(${r}, ${g}, ${b})`;
+}
 
-        // Функция для расчёта радиуса маркера на основе уровня зума
-        function getRadius(doseRate, zoomLevel) {
-            let baseRadius = Math.pow(2, (zoomLevel - 10) / 2);
-            if (baseRadius < 1) baseRadius = 1;
-            return baseRadius;
-        }
+// Функция для расчёта радиуса маркера на основе уровня зума
+function getRadius(doseRate, zoomLevel) {
+	let baseRadius = Math.pow(2, (zoomLevel - 10) / 2);
+	if (baseRadius < 1) baseRadius = 1;
+	return baseRadius;
+}
 
-        // Функция для расчёта прозрачности заливки маркера на основе скорости
-        function getFillOpacity(speed) {
-            if (speed <= 5) {
-                return 0.6;
-            } else if (speed >= 20) {
-                return 0.1;
-            } else {
-                var opacityRange = 0.6 - 0.1;
-                var speedRange = 20 - 5;
-                var opacityDecreasePerMs = opacityRange / speedRange;
-                var speedAboveFive = speed - 5;
-                var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
-                var currentOpacity = 0.6 - totalOpacityDecrease;
-                return currentOpacity;
-            }
-        }
+// Функция для расчёта прозрачности заливки маркера на основе скорости
+function getFillOpacity(speed) {
+	if (speed <= 5) {
+		return 0.6;
+	} else if (speed >= 20) {
+		return 0.1;
+	} else {
+		var opacityRange = 0.6 - 0.1;
+		var speedRange = 20 - 5;
+		var opacityDecreasePerMs = opacityRange / speedRange;
+		var speedAboveFive = speed - 5;
+		var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
+		var currentOpacity = 0.6 - totalOpacityDecrease;
+		return currentOpacity;
+	}
+}
 
-        // Функция для отображения содержимого всплывающего окна маркера
-        function getTooltipContent(marker) {
-            var date = new Date(marker.date * 1000);
-            var formattedDate = date.toLocaleString();
+// Функция для отображения содержимого всплывающего окна маркера
+function getTooltipContent(marker) {
+	var date = new Date(marker.date * 1000);
+	var formattedDate = date.toLocaleString();
 
-            return `
+	return `
 <div class="custom-tooltip">
-    <div class="tooltip-row">
-        <strong>${translate('radiation_dose')}:</strong>
-        <span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
-    </div>
-    <div class="tooltip-row">
-        <strong>${translate('speed')}:</strong>
-        <span>${marker.speed.toFixed(2)} m/s</span>
-    </div>
-    <div class="tooltip-row">
-        <strong>${translate('track_id')}:</strong>
-        <span>${marker.trackID}</span>
-    </div>
+		<div class="tooltip-row">
+				<strong>${translate('radiation_dose')}:</strong>
+				<span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
+		</div>
+		<div class="tooltip-row">
+				<strong>${translate('speed')}:</strong>
+				<span>${marker.speed.toFixed(2)} m/s</span>
+		</div>
+		<div class="tooltip-row">
+				<strong>${translate('track_id')}:</strong>
+				<span>${marker.trackID}</span>
+		</div>
 </div>
-            `;
-        }
-
-        // Функция для получения текущих параметров URL на основе состояния карты
-        function getCurrentUrlParams() {
-            var bounds = map.getBounds();
-            var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
-            var minLat = bounds.getSouthWest().lat.toFixed(5);
-            var minLon = bounds.getSouthWest().lng.toFixed(5);
-            var maxLat = bounds.getNorthEast().lat.toFixed(5);
-            var maxLon = bounds.getNorthEast().lng.toFixed(5);
-            var zoom = map.getZoom();
-
-            return `?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
-        }
-    </script>
-
-    <!-- Инициализация карты и работа с маркерами -->
-    <script>
-        var map;
-        var circleMarkers = {};
-        var isTrackView = false;
-        var osmLayer, googleSatellite;
-        var trackBounds;
-
-        document.addEventListener('DOMContentLoaded', function () {
-            // Инициализация слоёв карты
-            osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 18,
-                attribution: '&copy; OpenStreetMap contributors'
-            });
-
-            googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-                maxZoom: 20,
-                attribution: '&copy; Google'
-            });
-
-            // Инициализация карты
-            map = L.map('map', {
-                center: [44.08832, 42.97577],
-                zoom: 11,
-                layers: [osmLayer]
-            });
-
-            // Контроллер слоёв
-            var baseLayers = {
-                "OpenStreetMap": osmLayer,
-                "Google Satellite": googleSatellite
-            };
-
-            L.control.layers(baseLayers, null, {
-                position: 'topleft',
-                collapsed: false
-            }).addTo(map);
-
-            // Проверка наличия начальных маркеров (режим просмотра трека)
-            var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
-            if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
-                isTrackView = true;
-                displayInitialMarkers(initialMarkers);
-
-                // Изменение размеров маркеров при зуме
-                map.on('zoomend', function() {
-                    adjustMarkerRadius();
-                });
-            } else {
-                // Динамическое обновление маркеров в глобальном режиме
-                map.on('load', updateMarkers);
-                map.on('zoomend', function() {
-                    adjustMarkerRadius();
-                    updateMarkers();
-                });
-                map.on('moveend', updateMarkers);
-                updateMarkers();
-            }
-
-            // Загрузка состояния карты из URL
-            loadMapFromUrl();
-
-            // Обновление URL при изменениях на карте
-            map.on('baselayerchange', updateUrl);
-            map.on('moveend', updateUrl);
-            map.on('zoomend', updateUrl);
-
-            // Инициализация элементов интерфейса
-            initializeUIElements();
-        });
-
-        // Определение функций
-
-        function displayInitialMarkers(markers) {
-            trackBounds = new L.LatLngBounds();
-
-            markers.forEach(function(marker) {
-                var markerKey = marker.id || marker.trackID;
-                var color = getGradientColor(marker.doseRate);
-                var radius = getRadius(marker.doseRate, map.getZoom());
-
-                var circleMarker = L.circleMarker([marker.lat, marker.lon], {
-                    radius: radius,
-                    fillColor: color,
-                    color: color,
-                    weight: 1,
-                    opacity: getFillOpacity(marker.speed) + 0.1,
-                    fillOpacity: getFillOpacity(marker.speed)
-                }).addTo(map)
-                    .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-                    .on('click', function() {
-                        viewTrack(marker.trackID);
-                    });
-
-                // Сохранение doseRate для последующей корректировки радиуса
-                circleMarker.doseRate = marker.doseRate;
-
-                circleMarkers[markerKey] = circleMarker;
-                trackBounds.extend([marker.lat, marker.lon]);
-            });
-
-            // Масштабирование карты для отображения всего трека
-            map.fitBounds(trackBounds);
-
-            document.querySelector('.back-to-all-container').style.display = 'block';
-        }
-
-        function updateMarkers() {
-            if (isTrackView) return;
-
-            var zoomLevel = map.getZoom();
-            var bounds = map.getBounds();
-
-            var params = {
-                zoom: zoomLevel,
-                minLat: bounds.getSouthWest().lat,
-                minLon: bounds.getSouthWest().lng,
-                maxLat: bounds.getNorthEast().lat,
-                maxLon: bounds.getNorthEast().lng
-            };
-
-            fetch('/get_markers?' + new URLSearchParams(params))
-                .then(response => response.json())
-                .then(data => {
-                    for (let key in circleMarkers) {
-                        map.removeLayer(circleMarkers[key]);
-                    }
-                    circleMarkers = {};
-
-                    data.forEach(function(marker) {
-                        var markerKey = marker.id;
-                        var color = getGradientColor(marker.doseRate);
-                        var radius = getRadius(marker.doseRate, zoomLevel);
-
-                        var circleMarker = L.circleMarker([marker.lat, marker.lon], {
-                            radius: radius,
-                            fillColor: color,
-                            color: color,
-                            weight: 1,
-                            opacity: getFillOpacity(marker.speed) + 0.1,
-                            fillOpacity: getFillOpacity(marker.speed)
-                        }).addTo(map)
-                            .bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-                            .on('click', function() {
-                                viewTrack(marker.trackID);
-                            });
-
-                        // Сохранение doseRate для последующей корректировки радиуса
-                        circleMarker.doseRate = marker.doseRate;
-
-                        circleMarkers[markerKey] = circleMarker;
-                    });
-                })
-                .catch(error => {
-                    console.error('Error fetching markers:', error);
-                });
-        }
-
-        function adjustMarkerRadius() {
-            var zoomLevel = map.getZoom();
-            for (let key in circleMarkers) {
-                let marker = circleMarkers[key];
-                let newRadius = getRadius(marker.doseRate, zoomLevel);
-                marker.setRadius(newRadius);
-            }
-        }
-
-        function viewTrack(trackID) {
-            isTrackView = true;
-            var bounds = map.getBounds();
-            var layer = '';
-            var zoom = map.getZoom(); // Получаем текущий зум
-
-            if (map.hasLayer(googleSatellite)) {
-                layer = 'Google Satellite';
-            } else {
-                layer = 'OpenStreetMap';
-            }
-
-            // Формируем URL для просмотра конкретного трека
-            var trackURL = `/trackid/${trackID}?minLat=${bounds.getSouthWest().lat}&minLon=${bounds.getSouthWest().lng}&maxLat=${bounds.getNorthEast().lat}&maxLon=${bounds.getNorthEast().lng}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
-
-            // Перенаправляем пользователя на страницу конкретного трека
-            window.location.href = trackURL;
-
-            // Показываем кнопку "Вернуться ко всем трекам"
-            document.querySelector('.back-to-all-container').style.display = 'block';
-        }
-
-        function loadMapFromUrl() {
-            var params = new URLSearchParams(window.location.search);
-            var minLat = parseFloat(params.get('minLat'));
-            var minLon = parseFloat(params.get('minLon'));
-            var maxLat = parseFloat(params.get('maxLat'));
-            var maxLon = parseFloat(params.get('maxLon'));
-            var zoom = parseInt(params.get('zoom'));
-            var layer = params.get('layer');
-
-            if (layer === 'Google Satellite') {
-                googleSatellite.addTo(map);
-            } else {
-                osmLayer.addTo(map);
-            }
-
-            if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
-                var bounds = [[minLat, minLon], [maxLat, maxLon]];
-                map.fitBounds(bounds);
-            } else if (isTrackView && trackBounds) {
-                // Масштабирование к границам трека
-                map.fitBounds(trackBounds);
-            } else {
-                map.setView([44.08832, 42.97577], zoom || 11);
-            }
-        }
-
-        function updateUrl() {
-            var bounds = map.getBounds();
-            var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
-            var minLat = bounds.getSouthWest().lat.toFixed(5);
-            var minLon = bounds.getSouthWest().lng.toFixed(5);
-            var maxLat = bounds.getNorthEast().lat.toFixed(5);
-            var maxLon = bounds.getNorthEast().lng.toFixed(5);
-            var zoom = map.getZoom();
-
-            var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
-
-            window.history.replaceState({}, '', newUrl);
-        }
-
-        function initializeUIElements() {
-            var locateButton = document.getElementById('locateButton');
-            if (locateButton) {
-                locateButton.addEventListener('click', centerMapToLocation);
-            }
-
-            var backToAllButton = document.getElementById('backToAllButton');
-            if (backToAllButton) {
-                backToAllButton.addEventListener('click', function() {
-                    var params = getCurrentUrlParams();
-                    window.location.href = '/' + params;
-                });
-            }
-        }
-
-        function centerMapToLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    function(position) {
-                        var userLat = position.coords.latitude;
-                        var userLon = position.coords.longitude;
-
-                        map.setView([userLat, userLon], 15);
-
-                        L.marker([userLat, userLon]).addTo(map)
-                            .bindPopup(translate("your_location")).openPopup();
-                    },
-                    function(error) {
-                        switch(error.code) {
-                            case error.PERMISSION_DENIED:
-                                alert(translate("location_permission_denied"));
-                                break;
-                            case error.POSITION_UNAVAILABLE:
-                                alert(translate("location_unavailable"));
-                                break;
-                            case error.TIMEOUT:
-                                alert(translate("location_timeout"));
-                                break;
-                            default:
-                                alert(translate("location_error"));
-                                break;
-                        }
-                    }
-                );
-            } else {
-                alert(translate("geolocation_not_supported"));
-            }
-        }
-    </script>
-
-    <!-- Скрипт загрузки файлов -->
-    <script>
-        function uploadFiles() {
-            var fileInput = document.getElementById('fileInput');
-            var files = fileInput.files;
-            var fileOverlay = document.getElementById('fileOverlay');
-            var fileProgressContainer = document.getElementById('fileProgressContainer');
-
-            if (!fileProgressContainer) {
-                console.error("Error: File progress container not found.");
-                return;
-            }
-
-            fileProgressContainer.innerHTML = "";
-
-            var completedUploads = 0;
-            var totalFiles = files.length;
-
-            if (files.length > 0) {
-                fileOverlay.style.display = "flex";
-
-                for (var i = 0; i < files.length; i++) {
-                    var file = files[i];
-
-                    var fileBlock = document.createElement('div');
-                    fileBlock.className = 'file-progress';
-
-                    var fileName = document.createElement('div');
-                    fileName.className = 'file-name';
-                    fileName.innerText = file.name;
-
-                    var progressBar = document.createElement('div');
-                    progressBar.className = 'progress-bar';
-                    var progressBarInner = document.createElement('div');
-                    progressBarInner.className = 'progress-bar-inner';
-                    progressBar.appendChild(progressBarInner);
-
-                    var serverProcessing = document.createElement('div');
-                    serverProcessing.className = 'server-processing';
-                    serverProcessing.innerText = translate("waiting_for_server");
-
-                    fileBlock.appendChild(fileName);
-                    fileBlock.appendChild(progressBar);
-                    fileBlock.appendChild(serverProcessing);
-
-                    fileProgressContainer.appendChild(fileBlock);
-
-                    (function(progressBarInner, serverProcessing, file) {
-                        var xhr = new XMLHttpRequest();
-                        xhr.open('POST', '/upload', true);
-
-                        xhr.upload.onprogress = function(event) {
-                            if (event.lengthComputable) {
-                                var percentComplete = (event.loaded / event.total) * 100;
-                                progressBarInner.style.width = percentComplete + "%";
-                            }
-                        };
-
-                        xhr.onload = function() {
-                            if (xhr.status === 200) {
-                                var response = JSON.parse(xhr.responseText);
-
-                                if (response.status === "success") {
-                                    serverProcessing.innerText = translate("processing_on_server");
-
-                                    var trackURL = response.trackURL;
-
-                                    setTimeout(function() {
-                                        serverProcessing.innerText = translate("processing_complete");
-                                        serverProcessing.style.color = "green";
-                                        window.location.href = trackURL;
-                                    }, 2000);
-                                } else {
-                                    serverProcessing.innerText = translate("error_processing_files");
-                                    serverProcessing.style.color = "red";
-                                    checkIfAllUploadsComplete();
-                                }
-                            } else {
-                                serverProcessing.innerText = translate("error_during_upload");
-                                serverProcessing.style.color = "red";
-                                checkIfAllUploadsComplete();
-                            }
-                        };
-
-                        var formData = new FormData();
-                        formData.append("files[]", file);
-                        xhr.send(formData);
-                    })(progressBarInner, serverProcessing, file);
-                }
-            } else {
-                alert(translate("select_files"));
-            }
-        }
-
-        function checkIfAllUploadsComplete() {
-            completedUploads++;
-            if (completedUploads === totalFiles) {
-                setTimeout(function() {
-                    document.getElementById('fileOverlay').style.display = "none";
-                    location.reload();
-                }, 1000);
-            }
-        }
-    </script>
-
-</body>
+						`;
+}
+
+// Функция для получения текущих параметров URL на основе состояния карты
+function getCurrentUrlParams() {
+	var bounds = map.getBounds();
+	var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
+	var minLat = bounds.getSouthWest().lat.toFixed(5);
+	var minLon = bounds.getSouthWest().lng.toFixed(5);
+	var maxLat = bounds.getNorthEast().lat.toFixed(5);
+	var maxLon = bounds.getNorthEast().lng.toFixed(5);
+	var zoom = map.getZoom();
+
+	return `?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+}
+		</script>
+
+		<!-- Инициализация карты и работа с маркерами -->
+		<script>
+			var map;
+var circleMarkers = {};
+var isTrackView = false;
+var osmLayer, googleSatellite;
+var trackBounds;
+
+document.addEventListener('DOMContentLoaded', function () {
+	// Инициализация слоёв карты
+	osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+		maxZoom: 18,
+		attribution: '&copy; OpenStreetMap contributors'
+	});
+
+	googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+		maxZoom: 20,
+		attribution: '&copy; Google'
+	});
+
+	// Инициализация карты
+	map = L.map('map', {
+		center: [44.08832, 42.97577],
+		zoom: 11,
+		layers: [osmLayer]
+	});
+
+	// Контроллер слоёв
+	var baseLayers = {
+		"OpenStreetMap": osmLayer,
+		"Google Satellite": googleSatellite
+	};
+
+	L.control.layers(baseLayers, null, {
+		position: 'topleft',
+		collapsed: false
+	}).addTo(map);
+
+	// Проверка наличия начальных маркеров (режим просмотра трека)
+	var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
+	if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
+		isTrackView = true;
+		displayInitialMarkers(initialMarkers);
+
+		// Изменение размеров маркеров при зуме
+		map.on('zoomend', function() {
+			adjustMarkerRadius();
+		});
+	} else {
+		// Динамическое обновление маркеров в глобальном режиме
+		map.on('load', updateMarkers);
+		map.on('zoomend', function() {
+			adjustMarkerRadius();
+			updateMarkers();
+		});
+		map.on('moveend', updateMarkers);
+		updateMarkers();
+	}
+
+	// Загрузка состояния карты из URL
+	loadMapFromUrl();
+
+	// Обновление URL при изменениях на карте
+	map.on('baselayerchange', updateUrl);
+	map.on('moveend', updateUrl);
+	map.on('zoomend', updateUrl);
+
+	// Инициализация элементов интерфейса
+	initializeUIElements();
+});
+
+// Определение функций
+
+function displayInitialMarkers(markers) {
+	trackBounds = new L.LatLngBounds();
+
+	markers.forEach(function(marker) {
+		var markerKey = marker.id || marker.trackID;
+		var color = getGradientColor(marker.doseRate);
+		var radius = getRadius(marker.doseRate, map.getZoom());
+
+		var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+			radius: radius,
+			fillColor: color,
+			color: color,
+			weight: 1,
+			opacity: getFillOpacity(marker.speed) + 0.1,
+			fillOpacity: getFillOpacity(marker.speed)
+		}).addTo(map)
+			.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
+			.on('click', function() {
+				viewTrack(marker.trackID);
+			});
+
+		// Сохранение doseRate для последующей корректировки радиуса
+		circleMarker.doseRate = marker.doseRate;
+
+		circleMarkers[markerKey] = circleMarker;
+		trackBounds.extend([marker.lat, marker.lon]);
+	});
+
+	// Масштабирование карты для отображения всего трека
+	map.fitBounds(trackBounds);
+
+	document.querySelector('.back-to-all-container').style.display = 'block';
+}
+
+function updateMarkers() {
+	if (isTrackView) return;
+
+	var zoomLevel = map.getZoom();
+	var bounds = map.getBounds();
+
+	var params = {
+		zoom: zoomLevel,
+		minLat: bounds.getSouthWest().lat,
+		minLon: bounds.getSouthWest().lng,
+		maxLat: bounds.getNorthEast().lat,
+		maxLon: bounds.getNorthEast().lng
+	};
+
+	fetch('/get_markers?' + new URLSearchParams(params))
+		.then(response => response.json())
+		.then(data => {
+			for (let key in circleMarkers) {
+				map.removeLayer(circleMarkers[key]);
+			}
+			circleMarkers = {};
+
+			data.forEach(function(marker) {
+				var markerKey = marker.id;
+				var color = getGradientColor(marker.doseRate);
+				var radius = getRadius(marker.doseRate, zoomLevel);
+
+				var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+					radius: radius,
+					fillColor: color,
+					color: color,
+					weight: 1,
+					opacity: getFillOpacity(marker.speed) + 0.1,
+					fillOpacity: getFillOpacity(marker.speed)
+				}).addTo(map)
+					.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
+					.on('click', function() {
+						viewTrack(marker.trackID);
+					});
+
+				// Сохранение doseRate для последующей корректировки радиуса
+				circleMarker.doseRate = marker.doseRate;
+
+				circleMarkers[markerKey] = circleMarker;
+			});
+		})
+		.catch(error => {
+			console.error('Error fetching markers:', error);
+		});
+}
+
+function adjustMarkerRadius() {
+	var zoomLevel = map.getZoom();
+	for (let key in circleMarkers) {
+		let marker = circleMarkers[key];
+		let newRadius = getRadius(marker.doseRate, zoomLevel);
+		marker.setRadius(newRadius);
+	}
+}
+
+function viewTrack(trackID) {
+	isTrackView = true;
+	var bounds = map.getBounds();
+	var layer = '';
+	var zoom = map.getZoom(); // Получаем текущий зум
+
+	if (map.hasLayer(googleSatellite)) {
+		layer = 'Google Satellite';
+	} else {
+		layer = 'OpenStreetMap';
+	}
+
+	// Формируем URL для просмотра конкретного трека
+	var trackURL = `/trackid/${trackID}?minLat=${bounds.getSouthWest().lat}&minLon=${bounds.getSouthWest().lng}&maxLat=${bounds.getNorthEast().lat}&maxLon=${bounds.getNorthEast().lng}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+
+	// Перенаправляем пользователя на страницу конкретного трека
+	window.location.href = trackURL;
+
+	// Показываем кнопку "Вернуться ко всем трекам"
+	document.querySelector('.back-to-all-container').style.display = 'block';
+}
+
+function loadMapFromUrl() {
+	var params = new URLSearchParams(window.location.search);
+	var minLat = parseFloat(params.get('minLat'));
+	var minLon = parseFloat(params.get('minLon'));
+	var maxLat = parseFloat(params.get('maxLat'));
+	var maxLon = parseFloat(params.get('maxLon'));
+	var zoom = parseInt(params.get('zoom'));
+	var layer = params.get('layer');
+
+	if (layer === 'Google Satellite') {
+		googleSatellite.addTo(map);
+	} else {
+		osmLayer.addTo(map);
+	}
+
+	if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
+		var bounds = [[minLat, minLon], [maxLat, maxLon]];
+		map.fitBounds(bounds);
+	} else if (isTrackView && trackBounds) {
+		// Масштабирование к границам трека
+		map.fitBounds(trackBounds);
+	} else {
+		map.setView([44.08832, 42.97577], zoom || 11);
+	}
+}
+
+function updateUrl() {
+	var bounds = map.getBounds();
+	var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
+	var minLat = bounds.getSouthWest().lat.toFixed(5);
+	var minLon = bounds.getSouthWest().lng.toFixed(5);
+	var maxLat = bounds.getNorthEast().lat.toFixed(5);
+	var maxLon = bounds.getNorthEast().lng.toFixed(5);
+	var zoom = map.getZoom();
+
+	var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+
+	window.history.replaceState({}, '', newUrl);
+}
+
+function initializeUIElements() {
+	var locateButton = document.getElementById('locateButton');
+	if (locateButton) {
+		locateButton.addEventListener('click', centerMapToLocation);
+	}
+
+	var backToAllButton = document.getElementById('backToAllButton');
+	if (backToAllButton) {
+		backToAllButton.addEventListener('click', function() {
+			var params = getCurrentUrlParams();
+			window.location.href = '/' + params;
+		});
+	}
+}
+
+function centerMapToLocation() {
+	if (navigator.geolocation) {
+		navigator.geolocation.getCurrentPosition(
+			function(position) {
+				var userLat = position.coords.latitude;
+				var userLon = position.coords.longitude;
+
+				map.setView([userLat, userLon], 15);
+
+				L.marker([userLat, userLon]).addTo(map)
+					.bindPopup(translate("your_location")).openPopup();
+			},
+			function(error) {
+				switch(error.code) {
+					case error.PERMISSION_DENIED:
+						alert(translate("location_permission_denied"));
+						break;
+					case error.POSITION_UNAVAILABLE:
+						alert(translate("location_unavailable"));
+						break;
+					case error.TIMEOUT:
+						alert(translate("location_timeout"));
+						break;
+					default:
+						alert(translate("location_error"));
+						break;
+				}
+			}
+		);
+	} else {
+		alert(translate("geolocation_not_supported"));
+	}
+}
+		</script>
+
+		<!-- Скрипт загрузки файлов -->
+		<script>
+			function uploadFiles() {
+				var fileInput = document.getElementById('fileInput');
+				var files = fileInput.files;
+				var fileOverlay = document.getElementById('fileOverlay');
+				var fileProgressContainer = document.getElementById('fileProgressContainer');
+
+				if (!fileProgressContainer) {
+					console.error("Error: File progress container not found.");
+					return;
+				}
+
+				fileProgressContainer.innerHTML = "";
+
+				var completedUploads = 0;
+				var totalFiles = files.length;
+
+				if (files.length > 0) {
+					fileOverlay.style.display = "flex";
+
+					for (var i = 0; i < files.length; i++) {
+						var file = files[i];
+
+						var fileBlock = document.createElement('div');
+						fileBlock.className = 'file-progress';
+
+						var fileName = document.createElement('div');
+						fileName.className = 'file-name';
+						fileName.innerText = file.name;
+
+						var progressBar = document.createElement('div');
+						progressBar.className = 'progress-bar';
+						var progressBarInner = document.createElement('div');
+						progressBarInner.className = 'progress-bar-inner';
+						progressBar.appendChild(progressBarInner);
+
+						var serverProcessing = document.createElement('div');
+						serverProcessing.className = 'server-processing';
+						serverProcessing.innerText = translate("waiting_for_server");
+
+						fileBlock.appendChild(fileName);
+						fileBlock.appendChild(progressBar);
+						fileBlock.appendChild(serverProcessing);
+
+						fileProgressContainer.appendChild(fileBlock);
+
+						(function(progressBarInner, serverProcessing, file) {
+							var xhr = new XMLHttpRequest();
+							xhr.open('POST', '/upload', true);
+
+							xhr.upload.onprogress = function(event) {
+								if (event.lengthComputable) {
+									var percentComplete = (event.loaded / event.total) * 100;
+									progressBarInner.style.width = percentComplete + "%";
+								}
+							};
+
+							xhr.onload = function() {
+								if (xhr.status === 200) {
+									var response = JSON.parse(xhr.responseText);
+
+									if (response.status === "success") {
+										serverProcessing.innerText = translate("processing_on_server");
+
+										var trackURL = response.trackURL;
+
+										setTimeout(function() {
+											serverProcessing.innerText = translate("processing_complete");
+											serverProcessing.style.color = "green";
+											window.location.href = trackURL;
+										}, 2000);
+									} else {
+										serverProcessing.innerText = translate("error_processing_files");
+										serverProcessing.style.color = "red";
+										checkIfAllUploadsComplete();
+									}
+								} else {
+									serverProcessing.innerText = translate("error_during_upload");
+									serverProcessing.style.color = "red";
+									checkIfAllUploadsComplete();
+								}
+							};
+
+							var formData = new FormData();
+							formData.append("files[]", file);
+							xhr.send(formData);
+						})(progressBarInner, serverProcessing, file);
+					}
+				} else {
+					alert(translate("select_files"));
+				}
+			}
+
+function checkIfAllUploadsComplete() {
+	completedUploads++;
+	if (completedUploads === totalFiles) {
+		setTimeout(function() {
+			document.getElementById('fileOverlay').style.display = "none";
+			location.reload();
+		}, 1000);
+	}
+}
+		</script>
+
+	</body>
 </html>
 
