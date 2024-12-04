@@ -34,22 +34,18 @@ var content embed.FS
 // Variable to store the loaded radiation dose data
 var doseData database.Data
 
-// Глобальная переменная для версии компиляции
+// Flags to specify database type, path, and server port
+var dbType = flag.String("db-type", "genji", "Type of the database driver: genji, sqlite, or pgx (postgresql)")
+var dbPath = flag.String("db-path", "", "Path to the database file(defaults to the current folder, applicable for genji, sqlite drivers.)")
+var dbHost = flag.String("db-host", "127.0.0.1", "Database host (applicable for pgx driver)")
+var dbPort = flag.Int("db-port", 5432, "Database port (applicable for pgx driver)")
+var dbUser = flag.String("db-user", "postgres", "Database user (applicable for pgx driver)")
+var dbPass = flag.String("db-pass", "", "Database password (applicable for pgx driver)")
+var dbName = flag.String("db-name", "IsotopePathways", "Database name (applicable for pgx driver)")
+var pgSSLMode = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode: disable, allow, prefer, require, verify-ca, or verify-full")
+var port = flag.Int("port", 8765, "Port for running the server")
+var version = flag.Bool("version", false, "Show the application version")
 var CompileVersion = "dev"
-
-// Flags для конфигурации приложения
-var (
-	version   = flag.Bool("version", false, "Print the version and exit")
-	dbType    = flag.String("db-type", "sqlite", "Database type (sqlite, genji, pgx)")
-	dbPath    = flag.String("db-path", "database.sqlite", "Path to the database file")
-	dbHost    = flag.String("db-host", "localhost", "Database host (PostgreSQL)")
-	dbPort    = flag.Int("db-port", 5432, "Database port (PostgreSQL)")
-	dbUser    = flag.String("db-user", "user", "Database user (PostgreSQL)")
-	dbPass    = flag.String("db-pass", "password", "Database password (PostgreSQL)")
-	dbName    = flag.String("db-name", "isotope_map", "Database name (PostgreSQL)")
-	pgSSLMode = flag.String("pg-ssl-mode", "disable", "PostgreSQL SSL mode")
-	port      = flag.Int("port", 8765, "Port to run the web server on")
-)
 
 // Database instance
 var db *database.Database
@@ -58,15 +54,15 @@ var db *database.Database
 // DATA PROCESSING HELPERS
 // =====================
 
-// GenerateSerialNumber генерирует серийный номер длиной не более 6 символов
+// GenerateSerialNumber generates a serial number of up to 6 characters
 func GenerateSerialNumber() string {
 	const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	const maxLength = 6
 
-	// Получаем текущее время в миллисекундах (чтобы сократить размер числа)
+	// Get current time in milliseconds (to reduce the size of the number)
 	timestamp := uint64(time.Now().UnixNano() / 1e6)
 
-	// Кодируем временную метку в Base62
+	// Encode timestamp in Base62
 	encoded := ""
 	base := uint64(len(base62Chars))
 	for timestamp > 0 && len(encoded) < maxLength {
@@ -75,7 +71,7 @@ func GenerateSerialNumber() string {
 		timestamp = timestamp / base
 	}
 
-	// Если длина меньше 6, добавляем случайные символы
+	// If length is less than 6, add random characters
 	rand.Seed(time.Now().UnixNano())
 	for len(encoded) < maxLength {
 		encoded += string(base62Chars[rand.Intn(len(base62Chars))])
@@ -84,13 +80,27 @@ func GenerateSerialNumber() string {
 	return encoded
 }
 
-// Function to convert Rh to Sv
+// Convert Rh to Sv
 func convertRhToSv(markers []database.Marker) []database.Marker {
-	conversionFactor := 0.01 // Example conversion factor
 	filteredMarkers := []database.Marker{}
+	const conversionFactor = 0.01 // 1 Rh = 0.01 Sv
 
 	for _, newMarker := range markers {
 		// Convert DoseRate to Sv
+		newMarker.DoseRate = newMarker.DoseRate * conversionFactor
+		filteredMarkers = append(filteredMarkers, newMarker)
+	}
+
+	return filteredMarkers
+}
+
+// Convert Sv to Rh
+func convertSvToRh(markers []database.Marker) []database.Marker {
+	filteredMarkers := []database.Marker{}
+	const conversionFactor = 100.0 // 1 Sv = 100 Rh
+
+	for _, newMarker := range markers {
+		// Convert DoseRate to Rh
 		newMarker.DoseRate = newMarker.DoseRate * conversionFactor
 		filteredMarkers = append(filteredMarkers, newMarker)
 	}
@@ -202,6 +212,7 @@ func max(a, b int) int {
 	}
 	return b
 }
+
 // calculateZoomMarkers processes markers to create data for each zoom level using spatial clustering.
 func calculateZoomMarkers(markers []database.Marker) []database.Marker {
 	resultMarkers := []database.Marker{}
@@ -209,7 +220,7 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
 	maxClusterZoomLevel := 17
 	numZoomLevels := 20
 
-	// Сортируем маркеры один раз перед запуском горутин
+	// Sort markers once before starting goroutines
 	sortedMarkers := make([]database.Marker, len(markers))
 	copy(sortedMarkers, markers)
 	sort.Slice(sortedMarkers, func(i, j int) bool {
@@ -219,23 +230,23 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
 		return sortedMarkers[i].Lat < sortedMarkers[j].Lat
 	})
 
-	// Канал для сбора результатов от горутин
+	// Channel to collect results from goroutines
 	resultsChan := make(chan []database.Marker, numZoomLevels)
 
-	// Запускаем горутины для каждого уровня зума
+	// Start goroutines for each zoom level
 	for zoomLevel := 1; zoomLevel <= numZoomLevels; zoomLevel++ {
-		zoomLevel := zoomLevel // Захватываем значение переменной zoomLevel для горутины
+		zoomLevel := zoomLevel // Capture the zoomLevel variable for the goroutine
 		go func() {
 			var zoomMarkers []database.Marker
 
 			if zoomLevel <= maxClusterZoomLevel {
-				// Для уровней зума ≤ maxClusterZoomLevel выполняем кластеризацию
+				// For zoom levels ≤ maxClusterZoomLevel, perform clustering
 				distanceThreshold := getDistanceThresholdForZoom(zoomLevel)
 
-				// Используем предсортированный список маркеров
+				// Use the pre-sorted list of markers
 				clusters := clusterMarkers(sortedMarkers, distanceThreshold)
 
-				// Обрабатываем каждый кластер для расчёта средних значений
+				// Process each cluster to calculate averages
 				for _, cluster := range clusters {
 					avgDoseRate, avgCountRate, avgSpeed, avgLat, avgLon, date := calculateAverages(cluster)
 
@@ -247,11 +258,12 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
 						CountRate: avgCountRate,
 						Zoom:      zoomLevel,
 						Speed:     avgSpeed,
+						TrackID:   cluster[0].TrackID,
 					}
 					zoomMarkers = append(zoomMarkers, newMarker)
 				}
 			} else {
-				// Для уровней зума > maxClusterZoomLevel используем все маркеры без кластеризации
+				// For zoom levels > maxClusterZoomLevel, use all markers without clustering
 				zoomMarkers = make([]database.Marker, len(markers))
 				for i, m := range markers {
 					newMarker := m
@@ -259,59 +271,57 @@ func calculateZoomMarkers(markers []database.Marker) []database.Marker {
 					zoomMarkers[i] = newMarker
 				}
 
-				// Рассчитываем скорость для этих маркеров
+				// Calculate speed for these markers
 				windowSize := 10
 				zoomMarkers = calculateSpeedForMarkers(zoomMarkers, windowSize)
 			}
 
-			// Отправляем результаты в канал
+			// Send results to the channel
 			resultsChan <- zoomMarkers
 		}()
 	}
 
-	// Собираем результаты от всех горутин
+	// Collect results from all goroutines
 	for i := 0; i < numZoomLevels; i++ {
 		zoomMarkers := <-resultsChan
 		resultMarkers = append(resultMarkers, zoomMarkers...)
 	}
 
-	// Закрываем канал
+	// Close the channel
 	close(resultsChan)
 
 	return resultMarkers
 }
 
-
-
 // getDistanceThresholdForZoom returns the distance threshold in meters for clustering at a given zoom level
 func getDistanceThresholdForZoom(zoomLevel int) float64 {
 	switch zoomLevel {
 	case 1:
-		return 10000000 // 10,000 km
+		return 10000000 // 5000 km
 	case 2:
-		return 5000000 // 5,000 km
+		return 5000000 // 2500 km
 	case 3:
-		return 2500000 // 2,500 km
+		return 2500000 // 1000 km
 	case 4:
-		return 1000000 // 1,000 km
+		return 1000000 // 500 km
 	case 5:
-		return 500000 // 500 km
+		return 500000 // 250 km
 	case 6:
-		return 100000 // 100 km
+		return 100000 // 10 km
 	case 7:
-		return 10000 // 10 km
+		return 10000 // 5 km
 	case 8:
-		return 7500 // 7.5 km
+		return 7500 // 2.5 km
 	case 9:
-		return 5000 // 5 km
+		return 5000 // 2 km
 	case 10:
-		return 3000 // 3 km
+		return 3000 // 1.5 km
 	case 11:
-		return 1000 // 1 km
+		return 1000 // 1.2 km
 	case 12:
-		return 700 // 700 m
+		return 700 // 1 km
 	case 13:
-		return 400 // 400 m
+		return 400 // 500 m
 	case 14:
 		return 100 // 100 m
 	case 15:
@@ -319,13 +329,12 @@ func getDistanceThresholdForZoom(zoomLevel int) float64 {
 	case 16:
 		return 25 // 25 m
 	case 17:
-		return 17 // 17 m
+		return 17 // 10 m
 	default:
-		return 0 // No clustering needed for zoom levels ≥18
+		return 0 // For zoom levels ≥18, no clustering is needed
 	}
 }
 
-// clusterMarkers clusters markers based on the distance threshold
 func clusterMarkers(markers []database.Marker, distanceThreshold float64) [][]database.Marker {
 	var clusters [][]database.Marker
 	visited := make([]bool, len(markers))
@@ -403,7 +412,7 @@ func calculateAverages(markers []database.Marker) (avgDoseRate, avgCountRate, av
 	return
 }
 
-// Helper function to parse a float from string
+// Parse a string value into a float64
 func parseFloat(value string) float64 {
 	parsedValue, _ := strconv.ParseFloat(value, 64)
 	return parsedValue
@@ -640,6 +649,7 @@ func parseKML(data []byte) ([]database.Marker, error) {
 // Process and extract data from a KML file
 func processKMLFile(file multipart.File, trackID string) (uniqueMarkers []database.Marker) {
 
+	// Initialize uniqueMarkers as an empty slice at the start
 	uniqueMarkers = []database.Marker{}
 
 	data, err := ioutil.ReadAll(file)
@@ -664,6 +674,7 @@ func processKMLFile(file multipart.File, trackID string) (uniqueMarkers []databa
 
 	// Save the markers to the database
 	for _, marker := range uniqueMarkers {
+		// Pass the dbType to SaveMarkerAtomic
 		err = db.SaveMarkerAtomic(marker, *dbType)
 		if err != nil {
 			log.Fatalf("Error saving marker: %v", err)
@@ -672,9 +683,10 @@ func processKMLFile(file multipart.File, trackID string) (uniqueMarkers []databa
 	return
 }
 
-// Process and extract data from a KMZ file
+// Process and extract data from a KMZ file (a compressed version of KML)
 func processKMZFile(file multipart.File, trackID string) (uniqueMarkers []database.Marker) {
 
+	// Initialize uniqueMarkers as an empty slice at the start
 	uniqueMarkers = []database.Marker{}
 
 	data, err := ioutil.ReadAll(file)
@@ -723,6 +735,7 @@ func processKMZFile(file multipart.File, trackID string) (uniqueMarkers []databa
 
 			// Save markers to the database
 			for _, marker := range uniqueMarkers {
+				// Pass the dbType to SaveMarkerAtomic
 				err = db.SaveMarkerAtomic(marker, *dbType)
 				if err != nil {
 					log.Fatalf("Error saving marker: %v", err)
@@ -733,8 +746,9 @@ func processKMZFile(file multipart.File, trackID string) (uniqueMarkers []databa
 	return
 }
 
-// Parse a text RCTRK file, where each line contains timestamp, coordinates, dose rate, and count rate
+// parseTextRCTRK parses an RCTRK text file, where each line contains timestamp, coordinates, dose rate, and count rate
 func parseTextRCTRK(data []byte) ([]database.Marker, error) {
+	// Initialize markers as an empty slice at the start
 	markers := []database.Marker{}
 	lines := strings.Split(string(data), "\n")
 
@@ -747,7 +761,7 @@ func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 
 		// Split the line into fields
 		fields := strings.Fields(line)
-		if len(fields) < 8 {
+		if len(fields) < 7 {
 			log.Printf("Skipping line %d: insufficient fields. Line: %s\n", i+1, line)
 			continue // If there are not enough fields, skip the line
 		}
@@ -794,6 +808,7 @@ func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 // Process a file in RCTRK format (either JSON or text)
 func processRCTRKFile(file multipart.File, trackID string) (uniqueMarkers []database.Marker) {
 
+	// Initialize uniqueMarkers as an empty slice at the start
 	uniqueMarkers = []database.Marker{}
 
 	data, err := ioutil.ReadAll(file)
@@ -804,7 +819,7 @@ func processRCTRKFile(file multipart.File, trackID string) (uniqueMarkers []data
 
 	// Try parsing as JSON first
 
-	// Initialize empty rctrkData
+	//init empty rctrkData
 	rctrkData := database.Data{
 		IsSievert: true, // Set default value
 	}
@@ -843,6 +858,7 @@ func processRCTRKFile(file multipart.File, trackID string) (uniqueMarkers []data
 
 	// Save markers to the database
 	for _, marker := range uniqueMarkers {
+		// Pass the dbType to SaveMarkerAtomic
 		err = db.SaveMarkerAtomic(marker, *dbType)
 		if err != nil {
 			log.Fatalf("Error saving marker: %v", err)
@@ -854,6 +870,7 @@ func processRCTRKFile(file multipart.File, trackID string) (uniqueMarkers []data
 // Process AtomFast JSON file format
 func processAtomFastFile(file multipart.File, trackID string) (uniqueMarkers []database.Marker) {
 
+	// Initialize uniqueMarkers as an empty slice at the start
 	uniqueMarkers = []database.Marker{}
 
 	data, err := ioutil.ReadAll(file)
@@ -895,6 +912,7 @@ func processAtomFastFile(file multipart.File, trackID string) (uniqueMarkers []d
 
 	// Save markers to the database
 	for _, marker := range uniqueMarkers {
+		// Pass the dbType to SaveMarkerAtomic
 		err = db.SaveMarkerAtomic(marker, *dbType)
 		if err != nil {
 			log.Fatalf("Error saving marker: %v", err)
@@ -907,103 +925,103 @@ func processAtomFastFile(file multipart.File, trackID string) (uniqueMarkers []d
 // FILE UPLOAD HANDLERS
 // =====================
 
-// uploadHandler теперь генерирует TrackID и обрабатывает его
+// uploadHandler now generates a TrackID and handles it
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
-    err := r.ParseMultipartForm(100 << 20) // Ограничение загрузки файлов до 100MB
-    if err != nil {
-        http.Error(w, "Error uploading file", http.StatusInternalServerError)
-        return
-    }
+	err := r.ParseMultipartForm(100 << 20) // Limit file upload to 100MB
+	if err != nil {
+		http.Error(w, "Error uploading file", http.StatusInternalServerError)
+		return
+	}
 
-    // Получаем список файлов
-    files := r.MultipartForm.File["files[]"] // Ожидается параметр "files[]" от клиента
+	// Get list of files
+	files := r.MultipartForm.File["files[]"] // Expecting "files[]" parameter from the client
 
-    if len(files) == 0 {
-        http.Error(w, "No files selected", http.StatusBadRequest)
-        return
-    }
+	if len(files) == 0 {
+		http.Error(w, "No files selected", http.StatusBadRequest)
+		return
+	}
 
-    // Генерируем уникальный TrackID для группы загруженных файлов
-    trackID := GenerateSerialNumber()
+	// Generate unique TrackID for the group of uploaded files
+	trackID := GenerateSerialNumber()
 
-    // Переменные для хранения координат границ
-    var minLat, minLon, maxLat, maxLon float64
-    minLat, minLon = 90.0, 180.0
-    maxLat, maxLon = -90.0, -180.0
+	// Variables to store coordinates for bounds
+	var minLat, minLon, maxLat, maxLon float64
+	minLat, minLon = 90.0, 180.0
+	maxLat, maxLon = -90.0, -180.0
 
-    // Перебираем файлы
-    for _, fileHeader := range files {
-        // Открываем файл
-        file, err := fileHeader.Open()
-        if err != nil {
-            http.Error(w, "Error opening file", http.StatusBadRequest)
-            return
-        }
-        defer file.Close()
+	// Iterate over files
+	for _, fileHeader := range files {
+		// Open the file
+		file, err := fileHeader.Open()
+		if err != nil {
+			http.Error(w, "Error opening file", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
 
-        var markers []database.Marker
+		var markers []database.Marker
 
-        // Определяем тип файла по расширению
-        ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-        switch ext {
-        case ".kml":
-            markers = processKMLFile(file, trackID)
-        case ".kmz":
-            markers = processKMZFile(file, trackID)
-        case ".rctrk":
-            markers = processRCTRKFile(file, trackID)
-        case ".json":
-            markers = processAtomFastFile(file, trackID)
-        default:
-            http.Error(w, "Unsupported file type", http.StatusBadRequest)
-            return
-        }
+		// Determine file type by extension
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		switch ext {
+		case ".kml":
+			markers = processKMLFile(file, trackID)
+		case ".kmz":
+			markers = processKMZFile(file, trackID)
+		case ".rctrk":
+			markers = processRCTRKFile(file, trackID)
+		case ".json":
+			markers = processAtomFastFile(file, trackID)
+		default:
+			http.Error(w, "Unsupported file type", http.StatusBadRequest)
+			return
+		}
 
-        // Сохраняем маркеры в базе данных
-        for _, marker := range markers {
-            err := db.SaveMarkerAtomic(marker, *dbType)
-            if err != nil {
-                log.Printf("Error saving marker: %v", err)
-                // Можно продолжить или прервать загрузку
-            }
+		// Save markers to the database
+		for _, marker := range markers {
+			err := db.SaveMarkerAtomic(marker, *dbType)
+			if err != nil {
+				log.Printf("Error saving marker: %v", err)
+				// You can decide whether to continue or abort
+			}
 
-            // Вычисляем границы для текущего файла
-            if marker.Lat < minLat {
-                minLat = marker.Lat
-            }
-            if marker.Lat > maxLat {
-                maxLat = marker.Lat
-            }
-            if marker.Lon < minLon {
-                minLon = marker.Lon
-            }
-            if marker.Lon > maxLon {
-                maxLon = marker.Lon
-            }
-        }
-    }
+			// Calculate bounds for the current file
+			if marker.Lat < minLat {
+				minLat = marker.Lat
+			}
+			if marker.Lat > maxLat {
+				maxLat = marker.Lat
+			}
+			if marker.Lon < minLon {
+				minLon = marker.Lon
+			}
+			if marker.Lon > maxLon {
+				maxLon = marker.Lon
+			}
+		}
+	}
 
-    // Проверяем, изменились ли границы, иначе возвращаем ошибку
-    if minLat == 90.0 || minLon == 180.0 || maxLat == -90.0 || maxLon == -180.0 {
-        log.Println("Error: Unable to calculate bounds, no valid markers found.")
-        http.Error(w, "No valid data in file", http.StatusBadRequest)
-        return
-    }
+	// Check if bounds have changed, otherwise return an error
+	if minLat == 90.0 || minLon == 180.0 || maxLat == -90.0 || maxLon == -180.0 {
+		log.Println("Error: Unable to calculate bounds, no valid markers found.")
+		http.Error(w, "No valid data in file", http.StatusBadRequest)
+		return
+	}
 
-    // Логируем границы для отладки
-    log.Printf("Track: %s calculated: minLat=%f, minLon=%f, maxLat=%f, maxLon=%f\n", trackID, minLat, minLon, maxLat, maxLon)
-		log.Printf("/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=13&layer=%s\n",trackID, minLat, minLon, maxLat, maxLon, "OpenStreetMap")
+	// Log bounds for debugging
+	log.Printf("Track: %s calculated: minLat=%f, minLon=%f, maxLat=%f, maxLon=%f\n", trackID, minLat, minLon, maxLat, maxLon)
+	log.Printf("/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=13&layer=%s\n", trackID, minLat, minLon, maxLat, maxLon, "OpenStreetMap")
 
-    // Генерируем уникальный URL для TrackID без параметра zoom
-    trackURL := fmt.Sprintf("/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",trackID, minLat, minLon, maxLat, maxLon, "OpenStreetMap") 
+	// Generate unique URL for TrackID without zoom parameter
+	trackURL := fmt.Sprintf("/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s", trackID, minLat, minLon, maxLat, maxLon, "OpenStreetMap")
 
-    response := map[string]interface{}{
-        "status":   "success",
-        "trackURL": trackURL,
-    }
+	response := map[string]interface{}{
+		"status":   "success",
+		"trackURL": trackURL,
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(response)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // =====================
@@ -1014,21 +1032,17 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 func mapHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 
-
 	// Add function toJSON for use in the template
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
 		"translate": func(key string) string {
 			if val, ok := translations[lang][key]; ok {
 				return val
 			}
-			return translations["en"][key]
+			return translations["en"][key] // Fallback to English if not found
 		},
-		"toJSON": func(data interface{}) template.JS {
+		"toJSON": func(data interface{}) (string, error) {
 			bytes, err := json.Marshal(data)
-			if err != nil {
-				return "[]"
-			}
-			return template.JS(bytes)
+			return string(bytes), err
 		},
 	}).ParseFS(content, "public_html/map.html"))
 
@@ -1057,95 +1071,95 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// trackHandler обрабатывает запросы к /trackid/{trackID}
+// trackHandler handles requests to /trackid/{trackID}
 func trackHandler(w http.ResponseWriter, r *http.Request) {
-    lang := getPreferredLanguage(r)
+	lang := getPreferredLanguage(r)
 
-    // Извлекаем TrackID из URL
-    pathParts := strings.Split(r.URL.Path, "/")
-    if len(pathParts) < 3 {
-        http.Error(w, "TrackID not provided", http.StatusBadRequest)
-        return
-    }
-    trackID := pathParts[2]
+	// Extract TrackID from URL
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 3 {
+		http.Error(w, "TrackID not provided", http.StatusBadRequest)
+		return
+	}
+	trackID := pathParts[2]
 
-    // Извлекаем параметры запроса
-    minLatStr := r.URL.Query().Get("minLat")
-    minLonStr := r.URL.Query().Get("minLon")
-    maxLatStr := r.URL.Query().Get("maxLat")
-    maxLonStr := r.URL.Query().Get("maxLon")
-    // zoomStr := r.URL.Query().Get("zoom") // Убираем параметр zoom
+	// Extract query parameters
+	minLatStr := r.URL.Query().Get("minLat")
+	minLonStr := r.URL.Query().Get("minLon")
+	maxLatStr := r.URL.Query().Get("maxLat")
+	maxLonStr := r.URL.Query().Get("maxLon")
 
-    // Парсим координаты
-    minLat, err := strconv.ParseFloat(minLatStr, 64)
-    if err != nil {
-        http.Error(w, "Invalid minLat", http.StatusBadRequest)
-        return
-    }
+	// Parse coordinates
+	minLat, err := strconv.ParseFloat(minLatStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid minLat", http.StatusBadRequest)
+		return
+	}
 
-    minLon, err := strconv.ParseFloat(minLonStr, 64)
-    if err != nil {
-        http.Error(w, "Invalid minLon", http.StatusBadRequest)
-        return
-    }
+	minLon, err := strconv.ParseFloat(minLonStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid minLon", http.StatusBadRequest)
+		return
+	}
 
-    maxLat, err := strconv.ParseFloat(maxLatStr, 64)
-    if err != nil {
-        http.Error(w, "Invalid maxLat", http.StatusBadRequest)
-        return
-    }
+	maxLat, err := strconv.ParseFloat(maxLatStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid maxLat", http.StatusBadRequest)
+		return
+	}
 
-    maxLon, err := strconv.ParseFloat(maxLonStr, 64)
-    if err != nil {
-        http.Error(w, "Invalid maxLon", http.StatusBadRequest)
-        return
-    }
+	maxLon, err := strconv.ParseFloat(maxLonStr, 64)
+	if err != nil {
+		http.Error(w, "Invalid maxLon", http.StatusBadRequest)
+		return
+	}
 
-    // Получаем маркеры по TrackID и границам без фильтрации по zoom
-    markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
-    if err != nil {
-        http.Error(w, "Error fetching markers", http.StatusInternalServerError)
-        return
-    }
+	// Get markers by TrackID and bounds without filtering by zoom
+	markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
+	if err != nil {
+		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
+		return
+	}
 
-    // Если нет маркеров после фильтрации, возвращаем ошибку
-    if len(markers) == 0 {
-        http.Error(w, "No markers found for the specified TrackID and parameters", http.StatusNotFound)
-        return
-    }
+	// If no markers found after filtering, return error
+	if len(markers) == 0 {
+		http.Error(w, "No markers found for the specified TrackID and parameters", http.StatusNotFound)
+		return
+	}
 
-    // Рендерим шаблон с отфильтрованными маркерами
-    tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
-        "translate": func(key string) string {
-            if val, ok := translations[lang][key]; ok {
-                return val
-            }
-            return translations["en"][key]
-        },
-        "toJSON": func(data interface{}) (string, error) {
-            bytes, err := json.Marshal(data)
-            return string(bytes), err
-        },
-    }).ParseFS(content, "public_html/map.html"))
+	// Render the template with filtered markers
+	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
+		"translate": func(key string) string {
+			if val, ok := translations[lang][key]; ok {
+				return val
+			}
+			return translations["en"][key]
+		},
+		"toJSON": func(data interface{}) (string, error) {
+			bytes, err := json.Marshal(data)
+			return string(bytes), err
+		},
+	}).ParseFS(content, "public_html/map.html"))
 
-    data := struct {
-        Markers      []database.Marker
-        Version      string
-        Translations map[string]map[string]string
-        Lang         string
-    }{
-        Markers:      markers,
-        Version:      CompileVersion,
-        Translations: translations,
-        Lang:         lang,
-    }
+	data := struct {
+		Markers      []database.Marker
+		Version      string
+		Translations map[string]map[string]string
+		Lang         string
+	}{
+		Markers:      markers,
+		Version:      CompileVersion,
+		Translations: translations,
+		Lang:         lang,
+	}
 
-    if err := tmpl.Execute(w, data); err != nil {
-        log.Printf("Error executing template: %v", err)
-        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-        return
-    }
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing template: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
+
 // Handler to serve markers based on zoom level and bounds
 func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
