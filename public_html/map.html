@@ -406,16 +406,17 @@ document.addEventListener('DOMContentLoaded', function () {
 		// Изменение размеров маркеров при зуме
 		map.on('zoomend', function() {
 			adjustMarkerRadius();
+			debounceUpdateMarkers();
 		});
 	} else {
 		// Динамическое обновление маркеров в глобальном режиме
-		map.on('load', updateMarkers);
+		map.on('load', debounceUpdateMarkers);
 		map.on('zoomend', function() {
 			adjustMarkerRadius();
-			updateMarkers();
+			debounceUpdateMarkers();
 		});
-		map.on('moveend', updateMarkers);
-		updateMarkers();
+		map.on('moveend', debounceUpdateMarkers);
+		//debounceUpdateMarkers;
 	}
 
 	// Загрузка состояния карты из URL
@@ -466,13 +467,23 @@ function displayInitialMarkers(markers) {
 	document.querySelector('.back-to-all-container').style.display = 'block';
 }
 
+let currentZoom, currentBounds;
+
 function updateMarkers() {
 	if (isTrackView) return;
 
-	var zoomLevel = map.getZoom();
-	var bounds = map.getBounds();
+	const zoomLevel = map.getZoom();
+	const bounds = map.getBounds();
 
-	var params = {
+	// Проверка, чтобы не отправлять повторные запросы на одни и те же границы и зум
+	if (currentZoom === zoomLevel && currentBounds && currentBounds.equals(bounds)) {
+		return;
+	}
+
+	currentZoom = zoomLevel;
+	currentBounds = bounds;
+
+	const params = {
 		zoom: zoomLevel,
 		minLat: bounds.getSouthWest().lat,
 		minLon: bounds.getSouthWest().lng,
@@ -488,12 +499,12 @@ function updateMarkers() {
 			}
 			circleMarkers = {};
 
-			data.forEach(function(marker) {
-				var markerKey = marker.id;
-				var color = getGradientColor(marker.doseRate);
-				var radius = getRadius(marker.doseRate, zoomLevel);
+			data.forEach(marker => {
+				const markerKey = marker.id;
+				const color = getGradientColor(marker.doseRate);
+				const radius = getRadius(marker.doseRate, zoomLevel);
 
-				var circleMarker = L.circleMarker([marker.lat, marker.lon], {
+				const circleMarker = L.circleMarker([marker.lat, marker.lon], {
 					radius: radius,
 					fillColor: color,
 					color: color,
@@ -502,19 +513,20 @@ function updateMarkers() {
 					fillOpacity: getFillOpacity(marker.speed)
 				}).addTo(map)
 					.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-					.on('click', function() {
-						viewTrack(marker.trackID);
-					});
+					.on('click', () => viewTrack(marker.trackID));
 
-				// Сохранение doseRate для последующей корректировки радиуса
 				circleMarker.doseRate = marker.doseRate;
-
 				circleMarkers[markerKey] = circleMarker;
 			});
 		})
-		.catch(error => {
-			console.error('Error fetching markers:', error);
-		});
+		.catch(error => console.error('Error fetching markers:', error));
+}
+
+let debounceTimeout;
+
+function debounceUpdateMarkers() {
+	clearTimeout(debounceTimeout);
+	debounceTimeout = setTimeout(updateMarkers, 300);
 }
 
 function adjustMarkerRadius() {

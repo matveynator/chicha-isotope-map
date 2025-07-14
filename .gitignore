@@ -1,5 +1,5 @@
 *.genji
 *.sqlite
+*.sqlite-journal
 binaries
 chicha-isotope-map
-go.sum
