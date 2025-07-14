@@ -63,7 +63,7 @@ jobs:
           mkdir -p dist
           GOFLAGS="-trimpath" \
           go build -tags netgo,osusergo \
-                   -ldflags "-s -w -X main.version=$VERSION" \
+                   -ldflags "-s -w -X main.CompileVersion=$VERSION" \
                    -o "dist/chicha-isotope-map_${GOOS}_${GOARCH}"
 
       - name: Upload artifact
