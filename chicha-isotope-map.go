@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sort"
 	"time"
 
 	"chicha-isotope-map/pkg/database"
@@ -219,6 +220,12 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 		avgDose := sumDose / n
 		avgCount := sumCount / n
 
+		var sumSpeed float64
+		for _, c := range cluster {
+			sumSpeed += c.Marker.Speed
+		}
+		avgSpeed := sumSpeed / n
+
 		// Создаём новый слитый маркер
 		newMarker := database.Marker{
 			Lat:       avgLat,
@@ -227,7 +234,7 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			CountRate: avgCount,
 			Date:      latestDate,
 			// Speed пока ставим 0, если нужно — можно отдельно считать.
-			Speed:   0,
+			Speed:   avgSpeed,
 			Zoom:    zoom,
 			TrackID: cluster[0].Marker.TrackID, // берем хотя бы у первого
 		}
@@ -236,6 +243,37 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 
 	return result
 }
+
+func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
+	sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
+
+	for i := 1; i < len(markers); i++ {
+		prev, curr := markers[i-1], markers[i]
+		dist := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon) // метры
+		timeDiff := curr.Date - prev.Date // секунды
+		if timeDiff > 0 {
+			speed := dist / float64(timeDiff) // м/c
+
+			// Фильтр скорости (от 0 до 300 м/с, ~1080 км/ч - скорость самолёта)
+			if speed >= 0 && speed <= 300 {
+				markers[i].Speed = speed
+			} else {
+				markers[i].Speed = markers[i-1].Speed // если ошибка, берём предыдущую скорость
+			}
+		}
+	}
+	markers[0].Speed = markers[1].Speed // первую точку приравниваем ко второй
+	return markers
+}
+
+func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371000
+	phi1, phi2 := lat1*math.Pi/180, lat2*math.Pi/180
+	dPhi, dLambda := (lat2-lat1)*math.Pi/180, (lon2-lon1)*math.Pi/180
+	a := math.Sin(dPhi/2)*math.Sin(dPhi/2) + math.Cos(phi1)*math.Cos(phi2)*math.Sin(dLambda/2)*math.Sin(dLambda/2)
+	return 2 * R * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+}
+
 
 // precomputeMarkersForAllZoomLevels вычисляет заранее маркеры для всех (1..20) уровней зума
 // и возвращает итоговый массив
@@ -453,83 +491,30 @@ func parseKML(data []byte) ([]database.Marker, error) {
 	}
 	return markers, nil
 }
-
-func processKMLFile(file multipart.File, trackID string) []database.Marker {
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Println("Error reading KML file:", err)
-		return nil
-	}
-	markers, err := parseKML(data)
-	if err != nil {
-		log.Println("Error parsing KML file:", err)
-		return nil
-	}
+func processAndStoreMarkers(markers []database.Marker, trackID string, db *database.Database, dbType string) error {
+	// Устанавливаем TrackID всем маркерам
 	for i := range markers {
 		markers[i].TrackID = trackID
 	}
-	// Фильтруем нули
+
+	// Фильтрация нулевых значений
 	markers = filterZeroMarkers(markers)
+
+	// Расчёт скорости
+	markers = calculateSpeedForMarkers(markers)
+
 	// Предварительный расчёт для зумов
 	allZoomMarkers := precomputeMarkersForAllZoomLevels(markers)
 
-	// Сохраняем в БД
+	// Сохраняем маркеры в БД
 	for _, m := range allZoomMarkers {
-		if err := db.SaveMarkerAtomic(m, *dbType); err != nil {
-			log.Fatalf("Error saving marker: %v", err)
+		if err := db.SaveMarkerAtomic(m, dbType); err != nil {
+			return fmt.Errorf("error saving marker: %v", err)
 		}
 	}
-
-	return allZoomMarkers
+	return nil
 }
 
-func processKMZFile(file multipart.File, trackID string) []database.Marker {
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Println("Error reading KMZ file:", err)
-		return nil
-	}
-	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		log.Println("Error opening KMZ file as ZIP:", err)
-		return nil
-	}
-	var allZoomMarkers []database.Marker
-	for _, zipFile := range zipReader.File {
-		if filepath.Ext(zipFile.Name) == ".kml" {
-			kmlFile, err := zipFile.Open()
-			if err != nil {
-				log.Println("Error opening KML file inside KMZ:", err)
-				continue
-			}
-			defer kmlFile.Close()
-
-			kmlData, err := io.ReadAll(kmlFile)
-			if err != nil {
-				log.Println("Error reading KML file inside KMZ:", err)
-				return nil
-			}
-			markers, err := parseKML(kmlData)
-			if err != nil {
-				log.Println("Error parsing KML file from KMZ:", err)
-				return nil
-			}
-			for i := range markers {
-				markers[i].TrackID = trackID
-			}
-			markers = filterZeroMarkers(markers)
-			zoomMarkers := precomputeMarkersForAllZoomLevels(markers)
-			allZoomMarkers = append(allZoomMarkers, zoomMarkers...)
-
-			for _, m := range zoomMarkers {
-				if err := db.SaveMarkerAtomic(m, *dbType); err != nil {
-					log.Fatalf("Error saving marker: %v", err)
-				}
-			}
-		}
-	}
-	return allZoomMarkers
-}
 
 // parseTextRCTRK - парсинг .rctrk текстового
 func parseTextRCTRK(data []byte) ([]database.Marker, error) {
@@ -575,93 +560,103 @@ func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 	return markers, nil
 }
 
-func processRCTRKFile(file multipart.File, trackID string) []database.Marker {
+func processKMLFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Println("Error reading RCTRK file:", err)
-		return nil
+		return fmt.Errorf("error reading KML file: %v", err)
 	}
-	rctrkData := database.Data{
-		IsSievert: true,
+	markers, err := parseKML(data)
+	if err != nil {
+		return fmt.Errorf("error parsing KML file: %v", err)
 	}
-	allZoomMarkers := []database.Marker{}
-	if err := json.Unmarshal(data, &rctrkData); err == nil {
-		var base []database.Marker
-		if rctrkData.IsSievert {
-			base = filterZeroMarkers(rctrkData.Markers)
-		} else {
-			base = filterZeroMarkers(convertRhToSv(rctrkData.Markers))
-		}
-		for i := range base {
-			base[i].TrackID = trackID
-		}
-		zoomMarkers := precomputeMarkersForAllZoomLevels(base)
-		allZoomMarkers = append(allZoomMarkers, zoomMarkers...)
-		for _, m := range zoomMarkers {
-			if err := db.SaveMarkerAtomic(m, *dbType); err != nil {
-				log.Fatalf("Error saving marker: %v", err)
-			}
-		}
-	} else {
-		// не json, пробуем парсить текст
-		markers, err := parseTextRCTRK(data)
-		if err != nil {
-			log.Println("Error parsing text RCTRK file:", err)
-			return nil
-		}
-		for i := range markers {
-			markers[i].TrackID = trackID
-		}
-		markers = filterZeroMarkers(markers)
-		zoomMarkers := precomputeMarkersForAllZoomLevels(markers)
-		allZoomMarkers = append(allZoomMarkers, zoomMarkers...)
-		for _, m := range zoomMarkers {
-			if err := db.SaveMarkerAtomic(m, *dbType); err != nil {
-				log.Fatalf("Error saving marker: %v", err)
-			}
-		}
-	}
-	return allZoomMarkers
+
+	return processAndStoreMarkers(markers, trackID, db, dbType)
 }
 
-func processAtomFastFile(file multipart.File, trackID string) []database.Marker {
+func processKMZFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Println("Error reading AtomFast JSON file:", err)
-		return nil
+		return fmt.Errorf("error reading KMZ file: %v", err)
+	}
+	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("error opening KMZ file as ZIP: %v", err)
+	}
+
+	for _, zipFile := range zipReader.File {
+		if filepath.Ext(zipFile.Name) == ".kml" {
+			kmlFile, err := zipFile.Open()
+			if err != nil {
+				return fmt.Errorf("error opening KML inside KMZ: %v", err)
+			}
+			defer kmlFile.Close()
+
+			kmlData, err := io.ReadAll(kmlFile)
+			if err != nil {
+				return fmt.Errorf("error reading KML inside KMZ: %v", err)
+			}
+			markers, err := parseKML(kmlData)
+			if err != nil {
+				return fmt.Errorf("error parsing KML inside KMZ: %v", err)
+			}
+
+			if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func processRCTRKFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		return fmt.Errorf("error reading RCTRK file: %v", err)
+	}
+	rctrkData := database.Data{IsSievert: true}
+
+	if err := json.Unmarshal(data, &rctrkData); err == nil {
+		markers := rctrkData.Markers
+		if !rctrkData.IsSievert {
+			markers = convertRhToSv(markers)
+		}
+		return processAndStoreMarkers(markers, trackID, db, dbType)
+	}
+
+	markers, err := parseTextRCTRK(data)
+	if err != nil {
+		return fmt.Errorf("error parsing text RCTRK file: %v", err)
+	}
+
+	return processAndStoreMarkers(markers, trackID, db, dbType)
+}
+
+func processAtomFastFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		return fmt.Errorf("error reading AtomFast JSON file: %v", err)
 	}
 	var atomFastData []struct {
-		DV  int     `json:"dv"`
 		D   float64 `json:"d"`
-		R   int     `json:"r"`
 		Lat float64 `json:"lat"`
 		Lng float64 `json:"lng"`
 		T   int64   `json:"t"`
 	}
 	if err := json.Unmarshal(data, &atomFastData); err != nil {
-		log.Println("Error parsing AtomFast file:", err)
-		return nil
+		return fmt.Errorf("error parsing AtomFast file: %v", err)
 	}
 	var markers []database.Marker
 	for _, record := range atomFastData {
-		m := database.Marker{
-			DoseRate:  record.D,
-			Date:      record.T / 1000, // мс -> с
-			Lon:       record.Lng,
-			Lat:       record.Lat,
-			CountRate: record.D, // AtomFast не даёт cps, дублируем
-			TrackID:   trackID,
-		}
-		markers = append(markers, m)
+		markers = append(markers, database.Marker{
+			DoseRate: record.D,
+			Date:     record.T / 1000,
+			Lon:      record.Lng,
+			Lat:      record.Lat,
+			CountRate: record.D,
+		})
 	}
-	markers = filterZeroMarkers(markers)
-	allZoomMarkers := precomputeMarkersForAllZoomLevels(markers)
-	for _, m := range allZoomMarkers {
-		if err := db.SaveMarkerAtomic(m, *dbType); err != nil {
-			log.Fatalf("Error saving marker: %v", err)
-		}
-	}
-	return allZoomMarkers
+
+	return processAndStoreMarkers(markers, trackID, db, dbType)
 }
 
 // =====================
@@ -691,23 +686,34 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
-		var markers []database.Marker
 		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 		switch ext {
 		case ".kml":
-			markers = processKMLFile(file, trackID)
+			err = processKMLFile(file, trackID, db, *dbType)
 		case ".kmz":
-			markers = processKMZFile(file, trackID)
+			err = processKMZFile(file, trackID, db, *dbType)
 		case ".rctrk":
-			markers = processRCTRKFile(file, trackID)
+			err = processRCTRKFile(file, trackID, db, *dbType)
 		case ".json":
-			markers = processAtomFastFile(file, trackID)
+			err = processAtomFastFile(file, trackID, db, *dbType)
 		default:
 			http.Error(w, "Unsupported file type", http.StatusBadRequest)
 			return
 		}
 
-		// Сразу после сохранения в БД можно уточнить границы
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// после обработки каждого файла, запросим маркеры из БД, чтобы вычислить границы трека
+		markers, err := db.GetMarkersByTrackID(trackID, *dbType)
+		if err != nil {
+			http.Error(w, "Error fetching markers after upload", http.StatusInternalServerError)
+			return
+		}
+
+		// Обновим границы
 		for _, marker := range markers {
 			if marker.Lat < minLat {
 				minLat = marker.Lat
@@ -863,44 +869,27 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 // Тогда никакой дополнительной логики в runtime не нужно — маркеры уже подготовлены.
 func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	zoomStr := r.URL.Query().Get("zoom")
-	minLatStr := r.URL.Query().Get("minLat")
-	minLonStr := r.URL.Query().Get("minLon")
-	maxLatStr := r.URL.Query().Get("maxLat")
-	maxLonStr := r.URL.Query().Get("maxLon")
+	minLat, _ := strconv.ParseFloat(r.URL.Query().Get("minLat"), 64)
+	minLon, _ := strconv.ParseFloat(r.URL.Query().Get("minLon"), 64)
+	maxLat, _ := strconv.ParseFloat(r.URL.Query().Get("maxLat"), 64)
+	maxLon, _ := strconv.ParseFloat(r.URL.Query().Get("maxLon"), 64)
+	zoomLevel, _ := strconv.Atoi(zoomStr)
+	trackID := r.URL.Query().Get("trackID")
 
-	zoomLevel, err := strconv.Atoi(zoomStr)
-	if err != nil {
-		http.Error(w, "Invalid zoom level", http.StatusBadRequest)
-		return
-	}
-	minLat, err := strconv.ParseFloat(minLatStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid minLat", http.StatusBadRequest)
-		return
-	}
-	minLon, err := strconv.ParseFloat(minLonStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid minLon", http.StatusBadRequest)
-		return
-	}
-	maxLat, err := strconv.ParseFloat(maxLatStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid maxLat", http.StatusBadRequest)
-		return
-	}
-	maxLon, err := strconv.ParseFloat(maxLonStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid maxLon", http.StatusBadRequest)
-		return
+	var markers []database.Marker
+	var err error
+
+	if trackID != "" {
+		markers, err = db.GetMarkersByTrackIDZoomAndBounds(trackID, zoomLevel, minLat, minLon, maxLat, maxLon, *dbType)
+	} else {
+		markers, err = db.GetMarkersByZoomAndBounds(zoomLevel, minLat, minLon, maxLat, maxLon, *dbType)
 	}
 
-	// Предполагается, что в вашем методе GetMarkersByZoomAndBounds
-	// БД вернёт именно маркеры с полем Zoom = zoomLevel в заданном bbox.
-	markers, err := db.GetMarkersByZoomAndBounds(zoomLevel, minLat, minLon, maxLat, maxLon, *dbType)
 	if err != nil {
 		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(markers)
 }
@@ -951,3 +940,5 @@ func main() {
 	log.Printf("Application running at: http://localhost:%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
+
+

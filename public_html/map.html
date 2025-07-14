@@ -366,8 +366,16 @@ var circleMarkers = {};
 var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
+var currentTrackID = null;
 
 document.addEventListener('DOMContentLoaded', function () {
+
+	// Инициализация trackID по пути
+	var match = window.location.pathname.match(/^\/trackid\/([a-zA-Z0-9]+)/);
+	if (match) {
+		currentTrackID = match[1];
+		isTrackView = true;
+	}
 	// Инициализация слоёв карты
 	osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 		maxZoom: 18,
@@ -403,11 +411,14 @@ document.addEventListener('DOMContentLoaded', function () {
 		isTrackView = true;
 		displayInitialMarkers(initialMarkers);
 
+		map.on('load', adjustMarkerRadius);
+
 		// Изменение размеров маркеров при зуме
 		map.on('zoomend', function() {
 			adjustMarkerRadius();
 			debounceUpdateMarkers();
 		});
+		map.on('moveend', debounceUpdateMarkers);
 	} else {
 		// Динамическое обновление маркеров в глобальном режиме
 		map.on('load', debounceUpdateMarkers);
@@ -416,7 +427,7 @@ document.addEventListener('DOMContentLoaded', function () {
 			debounceUpdateMarkers();
 		});
 		map.on('moveend', debounceUpdateMarkers);
-		//debounceUpdateMarkers;
+		debounceUpdateMarkers;
 	}
 
 	// Загрузка состояния карты из URL
@@ -470,18 +481,9 @@ function displayInitialMarkers(markers) {
 let currentZoom, currentBounds;
 
 function updateMarkers() {
-	if (isTrackView) return;
 
 	const zoomLevel = map.getZoom();
 	const bounds = map.getBounds();
-
-	// Проверка, чтобы не отправлять повторные запросы на одни и те же границы и зум
-	if (currentZoom === zoomLevel && currentBounds && currentBounds.equals(bounds)) {
-		return;
-	}
-
-	currentZoom = zoomLevel;
-	currentBounds = bounds;
 
 	const params = {
 		zoom: zoomLevel,
@@ -491,7 +493,14 @@ function updateMarkers() {
 		maxLon: bounds.getNorthEast().lng
 	};
 
-	fetch('/get_markers?' + new URLSearchParams(params))
+	let url = '/get_markers?';
+	if (isTrackView && currentTrackID) {
+		params.trackID = currentTrackID; // важно передавать trackID!
+	}
+
+	url += new URLSearchParams(params);
+
+	fetch(url)
 		.then(response => response.json())
 		.then(data => {
 			for (let key in circleMarkers) {
@@ -561,6 +570,7 @@ function viewTrack(trackID) {
 }
 
 function loadMapFromUrl() {
+
 	var params = new URLSearchParams(window.location.search);
 	var minLat = parseFloat(params.get('minLat'));
 	var minLon = parseFloat(params.get('minLon'));
@@ -578,6 +588,7 @@ function loadMapFromUrl() {
 	if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
 		var bounds = [[minLat, minLon], [maxLat, maxLon]];
 		map.fitBounds(bounds);
+		adjustMarkerRadius();
 	} else if (isTrackView && trackBounds) {
 		// Масштабирование к границам трека
 		map.fitBounds(trackBounds);
