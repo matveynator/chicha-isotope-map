@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"strings"
 )
 
 // Database represents the interface for interacting with the database.
@@ -391,29 +390,50 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 	return markers, nil
 }
 
-// GetMarkersByTrackIDZoomAndBounds — новый метод в database.go
-func (db *Database) GetMarkersByTrackIDZoomAndBounds(trackID string, zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
-	query := `
-	SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-	FROM markers
-	WHERE trackID = ? AND zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;`
+// GetMarkersByTrackIDZoomAndBounds исправленный вариант
+func (db *Database) GetMarkersByTrackIDZoomAndBounds(
+    trackID string,
+    zoom    int,
+    minLat, minLon, maxLat, maxLon float64,
+    dbType  string,
+) ([]Marker, error) {
 
-	if dbType == "pgx" {
-		query = strings.ReplaceAll(query, "?", "$")
-		query = strings.ReplaceAll(query, "$", fmt.Sprintf("$%d", 1))
-	}
+    var query string
+    switch dbType {
+    case "pgx": // PostgreSQL
+        query = `
+        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+        FROM   markers
+        WHERE  trackID = $1
+          AND  zoom     = $2
+          AND  lat BETWEEN $3 AND $4
+          AND  lon BETWEEN $5 AND $6;`
+    default:    // SQLite / Genji
+        query = `
+        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+        FROM   markers
+        WHERE  trackID = ?
+          AND  zoom     = ?
+          AND  lat BETWEEN ? AND ?
+          AND  lon BETWEEN ? AND ?;`
+    }
 
-	rows, err := db.DB.Query(query, trackID, zoom, minLat, maxLat, minLon, maxLon)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers by trackID and zoom: %v", err)
-	}
-	defer rows.Close()
+    rows, err := db.DB.Query(query,
+        trackID, zoom, minLat, maxLat, minLon, maxLon)
+    if err != nil {
+        return nil, fmt.Errorf("error querying markers: %w", err)
+    }
+    defer rows.Close()
 
-	var markers []Marker
-	for rows.Next() {
-		var marker Marker
-		rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID)
-		markers = append(markers, marker)
-	}
-	return markers, nil
+    var markers []Marker
+    for rows.Next() {
+        var m Marker
+        if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date,
+            &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+            return nil, fmt.Errorf("error scanning marker: %w", err)
+        }
+        markers = append(markers, m)
+    }
+    return markers, rows.Err()
 }
+
