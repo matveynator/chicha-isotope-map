@@ -20,4 +20,3 @@ type Data struct {
 	Title     string   `json:"title"`   // Title or description of the dataset
 	IsSievert bool     `json:"sv"`      // Indicates if data is in Sievert format
 }
-

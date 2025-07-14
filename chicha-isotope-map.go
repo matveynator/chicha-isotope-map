@@ -18,9 +18,9 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
-	"sort"
 	"time"
 
 	"chicha-isotope-map/pkg/database"
@@ -250,7 +250,7 @@ func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 	for i := 1; i < len(markers); i++ {
 		prev, curr := markers[i-1], markers[i]
 		dist := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon) // метры
-		timeDiff := curr.Date - prev.Date // секунды
+		timeDiff := curr.Date - prev.Date                                 // секунды
 		if timeDiff > 0 {
 			speed := dist / float64(timeDiff) // м/c
 
@@ -273,7 +273,6 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	a := math.Sin(dPhi/2)*math.Sin(dPhi/2) + math.Cos(phi1)*math.Cos(phi2)*math.Sin(dLambda/2)*math.Sin(dLambda/2)
 	return 2 * R * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
-
 
 // precomputeMarkersForAllZoomLevels вычисляет заранее маркеры для всех (1..20) уровней зума
 // и возвращает итоговый массив
@@ -515,7 +514,6 @@ func processAndStoreMarkers(markers []database.Marker, trackID string, db *datab
 	return nil
 }
 
-
 // parseTextRCTRK - парсинг .rctrk текстового
 func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 	var markers []database.Marker
@@ -648,10 +646,10 @@ func processAtomFastFile(file multipart.File, trackID string, db *database.Datab
 	var markers []database.Marker
 	for _, record := range atomFastData {
 		markers = append(markers, database.Marker{
-			DoseRate: record.D,
-			Date:     record.T / 1000,
-			Lon:      record.Lng,
-			Lat:      record.Lat,
+			DoseRate:  record.D,
+			Date:      record.T / 1000,
+			Lon:       record.Lng,
+			Lat:       record.Lat,
 			CountRate: record.D,
 		})
 	}
@@ -940,5 +938,3 @@ func main() {
 	log.Printf("Application running at: http://localhost:%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
-
-

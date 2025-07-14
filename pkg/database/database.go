@@ -2,9 +2,9 @@ package database
 
 import (
 	"database/sql"
-	"strings"
 	"fmt"
 	"log"
+	"strings"
 )
 
 // Database represents the interface for interacting with the database.
@@ -417,4 +417,3 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(trackID string, zoom int, m
 	}
 	return markers, nil
 }
-

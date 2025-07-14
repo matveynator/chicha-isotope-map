@@ -328,21 +328,21 @@ function getTooltipContent(marker) {
 	var formattedDate = date.toLocaleString();
 
 	return `
-<div class="custom-tooltip">
+		<div class="custom-tooltip">
 		<div class="tooltip-row">
-				<strong>${translate('radiation_dose')}:</strong>
-				<span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
+		<strong>${translate('radiation_dose')}:</strong>
+		<span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
 		</div>
 		<div class="tooltip-row">
-				<strong>${translate('speed')}:</strong>
-				<span>${marker.speed.toFixed(2)} m/s</span>
+		<strong>${translate('speed')}:</strong>
+		<span>${marker.speed.toFixed(2)} m/s</span>
 		</div>
 		<div class="tooltip-row">
-				<strong>${translate('track_id')}:</strong>
-				<span>${marker.trackID}</span>
+		<strong>${translate('track_id')}:</strong>
+		<span>${marker.trackID}</span>
 		</div>
-</div>
-						`;
+		</div>
+		`;
 }
 
 // Функция для получения текущих параметров URL на основе состояния карты
@@ -444,37 +444,51 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // Определение функций
 
+// ---------- POP-UP со ссылкой на трек ----------
+function getPopupContent(marker) {
+	const dateStr = new Date(marker.date * 1000).toLocaleString();
+	return `
+		<div class="custom-tooltip">
+		<div><strong>${translate('radiation_dose')}:</strong>
+		${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
+		</div>
+		<div><strong>${translate('speed')}:</strong> ${marker.speed.toFixed(2)} m/s</div>
+		<div style="margin-top:4px">
+		<!-- щёлк по ссылке = переход в режим трека -->
+		<a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
+		${translate('track_id')}: ${marker.trackID}
+		</a>
+		</div>
+		</div>`;
+}
+
+
 function displayInitialMarkers(markers) {
 	trackBounds = new L.LatLngBounds();
 
-	markers.forEach(function(marker) {
-		var markerKey = marker.id || marker.trackID;
-		var color = getGradientColor(marker.doseRate);
-		var radius = getRadius(marker.doseRate, map.getZoom());
+	markers.forEach(function (marker) {
+		const markerKey = marker.id || marker.trackID;
+		const color     = getGradientColor(marker.doseRate);
+		const radius    = getRadius(marker.doseRate, map.getZoom());
 
-		var circleMarker = L.circleMarker([marker.lat, marker.lon], {
-			radius: radius,
-			fillColor: color,
-			color: color,
-			weight: 1,
-			opacity: getFillOpacity(marker.speed) + 0.1,
-			fillOpacity: getFillOpacity(marker.speed)
-		}).addTo(map)
+		const circleMarker = L.circleMarker([marker.lat, marker.lon], {
+			radius      : radius,
+			fillColor   : color,
+			color       : color,
+			weight      : 1,
+			opacity     : getFillOpacity(marker.speed) + 0.1,
+			fillOpacity : getFillOpacity(marker.speed)
+		})
+			.addTo(map)
 			.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-			.on('click', function() {
-				viewTrack(marker.trackID);
-			});
+			.bindPopup   (getPopupContent(marker));   // <-- pop-up вместо немедленного перехода
 
-		// Сохранение doseRate для последующей корректировки радиуса
-		circleMarker.doseRate = marker.doseRate;
-
+		circleMarker.doseRate = marker.doseRate;  // для динамического изменения радиуса
 		circleMarkers[markerKey] = circleMarker;
 		trackBounds.extend([marker.lat, marker.lon]);
 	});
 
-	// Масштабирование карты для отображения всего трека
 	map.fitBounds(trackBounds);
-
 	document.querySelector('.back-to-all-container').style.display = 'block';
 }
 
@@ -483,10 +497,10 @@ let currentZoom, currentBounds;
 function updateMarkers() {
 
 	const zoomLevel = map.getZoom();
-	const bounds = map.getBounds();
+	const bounds    = map.getBounds();
 
 	const params = {
-		zoom: zoomLevel,
+		zoom  : zoomLevel,
 		minLat: bounds.getSouthWest().lat,
 		minLon: bounds.getSouthWest().lng,
 		maxLat: bounds.getNorthEast().lat,
@@ -494,41 +508,38 @@ function updateMarkers() {
 	};
 
 	let url = '/get_markers?';
-	if (isTrackView && currentTrackID) {
-		params.trackID = currentTrackID; // важно передавать trackID!
-	}
-
+	if (isTrackView && currentTrackID) params.trackID = currentTrackID;
 	url += new URLSearchParams(params);
 
 	fetch(url)
-		.then(response => response.json())
+		.then(r => r.json())
 		.then(data => {
-			for (let key in circleMarkers) {
-				map.removeLayer(circleMarkers[key]);
-			}
+			// очищаем старые кружки
+			for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
 			circleMarkers = {};
 
 			data.forEach(marker => {
 				const markerKey = marker.id;
-				const color = getGradientColor(marker.doseRate);
-				const radius = getRadius(marker.doseRate, zoomLevel);
+				const color     = getGradientColor(marker.doseRate);
+				const radius    = getRadius(marker.doseRate, zoomLevel);
 
 				const circleMarker = L.circleMarker([marker.lat, marker.lon], {
-					radius: radius,
-					fillColor: color,
-					color: color,
-					weight: 1,
-					opacity: getFillOpacity(marker.speed) + 0.1,
-					fillOpacity: getFillOpacity(marker.speed)
-				}).addTo(map)
+					radius      : radius,
+					fillColor   : color,
+					color       : color,
+					weight      : 1,
+					opacity     : getFillOpacity(marker.speed) + 0.1,
+					fillOpacity : getFillOpacity(marker.speed)
+				})
+					.addTo(map)
 					.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-					.on('click', () => viewTrack(marker.trackID));
+					.bindPopup   (getPopupContent(marker));   // <-- pop-up
 
 				circleMarker.doseRate = marker.doseRate;
 				circleMarkers[markerKey] = circleMarker;
 			});
 		})
-		.catch(error => console.error('Error fetching markers:', error));
+		.catch(err => console.error('Error fetching markers:', err));
 }
 
 let debounceTimeout;
