@@ -43,12 +43,6 @@ Note: Install as ROOT user.
 curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
 ```
 
-### Linux 64-bit arm64: 
-Note: Install as ROOT user. 
-```bash
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_arm64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
-```
-
 ### Mac OS X Intel:
 Note: Install as ROOT user.
 ```bash
