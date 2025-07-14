@@ -37,13 +37,31 @@ In the Soviet era, an open-air swimming pool was built in Kislovodsk Park. The c
 
 ## 📥 **Download and Get Started** 📥
 
-Install as ROOT on Linux 64-bit x86:  
+### Linux 64-bit amd64: 
+Note: Install as ROOT user. 
 ```bash
-curl https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map -v;
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
 ```
 
+### Linux 64-bit arm64: 
+Note: Install as ROOT user. 
+```bash
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_arm64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+```
+
+### Mac OS X Intel:
+Note: Install as ROOT user.
+```bash
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+```
+
+### Mac OS X Apple Silicon:
+Note: Install as ROOT user.
+```bash
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+```
                 
-[Download for Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)             
+[Download for all other platforms: Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)             
 
 ---
 
