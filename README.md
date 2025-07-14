@@ -37,28 +37,13 @@ In the Soviet era, an open-air swimming pool was built in Kislovodsk Park. The c
 
 ## 📥 **Download and Get Started** 📥
 
-Install on Linux 64-bit x86:  
+Install as ROOT on Linux 64-bit x86:  
 ```bash
-sudo curl https://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/amd64/chicha-isotope-map > /usr/local/bin/chicha-isotope-map; sudo chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map -v;
+curl https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map -v;
 ```
 
-Choose your platform to start exploring isotope trails:
-
-| Platform   | Download Link                                                                                           |
-|------------|--------------------------------------------------------------------------------------------------------|
-| AIX        | [Download for AIX](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/aix/)                      |
-| Android    | [Download for Android](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/android/)               |
-| Dragonfly  | [Download for Dragonfly](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/dragonfly/)           |
-| FreeBSD    | [Download for FreeBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/freebsd/)               |
-| Illumos    | [Download for Illumos](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/illumos/)               |
-| JavaScript | [Download for JavaScript](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/js/)                 |
-| Linux      | [Download for Linux](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/linux/)                   |
-| macOS      | [Download for macOS](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/mac/)                     |
-| NetBSD     | [Download for NetBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/netbsd/)                 |
-| OpenBSD    | [Download for OpenBSD](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/openbsd/)               |
-| Plan9      | [Download for Plan9](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/plan9/)                   |
-| Solaris    | [Download for Solaris](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/solaris/)               |
-| Windows    | [Download for Windows](http://files.zabiyaka.net/chicha-isotope-map/latest/no-gui/windows/)               |
+                
+[Download for Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)             
 
 ---
 
