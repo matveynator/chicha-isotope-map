@@ -1,3 +1,5 @@
+“Chicha Isotope Map” was developed especially for Dmitry Ignatenko’s Radiation Research Laboratory. Thank you for making the invisible visible.
+
 - [🇫🇷 Français](/doc/README_FR.md)
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
