@@ -245,25 +245,33 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 }
 
 func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
-	sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
+    if len(markers) == 0 { // <-- добавлено
+        return markers
+    }
 
-	for i := 1; i < len(markers); i++ {
-		prev, curr := markers[i-1], markers[i]
-		dist := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon) // метры
-		timeDiff := curr.Date - prev.Date                                 // секунды
-		if timeDiff > 0 {
-			speed := dist / float64(timeDiff) // м/c
+    sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
 
-			// Фильтр скорости (от 0 до 300 м/с, ~1080 км/ч - скорость самолёта)
-			if speed >= 0 && speed <= 300 {
-				markers[i].Speed = speed
-			} else {
-				markers[i].Speed = markers[i-1].Speed // если ошибка, берём предыдущую скорость
-			}
-		}
-	}
-	markers[0].Speed = markers[1].Speed // первую точку приравниваем ко второй
-	return markers
+    for i := 1; i < len(markers); i++ {
+        prev, curr := markers[i-1], markers[i]
+        dist     := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon)
+        timeDiff := curr.Date - prev.Date
+        if timeDiff > 0 {
+            speed := dist / float64(timeDiff)
+            if speed >= 0 && speed <= 300 {
+                markers[i].Speed = speed
+            } else {
+                markers[i].Speed = markers[i-1].Speed
+            }
+        }
+    }
+
+    // Обновлённая защита
+    if len(markers) > 1 {
+        markers[0].Speed = markers[1].Speed
+    } else {
+        markers[0].Speed = 0
+    }
+    return markers
 }
 
 func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
