@@ -1,3 +1,5 @@
+“Chicha Isotope Map” a été développée spécialement pour le Laboratoire d'Étude de la Radiation de Dmitry Ignatenko. Merci de rendre visible l’invisible.
+
 ### 🌌 **chicha-isotope-map** — explorateur des chemins cachés de la radiation
 
 > **«Voir l’invisible.» Ce programme visualise les traces radioactives et transforme les chemins invisibles en cartes vibrantes.**
