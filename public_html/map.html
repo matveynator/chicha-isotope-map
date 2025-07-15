@@ -676,106 +676,92 @@ function centerMapToLocation() {
 		<!-- Скрипт загрузки файлов -->
 		<script>
 			function uploadFiles() {
-				var fileInput = document.getElementById('fileInput');
-				var files = fileInput.files;
-				var fileOverlay = document.getElementById('fileOverlay');
-				var fileProgressContainer = document.getElementById('fileProgressContainer');
-
-				if (!fileProgressContainer) {
-					console.error("Error: File progress container not found.");
+				const fileInput  = document.getElementById('fileInput');
+				const files      = fileInput.files;
+				if (!files.length) {
+					alert(translate('select_files'));
 					return;
 				}
 
-				fileProgressContainer.innerHTML = "";
+				const fileOverlay          = document.getElementById('fileOverlay');
+				const fileProgressContainer = document.getElementById('fileProgressContainer');
+				fileProgressContainer.innerHTML = '';
+				fileOverlay.style.display  = 'flex';
 
-				var completedUploads = 0;
-				var totalFiles = files.length;
+				/* счётчик и ссылка последнего трека */
+				let completedUploads = 0;
+				const totalFiles     = files.length;
+				let lastTrackURL     = null;
 
-				if (files.length > 0) {
-					fileOverlay.style.display = "flex";
+				/* создаём XHR для каждого файла, но redirect делаем ОДИН раз */
+				[...files].forEach(file => {
+					/* --- визуальные элементы прогресса (как было) --- */
+					const fileBlock        = document.createElement('div');
+					fileBlock.className    = 'file-progress';
+					const fileName         = document.createElement('div');
+					fileName.className     = 'file-name';
+					fileName.innerText     = file.name;
+					const progressBar      = document.createElement('div');
+					progressBar.className  = 'progress-bar';
+					const progressBarInner = document.createElement('div');
+					progressBarInner.className = 'progress-bar-inner';
+					progressBar.appendChild(progressBarInner);
+					const serverProcessing = document.createElement('div');
+					serverProcessing.className = 'server-processing';
+					serverProcessing.innerText = translate('waiting_for_server');
+					fileBlock.append(fileName, progressBar, serverProcessing);
+					fileProgressContainer.appendChild(fileBlock);
+					/* ------------------------------------------------- */
 
-					for (var i = 0; i < files.length; i++) {
-						var file = files[i];
+					const xhr = new XMLHttpRequest();
+					xhr.open('POST', '/upload', true);
 
-						var fileBlock = document.createElement('div');
-						fileBlock.className = 'file-progress';
+					/* прогресс заливки файла */
+					xhr.upload.onprogress = e => {
+						if (e.lengthComputable) {
+							const percent = (e.loaded / e.total) * 100;
+							progressBarInner.style.width = percent + '%';
+						}
+					};
 
-						var fileName = document.createElement('div');
-						fileName.className = 'file-name';
-						fileName.innerText = file.name;
+					/* обработка ответа сервера */
+					xhr.onload = () => {
+						if (xhr.status === 200) {
+							const response = JSON.parse(xhr.responseText);
+							if (response.status === 'success') {
+								lastTrackURL             = response.trackURL;   // запоминаем
+								serverProcessing.innerText = translate('processing_complete');
+								serverProcessing.style.color = 'green';
+							} else {
+								serverProcessing.innerText = translate('error_processing_files');
+								serverProcessing.style.color = 'red';
+							}
+						} else {
+							serverProcessing.innerText = translate('error_during_upload');
+							serverProcessing.style.color = 'red';
+						}
 
-						var progressBar = document.createElement('div');
-						progressBar.className = 'progress-bar';
-						var progressBarInner = document.createElement('div');
-						progressBarInner.className = 'progress-bar-inner';
-						progressBar.appendChild(progressBarInner);
-
-						var serverProcessing = document.createElement('div');
-						serverProcessing.className = 'server-processing';
-						serverProcessing.innerText = translate("waiting_for_server");
-
-						fileBlock.appendChild(fileName);
-						fileBlock.appendChild(progressBar);
-						fileBlock.appendChild(serverProcessing);
-
-						fileProgressContainer.appendChild(fileBlock);
-
-						(function(progressBarInner, serverProcessing, file) {
-							var xhr = new XMLHttpRequest();
-							xhr.open('POST', '/upload', true);
-
-							xhr.upload.onprogress = function(event) {
-								if (event.lengthComputable) {
-									var percentComplete = (event.loaded / event.total) * 100;
-									progressBarInner.style.width = percentComplete + "%";
-								}
-							};
-
-							xhr.onload = function() {
-								if (xhr.status === 200) {
-									var response = JSON.parse(xhr.responseText);
-
-									if (response.status === "success") {
-										serverProcessing.innerText = translate("processing_on_server");
-
-										var trackURL = response.trackURL;
-
-										setTimeout(function() {
-											serverProcessing.innerText = translate("processing_complete");
-											serverProcessing.style.color = "green";
-											window.location.href = trackURL;
-										}, 2000);
+						/* увеличиваем счётчик и, если всё готово, переходим */
+							completedUploads++;
+						if (completedUploads === totalFiles) {
+							setTimeout(() => {
+								fileOverlay.style.display = 'none';
+								/* показываем именно последний успешно обработанный трек */
+									if (lastTrackURL) {
+										window.location.href = lastTrackURL;
 									} else {
-										serverProcessing.innerText = translate("error_processing_files");
-										serverProcessing.style.color = "red";
-										checkIfAllUploadsComplete();
+										location.reload();   // на случай, если все загрузки упали
 									}
-								} else {
-									serverProcessing.innerText = translate("error_during_upload");
-									serverProcessing.style.color = "red";
-									checkIfAllUploadsComplete();
-								}
-							};
+							}, 700);
+						}
+					};
 
-							var formData = new FormData();
-							formData.append("files[]", file);
-							xhr.send(formData);
-						})(progressBarInner, serverProcessing, file);
-					}
-				} else {
-					alert(translate("select_files"));
-				}
+					/* отправляем файл */
+						const formData = new FormData();
+					formData.append('files[]', file);
+					xhr.send(formData);
+				});
 			}
-
-function checkIfAllUploadsComplete() {
-	completedUploads++;
-	if (completedUploads === totalFiles) {
-		setTimeout(function() {
-			document.getElementById('fileOverlay').style.display = "none";
-			location.reload();
-		}, 1000);
-	}
-}
 		</script>
 
 	</body>
