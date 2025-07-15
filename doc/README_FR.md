@@ -1,4 +1,4 @@
-“Chicha Isotope Map” a été développée spécialement pour le Laboratoire d'Étude de la Radiation de Dmitry Ignatenko. Merci de rendre visible l’invisible.
+“Chicha Isotope Map” a été développée spécialement pour le Laboratoire d'Étude de la Radiation de Dmitry Ignatenko. Merci de rendre visible l’invisible, là où le rayonnement de fond n’est pas une peur, mais une source de savoir. Et merci de chercher, mesurer, partager, et d’oser avancer les premiers.
 
 ### 🌌 **chicha-isotope-map** — explorateur des chemins cachés de la radiation
 
