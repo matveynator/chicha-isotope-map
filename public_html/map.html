@@ -300,9 +300,10 @@ function interpolateColor(color1, color2, factor) {
 
 // Функция для расчёта радиуса маркера на основе уровня зума
 function getRadius(doseRate, zoomLevel) {
-	let baseRadius = Math.pow(2, (zoomLevel - 10) / 2);
-	if (baseRadius < 1) baseRadius = 1;
-	return baseRadius;
+	// раньше: Math.pow(2, (zoomLevel-10)/2)
+	const k = 1.8;                               // масштабируем ~×2
+	let r   = Math.pow(2, (zoomLevel - 10)/2) * k;
+	return Math.max(r, 2);                       // защита от слишком мелких
 }
 
 // Функция для расчёта прозрачности заливки маркера на основе скорости

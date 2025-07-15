@@ -233,7 +233,6 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			DoseRate:  avgDose,
 			CountRate: avgCount,
 			Date:      latestDate,
-			// Speed пока ставим 0, если нужно — можно отдельно считать.
 			Speed:   avgSpeed,
 			Zoom:    zoom,
 			TrackID: cluster[0].Marker.TrackID, // берем хотя бы у первого
@@ -284,13 +283,20 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 
 // precomputeMarkersForAllZoomLevels вычисляет заранее маркеры для всех (1..20) уровней зума
 // и возвращает итоговый массив
-func precomputeMarkersForAllZoomLevels(original []database.Marker) []database.Marker {
-	var result []database.Marker
-	for z := 1; z <= 20; z++ {
-		merged := mergeMarkersByZoom(original, z, markerRadiusPx)
-		result = append(result, merged...)
-	}
-	return result
+// Базовый радиус, при котором на 20-м зуме маркеры совсем не сливаются
+
+func radiusForZoom(zoom int) float64 {
+    // линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
+    return markerRadiusPx * float64(zoom) / 20.0
+}
+
+func precomputeMarkersForAllZoomLevels(src []database.Marker) []database.Marker {
+    var out []database.Marker
+    for z := 1; z <= 20; z++ {
+        merged := mergeMarkersByZoom(src, z, radiusForZoom(z))
+        out = append(out, merged...)
+    }
+    return out
 }
 
 // =====================
