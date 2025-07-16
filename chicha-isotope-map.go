@@ -914,7 +914,7 @@ func main() {
 	loadTranslations(content, "public_html/translations.json")
 
 	if *version {
-		fmt.Printf("isotope-pathways version %s\n", CompileVersion)
+		fmt.Printf("chicha-isotope-map version %s\n", CompileVersion)
 		return
 	}
 
