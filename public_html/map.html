@@ -576,9 +576,6 @@ function viewTrack(trackID) {
 
 	// Перенаправляем пользователя на страницу конкретного трека
 	window.location.href = trackURL;
-
-	// Показываем кнопку "Вернуться ко всем трекам"
-	document.querySelector('.back-to-all-container').style.display = 'block';
 }
 
 function loadMapFromUrl() {
@@ -742,22 +739,22 @@ function centerMapToLocation() {
 						}
 
 						/* увеличиваем счётчик и, если всё готово, переходим */
-							completedUploads++;
+						completedUploads++;
 						if (completedUploads === totalFiles) {
 							setTimeout(() => {
 								fileOverlay.style.display = 'none';
 								/* показываем именно последний успешно обработанный трек */
-									if (lastTrackURL) {
-										window.location.href = lastTrackURL;
-									} else {
-										location.reload();   // на случай, если все загрузки упали
-									}
+								if (lastTrackURL) {
+									window.location.href = lastTrackURL;
+								} else {
+									location.reload();   // на случай, если все загрузки упали
+								}
 							}, 700);
 						}
 					};
 
 					/* отправляем файл */
-						const formData = new FormData();
+					const formData = new FormData();
 					formData.append('files[]', file);
 					xhr.send(formData);
 				});
