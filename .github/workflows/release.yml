@@ -63,10 +63,15 @@ jobs:
           VERSION: ${{ github.sha }}
         run: |
           mkdir -p dist
+          BIN_NAME="chicha-isotope-map_${GOOS}_${GOARCH}"
+          # Добавляем расширение .exe для Windows
+          if [ "$GOOS" = "windows" ]; then
+            BIN_NAME="${BIN_NAME}.exe"
+          fi
           GOFLAGS="-trimpath" \
           go build -tags netgo,osusergo \
                    -ldflags "-s -w -X main.CompileVersion=$VERSION" \
-                   -o "dist/chicha-isotope-map_${GOOS}_${GOARCH}"
+                   -o "dist/${BIN_NAME}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
