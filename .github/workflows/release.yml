@@ -60,7 +60,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
-          VERSION: ${{ github.sha }}
+          VERSION: $(git rev-list --count HEAD)
         run: |
           mkdir -p dist
           BIN_NAME="chicha-isotope-map_${GOOS}_${GOARCH}"
