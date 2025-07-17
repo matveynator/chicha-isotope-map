@@ -453,7 +453,7 @@ function getPopupContent(marker) {
 		<div><strong>${translate('radiation_dose')}:</strong>
 		${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
 		</div>
-		<div><strong>${translate('speed')}:</strong> ${marker.speed.toFixed(2)} m/s</div>
+		<div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
 		<div style="margin-top:4px">
 		<!-- щёлк по ссылке = переход в режим трека -->
 		<a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
@@ -484,64 +484,64 @@ function displayInitialMarkers(markers) {
 			.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
 			.bindPopup   (getPopupContent(marker));   // <-- pop-up вместо немедленного перехода
 
-		circleMarker.doseRate = marker.doseRate;  // для динамического изменения радиуса
-		circleMarkers[markerKey] = circleMarker;
-		trackBounds.extend([marker.lat, marker.lon]);
-	});
+																												circleMarker.doseRate = marker.doseRate;  // для динамического изменения радиуса
+																												circleMarkers[markerKey] = circleMarker;
+																												trackBounds.extend([marker.lat, marker.lon]);
+																												});
 
-	map.fitBounds(trackBounds);
-	document.querySelector('.back-to-all-container').style.display = 'block';
-}
+																												map.fitBounds(trackBounds);
+																												document.querySelector('.back-to-all-container').style.display = 'block';
+																												}
 
-let currentZoom, currentBounds;
+																												let currentZoom, currentBounds;
 
-function updateMarkers() {
+																												function updateMarkers() {
 
-	const zoomLevel = map.getZoom();
-	const bounds    = map.getBounds();
+																												const zoomLevel = map.getZoom();
+																												const bounds    = map.getBounds();
 
-	const params = {
-		zoom  : zoomLevel,
-		minLat: bounds.getSouthWest().lat,
-		minLon: bounds.getSouthWest().lng,
-		maxLat: bounds.getNorthEast().lat,
-		maxLon: bounds.getNorthEast().lng
-	};
+																												const params = {
+																												zoom  : zoomLevel,
+																												minLat: bounds.getSouthWest().lat,
+																												minLon: bounds.getSouthWest().lng,
+																												maxLat: bounds.getNorthEast().lat,
+																												maxLon: bounds.getNorthEast().lng
+																												};
 
-	let url = '/get_markers?';
-	if (isTrackView && currentTrackID) params.trackID = currentTrackID;
-	url += new URLSearchParams(params);
+																												let url = '/get_markers?';
+																												if (isTrackView && currentTrackID) params.trackID = currentTrackID;
+																												url += new URLSearchParams(params);
 
-	fetch(url)
-		.then(r => r.json())
-		.then(data => {
-			// очищаем старые кружки
-			for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
-			circleMarkers = {};
+																												fetch(url)
+																												.then(r => r.json())
+																														.then(data => {
+																															// очищаем старые кружки
+																															for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+																															circleMarkers = {};
 
-			data.forEach(marker => {
-				const markerKey = marker.id;
-				const color     = getGradientColor(marker.doseRate);
-				const radius    = getRadius(marker.doseRate, zoomLevel);
+																															data.forEach(marker => {
+																																const markerKey = marker.id;
+																																const color     = getGradientColor(marker.doseRate);
+																																const radius    = getRadius(marker.doseRate, zoomLevel);
 
-				const circleMarker = L.circleMarker([marker.lat, marker.lon], {
-					radius      : radius,
-					fillColor   : color,
-					color       : color,
-					weight      : 1,
-					opacity     : getFillOpacity(marker.speed) + 0.1,
-					fillOpacity : getFillOpacity(marker.speed)
-				})
-					.addTo(map)
-					.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-					.bindPopup   (getPopupContent(marker));   // <-- pop-up
+																																const circleMarker = L.circleMarker([marker.lat, marker.lon], {
+																																	radius      : radius,
+																																	fillColor   : color,
+																																	color       : color,
+																																	weight      : 1,
+																																	opacity     : getFillOpacity(marker.speed) + 0.1,
+																																	fillOpacity : getFillOpacity(marker.speed)
+																																})
+																																	.addTo(map)
+																																	.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
+																																	.bindPopup   (getPopupContent(marker));   // <-- pop-up
 
-				circleMarker.doseRate = marker.doseRate;
-				circleMarkers[markerKey] = circleMarker;
-			});
-		})
-		.catch(err => console.error('Error fetching markers:', err));
-}
+																												circleMarker.doseRate = marker.doseRate;
+																												circleMarkers[markerKey] = circleMarker;
+																												});
+																												})
+																												.catch(err => console.error('Error fetching markers:', err));
+																												}
 
 let debounceTimeout;
 
