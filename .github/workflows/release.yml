@@ -61,7 +61,9 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-					VERSION=$(git rev-list --count HEAD)
+          VERSION=$(git rev-list --count HEAD)
+          echo "Building version $VERSION for $GOOS/$GOARCH"
+
           mkdir -p dist
           BIN_NAME="chicha-isotope-map_${GOOS}_${GOARCH}"
           # Добавляем расширение .exe для Windows
