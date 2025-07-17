@@ -60,8 +60,8 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
-          VERSION: $(git rev-list --count HEAD)
         run: |
+					VERSION=$(git rev-list --count HEAD)
           mkdir -p dist
           BIN_NAME="chicha-isotope-map_${GOOS}_${GOARCH}"
           # Добавляем расширение .exe для Windows
