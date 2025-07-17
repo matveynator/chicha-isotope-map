@@ -336,7 +336,7 @@ function getTooltipContent(marker) {
 		</div>
 		<div class="tooltip-row">
 		<strong>${translate('speed')}:</strong>
-		<span>${marker.speed.toFixed(2)} m/s</span>
+		<span>${(marker.speed * 3.6).toFixed(1)} km/h</span>
 		</div>
 		<div class="tooltip-row">
 		<strong>${translate('track_id')}:</strong>
