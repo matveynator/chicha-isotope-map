@@ -41,10 +41,6 @@ var dbName = flag.String("db-name", "IsotopePathways", "Database name (applicabl
 var pgSSLMode = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode: disable, allow, prefer, require, verify-ca, or verify-full")
 var port = flag.Int("port", 8765, "Port for running the server")
 var version = flag.Bool("version", false, "Show the application version")
-var defaultLat = flag.Float64("default-lat", 44.08832, "Default latitude for map initial view")
-var defaultLon = flag.Float64("default-lon", 42.97577, "Default longitude for map initial view")
-var defaultZoom = flag.Int("default-zoom", 11, "Default zoom level for map initial view")
-var defaultLayer = flag.String("default-layer", "OpenStreetMap", "Default map layer: OpenStreetMap or Google Satellite")
 var CompileVersion = "dev"
 
 var db *database.Database
@@ -237,9 +233,9 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			DoseRate:  avgDose,
 			CountRate: avgCount,
 			Date:      latestDate,
-			Speed:     avgSpeed,
-			Zoom:      zoom,
-			TrackID:   cluster[0].Marker.TrackID, // берем хотя бы у первого
+			Speed:   avgSpeed,
+			Zoom:    zoom,
+			TrackID: cluster[0].Marker.TrackID, // берем хотя бы у первого
 		}
 		result = append(result, newMarker)
 	}
@@ -248,33 +244,33 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 }
 
 func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
-	if len(markers) == 0 { // <-- добавлено
-		return markers
-	}
+    if len(markers) == 0 { // <-- добавлено
+        return markers
+    }
 
-	sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
+    sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
 
-	for i := 1; i < len(markers); i++ {
-		prev, curr := markers[i-1], markers[i]
-		dist := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon)
-		timeDiff := curr.Date - prev.Date
-		if timeDiff > 0 {
-			speed := dist / float64(timeDiff)
-			if speed >= 0 && speed <= 300 {
-				markers[i].Speed = speed
-			} else {
-				markers[i].Speed = markers[i-1].Speed
-			}
-		}
-	}
+    for i := 1; i < len(markers); i++ {
+        prev, curr := markers[i-1], markers[i]
+        dist     := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon)
+        timeDiff := curr.Date - prev.Date
+        if timeDiff > 0 {
+            speed := dist / float64(timeDiff)
+            if speed >= 0 && speed <= 300 {
+                markers[i].Speed = speed
+            } else {
+                markers[i].Speed = markers[i-1].Speed
+            }
+        }
+    }
 
-	// Обновлённая защита
-	if len(markers) > 1 {
-		markers[0].Speed = markers[1].Speed
-	} else {
-		markers[0].Speed = 0
-	}
-	return markers
+    // Обновлённая защита
+    if len(markers) > 1 {
+        markers[0].Speed = markers[1].Speed
+    } else {
+        markers[0].Speed = 0
+    }
+    return markers
 }
 
 func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
@@ -290,17 +286,17 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 // Базовый радиус, при котором на 20-м зуме маркеры совсем не сливаются
 
 func radiusForZoom(zoom int) float64 {
-	// линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
-	return markerRadiusPx * float64(zoom) / 20.0
+    // линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
+    return markerRadiusPx * float64(zoom) / 20.0
 }
 
 func precomputeMarkersForAllZoomLevels(src []database.Marker) []database.Marker {
-	var out []database.Marker
-	for z := 1; z <= 20; z++ {
-		merged := mergeMarkersByZoom(src, z, radiusForZoom(z))
-		out = append(out, merged...)
-	}
-	return out
+    var out []database.Marker
+    for z := 1; z <= 20; z++ {
+        merged := mergeMarkersByZoom(src, z, radiusForZoom(z))
+        out = append(out, merged...)
+    }
+    return out
 }
 
 // =====================
@@ -790,19 +786,11 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		Version      string
 		Translations map[string]map[string]string
 		Lang         string
-		DefaultLat   float64
-		DefaultLon   float64
-		DefaultZoom  int
-		DefaultLayer string
 	}{
-		Markers:      doseData.Markers,
+		Markers:      doseData.Markers, // Можно при желании показать все (или пусто)
 		Version:      CompileVersion,
 		Translations: translations,
 		Lang:         lang,
-		DefaultLat:   *defaultLat,
-		DefaultLon:   *defaultLon,
-		DefaultZoom:  *defaultZoom,
-		DefaultLayer: *defaultLayer,
 	}
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing template: %v", err)

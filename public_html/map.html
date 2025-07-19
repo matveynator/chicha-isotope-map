@@ -370,6 +370,14 @@ var trackBounds;
 var currentTrackID = null;
 
 document.addEventListener('DOMContentLoaded', function () {
+
+	// Инициализация trackID по пути
+	var match = window.location.pathname.match(/^\/trackid\/([a-zA-Z0-9]+)/);
+	if (match) {
+		currentTrackID = match[1];
+		isTrackView = true;
+	}
+	// Инициализация слоёв карты
 	osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 		maxZoom: 18,
 		attribution: '&copy; OpenStreetMap contributors'
@@ -380,57 +388,60 @@ document.addEventListener('DOMContentLoaded', function () {
 		attribution: '&copy; Google'
 	});
 
-	const params = new URLSearchParams(window.location.search);
-	const minLat = parseFloat(params.get('minLat'));
-	const minLon = parseFloat(params.get('minLon'));
-	const maxLat = parseFloat(params.get('maxLat'));
-	const maxLon = parseFloat(params.get('maxLon'));
-	const zoom = parseInt(params.get('zoom'));
-	const layerParam = params.get('layer');
-
-	let initialLayer = '{{ .DefaultLayer }}' === 'Google Satellite' ? googleSatellite : osmLayer;
-
-	if (layerParam) {
-		initialLayer = layerParam === 'Google Satellite' ? googleSatellite : osmLayer;
-	}
-
+	// Инициализация карты
 	map = L.map('map', {
-		layers: [initialLayer]
+		center: [44.08832, 42.97577],
+		zoom: 11,
+		layers: [osmLayer]
 	});
 
+	// Контроллер слоёв
 	var baseLayers = {
 		"OpenStreetMap": osmLayer,
 		"Google Satellite": googleSatellite
 	};
 
-	L.control.layers(baseLayers, null, { position: 'topleft', collapsed: false }).addTo(map);
+	L.control.layers(baseLayers, null, {
+		position: 'topleft',
+		collapsed: false
+	}).addTo(map);
 
-	if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
-		const bounds = [[minLat, minLon], [maxLat, maxLon]];
-		map.fitBounds(bounds);
+	// Инициализация режима просмотра трека
+	var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
+	if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
+		isTrackView = true;
+
+		// Не отображаем initialMarkers сразу, а загружаем по частям через get_markers
+		map.on('load', debounceUpdateMarkers);
+
+		// Изменение размеров маркеров при зуме
+		map.on('zoomend', function() {
+			adjustMarkerRadius();
+			debounceUpdateMarkers();
+		});
+		map.on('moveend', debounceUpdateMarkers);
 	} else {
-		map.setView([{{ .DefaultLat }}, {{ .DefaultLon }}], {{ .DefaultZoom }});
+		// Динамическое обновление маркеров в глобальном режиме
+		map.on('load', debounceUpdateMarkers);
+		map.on('zoomend', function() {
+			adjustMarkerRadius();
+			debounceUpdateMarkers();
+		});
+		map.on('moveend', debounceUpdateMarkers);
+		debounceUpdateMarkers;
 	}
 
-	// Синхронизация URL
+	// Загрузка состояния карты из URL
+	loadMapFromUrl();
+
+	// Обновление URL при изменениях на карте
 	map.on('baselayerchange', updateUrl);
 	map.on('moveend', updateUrl);
 	map.on('zoomend', updateUrl);
 
-	// Маркеры
-	map.on('load', debounceUpdateMarkers);
-	map.on('zoomend', function() {
-		adjustMarkerRadius();
-		debounceUpdateMarkers();
-	});
-	map.on('moveend', debounceUpdateMarkers);
-
+	// Инициализация элементов интерфейса
 	initializeUIElements();
-
-	updateUrl(); // Первичное обновление URL
 });
-
-
 
 // Определение функций
 
