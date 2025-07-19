@@ -428,6 +428,7 @@ document.addEventListener('DOMContentLoaded', function () {
 	initializeUIElements();
 
 	updateUrl(); // Первичное обновление URL
+	map.whenReady(debounceUpdateMarkers);
 });
 
 
