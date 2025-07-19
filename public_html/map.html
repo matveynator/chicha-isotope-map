@@ -233,7 +233,7 @@ body, html {
 				lat:  {{printf "%.6f" .DefaultLat}},
 				lon:  {{printf "%.6f" .DefaultLon}},
 				zoom: {{.DefaultZoom}},
-				layer: "{{js .DefaultLayer}}"
+				layer: {{.DefaultLayer}}
 			};
 		</script>
 
@@ -399,11 +399,15 @@ document.addEventListener('DOMContentLoaded', function () {
 		attribution: '&copy; Google'
 	});
 
-	// Инициализация карты
+	// сразу после создания osmLayer и googleSatellite
+	const urlParams       = new URLSearchParams(window.location.search);
+	const startLayerName  = decodeURIComponent(urlParams.get('layer') || defaultCfg.layer);
+	const startLayer      = startLayerName === 'Google Satellite' ? googleSatellite : osmLayer;
+
 	map = L.map('map', {
 		center: [defaultCfg.lat, defaultCfg.lon],
 		zoom  : defaultCfg.zoom,
-		layers: [defaultCfg.layer === "Google Satellite" ? googleSatellite : osmLayer],
+		layers: [startLayer],           // только один базовый слой
 	});
 
 	// Контроллер слоёв
@@ -496,63 +500,63 @@ function displayInitialMarkers(markers) {
 			.bindPopup   (getPopupContent(marker));   // <-- pop-up вместо немедленного перехода
 
 		circleMarker.doseRate = marker.doseRate;  // для динамического изменения радиуса
-																												circleMarkers[markerKey] = circleMarker;
-																												trackBounds.extend([marker.lat, marker.lon]);
-																												});
+		circleMarkers[markerKey] = circleMarker;
+		trackBounds.extend([marker.lat, marker.lon]);
+	});
 
-																												map.fitBounds(trackBounds);
-																												document.querySelector('.back-to-all-container').style.display = 'block';
-																												}
+	map.fitBounds(trackBounds);
+	document.querySelector('.back-to-all-container').style.display = 'block';
+}
 
-																												let currentZoom, currentBounds;
+let currentZoom, currentBounds;
 
-																												function updateMarkers() {
+function updateMarkers() {
 
-																												const zoomLevel = map.getZoom();
-																												const bounds    = map.getBounds();
+	const zoomLevel = map.getZoom();
+	const bounds    = map.getBounds();
 
-																												const params = {
-																												zoom  : zoomLevel,
-																												minLat: bounds.getSouthWest().lat,
-																												minLon: bounds.getSouthWest().lng,
-																												maxLat: bounds.getNorthEast().lat,
-																												maxLon: bounds.getNorthEast().lng
-																												};
+	const params = {
+		zoom  : zoomLevel,
+		minLat: bounds.getSouthWest().lat,
+		minLon: bounds.getSouthWest().lng,
+		maxLat: bounds.getNorthEast().lat,
+		maxLon: bounds.getNorthEast().lng
+	};
 
-																												let url = '/get_markers?';
-																												if (isTrackView && currentTrackID) params.trackID = currentTrackID;
-																												url += new URLSearchParams(params);
+	let url = '/get_markers?';
+	if (isTrackView && currentTrackID) params.trackID = currentTrackID;
+	url += new URLSearchParams(params);
 
-																												fetch(url)
-																												.then(r => r.json())
-																														.then(data => {
-																															// очищаем старые кружки
-																															for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
-																															circleMarkers = {};
+	fetch(url)
+		.then(r => r.json())
+		.then(data => {
+			// очищаем старые кружки
+			for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+			circleMarkers = {};
 
-																															data.forEach(marker => {
-																																const markerKey = marker.id;
-																																const color     = getGradientColor(marker.doseRate);
-																																const radius    = getRadius(marker.doseRate, zoomLevel);
+			data.forEach(marker => {
+				const markerKey = marker.id;
+				const color     = getGradientColor(marker.doseRate);
+				const radius    = getRadius(marker.doseRate, zoomLevel);
 
-																																const circleMarker = L.circleMarker([marker.lat, marker.lon], {
-																																	radius      : radius,
-																																	fillColor   : color,
-																																	color       : color,
-																																	weight      : 1,
-																																	opacity     : getFillOpacity(marker.speed) + 0.1,
-																																	fillOpacity : getFillOpacity(marker.speed)
-																																})
-																																	.addTo(map)
-																																	.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-																																	.bindPopup   (getPopupContent(marker));   // <-- pop-up
+				const circleMarker = L.circleMarker([marker.lat, marker.lon], {
+					radius      : radius,
+					fillColor   : color,
+					color       : color,
+					weight      : 1,
+					opacity     : getFillOpacity(marker.speed) + 0.1,
+					fillOpacity : getFillOpacity(marker.speed)
+				})
+					.addTo(map)
+					.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
+					.bindPopup   (getPopupContent(marker));   // <-- pop-up
 
 																												circleMarker.doseRate = marker.doseRate;
 																												circleMarkers[markerKey] = circleMarker;
 																												});
 																												})
 																												.catch(err => console.error('Error fetching markers:', err));
-																												}
+}
 
 let debounceTimeout;
 
@@ -589,36 +593,36 @@ function viewTrack(trackID) {
 	window.location.href = trackURL;
 }
 
-function loadMapFromUrl() {
-
-	var params = new URLSearchParams(window.location.search);
-	var minLat = parseFloat(params.get('minLat'));
-	var minLon = parseFloat(params.get('minLon'));
-	var maxLat = parseFloat(params.get('maxLat'));
-	var maxLon = parseFloat(params.get('maxLon'));
-	var zoom = parseInt(params.get('zoom'));
-	var layer = params.get('layer');
-
-	if (layer === 'Google Satellite') {
-		googleSatellite.addTo(map);
+function setBaseLayer(layerName) {
+	if (layerName === 'Google Satellite') {
+		if (map.hasLayer(osmLayer))            map.removeLayer(osmLayer);
+		if (!map.hasLayer(googleSatellite))    googleSatellite.addTo(map);
 	} else {
-		osmLayer.addTo(map);
+		if (map.hasLayer(googleSatellite))     map.removeLayer(googleSatellite);
+		if (!map.hasLayer(osmLayer))           osmLayer.addTo(map);
 	}
+}
+
+function loadMapFromUrl() {
+	const params = new URLSearchParams(window.location.search);
+
+	/* базовый слой из URL (или дефолт) */
+		const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
+	setBaseLayer(layer);
+
+	/* читаем остальные параметры */
+		const minLat = parseFloat(params.get('minLat'));
+	const minLon = parseFloat(params.get('minLon'));
+	const maxLat = parseFloat(params.get('maxLat'));
+	const maxLon = parseFloat(params.get('maxLon'));
 
 	if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
-		var bounds = [[minLat, minLon], [maxLat, maxLon]];
-		map.fitBounds(bounds);
+		map.fitBounds([[minLat, minLon], [maxLat, maxLon]]);
 		adjustMarkerRadius();
 	} else if (isTrackView && trackBounds) {
-		// Масштабирование к границам трека
 		map.fitBounds(trackBounds);
 	} else {
 		map.setView([defaultCfg.lat, defaultCfg.lon], defaultCfg.zoom);
-		if (defaultCfg.layer === "Google Satellite") {
-			googleSatellite.addTo(map);
-		} else {
-			osmLayer.addTo(map);
-		}
 	}
 }
 
