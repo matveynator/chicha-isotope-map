@@ -71,6 +71,49 @@ curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/late
 chicha-isotope-map
 ```
 
+#### チェルノブイリ（1986年）— 蒸気爆発と黒鉛火災；ヨーロッパ全域に大規模な放射性降下物
+
+```
+./chicha-isotope-map -default-lat=51.389 -default-lon=30.099 -default-zoom=11 -default-layer="Google Satellite"
+```
+
+#### 福島第一（2011年）— 津波で冷却機能が喪失；炉心溶融し海と大気へ放出
+
+```
+./chicha-isotope-map -default-lat=37.421 -default-lon=141.033 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### キシュティム／マヤーク（1957年）— 廃液タンク爆発；ウラル山脈上空に放射性プルーム
+
+```
+./chicha-isotope-map -default-lat=55.700 -default-lon=60.800 -default-zoom=9 -default-layer="Google Satellite"
+```
+
+#### スリーマイル島（1979年）— 炉心部分溶融；場外への放出は限定的
+
+```
+./chicha-isotope-map -default-lat=40.153 -default-lon=-76.723 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### ウィンドスケール（1957年）— 黒鉛炉火災；イギリス上空にヨウ素131放出
+
+```
+./chicha-isotope-map -default-lat=54.432 -default-lon=-3.553 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### ゴイアニア（1987年）— 孤立したCs‑137線源が開封；都市全域が汚染
+
+```
+./chicha-isotope-map -default-lat=-16.686 -default-lon=-49.264 -default-zoom=13 -default-layer="Google Satellite"
+```
+
+#### ピャチゴルスク、ベシュタウ山（1940〜50年代）— ソ連初の原爆用ウラン鉱山；地区全域に汚染
+
+```
+./chicha-isotope-map -default-lat=44.089 -default-lon=42.976 -default-zoom=11 -default-layer="Google Satellite"
+```
+
+
 オプション付きで起動するには：
 
 ```bash
