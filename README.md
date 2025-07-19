@@ -103,8 +103,6 @@ chicha-isotope-map
 ```
 ./chicha-isotope-map -default-lat=44.089 -default-lon=42.976 -default-zoom=11 -default-layer="Google Satellite"
 ```
-*Select, copy, run — then pan/zoom and share the auto‑updating URL.*
-
 
 Or customize with additional options:
 ```bash
