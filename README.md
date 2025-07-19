@@ -69,37 +69,37 @@ Run the program with default settings:
 chicha-isotope-map
 ```
 
-### Chernobyl (1986) — steam explosion & graphite fire; massive fallout across Europe
+#### Chernobyl (1986) — steam explosion & graphite fire; massive fallout across Europe
 ```
 ./chicha-isotope-map -default-lat=51.389 -default-lon=30.099 -default-zoom=11 -default-layer="Google Satellite"
 ```
 
-### Fukushima Daiichi (2011) — tsunami disabled cooling; core melts & releases to sea/air
+#### Fukushima Daiichi (2011) — tsunami disabled cooling; core melts & releases to sea/air
 ```
 ./chicha-isotope-map -default-lat=37.421 -default-lon=141.033 -default-zoom=12 -default-layer="Google Satellite"
 ```
 
-### Kyshtym / Mayak (1957) — waste‑tank explosion; radioactive plume over the Urals
+#### Kyshtym / Mayak (1957) — waste‑tank explosion; radioactive plume over the Urals
 ```
 ./chicha-isotope-map -default-lat=55.700 -default-lon=60.800 -default-zoom=9 -default-layer="Google Satellite"
 ```
 
-### Three Mile Island (1979) — partial core meltdown; limited off‑site release
+#### Three Mile Island (1979) — partial core meltdown; limited off‑site release
 ```
 ./chicha-isotope-map -default-lat=40.153 -default-lon=-76.723 -default-zoom=12 -default-layer="Google Satellite"
 ```
 
-### Windscale (1957) — graphite‑reactor fire; iodine‑131 release over UK
+#### Windscale (1957) — graphite‑reactor fire; iodine‑131 release over UK
 ```
 ./chicha-isotope-map -default-lat=54.432 -default-lon=-3.553 -default-zoom=12 -default-layer="Google Satellite"
 ```
 
-### Goiânia (1987) — orphaned Cs‑137 source opened; city‑wide contamination
+#### Goiânia (1987) — orphaned Cs‑137 source opened; city‑wide contamination
 ```
 ./chicha-isotope-map -default-lat=-16.686 -default-lon=-49.264 -default-zoom=13 -default-layer="Google Satellite"
 ```
 
-### Mount Beshtau (1940s‑50s) — uranium mining; legacy tailings elevate background
+#### Pyatigorsk, Mount Beshtau (1940s‑50s) — first USSR atomic bomb uranium mines; district‑wide contamination
 ```
 ./chicha-isotope-map -default-lat=44.089 -default-lon=42.976 -default-zoom=11 -default-layer="Google Satellite"
 ```
