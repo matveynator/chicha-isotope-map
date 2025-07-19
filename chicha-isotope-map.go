@@ -876,12 +876,22 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		Version      string
 		Translations map[string]map[string]string
 		Lang         string
+		DefaultLat   float64
+		DefaultLon   float64
+		DefaultZoom  int
+		DefaultLayer string
 	}{
 		Markers:      markers,
 		Version:      CompileVersion,
 		Translations: translations,
 		Lang:         lang,
+		DefaultLat:   *defaultLat,
+		DefaultLon:   *defaultLon,
+		DefaultZoom:  *defaultZoom,
+		DefaultLayer: *defaultLayer,
 	}
+
+
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

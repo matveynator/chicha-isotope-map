@@ -229,6 +229,22 @@ body, html {
 				}
 		</script>
 
+		<script id="initial-markers-script">
+			// Маркеры, пришедшие от Go
+			const initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
+
+		if (initialMarkers && initialMarkers.length) {
+				// переключаем фронт-энд в режим трека
+				isTrackView   = true;
+				currentTrackID = initialMarkers[0].trackID;
+
+				document.addEventListener('DOMContentLoaded', () => {
+						displayInitialMarkers(initialMarkers);
+				});
+		}
+		</script>
+
+
 	</head>
 
 	<body>
