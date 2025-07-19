@@ -71,6 +71,48 @@ curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/late
 chicha-isotope-map
 ```
 
+#### Чернобыль (1986) — паровой взрыв и пожар графита; массовое радиоактивное выпадение по всей Европе
+
+```
+./chicha-isotope-map -default-lat=51.389 -default-lon=30.099 -default-zoom=11 -default-layer="Google Satellite"
+```
+
+#### Фукусима‑Дайичи (2011) — цунами вывело из строя охлаждение; расплавление активной зоны и выбросы в море и атмосферу
+
+```
+./chicha-isotope-map -default-lat=37.421 -default-lon=141.033 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### Кыштым / Маяк (1957) — взрыв ёмкости с отходами; радиоактивный шлейф над Уралом
+
+```
+./chicha-isotope-map -default-lat=55.700 -default-lon=60.800 -default-zoom=9 -default-layer="Google Satellite"
+```
+
+#### Три‑Майл‑Айленд (1979) — частичное расплавление активной зоны; ограниченный выброс за пределы площадки
+
+```
+./chicha-isotope-map -default-lat=40.153 -default-lon=-76.723 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### Уиндскейл (1957) — пожар графитового реактора; выброс йода‑131 над Великобританией
+
+```
+./chicha-isotope-map -default-lat=54.432 -default-lon=-3.553 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### Гояния (1987) — вскрытый бесхозный источник Cs‑137; загрязнение всего города
+
+```
+./chicha-isotope-map -default-lat=-16.686 -default-lon=-49.264 -default-zoom=13 -default-layer="Google Satellite"
+```
+
+#### Пятигорск, гора Бештау (1940‑е‑50‑е) — первые урановые рудники для атомной бомбы СССР; загрязнение на уровне всего района
+
+```
+./chicha-isotope-map -default-lat=44.089 -default-lon=42.976 -default-zoom=11 -default-layer="Google Satellite"
+```
+
 Запуск с параметрами:
 
 ```bash
