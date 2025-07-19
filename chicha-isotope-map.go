@@ -41,6 +41,12 @@ var dbName = flag.String("db-name", "IsotopePathways", "Database name (applicabl
 var pgSSLMode = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode: disable, allow, prefer, require, verify-ca, or verify-full")
 var port = flag.Int("port", 8765, "Port for running the server")
 var version = flag.Bool("version", false, "Show the application version")
+var defaultLat   = flag.Float64("default-lat", 44.08832, "Default map latitude")
+var defaultLon   = flag.Float64("default-lon", 42.97577, "Default map longitude")
+var defaultZoom  = flag.Int("default-zoom", 11, "Default map zoom")
+var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
+
+
 var CompileVersion = "dev"
 
 var db *database.Database
@@ -786,12 +792,22 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		Version      string
 		Translations map[string]map[string]string
 		Lang         string
+		// ↓↓↓ NEW ↓↓↓
+		DefaultLat   float64
+		DefaultLon   float64
+		DefaultZoom  int
+		DefaultLayer string
 	}{
-		Markers:      doseData.Markers, // Можно при желании показать все (или пусто)
+		Markers:	  doseData.Markers,
 		Version:      CompileVersion,
 		Translations: translations,
 		Lang:         lang,
+		DefaultLat:   *defaultLat,
+		DefaultLon:   *defaultLon,
+		DefaultZoom:  *defaultZoom,
+		DefaultLayer: *defaultLayer,
 	}
+
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -835,17 +851,26 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
         },
     }).ParseFS(content, "public_html/map.html"))
 
-    data := struct {
-        Markers      []database.Marker
-        Version      string
-        Translations map[string]map[string]string
-        Lang         string
-    }{
-        Markers:      markers,          // может быть пусто — это нормально
-        Version:      CompileVersion,
-        Translations: translations,
-        Lang:         lang,
-    }
+	data := struct {
+		Markers      []database.Marker
+		Version      string
+		Translations map[string]map[string]string
+		Lang         string
+		// ↓↓↓ NEW ↓↓↓
+		DefaultLat   float64
+		DefaultLon   float64
+		DefaultZoom  int
+		DefaultLayer string
+	}{
+		Markers:      markers,
+		Version:      CompileVersion,
+		Translations: translations,
+		Lang:         lang,
+		DefaultLat:   *defaultLat,
+		DefaultLon:   *defaultLon,
+		DefaultZoom:  *defaultZoom,
+		DefaultLayer: *defaultLayer,
+	}
 
     if err := tmpl.Execute(w, data); err != nil {
         log.Printf("Error executing template: %v", err)
