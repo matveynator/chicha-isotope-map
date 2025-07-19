@@ -849,15 +849,15 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	// Но сейчас, если фронтенд не даёт zoom, мы можем показать всё (либо zoom=20).
 	// По умолчанию выберите нужный zoom или спрашивайте клиента.
 	// Для примера пусть берём максимальный zoom=20:
-	markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
-	if err != nil {
-		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
-		return
+	// ДОБАВИТЬ сразу после чтения bound-параметров
+	zoomStr   := r.URL.Query().Get("zoom")
+	zoomLevel, _ := strconv.Atoi(zoomStr)
+	if zoomLevel < 1 || zoomLevel > 20 {      // защита + дефолт
+		zoomLevel = 18
 	}
-	if len(markers) == 0 {
-		http.Error(w, "No markers found for this track", http.StatusNotFound)
-		return
-	}
+
+	//markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
+	markers, err := db.GetMarkersByTrackIDZoomAndBounds(trackID, zoomLevel, minLat, minLon, maxLat, maxLon, *dbType)
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
 		"translate": func(key string) string {
 			if val, ok := translations[lang][key]; ok {

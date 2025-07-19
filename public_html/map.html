@@ -229,19 +229,17 @@ body, html {
 				}
 		</script>
 
-		<script id="initial-markers-script">
-			// Маркеры, пришедшие от Go
-			const initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
+		<!-- «Тихие» переменные трека -->
+		<script id="initial-track-vars">
+			// извлекаем trackID из /trackid/<id>
+			const pathParts = window.location.pathname.split('/');
+			if (pathParts.length >= 3 && pathParts[1] === 'trackid') {
+				window.isTrackView  = true;
+				window.currentTrackID = pathParts[2];
+			}
 
-		if (initialMarkers && initialMarkers.length) {
-				// переключаем фронт-энд в режим трека
-				isTrackView   = true;
-				currentTrackID = initialMarkers[0].trackID;
-
-				document.addEventListener('DOMContentLoaded', () => {
-						displayInitialMarkers(initialMarkers);
-				});
-		}
+			// массив точек, который Go встраивает в шаблон (может быть пустым)
+			window.initialTrackData = JSON.parse('{{ .Markers | toJSON }}');
 		</script>
 
 
@@ -385,6 +383,19 @@ var osmLayer, googleSatellite;
 var trackBounds;
 var currentTrackID = null;
 
+// --- импортируем флаги из <head> ---
+if (typeof window.isTrackView !== 'undefined') {
+	isTrackView    = window.isTrackView;
+	currentTrackID = window.currentTrackID || null;
+}
+
+// --- если в <head> нашли markers одного трека ---
+if (window.initialTrackData) {
+	isTrackView  = true;
+	currentTrackID = window.initialTrackID;
+}
+
+
 document.addEventListener('DOMContentLoaded', function () {
 	osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 		maxZoom: 18,
@@ -428,6 +439,12 @@ document.addEventListener('DOMContentLoaded', function () {
 		map.setView([{{ .DefaultLat }}, {{ .DefaultLon }}], {{ .DefaultZoom }});
 	}
 
+	// --- теперь карта уже есть, можно дорисовать выбранный трек ---
+	if (isTrackView && window.initialTrackData) {
+		displayInitialMarkers(window.initialTrackData);
+	}
+
+
 	// Синхронизация URL
 	map.on('baselayerchange', updateUrl);
 	map.on('moveend', updateUrl);
@@ -458,13 +475,13 @@ function getPopupContent(marker) {
 	return `
 		<div class="custom-tooltip">
 		<div><strong>${translate('radiation_dose')}:</strong>
-		${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
+	${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
 		</div>
 		<div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
 		<div style="margin-top:4px">
 		<!-- щёлк по ссылке = переход в режим трека -->
 		<a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
-		${translate('track_id')}: ${marker.trackID}
+	${translate('track_id')}: ${marker.trackID}
 		</a>
 		</div>
 		</div>`;
@@ -496,7 +513,6 @@ function displayInitialMarkers(markers) {
 		trackBounds.extend([marker.lat, marker.lon]);
 	});
 
-	map.fitBounds(trackBounds);
 	document.querySelector('.back-to-all-container').style.display = 'block';
 }
 
@@ -640,6 +656,11 @@ function initializeUIElements() {
 			window.location.href = '/' + params;
 		});
 	}
+
+	if (isTrackView) {  
+		document.querySelector('.back-to-all-container').style.display = 'block';
+	}
+
 }
 
 function centerMapToLocation() {
