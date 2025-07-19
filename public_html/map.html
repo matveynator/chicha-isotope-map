@@ -380,11 +380,21 @@ document.addEventListener('DOMContentLoaded', function () {
 		attribution: '&copy; Google'
 	});
 
-	var initialLayer = '{{ .DefaultLayer }}' === 'Google Satellite' ? googleSatellite : osmLayer;
+	const params = new URLSearchParams(window.location.search);
+	const minLat = parseFloat(params.get('minLat'));
+	const minLon = parseFloat(params.get('minLon'));
+	const maxLat = parseFloat(params.get('maxLat'));
+	const maxLon = parseFloat(params.get('maxLon'));
+	const zoom = parseInt(params.get('zoom'));
+	const layerParam = params.get('layer');
+
+	let initialLayer = '{{ .DefaultLayer }}' === 'Google Satellite' ? googleSatellite : osmLayer;
+
+	if (layerParam) {
+		initialLayer = layerParam === 'Google Satellite' ? googleSatellite : osmLayer;
+	}
 
 	map = L.map('map', {
-		center: [{{ .DefaultLat }}, {{ .DefaultLon }}],
-		zoom: {{ .DefaultZoom }},
 		layers: [initialLayer]
 	});
 
@@ -393,11 +403,21 @@ document.addEventListener('DOMContentLoaded', function () {
 		"Google Satellite": googleSatellite
 	};
 
-	L.control.layers(baseLayers, null, {
-		position: 'topleft',
-		collapsed: false
-	}).addTo(map);
+	L.control.layers(baseLayers, null, { position: 'topleft', collapsed: false }).addTo(map);
 
+	if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
+		const bounds = [[minLat, minLon], [maxLat, maxLon]];
+		map.fitBounds(bounds);
+	} else {
+		map.setView([{{ .DefaultLat }}, {{ .DefaultLon }}], {{ .DefaultZoom }});
+	}
+
+	// Синхронизация URL
+	map.on('baselayerchange', updateUrl);
+	map.on('moveend', updateUrl);
+	map.on('zoomend', updateUrl);
+
+	// Маркеры
 	map.on('load', debounceUpdateMarkers);
 	map.on('zoomend', function() {
 		adjustMarkerRadius();
@@ -406,7 +426,11 @@ document.addEventListener('DOMContentLoaded', function () {
 	map.on('moveend', debounceUpdateMarkers);
 
 	initializeUIElements();
+
+	updateUrl(); // Первичное обновление URL
 });
+
+
 
 // Определение функций
 
