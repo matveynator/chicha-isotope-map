@@ -799,81 +799,58 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func trackHandler(w http.ResponseWriter, r *http.Request) {
-	lang := getPreferredLanguage(r)
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 3 {
-		http.Error(w, "TrackID not provided", http.StatusBadRequest)
-		return
-	}
-	trackID := pathParts[2]
+    lang := getPreferredLanguage(r)
+    pathParts := strings.Split(r.URL.Path, "/")
+    if len(pathParts) < 3 {
+        http.Error(w, "TrackID not provided", http.StatusBadRequest)
+        return
+    }
+    trackID := pathParts[2]
 
-	minLatStr := r.URL.Query().Get("minLat")
-	minLonStr := r.URL.Query().Get("minLon")
-	maxLatStr := r.URL.Query().Get("maxLat")
-	maxLonStr := r.URL.Query().Get("maxLon")
+    // читаем параметры прямоугольника
+    minLat, _ := strconv.ParseFloat(r.URL.Query().Get("minLat"), 64)
+    minLon, _ := strconv.ParseFloat(r.URL.Query().Get("minLon"), 64)
+    maxLat, _ := strconv.ParseFloat(r.URL.Query().Get("maxLat"), 64)
+    maxLon, _ := strconv.ParseFloat(r.URL.Query().Get("maxLon"), 64)
 
-	minLat, err := strconv.ParseFloat(minLatStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid minLat", http.StatusBadRequest)
-		return
-	}
-	minLon, err := strconv.ParseFloat(minLonStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid minLon", http.StatusBadRequest)
-		return
-	}
-	maxLat, err := strconv.ParseFloat(maxLatStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid maxLat", http.StatusBadRequest)
-		return
-	}
-	maxLon, err := strconv.ParseFloat(maxLonStr, 64)
-	if err != nil {
-		http.Error(w, "Invalid maxLon", http.StatusBadRequest)
-		return
-	}
+    // маркеры этого трека в указанных границах (может вернуться пустой срез)
+    markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
+    if err != nil {
+        http.Error(w, "Error fetching markers", http.StatusInternalServerError)
+        return
+    }
 
-	// При загрузке мы уже сохранили маркеры с разными зумами в БД.
-	// Но сейчас, если фронтенд не даёт zoom, мы можем показать всё (либо zoom=20).
-	// По умолчанию выберите нужный zoom или спрашивайте клиента.
-	// Для примера пусть берём максимальный zoom=20:
-	markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
-	if err != nil {
-		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
-		return
-	}
-	if len(markers) == 0 {
-		http.Error(w, "No markers found for this track", http.StatusNotFound)
-		return
-	}
-	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
-		"translate": func(key string) string {
-			if val, ok := translations[lang][key]; ok {
-				return val
-			}
-			return translations["en"][key]
-		},
-		"toJSON": func(data interface{}) (string, error) {
-			bytes, err := json.Marshal(data)
-			return string(bytes), err
-		},
-	}).ParseFS(content, "public_html/map.html"))
+    // *** НЕ прерываемся, даже если len(markers)==0 ***
 
-	data := struct {
-		Markers      []database.Marker
-		Version      string
-		Translations map[string]map[string]string
-		Lang         string
-	}{
-		Markers:      markers,
-		Version:      CompileVersion,
-		Translations: translations,
-		Lang:         lang,
-	}
-	if err := tmpl.Execute(w, data); err != nil {
-		log.Printf("Error executing template: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-	}
+    tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
+        "translate": func(key string) string {
+            if val, ok := translations[lang][key]; ok {
+                return val
+            }
+            return translations["en"][key]
+        },
+        "toJSON": func(data interface{}) (string, error) {
+            bytes, err := json.Marshal(data)
+            return string(bytes), err
+        },
+    }).ParseFS(content, "public_html/map.html"))
+
+    data := struct {
+        Markers      []database.Marker
+        Version      string
+        Translations map[string]map[string]string
+        Lang         string
+    }{
+        Markers:      markers,          // может быть пусто — это нормально
+        Version:      CompileVersion,
+        Translations: translations,
+        Lang:         lang,
+    }
+
+    if err := tmpl.Execute(w, data); err != nil {
+        log.Printf("Error executing template: %v", err)
+        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+    }
 }
 
 // getMarkersHandler — если клиент передаёт zoom и границы,

@@ -376,6 +376,9 @@ document.addEventListener('DOMContentLoaded', function () {
 	if (match) {
 		currentTrackID = match[1];
 		isTrackView = true;
+		// <<< НОВОЕ: сразу показываем кнопку возврата >>>
+		var backBox = document.querySelector('.back-to-all-container');
+		if (backBox) backBox.style.display = 'block';
 	}
 	// Инициализация слоёв карты
 	osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
