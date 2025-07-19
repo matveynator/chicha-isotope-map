@@ -72,6 +72,49 @@ Lancer avec les paramètres par défaut :
 chicha-isotope-map
 ```
 
+#### Tchernobyl (1986) — explosion de vapeur et incendie du graphite ; retombées massives sur toute l’Europe
+
+```
+./chicha-isotope-map -default-lat=51.389 -default-lon=30.099 -default-zoom=11 -default-layer="Google Satellite"
+```
+
+#### Fukushima Daiichi (2011) — le tsunami a mis hors service le refroidissement ; fusion du cœur et rejets en mer et dans l’air
+
+```
+./chicha-isotope-map -default-lat=37.421 -default-lon=141.033 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### Kychtym / Maïak (1957) — explosion d’un réservoir de déchets ; panache radioactif au‑dessus de l’Oural
+
+```
+./chicha-isotope-map -default-lat=55.700 -default-lon=60.800 -default-zoom=9 -default-layer="Google Satellite"
+```
+
+#### Three Mile Island (1979) — fusion partielle du cœur ; rejet limité hors du site
+
+```
+./chicha-isotope-map -default-lat=40.153 -default-lon=-76.723 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### Windscale (1957) — incendie d’un réacteur à graphite ; rejet d’iode‑131 sur le Royaume‑Uni
+
+```
+./chicha-isotope-map -default-lat=54.432 -default-lon=-3.553 -default-zoom=12 -default-layer="Google Satellite"
+```
+
+#### Goiânia (1987) — source orpheline de Cs‑137 ouverte ; contamination de toute la ville
+
+```
+./chicha-isotope-map -default-lat=-16.686 -default-lon=-49.264 -default-zoom=13 -default-layer="Google Satellite"
+```
+
+#### Piatigorsk, mont Beshtau (années 1940‑50) — premières mines d’uranium soviétiques pour la bombe atomique ; contamination à l’échelle du district
+
+```
+./chicha-isotope-map -default-lat=44.089 -default-lon=42.976 -default-zoom=11 -default-layer="Google Satellite"
+```
+
+
 Lancer avec des options personnalisées :
 
 ```bash
