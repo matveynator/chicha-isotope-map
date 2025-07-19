@@ -1,4 +1,6 @@
-“Chicha Isotope Map” a été développée spécialement pour le Laboratoire d'Étude de la Radiation de Dmitry Ignatenko. Merci de rendre visible l’invisible, là où le rayonnement de fond n’est pas une peur, mais une source de savoir. Et merci de chercher, mesurer, partager, et d’oser avancer les premiers.
+> *Chicha Isotope Map* a été conçu pour le **Laboratoire de recherche sur la radiation de Dmitry Ignatenko** et s’inspire profondément de la communauté japonaise [Safecast](https://map.safecast.org), des scientifiques citoyens qui ont transformé la crise en savoir. En cherchant, en mesurant et en partageant la vérité sur la radioactivité, vous rendez l’invisible visible et contribuez à ce que des tragédies comme **Tchernobyl** et **Fukushima** ne se reproduisent jamais. Votre travail éclaire une voie de science, de sécurité et d’espoir.  
+> Merci de rendre l’invisible visible, là où le rayonnement de fond n’est plus une crainte mais une source de savoir ; merci aussi de chercher, de mesurer, de partager et d’oser passer les premiers.  
+
 
 ### 🌌 **chicha-isotope-map** — explorateur des chemins cachés de la radiation
 
