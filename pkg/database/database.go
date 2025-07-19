@@ -392,48 +392,47 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 
 // GetMarkersByTrackIDZoomAndBounds исправленный вариант
 func (db *Database) GetMarkersByTrackIDZoomAndBounds(
-    trackID string,
-    zoom    int,
-    minLat, minLon, maxLat, maxLon float64,
-    dbType  string,
+	trackID string,
+	zoom int,
+	minLat, minLon, maxLat, maxLon float64,
+	dbType string,
 ) ([]Marker, error) {
 
-    var query string
-    switch dbType {
-    case "pgx": // PostgreSQL
-        query = `
+	var query string
+	switch dbType {
+	case "pgx": // PostgreSQL
+		query = `
         SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
         FROM   markers
         WHERE  trackID = $1
           AND  zoom     = $2
           AND  lat BETWEEN $3 AND $4
           AND  lon BETWEEN $5 AND $6;`
-    default:    // SQLite / Genji
-        query = `
+	default: // SQLite / Genji
+		query = `
         SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
         FROM   markers
         WHERE  trackID = ?
           AND  zoom     = ?
           AND  lat BETWEEN ? AND ?
           AND  lon BETWEEN ? AND ?;`
-    }
+	}
 
-    rows, err := db.DB.Query(query,
-        trackID, zoom, minLat, maxLat, minLon, maxLon)
-    if err != nil {
-        return nil, fmt.Errorf("error querying markers: %w", err)
-    }
-    defer rows.Close()
+	rows, err := db.DB.Query(query,
+		trackID, zoom, minLat, maxLat, minLon, maxLon)
+	if err != nil {
+		return nil, fmt.Errorf("error querying markers: %w", err)
+	}
+	defer rows.Close()
 
-    var markers []Marker
-    for rows.Next() {
-        var m Marker
-        if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date,
-            &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
-            return nil, fmt.Errorf("error scanning marker: %w", err)
-        }
-        markers = append(markers, m)
-    }
-    return markers, rows.Err()
+	var markers []Marker
+	for rows.Next() {
+		var m Marker
+		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date,
+			&m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			return nil, fmt.Errorf("error scanning marker: %w", err)
+		}
+		markers = append(markers, m)
+	}
+	return markers, rows.Err()
 }
-

@@ -370,14 +370,6 @@ var trackBounds;
 var currentTrackID = null;
 
 document.addEventListener('DOMContentLoaded', function () {
-
-	// Инициализация trackID по пути
-	var match = window.location.pathname.match(/^\/trackid\/([a-zA-Z0-9]+)/);
-	if (match) {
-		currentTrackID = match[1];
-		isTrackView = true;
-	}
-	// Инициализация слоёв карты
 	osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 		maxZoom: 18,
 		attribution: '&copy; OpenStreetMap contributors'
@@ -388,14 +380,14 @@ document.addEventListener('DOMContentLoaded', function () {
 		attribution: '&copy; Google'
 	});
 
-	// Инициализация карты
+	var initialLayer = '{{ .DefaultLayer }}' === 'Google Satellite' ? googleSatellite : osmLayer;
+
 	map = L.map('map', {
-		center: [44.08832, 42.97577],
-		zoom: 11,
-		layers: [osmLayer]
+		center: [{{ .DefaultLat }}, {{ .DefaultLon }}],
+		zoom: {{ .DefaultZoom }},
+		layers: [initialLayer]
 	});
 
-	// Контроллер слоёв
 	var baseLayers = {
 		"OpenStreetMap": osmLayer,
 		"Google Satellite": googleSatellite
@@ -406,40 +398,13 @@ document.addEventListener('DOMContentLoaded', function () {
 		collapsed: false
 	}).addTo(map);
 
-	// Инициализация режима просмотра трека
-	var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
-	if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
-		isTrackView = true;
+	map.on('load', debounceUpdateMarkers);
+	map.on('zoomend', function() {
+		adjustMarkerRadius();
+		debounceUpdateMarkers();
+	});
+	map.on('moveend', debounceUpdateMarkers);
 
-		// Не отображаем initialMarkers сразу, а загружаем по частям через get_markers
-		map.on('load', debounceUpdateMarkers);
-
-		// Изменение размеров маркеров при зуме
-		map.on('zoomend', function() {
-			adjustMarkerRadius();
-			debounceUpdateMarkers();
-		});
-		map.on('moveend', debounceUpdateMarkers);
-	} else {
-		// Динамическое обновление маркеров в глобальном режиме
-		map.on('load', debounceUpdateMarkers);
-		map.on('zoomend', function() {
-			adjustMarkerRadius();
-			debounceUpdateMarkers();
-		});
-		map.on('moveend', debounceUpdateMarkers);
-		debounceUpdateMarkers;
-	}
-
-	// Загрузка состояния карты из URL
-	loadMapFromUrl();
-
-	// Обновление URL при изменениях на карте
-	map.on('baselayerchange', updateUrl);
-	map.on('moveend', updateUrl);
-	map.on('zoomend', updateUrl);
-
-	// Инициализация элементов интерфейса
 	initializeUIElements();
 });
 
