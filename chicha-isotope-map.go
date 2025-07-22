@@ -7,11 +7,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"errors"
 	"html/template"
 	"io"
 	"io/fs"
 	"io/ioutil"
 	"log"
+	"os"
+	"context"
+	"crypto/tls"
+	"runtime"
 	"math"
 	"math/rand"
 	"mime/multipart"
@@ -22,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"golang.org/x/crypto/acme/autocert"
 
 	"chicha-isotope-map/pkg/database"
 )
@@ -31,6 +37,7 @@ var content embed.FS
 
 var doseData database.Data
 
+var domain = flag.String("domain", "", "Use 80 and 443 ports. Automatic HTTPS cert via Let's Encrypt.")
 var dbType = flag.String("db-type", "genji", "Type of the database driver: genji, sqlite, or pgx (postgresql)")
 var dbPath = flag.String("db-path", "", "Path to the database file(defaults to the current folder, applicable for genji, sqlite drivers.)")
 var dbHost = flag.String("db-host", "127.0.0.1", "Database host (applicable for pgx driver)")
@@ -56,6 +63,100 @@ var db *database.Database
 const (
 	markerRadiusPx = 10.0 // радиус кружка в пикселях
 )
+
+
+// serveWithDomain запускает:
+//   • :80  — ACME-challenge + 301-redirect на https://<domain>/…
+//   • :443 — HTTPS-сервер с автоматическими сертификатами Let’s Encrypt.
+//
+// Совместимость:
+//   • TLS ≥ 1.0, ALPN: h2, http/1.1, http/1.0
+//   • принимается “www.<domain>”
+//   • при запросе по IP отдаётся fallback-сертификат
+//
+// Все ошибки лишь логируются.
+
+func serveWithDomain(domain string, handler http.Handler) {
+	// ----------- ACME manager -----------
+	certMgr := &autocert.Manager{
+		Prompt: autocert.AcceptTOS,
+		Cache:  autocert.DirCache("certs"),
+		HostPolicy: func(ctx context.Context, host string) error {
+			if host == domain || host == "www."+domain {
+				return nil
+			}
+			// Мягко отказываем LE в выпуске для других хостов/IP
+			return errors.New("acme/autocert: host not configured")
+		},
+	}
+
+	// ----------- :80 (challenge + redirect) -----------
+	go func() {
+		mux80 := http.NewServeMux()
+		mux80.Handle("/.well-known/acme-challenge/", certMgr.HTTPHandler(nil))
+		mux80.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			target := "https://" + domain + r.URL.RequestURI()
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+		})
+
+		log.Printf("HTTP  server (ACME+redirect) ➜ :80")
+		if err := (&http.Server{
+			Addr:              ":80",
+			Handler:           mux80,
+			ReadHeaderTimeout: 10 * time.Second,
+		}).ListenAndServe(); err != nil {
+			log.Printf("HTTP  server error: %v", err)
+		}
+	}()
+
+	// ----------- ежедневная проверка сертификата -----------
+	go func() {
+		t := time.NewTicker(24 * time.Hour)
+		defer t.Stop()
+		for range t.C {
+			if _, err := certMgr.GetCertificate(&tls.ClientHelloInfo{ServerName: domain}); err != nil {
+				log.Printf("autocert renewal check: %v", err)
+			}
+		}
+	}()
+
+	// ----------- :443 (HTTPS) -----------
+	tlsCfg := certMgr.TLSConfig()
+	tlsCfg.MinVersion = tls.VersionTLS10
+	tlsCfg.NextProtos = append([]string{"http/1.0"}, tlsCfg.NextProtos...)
+
+	// fallback-сертификат на случай IP-запроса
+	var defaultCert *tls.Certificate
+	go func() {
+		for defaultCert == nil {
+			if c, err := certMgr.GetCertificate(&tls.ClientHelloInfo{ServerName: domain}); err == nil {
+				defaultCert = c
+			}
+			time.Sleep(time.Minute)
+		}
+	}()
+	tlsCfg.GetCertificate = func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		c, err := certMgr.GetCertificate(chi)
+		if err == nil {
+			return c, nil
+		}
+		if chi != nil && (chi.ServerName == "" || strings.Count(chi.ServerName, ".") < 1) && defaultCert != nil {
+			return defaultCert, nil
+		}
+		return nil, err
+	}
+
+	log.Printf("HTTPS server for %s ➜ :443 (TLS ≥1.0, ALPN h2/http1.1/1.0)", domain)
+	if err := (&http.Server{
+		Addr:              ":443",
+		Handler:           handler,
+		TLSConfig:         tlsCfg,
+		ReadHeaderTimeout: 10 * time.Second,
+	}).ListenAndServeTLS("", ""); err != nil {
+		log.Printf("HTTPS server error: %v", err)
+	}
+}
+
 
 // GenerateSerialNumber генерирует TrackID
 func GenerateSerialNumber() string {
@@ -909,6 +1010,16 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 // =====================
 // MAIN
 // =====================
+
+// main parses flags, initialises the DB & routes, then either
+// (a) serves plain HTTP on a custom port, or
+// (b) if -domain is given, serves ACME-backed HTTPS on 443 plus
+//     an ACME/redirect helper on 80.
+//
+// If any web-server returns an error it is only logged – the
+// application continues running.  A final `select{}` keeps the
+// main goroutine alive without resorting to mutexes.
+
 func main() {
 	flag.Parse()
 	loadTranslations(content, "public_html/translations.json")
@@ -918,37 +1029,54 @@ func main() {
 		return
 	}
 
-	dbConfig := database.Config{
-		DBType:    *dbType,
-		DBPath:    *dbPath,
-		DBHost:    *dbHost,
-		DBPort:    *dbPort,
-		DBUser:    *dbUser,
-		DBPass:    *dbPass,
-		DBName:    *dbName,
-		PGSSLMode: *pgSSLMode,
-		Port:      *port,
+	// ---------------- privilege hint ----------------
+	if *domain != "" && runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		log.Println("⚠  Binding to :80 / :443 requires super-user rights; run with sudo or as root.")
+	}
+
+	// ---------------- database ----------------
+	dbCfg := database.Config{
+		DBType:    *dbType, DBPath: *dbPath, DBHost: *dbHost,
+		DBPort: *dbPort, DBUser: *dbUser, DBPass: *dbPass,
+		DBName: *dbName, PGSSLMode: *pgSSLMode, Port: *port,
 	}
 	var err error
-	db, err = database.NewDatabase(dbConfig)
+	db, err = database.NewDatabase(dbCfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Fatalf("DB init: %v", err)
 	}
-	if err := db.InitSchema(dbConfig); err != nil {
-		log.Fatalf("Error initializing database schema: %v", err)
+	if err = db.InitSchema(dbCfg); err != nil {
+		log.Fatalf("DB schema: %v", err)
 	}
 
-	staticFiles, err := fs.Sub(content, "public_html")
-	if err != nil {
-		log.Fatalf("Failed to extract public_html subdirectory: %v", err)
-	}
+	// ---------------- routes / static ----------------
+	staticFS, err := fs.Sub(content, "public_html")
+	if err != nil { log.Fatalf("static fs: %v", err) }
 
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
+	http.Handle("/static/", http.StripPrefix("/static/",
+		http.FileServer(http.FS(staticFS))))
 	http.HandleFunc("/", mapHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 
-	log.Printf("Application running at: http://localhost:%d", *port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+	// ---------------- web-servers ----------------
+	if *domain != "" {
+		// HTTPS + HTTP/ACME mode
+		go serveWithDomain(*domain, nil) // default mux
+	} else {
+		// single HTTP port from -port flag
+		addr := fmt.Sprintf(":%d", *port)
+		go func() {
+			log.Printf("HTTP server ➜ http://localhost:%s", addr)
+			if err := http.ListenAndServe(addr, nil); err != nil {
+				log.Printf("HTTP server error: %v", err)
+			}
+		}()
+	}
+
+	// keep the main goroutine alive forever
+	select {} // no mutexes, no busy-waits – a simple channel block
 }
+
+

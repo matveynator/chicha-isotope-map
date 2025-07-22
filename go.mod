@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/genjidb/genji v0.15.0
 	github.com/jackc/pgx/v5 v5.7.1
+	golang.org/x/crypto v0.27.0
 	modernc.org/sqlite v1.33.1
 
 )
@@ -36,8 +37,8 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rogpeppe/go-internal v1.8.1 // indirect
-	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/exp v0.0.0-20231108232855-2478ac86f678 // indirect
+	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
 	golang.org/x/text v0.18.0 // indirect
