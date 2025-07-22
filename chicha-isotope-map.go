@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"embed"
+	"net"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -64,17 +65,36 @@ const (
 	markerRadiusPx = 10.0 // радиус кружка в пикселях
 )
 
+// withServerHeader оборачивает любой http.Handler, добавляя
+// заголовок "Server: chicha-isotope-map/<CompileVersion>".
+//
+// На запрос HEAD к “/” сразу отвечает 200 OK без тела, чтобы
+// показать, что сервис жив.
+
+func withServerHeader(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "chicha-isotope-map/"+CompileVersion)
+
+		if r.Method == http.MethodHead && r.URL.Path == "/" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+
 
 // serveWithDomain запускает:
-//   • :80  — ACME-challenge + 301-redirect на https://<domain>/…
-//   • :443 — HTTPS-сервер с автоматическими сертификатами Let’s Encrypt.
+//   • :80  — ACME HTTP-01 + 301-redirect на https://<domain>/…
+//   • :443 — HTTPS с автоматическими сертификатами Let’s Encrypt.
 //
-// Совместимость:
-//   • TLS ≥ 1.0, ALPN: h2, http/1.1, http/1.0
-//   • принимается “www.<domain>”
-//   • при запросе по IP отдаётся fallback-сертификат
+// Новое: если autocert не может выдать cert (любой host/SNI),
+//        сервер всё-таки отдаёт ранее полученный fallback-cert,
+//        тем самым устраняя «host not configured» в логах.
 //
-// Все ошибки лишь логируются.
+// Совместимость: TLS ≥ 1.0, ALPN h2/http1.1/http1.0.
+// Все ошибки только логируются.
 
 func serveWithDomain(domain string, handler http.Handler) {
 	// ----------- ACME manager -----------
@@ -82,10 +102,14 @@ func serveWithDomain(domain string, handler http.Handler) {
 		Prompt: autocert.AcceptTOS,
 		Cache:  autocert.DirCache("certs"),
 		HostPolicy: func(ctx context.Context, host string) error {
+			// Разрешаем голый и www.<domain>
 			if host == domain || host == "www."+domain {
 				return nil
 			}
-			// Мягко отказываем LE в выпуске для других хостов/IP
+			// IP-адрес? — не блокируем, просто не пытаемся получить cert.
+			if net.ParseIP(host) != nil {
+				return nil
+			}
 			return errors.New("acme/autocert: host not configured")
 		},
 	}
@@ -125,7 +149,7 @@ func serveWithDomain(domain string, handler http.Handler) {
 	tlsCfg.MinVersion = tls.VersionTLS10
 	tlsCfg.NextProtos = append([]string{"http/1.0"}, tlsCfg.NextProtos...)
 
-	// fallback-сертификат на случай IP-запроса
+	// fallback-сертификат для IP / странных SNI
 	var defaultCert *tls.Certificate
 	go func() {
 		for defaultCert == nil {
@@ -140,9 +164,11 @@ func serveWithDomain(domain string, handler http.Handler) {
 		if err == nil {
 			return c, nil
 		}
-		if chi != nil && (chi.ServerName == "" || strings.Count(chi.ServerName, ".") < 1) && defaultCert != nil {
+		// Любой сбой — пытаемся отдать fallback-cert (если уже есть)
+		if defaultCert != nil {
 			return defaultCert, nil
 		}
+		// Пока fallback нет — повторяем оригинальную ошибку
 		return nil, err
 	}
 
@@ -1020,7 +1046,16 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 // application continues running.  A final `select{}` keeps the
 // main goroutine alive without resorting to mutexes.
 
+
+
+
+// main: парсинг флагов, инициализация БД и запуск веб-серверов.
+// Добавлен withServerHeader для всех запросов.
+// =====================
+// MAIN
+// =====================
 func main() {
+	// 1. Флаги и версии
 	flag.Parse()
 	loadTranslations(content, "public_html/translations.json")
 
@@ -1029,54 +1064,57 @@ func main() {
 		return
 	}
 
-	// ---------------- privilege hint ----------------
+	// 2. Предупреждение о привилегиях (для :80 / :443)
 	if *domain != "" && runtime.GOOS != "windows" && os.Geteuid() != 0 {
 		log.Println("⚠  Binding to :80 / :443 requires super-user rights; run with sudo or as root.")
 	}
 
-	// ---------------- database ----------------
+	// 3. База данных
 	dbCfg := database.Config{
-		DBType:    *dbType, DBPath: *dbPath, DBHost: *dbHost,
-		DBPort: *dbPort, DBUser: *dbUser, DBPass: *dbPass,
-		DBName: *dbName, PGSSLMode: *pgSSLMode, Port: *port,
+		DBType:    *dbType,
+		DBPath:    *dbPath,
+		DBHost:    *dbHost,
+		DBPort:    *dbPort,
+		DBUser:    *dbUser,
+		DBPass:    *dbPass,
+		DBName:    *dbName,
+		PGSSLMode: *pgSSLMode,
+		Port:      *port,
 	}
 	var err error
 	db, err = database.NewDatabase(dbCfg)
-	if err != nil {
-		log.Fatalf("DB init: %v", err)
-	}
-	if err = db.InitSchema(dbCfg); err != nil {
-		log.Fatalf("DB schema: %v", err)
-	}
+	if err != nil { log.Fatalf("DB init: %v", err) }
+	if err = db.InitSchema(dbCfg); err != nil { log.Fatalf("DB schema: %v", err) }
 
-	// ---------------- routes / static ----------------
+	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")
 	if err != nil { log.Fatalf("static fs: %v", err) }
 
 	http.Handle("/static/", http.StripPrefix("/static/",
 		http.FileServer(http.FS(staticFS))))
-	http.HandleFunc("/", mapHandler)
-	http.HandleFunc("/upload", uploadHandler)
+	http.HandleFunc("/",            mapHandler)
+	http.HandleFunc("/upload",      uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
-	http.HandleFunc("/trackid/", trackHandler)
+	http.HandleFunc("/trackid/",    trackHandler)
 
-	// ---------------- web-servers ----------------
+	rootHandler := withServerHeader(http.DefaultServeMux)
+
+	// 5. HTTP/HTTPS-серверы
 	if *domain != "" {
-		// HTTPS + HTTP/ACME mode
-		go serveWithDomain(*domain, nil) // default mux
+		// Двойной сервер :80 + :443 с Let’s Encrypt
+		go serveWithDomain(*domain, rootHandler)
 	} else {
-		// single HTTP port from -port flag
+		// Обычный HTTP на порт из -port
 		addr := fmt.Sprintf(":%d", *port)
 		go func() {
-			log.Printf("HTTP server ➜ http://localhost:%s", addr)
-			if err := http.ListenAndServe(addr, nil); err != nil {
+			log.Printf("HTTP server ➜ %s", addr)
+			if err := http.ListenAndServe(addr, rootHandler); err != nil {
 				log.Printf("HTTP server error: %v", err)
 			}
 		}()
 	}
 
-	// keep the main goroutine alive forever
-	select {} // no mutexes, no busy-waits – a simple channel block
+	// 6. Держим main-goroutine живой
+	select {}
 }
-
 
