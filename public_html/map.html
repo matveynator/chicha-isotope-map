@@ -496,59 +496,63 @@ document.addEventListener('DOMContentLoaded', function () {
 	initializeUIElements();
 
 	/**
-		* Build a Leaflet control with three check-boxes:
-		*  ✈️ 70–500 m/s  (default: unchecked)
-		*  🚗  7–70 m/s  (default: checked)
-		*  🚶  0–7 m/s   (default: checked)
-		* Any change triggers marker refresh and saves state.
-		*/
-		function createSpeedFilterControls() {
-			const state = loadSpeedFilterState();          // current state
+	 * Build a Leaflet control with three check-boxes that filter markers
+	 * by recorded speed. Labels now show speed in km/h instead of m/s.
+	 * Default state: ✈️ off, 🚗 on, 🚶 on.
+	 */
+	function createSpeedFilterControls() {
+		// load previously saved state (or defaults)
+		const state = loadSpeedFilterState();
 
-			const SpeedCtrl = L.Control.extend({
-				onAdd() {
-					// Use same class as layer switcher so the block looks native.
-						const div = L.DomUtil.create('div', 'leaflet-control-layers');
-					div.style.padding = '6px 10px 6px 10px';
+		// custom Leaflet control
+		const SpeedCtrl = L.Control.extend({
+			onAdd() {
+				const div = L.DomUtil.create('div', 'leaflet-control-layers');
+				div.style.padding = '6px 10px';
 
-					// helper to build one line
-					function line(id, emoji, label, checked) {
-						return `
-							<label style="white-space:nowrap;display:block;cursor:pointer;">
-							<input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
-							${emoji} ${label}
-							</label>`;
-					}
+				// helper that returns one <label> line
+				const row = (id, emoji, rangeText, checked) => `
+						<label style="white-space:nowrap;display:block;cursor:pointer;">
+						<input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
+					${emoji} ${rangeText}
+						</label>`;
 
-						div.innerHTML =
-							line('sfPlane', '✈️', '(70-500 m/s)', state.plane) +
-							line('sfCar',   '🚗', '(7-70 m/s)',  state.car)   +
-							line('sfPed',   '🚶', '(0-7 m/s)',   state.ped);
+				// order: ✈️, 🚗, 🚶  (top → bottom)
+				div.innerHTML =
+					row('sfPlane', '✈️', '(250–1800 km/h)', state.plane) +
+					row('sfCar',   '🚗', '(25–250 km/h)',  state.car)   +
+					row('sfPed',   '🚶', '(0–25 km/h)',    state.ped);
 
-						// stop map interactions when clicking inside the control
-						L.DomEvent.disableClickPropagation(div);
+				// prevent map drag/zoom while clicking inside the control
+				L.DomEvent.disableClickPropagation(div);
 
-						// attach listeners
-						div.querySelectorAll('input[type=checkbox]').forEach(cb => {
-							cb.addEventListener('change', () => {
-								// update state & save
-								state.plane = div.querySelector('#sfPlane').checked;
-								state.car   = div.querySelector('#sfCar').checked;
-								state.ped   = div.querySelector('#sfPed').checked;
-								saveSpeedFilterState(state);
-								debounceUpdateMarkers();           // redraw markers
-							});
-						});
-
-						return div;
-					}
+				// attach change-handlers
+				div.querySelectorAll('input[type=checkbox]').forEach(cb => {
+					cb.addEventListener('change', () => {
+						state.plane = div.querySelector('#sfPlane').checked;
+						state.car   = div.querySelector('#sfCar').checked;
+						state.ped   = div.querySelector('#sfPed').checked;
+						saveSpeedFilterState(state);   // remember choice
+						debounceUpdateMarkers();       // redraw with new filter
+					});
 				});
 
-			new SpeedCtrl({ position: 'topleft' }).addTo(map);
+				return div;
 			}
-				createSpeedFilterControls();     // <-- call it
+		});
 
-			});
+		new SpeedCtrl({ position: 'topleft' }).addTo(map);
+	}
+
+
+
+
+
+
+	// Call it
+	createSpeedFilterControls();   
+
+});
 
 // Определение функций
 
@@ -575,76 +579,76 @@ function getPopupContent(marker) {
 let currentZoom, currentBounds;
 
 /**
-	* Fetch markers for the current map view and (optionally) current track.
-	* Draw only those that pass the user-selected speed filter.
-	* Extra-robust: handles empty/invalid JSON so .forEach() never crashes.
-	*/
-	function updateMarkers() {
+ * Fetch markers for the current map view and (optionally) current track.
+ * Draw only those that pass the user-selected speed filter.
+ * Extra-robust: handles empty/invalid JSON so .forEach() never crashes.
+ */
+function updateMarkers() {
 
-		const zoomLevel = map.getZoom();
-		const bounds    = map.getBounds();
+	const zoomLevel = map.getZoom();
+	const bounds    = map.getBounds();
 
-		const params = {
-			zoom  : zoomLevel,
-			minLat: bounds.getSouthWest().lat,
-			minLon: bounds.getSouthWest().lng,
-			maxLat: bounds.getNorthEast().lat,
-			maxLon: bounds.getNorthEast().lng
-		};
-		if (isTrackView && currentTrackID) params.trackID = currentTrackID;
+	const params = {
+		zoom  : zoomLevel,
+		minLat: bounds.getSouthWest().lat,
+		minLon: bounds.getSouthWest().lng,
+		maxLat: bounds.getNorthEast().lat,
+		maxLon: bounds.getNorthEast().lng
+	};
+	if (isTrackView && currentTrackID) params.trackID = currentTrackID;
 
-		const url = '/get_markers?' + new URLSearchParams(params);
+	const url = '/get_markers?' + new URLSearchParams(params);
 
-		fetch(url)
-			.then(r => {
-				if (!r.ok) throw new Error(`HTTP ${r.status}`);
-				return r.json();                       // may be null / object
-			})
-			.then(json => {
-				// --- normalise payload to an array --------------------------
-				let data = [];
-				if (Array.isArray(json)) {
-					data = json;
-				} else if (json && Array.isArray(json.markers)) {
-					data = json.markers;
-				} else if (json !== null) {
-					console.warn('Unexpected get_markers payload:', json);
-				}
-				// -------------------------------------------------------------
+	fetch(url)
+		.then(r => {
+			if (!r.ok) throw new Error(`HTTP ${r.status}`);
+			return r.json();                       // may be null / object
+		})
+		.then(json => {
+			// --- normalise payload to an array --------------------------
+			let data = [];
+			if (Array.isArray(json)) {
+				data = json;
+			} else if (json && Array.isArray(json.markers)) {
+				data = json.markers;
+			} else if (json !== null) {
+				console.warn('Unexpected get_markers payload:', json);
+			}
+			// -------------------------------------------------------------
 
-				// remove old circles
-				for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
-				circleMarkers = {};
+			// remove old circles
+			for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+			circleMarkers = {};
 
-				data.forEach(marker => {
-					if (!shouldDisplayBySpeed(marker.speed)) return;   // ← filter
+			data.forEach(marker => {
+				if (!shouldDisplayBySpeed(marker.speed)) return;   // ← filter
 
-					const markerKey = marker.id || marker.trackID;
-					const color     = getGradientColor(marker.doseRate);
-					const radius    = getRadius(marker.doseRate, zoomLevel);
+				const markerKey = marker.id || marker.trackID;
+				const color     = getGradientColor(marker.doseRate);
+				const radius    = getRadius(marker.doseRate, zoomLevel);
 
-					const circleMarker = L.circleMarker([marker.lat, marker.lon], {
-						radius      : radius,
-						fillColor   : color,
-						color       : color,
-						weight      : 1,
-						opacity     : getFillOpacity(marker.speed) + 0.1,
-						fillOpacity : getFillOpacity(marker.speed)
-					})
-						.addTo(map)
-						.bindTooltip(getTooltipContent(marker),
-							{ direction: 'top',
-								className: 'custom-tooltip',
-								offset: [0, -8],
-								permanent: false })
-						.bindPopup(getPopupContent(marker));
+				const circleMarker = L.circleMarker([marker.lat, marker.lon], {
+					radius      : radius,
+					fillColor   : color,
+					color       : color,
+					weight      : 1,
+					opacity     : getFillOpacity(marker.speed) + 0.1,
+					fillOpacity : getFillOpacity(marker.speed)
+				})
+					.addTo(map)
+					.bindTooltip(getTooltipContent(marker),
+						{ direction: 'top',
+							className: 'custom-tooltip',
+							offset: [0, -8],
+							permanent: false })
+					.bindPopup(getPopupContent(marker));
 
-					circleMarker.doseRate      = marker.doseRate; // for zoom scaling
-					circleMarkers[markerKey]   = circleMarker;
-				});
-			})
-			.catch(err => console.error('Error fetching markers:', err));
-	}
+				circleMarker.doseRate      = marker.doseRate; // for zoom scaling
+				circleMarkers[markerKey]   = circleMarker;
+			});
+		})
+		.catch(err => console.error('Error fetching markers:', err));
+}
 
 let debounceTimeout;
 
@@ -695,11 +699,11 @@ function loadMapFromUrl() {
 	const params = new URLSearchParams(window.location.search);
 
 	/* базовый слой из URL (или дефолт) */
-		const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
+	const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
 	setBaseLayer(layer);
 
 	/* читаем остальные параметры */
-		const minLat = parseFloat(params.get('minLat'));
+	const minLat = parseFloat(params.get('minLat'));
 	const minLon = parseFloat(params.get('minLon'));
 	const maxLat = parseFloat(params.get('maxLat'));
 	const maxLon = parseFloat(params.get('maxLon'));
