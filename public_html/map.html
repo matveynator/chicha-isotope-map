@@ -511,17 +511,17 @@ document.addEventListener('DOMContentLoaded', function () {
 				div.style.padding = '6px 10px';
 
 				// helper that returns one <label> line
-				const row = (id, emoji, rangeText, checked) => `
+				const row = (id, emoji, checked) => `
 						<label style="white-space:nowrap;display:block;cursor:pointer;">
 						<input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
-					${emoji} ${rangeText}
+					${emoji}
 						</label>`;
 
 				// order: ✈️, 🚗, 🚶  (top → bottom)
 				div.innerHTML =
-					row('sfPlane', '✈️', '(250–1800 km/h)', state.plane) +
-					row('sfCar',   '🚗', '(25–250 km/h)',  state.car)   +
-					row('sfPed',   '🚶', '(0–25 km/h)',    state.ped);
+					row('sfPlane', '✈️',  state.plane) +
+					row('sfCar',   '🚗', state.car)   +
+					row('sfPed',   '🚶', state.ped);
 
 				// prevent map drag/zoom while clicking inside the control
 				L.DomEvent.disableClickPropagation(div);
