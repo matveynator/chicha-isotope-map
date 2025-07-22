@@ -91,16 +91,6 @@ func convertRhToSv(markers []database.Marker) []database.Marker {
 	}
 	return filteredMarkers
 }
-func convertSvToRh(markers []database.Marker) []database.Marker {
-	filteredMarkers := []database.Marker{}
-	const conversionFactor = 100.0 // 1 Sv = 100 Rh
-
-	for _, newMarker := range markers {
-		newMarker.DoseRate = newMarker.DoseRate * conversionFactor
-		filteredMarkers = append(filteredMarkers, newMarker)
-	}
-	return filteredMarkers
-}
 
 // filterZeroMarkers убирает маркеры с нулевым значением дозы
 func filterZeroMarkers(markers []database.Marker) []database.Marker {
@@ -139,21 +129,6 @@ func webMercatorToPixel(x, y float64, zoom int) (px, py float64) {
 func latLonToPixel(lat, lon float64, zoom int) (px, py float64) {
 	x, y := latLonToWebMercator(lat, lon)
 	return webMercatorToPixel(x, y, zoom)
-}
-
-// pixelToLatLon - нужно, чтобы в процессе усреднения вернуть обратно координаты
-func pixelToLatLon(px, py float64, zoom int) (lat, lon float64) {
-	scale := math.Exp2(float64(zoom))
-
-	// Обратное преобразование к Web Mercator
-	x := px/(256.0*scale)*(2.0*math.Pi*6378137.0) - (2.0*math.Pi*6378137.0)/2.0
-	y := (2.0*math.Pi*6378137.0)/2.0 - py/(256.0*scale)*(2.0*math.Pi*6378137.0)
-
-	// Web Mercator -> lat, lon
-	lon = (x / (2.0 * math.Pi * 6378137.0)) * 180.0
-	lat = (y / (2.0 * math.Pi * 6378137.0)) * 180.0
-	lat = 180.0 / math.Pi * (2.0*math.Atan(math.Exp(lat*math.Pi/180.0)) - math.Pi/2.0)
-	return lat, lon
 }
 
 // mergeMarkersByZoom “сливает” (усредняет) маркеры, которые пересекаются в пиксельных координатах
