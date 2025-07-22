@@ -314,6 +314,20 @@ function getRadius(doseRate, zoomLevel) {
 	return Math.max(r, 2);                       // защита от слишком мелких
 }
 
+
+/**
+ * Decide whether the marker with given speed (m/s)
+ * should be displayed according to current speed-filter state.
+ */
+function shouldDisplayBySpeed(speed) {
+	const st = loadSpeedFilterState();
+	if (speed >= 70 && speed <= 500) return st.plane;
+	if (speed >= 7  && speed <  70)  return st.car;
+	/* speed < 7 m/s ⇒ pedestrian */
+	return st.ped;
+}
+
+
 // Функция для расчёта прозрачности заливки маркера на основе скорости
 function getFillOpacity(speed) {
 	if (speed <= 5) {
@@ -376,6 +390,30 @@ var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
 var currentTrackID = null;
+
+/**
+ * Load previously saved speed-filter state from sessionStorage.
+ * If nothing is stored yet, return default state
+ *   ✈️ off, 🚗 on, 🚶 on  (as requested).
+ */
+function loadSpeedFilterState() {
+	const def = { plane: false, car: true, ped: true };
+	try {
+		const raw = sessionStorage.getItem('speedFilterState');
+		return raw ? JSON.parse(raw) : def;
+	} catch (e) {
+		return def;
+	}
+}
+
+/**
+ * Persist current speed-filter state into sessionStorage
+ * so the user’s choice is remembered for the whole session.
+ */
+function saveSpeedFilterState(state) {
+	sessionStorage.setItem('speedFilterState', JSON.stringify(state));
+}
+
 
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -456,7 +494,61 @@ document.addEventListener('DOMContentLoaded', function () {
 
 	// Инициализация элементов интерфейса
 	initializeUIElements();
-});
+
+	/**
+		* Build a Leaflet control with three check-boxes:
+		*  ✈️ 70–500 m/s  (default: unchecked)
+		*  🚗  7–70 m/s  (default: checked)
+		*  🚶  0–7 m/s   (default: checked)
+		* Any change triggers marker refresh and saves state.
+		*/
+		function createSpeedFilterControls() {
+			const state = loadSpeedFilterState();          // current state
+
+			const SpeedCtrl = L.Control.extend({
+				onAdd() {
+					// Use same class as layer switcher so the block looks native.
+						const div = L.DomUtil.create('div', 'leaflet-control-layers');
+					div.style.padding = '6px 10px 6px 10px';
+
+					// helper to build one line
+					function line(id, emoji, label, checked) {
+						return `
+							<label style="white-space:nowrap;display:block;cursor:pointer;">
+							<input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
+							${emoji} ${label}
+							</label>`;
+					}
+
+						div.innerHTML =
+							line('sfPlane', '✈️', '(70-500 m/s)', state.plane) +
+							line('sfCar',   '🚗', '(7-70 m/s)',  state.car)   +
+							line('sfPed',   '🚶', '(0-7 m/s)',   state.ped);
+
+						// stop map interactions when clicking inside the control
+						L.DomEvent.disableClickPropagation(div);
+
+						// attach listeners
+						div.querySelectorAll('input[type=checkbox]').forEach(cb => {
+							cb.addEventListener('change', () => {
+								// update state & save
+								state.plane = div.querySelector('#sfPlane').checked;
+								state.car   = div.querySelector('#sfCar').checked;
+								state.ped   = div.querySelector('#sfPed').checked;
+								saveSpeedFilterState(state);
+								debounceUpdateMarkers();           // redraw markers
+							});
+						});
+
+						return div;
+					}
+				});
+
+			new SpeedCtrl({ position: 'topleft' }).addTo(map);
+			}
+				createSpeedFilterControls();     // <-- call it
+
+			});
 
 // Определение функций
 
@@ -466,97 +558,93 @@ function getPopupContent(marker) {
 	return `
 		<div class="custom-tooltip">
 		<div><strong>${translate('radiation_dose')}:</strong>
-		${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
+	${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
 		</div>
 		<div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
 		<div style="margin-top:4px">
 		<!-- щёлк по ссылке = переход в режим трека -->
 		<a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
-		${translate('track_id')}: ${marker.trackID}
+	${translate('track_id')}: ${marker.trackID}
 		</a>
 		</div>
 		</div>`;
 }
 
 
-function displayInitialMarkers(markers) {
-	trackBounds = new L.LatLngBounds();
-
-	markers.forEach(function (marker) {
-		const markerKey = marker.id || marker.trackID;
-		const color     = getGradientColor(marker.doseRate);
-		const radius    = getRadius(marker.doseRate, map.getZoom());
-
-		const circleMarker = L.circleMarker([marker.lat, marker.lon], {
-			radius      : radius,
-			fillColor   : color,
-			color       : color,
-			weight      : 1,
-			opacity     : getFillOpacity(marker.speed) + 0.1,
-			fillOpacity : getFillOpacity(marker.speed)
-		})
-			.addTo(map)
-			.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-			.bindPopup   (getPopupContent(marker));   // <-- pop-up вместо немедленного перехода
-
-		circleMarker.doseRate = marker.doseRate;  // для динамического изменения радиуса
-		circleMarkers[markerKey] = circleMarker;
-		trackBounds.extend([marker.lat, marker.lon]);
-	});
-
-	map.fitBounds(trackBounds);
-	document.querySelector('.back-to-all-container').style.display = 'block';
-}
 
 let currentZoom, currentBounds;
 
-function updateMarkers() {
+/**
+	* Fetch markers for the current map view and (optionally) current track.
+	* Draw only those that pass the user-selected speed filter.
+	* Extra-robust: handles empty/invalid JSON so .forEach() never crashes.
+	*/
+	function updateMarkers() {
 
-	const zoomLevel = map.getZoom();
-	const bounds    = map.getBounds();
+		const zoomLevel = map.getZoom();
+		const bounds    = map.getBounds();
 
-	const params = {
-		zoom  : zoomLevel,
-		minLat: bounds.getSouthWest().lat,
-		minLon: bounds.getSouthWest().lng,
-		maxLat: bounds.getNorthEast().lat,
-		maxLon: bounds.getNorthEast().lng
-	};
+		const params = {
+			zoom  : zoomLevel,
+			minLat: bounds.getSouthWest().lat,
+			minLon: bounds.getSouthWest().lng,
+			maxLat: bounds.getNorthEast().lat,
+			maxLon: bounds.getNorthEast().lng
+		};
+		if (isTrackView && currentTrackID) params.trackID = currentTrackID;
 
-	let url = '/get_markers?';
-	if (isTrackView && currentTrackID) params.trackID = currentTrackID;
-	url += new URLSearchParams(params);
+		const url = '/get_markers?' + new URLSearchParams(params);
 
-	fetch(url)
-		.then(r => r.json())
-		.then(data => {
-			// очищаем старые кружки
-			for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
-			circleMarkers = {};
+		fetch(url)
+			.then(r => {
+				if (!r.ok) throw new Error(`HTTP ${r.status}`);
+				return r.json();                       // may be null / object
+			})
+			.then(json => {
+				// --- normalise payload to an array --------------------------
+				let data = [];
+				if (Array.isArray(json)) {
+					data = json;
+				} else if (json && Array.isArray(json.markers)) {
+					data = json.markers;
+				} else if (json !== null) {
+					console.warn('Unexpected get_markers payload:', json);
+				}
+				// -------------------------------------------------------------
 
-			data.forEach(marker => {
-				const markerKey = marker.id;
-				const color     = getGradientColor(marker.doseRate);
-				const radius    = getRadius(marker.doseRate, zoomLevel);
+				// remove old circles
+				for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+				circleMarkers = {};
 
-				const circleMarker = L.circleMarker([marker.lat, marker.lon], {
-					radius      : radius,
-					fillColor   : color,
-					color       : color,
-					weight      : 1,
-					opacity     : getFillOpacity(marker.speed) + 0.1,
-					fillOpacity : getFillOpacity(marker.speed)
-				})
-					.addTo(map)
-					.bindTooltip(getTooltipContent(marker), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], permanent: false })
-					.bindPopup   (getPopupContent(marker));   // <-- pop-up
+				data.forEach(marker => {
+					if (!shouldDisplayBySpeed(marker.speed)) return;   // ← filter
 
-																												circleMarker.doseRate = marker.doseRate;
-																												circleMarkers[markerKey] = circleMarker;
-																												});
-																												})
-																												.catch(err => console.error('Error fetching markers:', err));
-}
+					const markerKey = marker.id || marker.trackID;
+					const color     = getGradientColor(marker.doseRate);
+					const radius    = getRadius(marker.doseRate, zoomLevel);
+
+					const circleMarker = L.circleMarker([marker.lat, marker.lon], {
+						radius      : radius,
+						fillColor   : color,
+						color       : color,
+						weight      : 1,
+						opacity     : getFillOpacity(marker.speed) + 0.1,
+						fillOpacity : getFillOpacity(marker.speed)
+					})
+						.addTo(map)
+						.bindTooltip(getTooltipContent(marker),
+							{ direction: 'top',
+								className: 'custom-tooltip',
+								offset: [0, -8],
+								permanent: false })
+						.bindPopup(getPopupContent(marker));
+
+					circleMarker.doseRate      = marker.doseRate; // for zoom scaling
+					circleMarkers[markerKey]   = circleMarker;
+				});
+			})
+			.catch(err => console.error('Error fetching markers:', err));
+	}
 
 let debounceTimeout;
 
