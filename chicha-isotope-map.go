@@ -41,11 +41,10 @@ var dbName = flag.String("db-name", "IsotopePathways", "Database name (applicabl
 var pgSSLMode = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode: disable, allow, prefer, require, verify-ca, or verify-full")
 var port = flag.Int("port", 8765, "Port for running the server")
 var version = flag.Bool("version", false, "Show the application version")
-var defaultLat   = flag.Float64("default-lat", 44.08832, "Default map latitude")
-var defaultLon   = flag.Float64("default-lon", 42.97577, "Default map longitude")
-var defaultZoom  = flag.Int("default-zoom", 11, "Default map zoom")
+var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
+var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
+var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
-
 
 var CompileVersion = "dev"
 
@@ -239,9 +238,9 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			DoseRate:  avgDose,
 			CountRate: avgCount,
 			Date:      latestDate,
-			Speed:   avgSpeed,
-			Zoom:    zoom,
-			TrackID: cluster[0].Marker.TrackID, // берем хотя бы у первого
+			Speed:     avgSpeed,
+			Zoom:      zoom,
+			TrackID:   cluster[0].Marker.TrackID, // берем хотя бы у первого
 		}
 		result = append(result, newMarker)
 	}
@@ -250,33 +249,33 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 }
 
 func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
-    if len(markers) == 0 { // <-- добавлено
-        return markers
-    }
+	if len(markers) == 0 { // <-- добавлено
+		return markers
+	}
 
-    sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
+	sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
 
-    for i := 1; i < len(markers); i++ {
-        prev, curr := markers[i-1], markers[i]
-        dist     := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon)
-        timeDiff := curr.Date - prev.Date
-        if timeDiff > 0 {
-            speed := dist / float64(timeDiff)
-            if speed >= 0 && speed <= 300 {
-                markers[i].Speed = speed
-            } else {
-                markers[i].Speed = markers[i-1].Speed
-            }
-        }
-    }
+	for i := 1; i < len(markers); i++ {
+		prev, curr := markers[i-1], markers[i]
+		dist := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon)
+		timeDiff := curr.Date - prev.Date
+		if timeDiff > 0 {
+			speed := dist / float64(timeDiff)
+			if speed >= 0 && speed <= 300 {
+				markers[i].Speed = speed
+			} else {
+				markers[i].Speed = markers[i-1].Speed
+			}
+		}
+	}
 
-    // Обновлённая защита
-    if len(markers) > 1 {
-        markers[0].Speed = markers[1].Speed
-    } else {
-        markers[0].Speed = 0
-    }
-    return markers
+	// Обновлённая защита
+	if len(markers) > 1 {
+		markers[0].Speed = markers[1].Speed
+	} else {
+		markers[0].Speed = 0
+	}
+	return markers
 }
 
 func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
@@ -292,17 +291,17 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 // Базовый радиус, при котором на 20-м зуме маркеры совсем не сливаются
 
 func radiusForZoom(zoom int) float64 {
-    // линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
-    return markerRadiusPx * float64(zoom) / 20.0
+	// линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
+	return markerRadiusPx * float64(zoom) / 20.0
 }
 
 func precomputeMarkersForAllZoomLevels(src []database.Marker) []database.Marker {
-    var out []database.Marker
-    for z := 1; z <= 20; z++ {
-        merged := mergeMarkersByZoom(src, z, radiusForZoom(z))
-        out = append(out, merged...)
-    }
-    return out
+	var out []database.Marker
+	for z := 1; z <= 20; z++ {
+		merged := mergeMarkersByZoom(src, z, radiusForZoom(z))
+		out = append(out, merged...)
+	}
+	return out
 }
 
 // =====================
@@ -769,8 +768,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 // =====================
 // WEB
 // =====================
+// =====================
+// WEB  — главная карта
+// =====================
 func mapHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
+
+	// Готовим шаблон
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
 		"translate": func(key string) string {
 			if val, ok := translations[lang][key]; ok {
@@ -787,18 +791,19 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	if CompileVersion == "dev" {
 		CompileVersion = "latest"
 	}
+
+	// Данные для шаблона
 	data := struct {
 		Markers      []database.Marker
 		Version      string
 		Translations map[string]map[string]string
 		Lang         string
-		// ↓↓↓ NEW ↓↓↓
 		DefaultLat   float64
 		DefaultLon   float64
 		DefaultZoom  int
 		DefaultLayer string
 	}{
-		Markers:	  doseData.Markers,
+		Markers:      doseData.Markers,
 		Version:      CompileVersion,
 		Translations: translations,
 		Lang:         lang,
@@ -808,55 +813,66 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer: *defaultLayer,
 	}
 
-	if err := tmpl.Execute(w, data); err != nil {
+	// Рендерим в буфер, чтобы не дублировать WriteHeader
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
 		log.Printf("Error executing template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := buf.WriteTo(w); err != nil {
+		log.Printf("Error writing response: %v", err)
 	}
 }
 
+// =====================
+// WEB  — страница трека
+// =====================
 func trackHandler(w http.ResponseWriter, r *http.Request) {
-    lang := getPreferredLanguage(r)
-    pathParts := strings.Split(r.URL.Path, "/")
-    if len(pathParts) < 3 {
-        http.Error(w, "TrackID not provided", http.StatusBadRequest)
-        return
-    }
-    trackID := pathParts[2]
+	lang := getPreferredLanguage(r)
 
-    // читаем параметры прямоугольника
-    minLat, _ := strconv.ParseFloat(r.URL.Query().Get("minLat"), 64)
-    minLon, _ := strconv.ParseFloat(r.URL.Query().Get("minLon"), 64)
-    maxLat, _ := strconv.ParseFloat(r.URL.Query().Get("maxLat"), 64)
-    maxLon, _ := strconv.ParseFloat(r.URL.Query().Get("maxLon"), 64)
+	// /trackid/<ID>
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 3 {
+		http.Error(w, "TrackID not provided", http.StatusBadRequest)
+		return
+	}
+	trackID := pathParts[2]
 
-    // маркеры этого трека в указанных границах (может вернуться пустой срез)
-    markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
-    if err != nil {
-        http.Error(w, "Error fetching markers", http.StatusInternalServerError)
-        return
-    }
+	// Параметры прямоугольника (могут быть нулями)
+	minLat, _ := strconv.ParseFloat(r.URL.Query().Get("minLat"), 64)
+	minLon, _ := strconv.ParseFloat(r.URL.Query().Get("minLon"), 64)
+	maxLat, _ := strconv.ParseFloat(r.URL.Query().Get("maxLat"), 64)
+	maxLon, _ := strconv.ParseFloat(r.URL.Query().Get("maxLon"), 64)
 
-    // *** НЕ прерываемся, даже если len(markers)==0 ***
+	// Маркеры трека в заданных границах (может вернуться пустой срез — это ок)
+	markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
+	if err != nil {
+		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
+		return
+	}
 
-    tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
-        "translate": func(key string) string {
-            if val, ok := translations[lang][key]; ok {
-                return val
-            }
-            return translations["en"][key]
-        },
-        "toJSON": func(data interface{}) (string, error) {
-            bytes, err := json.Marshal(data)
-            return string(bytes), err
-        },
-    }).ParseFS(content, "public_html/map.html"))
+	// Шаблон тот же, что и для главной карты
+	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
+		"translate": func(key string) string {
+			if val, ok := translations[lang][key]; ok {
+				return val
+			}
+			return translations["en"][key]
+		},
+		"toJSON": func(data interface{}) (string, error) {
+			bytes, err := json.Marshal(data)
+			return string(bytes), err
+		},
+	}).ParseFS(content, "public_html/map.html"))
 
 	data := struct {
 		Markers      []database.Marker
 		Version      string
 		Translations map[string]map[string]string
 		Lang         string
-		// ↓↓↓ NEW ↓↓↓
 		DefaultLat   float64
 		DefaultLon   float64
 		DefaultZoom  int
@@ -872,10 +888,17 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer: *defaultLayer,
 	}
 
-    if err := tmpl.Execute(w, data); err != nil {
-        log.Printf("Error executing template: %v", err)
-        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-    }
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		log.Printf("Error executing template: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := buf.WriteTo(w); err != nil {
+		log.Printf("Error writing response: %v", err)
+	}
 }
 
 // getMarkersHandler — если клиент передаёт zoom и границы,
