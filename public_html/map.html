@@ -391,6 +391,10 @@ var osmLayer, googleSatellite;
 var trackBounds;
 var currentTrackID = null;
 
+// ➜ новый контроллер, чтобы отменять предыдущий запрос
+var markerFetchController = null;
+
+
 /**
  * Load previously saved speed-filter state from sessionStorage.
  * If nothing is stored yet, return default state
@@ -575,13 +579,15 @@ function getPopupContent(marker) {
 }
 
 
-
-/**
- * Fetch markers for the current map view and (optionally) current track.
- * Draw only those that pass the user-selected speed filter.
- * Extra-robust: handles empty/invalid JSON so .forEach() never crashes.
- */
+/* ──────────────────────────────────────────────────────────────
+ *  updateMarkers () — запрашивает маркеры для текущего окна карты,
+ *  применяет фильтр скоростей и рисует круги.
+ *  Главное нововведение: AbortController + аккуратный .catch().
+ * ──────────────────────────────────────────────────────────────*/
 function updateMarkers() {
+	/* отменяем висящий запрос (если был) и создаём новый контроллер */
+	if (markerFetchController) markerFetchController.abort();
+	markerFetchController = new AbortController();
 
 	const zoomLevel = map.getZoom();
 	const bounds    = map.getBounds();
@@ -594,70 +600,71 @@ function updateMarkers() {
 		maxLon: bounds.getNorthEast().lng
 	};
 
-	// --- новый код: какие диапазоны скорости оставлять ---
-	const st      = loadSpeedFilterState();          // ✈️ 🚗 🚶
-	const speeds  = [];
+	/* --- кто из ✈️🚗🚶 включён — отправляем на сервер --- */
+		const st     = loadSpeedFilterState();
+	const speeds = [];
 	if (st.plane) speeds.push('plane');
 	if (st.car)   speeds.push('car');
 	if (st.ped)   speeds.push('ped');
-	if (speeds.length && speeds.length !== 3) {      // все 3 — не посылаем вовсе
+	if (speeds.length && speeds.length !== 3) {
 		params.speeds = speeds.join(',');
 	}
 
-	if (isTrackView && currentTrackID) params.trackID = currentTrackID;
+	/* если мы в режиме трека — добавляем trackID */
+		if (isTrackView && currentTrackID) params.trackID = currentTrackID;
 
 	const url = '/get_markers?' + new URLSearchParams(params);
 
-	fetch(url)
+	fetch(url, { signal: markerFetchController.signal })
 		.then(r => {
 			if (!r.ok) throw new Error(`HTTP ${r.status}`);
-			return r.json();                       // may be null / object
+			return r.json();
 		})
 		.then(json => {
-			// --- normalise payload to an array --------------------------
-			let data = [];
-			if (Array.isArray(json)) {
-				data = json;
-			} else if (json && Array.isArray(json.markers)) {
-				data = json.markers;
-			} else if (json !== null) {
-				console.warn('Unexpected get_markers payload:', json);
-			}
-			// -------------------------------------------------------------
+			/* нормализуем payload к массиву */
+				let data = [];
+			if (Array.isArray(json))             data = json;
+			else if (json && Array.isArray(json.markers)) data = json.markers;
+			else if (json !== null) console.warn('Unexpected payload:', json);
 
-			// remove old circles
-			for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+			/* удаляем старые круги */
+				for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
 			circleMarkers = {};
 
-			data.forEach(marker => {
-				if (!shouldDisplayBySpeed(marker.speed)) return;   // ← filter
+			/* рисуем новые */
+				data.forEach(marker => {
+					if (!shouldDisplayBySpeed(marker.speed)) return;
 
-				const markerKey = marker.id || marker.trackID;
-				const color     = getGradientColor(marker.doseRate);
-				const radius    = getRadius(marker.doseRate, zoomLevel);
+					const key    = marker.id || marker.trackID;
+					const color  = getGradientColor(marker.doseRate);
+					const radius = getRadius(marker.doseRate, zoomLevel);
 
-				const circleMarker = L.circleMarker([marker.lat, marker.lon], {
-					radius      : radius,
-					fillColor   : color,
-					color       : color,
-					weight      : 1,
-					opacity     : getFillOpacity(marker.speed) + 0.1,
-					fillOpacity : getFillOpacity(marker.speed)
-				})
-					.addTo(map)
-					.bindTooltip(getTooltipContent(marker),
-						{ direction: 'top',
-							className: 'custom-tooltip',
-							offset: [0, -8],
-							permanent: false })
-					.bindPopup(getPopupContent(marker));
+					const cm = L.circleMarker([marker.lat, marker.lon], {
+						radius, fillColor: color, color,
+						weight: 1,
+						opacity: getFillOpacity(marker.speed) + 0.1,
+						fillOpacity: getFillOpacity(marker.speed)
+					})
+						.addTo(map)
+						.bindTooltip(getTooltipContent(marker),
+							{ direction:'top', className:'custom-tooltip',
+								offset:[0,-8], permanent:false })
+						.bindPopup(getPopupContent(marker));
 
-				circleMarker.doseRate      = marker.doseRate; // for zoom scaling
-				circleMarkers[markerKey]   = circleMarker;
-			});
+					cm.doseRate          = marker.doseRate; // для ресайза при zoom
+					circleMarkers[key]   = cm;
+				});
 		})
-		.catch(err => console.error('Error fetching markers:', err));
+		.catch(err => {
+			/* AbortError (Chrome) и «Load failed» (Firefox) игнорируем */
+				if (err.name === 'AbortError' ||
+					(err.message && err.message.includes('Load failed'))) return;
+			console.error('Error fetching markers:', err);
+		});
 }
+
+
+
 
 let debounceTimeout;
 
@@ -675,24 +682,31 @@ function adjustMarkerRadius() {
 	}
 }
 
-function viewTrack(trackID) {
-	isTrackView = true;
-	var bounds = map.getBounds();
-	var layer = '';
-	var zoom = map.getZoom(); // Получаем текущий зум
+/* ──────────────────────────────────────────────────────────────
+	*  viewTrack () — переход в режим отдельного трека.
+	*  Добавили currentTrackID = trackID ещё ДО смены window.location.
+	* ──────────────────────────────────────────────────────────────*/
+	function viewTrack(trackID) {
+		currentTrackID = trackID;   // ✦ новое
+		isTrackView    = true;
 
-	if (map.hasLayer(googleSatellite)) {
-		layer = 'Google Satellite';
-	} else {
-		layer = 'OpenStreetMap';
+		const bounds = map.getBounds();
+		const layer  = map.hasLayer(googleSatellite) ? 'Google Satellite'
+			: 'OpenStreetMap';
+		const zoom   = map.getZoom();
+
+		const trackURL =
+			`/trackid/${trackID}` +
+			`?minLat=${bounds.getSouthWest().lat}` +
+			`&minLon=${bounds.getSouthWest().lng}` +
+			`&maxLat=${bounds.getNorthEast().lat}` +
+			`&maxLon=${bounds.getNorthEast().lng}` +
+			`&zoom=${zoom}` +
+			`&layer=${encodeURIComponent(layer)}`;
+
+		window.location.href = trackURL;
 	}
 
-	// Формируем URL для просмотра конкретного трека
-	var trackURL = `/trackid/${trackID}?minLat=${bounds.getSouthWest().lat}&minLon=${bounds.getSouthWest().lng}&maxLat=${bounds.getNorthEast().lat}&maxLon=${bounds.getNorthEast().lng}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
-
-	// Перенаправляем пользователя на страницу конкретного трека
-	window.location.href = trackURL;
-}
 
 function setBaseLayer(layerName) {
 	if (layerName === 'Google Satellite') {
@@ -708,11 +722,11 @@ function loadMapFromUrl() {
 	const params = new URLSearchParams(window.location.search);
 
 	/* базовый слой из URL (или дефолт) */
-	const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
+		const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
 	setBaseLayer(layer);
 
 	/* читаем остальные параметры */
-	const minLat = parseFloat(params.get('minLat'));
+		const minLat = parseFloat(params.get('minLat'));
 	const minLon = parseFloat(params.get('minLon'));
 	const maxLat = parseFloat(params.get('maxLat'));
 	const maxLon = parseFloat(params.get('maxLon'));
