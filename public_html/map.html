@@ -593,6 +593,17 @@ function updateMarkers() {
 		maxLat: bounds.getNorthEast().lat,
 		maxLon: bounds.getNorthEast().lng
 	};
+
+	// --- новый код: какие диапазоны скорости оставлять ---
+	const st      = loadSpeedFilterState();          // ✈️ 🚗 🚶
+	const speeds  = [];
+	if (st.plane) speeds.push('plane');
+	if (st.car)   speeds.push('car');
+	if (st.ped)   speeds.push('ped');
+	if (speeds.length && speeds.length !== 3) {      // все 3 — не посылаем вовсе
+		params.speeds = speeds.join(',');
+	}
+
 	if (isTrackView && currentTrackID) params.trackID = currentTrackID;
 
 	const url = '/get_markers?' + new URLSearchParams(params);

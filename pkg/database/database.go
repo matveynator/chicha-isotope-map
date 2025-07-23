@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"log"
 )
 
@@ -436,3 +437,175 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 	}
 	return markers, rows.Err()
 }
+
+// SpeedRange задаёт замкнутый диапазон [Min, Max] скорости.
+type SpeedRange struct{ Min, Max float64 }
+
+// GetMarkersByZoomBoundsSpeed выбирает маркеры по зуму, границам и диапазонам скорости.
+// Если speedRanges пуст, фильтр скорости не применяется.
+func (db *Database) GetMarkersByZoomBoundsSpeed(
+	zoom int,
+	minLat, minLon, maxLat, maxLon float64,
+	speedRanges []SpeedRange,
+	dbType string,
+) ([]Marker, error) {
+
+	// --- базовый WHERE -------------------------------------------
+	var (
+		sb      strings.Builder
+		args    []interface{}
+		ph      = func(n int) string { // placeholder
+			if dbType == "pgx" { return fmt.Sprintf("$%d", n) }
+			return "?"
+		}
+	)
+	sb.WriteString("zoom = " + ph(len(args)+1))
+	args = append(args, zoom)
+
+	sb.WriteString(" AND lat BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	args = append(args, minLat, maxLat)
+
+	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	args = append(args, minLon, maxLon)
+
+	// --- speed-фильтр -------------------------------------------
+	if len(speedRanges) > 0 {
+		sb.WriteString(" AND (")
+		for i, r := range speedRanges {
+			if i > 0 { sb.WriteString(" OR ") }
+			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+			args = append(args, r.Min, r.Max)
+		}
+		sb.WriteString(")")
+	}
+
+	// --- SQL окончательно ---------------------------------------
+	query := fmt.Sprintf(`
+		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+		FROM markers
+		WHERE %s;`, sb.String())
+
+	// pgx использует $1,$2,… — мы их уже расставили через ph()
+	rows, err := db.DB.Query(query, args...)
+	if err != nil { return nil, fmt.Errorf("query: %w", err) }
+	defer rows.Close()
+
+	var out []Marker
+	for rows.Next() {
+		var m Marker
+		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date,
+			&m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ------------------------------------------------------------------
+// GetMarkersByTrackIDZoomBoundsSpeed
+// ------------------------------------------------------------------
+// Selects markers that belong to a single track, lie inside the given
+// viewport, match the requested zoom level and fall into at least one
+// of the supplied speed ranges.
+//
+// • trackID         – UUID or any unique identifier of the track.
+// • zoom            – current Leaflet/XYZ-tile zoom level.
+// • minLat/minLon   – south-west corner of the requested bounding box.
+// • maxLat/maxLon   – north-east corner of the requested bounding box.
+// • speedRanges     – zero, one or many closed intervals [Min, Max] m/s.
+//                     Empty → no speed filter at all.
+// • dbType          – "pgx" → PostgreSQL dollar-placeholders ($1,$2,…),
+//                     anything else → use "?" (SQLite, Genji, MySQL…).
+//
+// The function never locks—concurrency is achieved by running each call
+// in its own goroutine and passing the result through a channel if the
+// caller needs to merge several queries.
+//
+// It relies solely on the standard         database/sql     package.
+// ------------------------------------------------------------------
+func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
+	trackID string,
+	zoom int,
+	minLat, minLon, maxLat, maxLon float64,
+	speedRanges []SpeedRange,
+	dbType string,
+) ([]Marker, error) {
+
+	// ---------- helper to emit positional placeholders -------------
+	ph := func(n int) string {
+		if dbType == "pgx" {
+			return fmt.Sprintf("$%d", n) // PostgreSQL style: $1, $2, …
+		}
+		return "?" // common '?' placeholder (SQLite / MySQL / Genji / …)
+	}
+
+	// ---------- build WHERE clause incrementally -------------------
+	var (
+		sb   strings.Builder // keeps WHERE fragment
+		args []interface{}   // associated bound values
+	)
+
+	// 1. Fixed conditions -------------------------------------------------
+	sb.WriteString("trackID = " + ph(len(args)+1))
+	args = append(args, trackID)
+
+	sb.WriteString(" AND zoom = " + ph(len(args)+1))
+	args = append(args, zoom)
+
+	sb.WriteString(" AND lat BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	args = append(args, minLat, maxLat)
+
+	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	args = append(args, minLon, maxLon)
+
+	// 2. Optional speed filter --------------------------------------------
+	if len(speedRanges) > 0 {
+		sb.WriteString(" AND (")
+		for i, r := range speedRanges {
+			if i > 0 {
+				sb.WriteString(" OR ")
+			}
+			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+			args = append(args, r.Min, r.Max)
+		}
+		sb.WriteString(")")
+	}
+
+	// 3. Final SQL statement ----------------------------------------------
+	query := fmt.Sprintf(`
+		SELECT
+			id, doseRate, date, lon, lat, countRate,
+			zoom, speed, trackID
+		FROM markers
+		WHERE %s;`, sb.String())
+
+	// ---------- execute ---------------------------------------------------
+	rows, err := db.DB.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+
+	// ---------- stream → struct slice ------------------------------------
+	var markers []Marker
+	for rows.Next() {
+		var m Marker
+		if err := rows.Scan(
+			&m.ID,
+			&m.DoseRate,
+			&m.Date,
+			&m.Lon,
+			&m.Lat,
+			&m.CountRate,
+			&m.Zoom,
+			&m.Speed,
+			&m.TrackID,
+		); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		markers = append(markers, m)
+	}
+	return markers, rows.Err()
+}
+

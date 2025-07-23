@@ -65,6 +65,15 @@ const (
 	markerRadiusPx = 10.0 // радиус кружка в пикселях
 )
 
+type SpeedRange struct{ Min, Max float64 }
+
+var speedCatalog = map[string]SpeedRange{
+	"ped":   {0, 7},      // < 7 м/с   (~0-25 км/ч)
+	"car":   {7, 70},     // 7–70 м/с  (~25-250 км/ч)
+	"plane": {70, 500},   // > 70 м/с  (~250-1800 км/ч)
+}
+
+
 // withServerHeader оборачивает любой http.Handler, добавляя
 // заголовок "Server: chicha-isotope-map/<CompileVersion>".
 //
@@ -1007,30 +1016,48 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 // можно брать именно те маркеры, что соответствуют запрошенному зуму.
 // Тогда никакой дополнительной логики в runtime не нужно — маркеры уже подготовлены.
 func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
-	zoomStr := r.URL.Query().Get("zoom")
-	minLat, _ := strconv.ParseFloat(r.URL.Query().Get("minLat"), 64)
-	minLon, _ := strconv.ParseFloat(r.URL.Query().Get("minLon"), 64)
-	maxLat, _ := strconv.ParseFloat(r.URL.Query().Get("maxLat"), 64)
-	maxLon, _ := strconv.ParseFloat(r.URL.Query().Get("maxLon"), 64)
-	zoomLevel, _ := strconv.Atoi(zoomStr)
-	trackID := r.URL.Query().Get("trackID")
+	q              := r.URL.Query()
+	zoom, _        := strconv.Atoi(q.Get("zoom"))
+	minLat, _      := strconv.ParseFloat(q.Get("minLat"), 64)
+	minLon, _      := strconv.ParseFloat(q.Get("minLon"), 64)
+	maxLat, _      := strconv.ParseFloat(q.Get("maxLat"), 64)
+	maxLon, _      := strconv.ParseFloat(q.Get("maxLon"), 64)
+	trackID        := q.Get("trackID")
 
-	var markers []database.Marker
-	var err error
-
-	if trackID != "" {
-		markers, err = db.GetMarkersByTrackIDZoomAndBounds(trackID, zoomLevel, minLat, minLon, maxLat, maxLon, *dbType)
-	} else {
-		markers, err = db.GetMarkersByZoomAndBounds(zoomLevel, minLat, minLon, maxLat, maxLon, *dbType)
+	// ----------- парсим speed-фильтр -----------
+	var sr []database.SpeedRange
+	if s := q.Get("speeds"); s != "" {
+		for _, tag := range strings.Split(s, ",") {
+			if r, ok := speedCatalog[tag]; ok {
+				sr = append(sr, database.SpeedRange(r))
+			}
+		}
+	}
+	// если ни одного диапазона не осталось — значит все выключены, возвращаем пустой массив
+	if len(sr) == 0 && q.Get("speeds") != "" {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+		return
 	}
 
+	// ----------- запрос в БД -----------
+	var (
+		markers []database.Marker
+		err     error
+	)
+	if trackID != "" {
+		markers, err = db.GetMarkersByTrackIDZoomBoundsSpeed(
+			trackID, zoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
+	} else {
+		markers, err = db.GetMarkersByZoomBoundsSpeed(
+			zoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
+	}
 	if err != nil {
 		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(markers)
+	_ = json.NewEncoder(w).Encode(markers)
 }
 
 // =====================
