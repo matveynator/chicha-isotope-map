@@ -7,10 +7,16 @@
 
 ## 1 · Быстрый старт в Docker
 
-| Сценарий                       | Команда                                                                                                                                                               |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Локальный порт** (5000)      | `bash docker run -d --name isotope-map \ -e PORT=5000 \ -p 5000:5000 \ -v isotope-data:/var/lib/postgresql/data \ matveynator/chicha-isotope-map:latest`              |
-| **Домен + HTTPS** (`jutsa.ru`) | `bash docker run -d --name isotope-map \ -e DOMAIN=jutsa.ru \ -p 80:80 -p 443:443 \ -v isotope-data:/var/lib/postgresql/data \ matveynator/chicha-isotope-map:latest` |
+
+### Локальный порт (5000)      
+```
+docker run -d --name chicha-isotope-map -e PORT=5000 -p 5000:5000 -v isotope-data:/var/lib/postgresql/data matveynator/chicha-isotope-map:latest
+```
+ 
+### Домен + HTTPS (`domain.com`) 
+```
+docker run -d --name chicha-isotope-map -e DOMAIN=domain.com  -p 80:80 -p 443:443 -v isotope-data:/var/lib/postgresql/data matveynator/chicha-isotope-map:latest
+``` 
 
 ### Опции карты
 
@@ -24,21 +30,16 @@
 ### Бэкап / крон (раз в сутки)
 
 ```bash
-# /etc/cron.d/isotope-backup
-0 3 * * * root docker exec isotope-map \
-  pg_dump -U chicha_isotope_map chicha_isotope_map \
-  > /var/backups/isotope_$(date +\%F).sql
+# crontab -e
+0 3 * * * docker exec isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz 
 ```
 
 ### Восстановление из бэкапа
 
 ```bash
-docker exec -it isotope-map psql -U postgres -c \
-  "DROP DATABASE IF EXISTS chicha_isotope_map; \
-   CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
+docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
 
-cat /var/backups/isotope_2025-07-24.sql | docker exec -i isotope-map \
-  psql -U chicha_isotope_map chicha_isotope_map
+zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotope-map psql -U chicha_isotope_map chicha_isotope_map
 ```
 
 ---
@@ -48,12 +49,27 @@ cat /var/backups/isotope_2025-07-24.sql | docker exec -i isotope-map \
 > **Скачайте → сделайте исполняемым → запустите**.
 > Выполняйте команды **от root** (`sudo -i` либо добавьте `sudo` перед каждой).
 
-| Платформа               | Команда                                                                                                                                                                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Linux 64-bit amd64**  | `bash curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 \ > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map`     |
-| **macOS Intel**         | `bash curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 \ > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map`    |
-| **macOS Apple Silicon** | `bash curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 \ > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map`    |
-| **Другие платформы**    | См. список файлов на странице релиза: [https://github.com/matveynator/chicha-isotope-map/releases/tag/latest](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest) (Linux ARM, Windows \*.exe, FreeBSD, OpenBSD, NetBSD и др.) |
+
+### Linux 64-bit amd6  
+```
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64  > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
+```
+
+### macOS Intel      
+```
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
+```
+
+### macOS Apple Silicon
+```
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
+```
+
+### Другие платформы
+
+См. список файлов на странице релиза:
+[https://github.com/matveynator/chicha-isotope-map/releases/tag/latest](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest) 
+(Linux ARM, Windows \*.exe, FreeBSD, OpenBSD, NetBSD и др.) 
 
 После установки запустите, например:
 
