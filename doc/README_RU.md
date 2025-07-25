@@ -27,7 +27,6 @@ Chicha‑Isotope‑Map — это не просто программа, это �
 
 ---
 
-
 ## 🚀 Установка и собственный узел за 5 минут!
 
 ### 1. Быстрый старт в Docker
@@ -65,8 +64,9 @@ docker run -d \
 
 Программа автоматически получит и будет продлевать SSL‑сертификаты.
 
-#### Дополнительные настройки карты
+#### Дополнительные настройки карты 
 
+Все доступные опции можно увидеть по вызову --help у программы.
 По желанию укажите стартовую точку и стиль:
 
 ```text
@@ -103,29 +103,23 @@ zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotop
 * **Linux x64**:
 
   ```bash
-  curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 \
-    > /usr/local/bin/chicha-isotope-map \
-    && chmod +x /usr/local/bin/chicha-isotope-map \
-    && chicha-isotope-map
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
   ```
 
 * **macOS Intel**:
 
   ```bash
-  curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 \
-    > /usr/local/bin/chicha-isotope-map \
-    && chmod +x /usr/local/bin/chicha-isotope-map \
-    && chicha-isotope-map
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
   ```
 
 * **macOS Apple Silicon**:
 
   ```bash
-  curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 \
-    > /usr/local/bin/chicha-isotope-map \
-    && chmod +x /usr/local/bin/chicha-isotope-map \
-    && chicha-isotope-map
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
   ```
+
+Остальные платформы  Windows / ARM / BSD можно скачать на странице релизов [https://github.com/matveynator/chicha-isotope-map/releases/tag/latest](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)
+
 
 После запуска по умолчанию программа слушает порт 8765. Откройте [http://localhost:8765](http://localhost:8765).
 
@@ -141,5 +135,3 @@ zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotop
 
 
 Карта изотопов Chicha была создана для Лаборатории радиационных исследований Дмитрия Игнатенко и вдохновлена японским сообществом Safecast — группой граждан‑учёных, которые превратили трагедию в знание. Ища, измеряя и распространяя правду о радиации, вы делаете невидимое — видимым, помогая миру не повторить Чернобыль и Фукусиму. Ваша работа — это свет науки, безопасности и надежды. Спасибо вам за то, что превращаете фоновое излучение из повода для страха в источник понимания, за то, что ищете, измеряете, делитесь — и с мужеством идёте первыми.
-
-
