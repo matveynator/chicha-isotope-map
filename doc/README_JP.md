@@ -1,147 +1,139 @@
-> *Chicha Isotope Map* は **ドミトリー・イグナチェンコ放射線研究所** のために開発され、日本発の市民科学コミュニティ [Safecast](https://map.safecast.org) に深くインスパイアされています。放射線を「探し・測り・共有」するあなた方の行動は、見えないものを可視化し、**チェルノブイリ** や **福島** のような悲劇を二度と繰り返させない未来を切り拓きます。あなた方の挑戦は、科学と安全、そして希望への道を照らします。  
-> 見えないものを可視化し、バックグラウンド放射線を恐れではなく知識の源へと変えてくれてありがとう。そして、探し、測り、共有し、勇敢に先頭に立ってくれる皆さんに感謝します。  
+# 🌌 Chicha‑Isotope‑Map ― 放射線の隠れた小径へのガイド
 
-### 🌌 **chicha-isotope-map** — 放射線の隠れた経路をたどる探査ツール
+Chicha‑Isotope‑Map は単なるプログラムではありません。肉眼では見えないが計測器には確かに感じられる微粒子の世界を覗くための「窓」です。これまでは「きっとあるはず」と推測するしかなかったものが、今は地図上に鮮やかな点として描かれます――穏やかな緑から、不安を呼ぶ赤まで。
 
-> **「見えないものを見る」このプログラムは放射性の痕跡を視覚化し、見えない軌跡を鮮やかな地図に変えます。**
+* **何を、どこから読み込むの？**
 
----
+  * `.kml`, `.kmz`, `.json`, `.rctrk`（AtomFast, RadiaCode）形式のファイルから読み込みます。
+  * すべてを独自のデータベースに保存するので、数年後でも正確に振り返れます。
+    例：「2024年3月12日、ここは 4.1 µR/h だった」と。
 
-## 📖 **プロジェクトについて**
+* **基準は何？**
 
-**Chicha-Isotope-Map** は、放射性粒子が作る見えない世界を可視化するツールです。地面の下を通る放射性同位体の痕跡は、風、車、人によって運ばれ、地図上に表示されます。緑（安全）から赤（危険）まで、痕跡の強さによって色分けされます。
-
-`.kml`, `.kmz`, `.json`, `.rctrk`（AtomFast や RadiaCode）形式のデータを読み込み、データベースに保存します。何年も後に、放射線レベルの変化を振り返ることができます。
-
----
-
-### 🌍 **自然に着想を得て**
-
-プログラムは**自然放射線レベル**を基準にしています。手つかずの自然では、通常の放射線量は **1〜4 µR/h** です。これを超える値は**放射性汚染**とみなされます。Chicha-Isotope-Map はこのような異常を検出し、見えない足跡を可視化します。
+  * 自然放射線のバックグラウンド： “きれい” な場所ではおおよそ 0.8〜4 µR/h。
+  * それ以上は外来の汚染です。風や車、人によってアイソトープがどのように拡散したか、雪原についた足跡のように地図上で確認できます。
 
 ---
 
-### 📸 **ライブデモ**
+### 📸 **スクリーンショット**
 
-<a href="https://jutsa.ru" target="_blank">こちらから実際の動作を確認できます。</a>
-
----
-
-### 📸 **ビジュアル例**
-
-ソ連時代、キスロヴォツク公園には屋外プールが建設されました。コンクリートは、ベシュタウ山の放射性鉱石を加工していたピャチゴルスクの工場から運ばれた可能性があります。トラックが材料を運ぶ過程で、道路に放射性の粉塵が目に見えない形で残りました。数十年後も、それらの痕跡は地図上に黄色の点として現れます——まるで秋の落ち葉のように。公園のその他の部分は、今も清潔で静か、そして緑に包まれています。 <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
+…ソ連時代、キスロヴォツク公園では屋外プールが建設されていました。もしかすると、ベシュタウ山の放射性鉱石をかつて処理していたピャチゴルスクの工場からコンクリートを持ってきたのかもしれません。道を走ったトラックの車輪から舞い上がった粉塵はアスファルトに降り積もり、目には見えない印を残しました。年月が経った今でも、その痕跡は微かに光り続け、まるで昔の記憶のようです。工事現場から舞い散った塵は公園に降り積もり、地図上では秋の落ち葉のような黄色の斑点に見えます。一方、公園の他の部分は清浄で穏やかな緑です。 <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
 
 ---
 
-## 📥 **ダウンロードと開始方法** 📥
+### 📸 **デモ**
 
-### Linux 64-bit amd64：
+<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
 
-※ROOTユーザーとしてインストールしてください。
+<a href="https://jutsa.ru" target="_blank">こちらでリアルタイム動作を見ることができます。</a>
+
+---
+
+## 🚀 インストールと自前ノードの立ち上げ（5分で完了！）
+
+### 1. Docker でクイックスタート
+
+**なぜ Docker？**
+Docker はプログラムとその実行環境を「コンテナ」にまとめます。データベースや依存関係を手作業で整える必要はありません。用意されたイメージを実行するだけです。
+
+#### ローカル実行（ポート 5000）
 
 ```bash
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+docker run -d \
+  --name chicha-isotope-map \
+  -e PORT=5000 \
+  -p 5000:5000 \
+  -v isotope-data:/var/lib/postgresql/data \
+  matveynator/chicha-isotope-map:latest
 ```
 
-### Mac OS X Intel：
+ブラウザで [http://localhost:5000](http://localhost:5000) を開くと地図が表示されます。
 
-※ROOTユーザーとしてインストールしてください。
+#### 自分のドメイン＋HTTPSで運用する
+
+1. `domain.com` があなたのサーバーの IP を指していることを確認。
+2. ポート 80 と 443 が空いていることを確認。
+3. **root** 権限で以下を実行：
 
 ```bash
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+docker run -d \
+  --name chicha-isotope-map \
+  -e DOMAIN=domain.com \
+  -p 80:80 -p 443:443 \
+  -v isotope-data:/var/lib/postgresql/data \
+  matveynator/chicha-isotope-map:latest
 ```
 
-### Mac OS X Apple Silicon：
+プログラムが自動的に SSL 証明書を取得・更新します。
 
-※ROOTユーザーとしてインストールしてください。
+#### 地図の追加設定
+
+利用可能なオプションは `--help` で確認できます。
+必要に応じて開始位置やスタイルを指定：
+
+```text
+  -e DEFAULT_LAT=51.389      # 緯度
+  -e DEFAULT_LON=30.099      # 経度
+  -e DEFAULT_ZOOM=11         # ズームレベル
+  -e DEFAULT_LAYER="OpenStreetMap" または "Google Satellite"
+```
+
+#### 定期バックアップ（1日1回）
+
+`crontab -e` に追加：
 
 ```bash
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+0 3 * * * docker exec chicha-isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz
 ```
 
-[他のプラットフォーム向け（Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD）はこちら](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)
+#### アーカイブからの復元
+
+```bash
+docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
+
+zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotope-map psql -U chicha_isotope_map chicha_isotope_map
+```
 
 ---
 
-## 🛠 **使い方**
+### 2. Docker を使わないインストール
 
-デフォルト設定で起動するには：
+コンテナが好きでない方は、ビルド済みバイナリをダウンロードして一瞬で起動できます。さらに簡単です！
 
-```bash
-chicha-isotope-map
-```
+> コマンドは **root** 権限で実行してください（`sudo -i` または `sudo ...`）。
 
-#### チェルノブイリ（1986年）— 蒸気爆発と黒鉛火災；ヨーロッパ全域に大規模な放射性降下物
+* **Linux x64**:
 
 ```
-./chicha-isotope-map -default-lat=51.389 -default-lon=30.099 -default-zoom=11 -default-layer="Google Satellite"
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
 ```
 
-#### 福島第一（2011年）— 津波で冷却機能が喪失；炉心溶融し海と大気へ放出
+* **macOS Intel**:
 
 ```
-./chicha-isotope-map -default-lat=37.421 -default-lon=141.033 -default-zoom=12 -default-layer="Google Satellite"
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
 ```
 
-#### キシュティム／マヤーク（1957年）— 廃液タンク爆発；ウラル山脈上空に放射性プルーム
+* **macOS Apple Silicon**:
 
 ```
-./chicha-isotope-map -default-lat=55.700 -default-lon=60.800 -default-zoom=9 -default-layer="Google Satellite"
+curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
 ```
 
-#### スリーマイル島（1979年）— 炉心部分溶融；場外への放出は限定的
+その他のプラットフォーム（Windows / ARM / BSDなど）はリリースページから取得できます：
+[https://github.com/matveynator/chicha-isotope-map/releases/tag/latest](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)
 
-```
-./chicha-isotope-map -default-lat=40.153 -default-lon=-76.723 -default-zoom=12 -default-layer="Google Satellite"
-```
-
-#### ウィンドスケール（1957年）— 黒鉛炉火災；イギリス上空にヨウ素131放出
-
-```
-./chicha-isotope-map -default-lat=54.432 -default-lon=-3.553 -default-zoom=12 -default-layer="Google Satellite"
-```
-
-#### ゴイアニア（1987年）— 孤立したCs‑137線源が開封；都市全域が汚染
-
-```
-./chicha-isotope-map -default-lat=-16.686 -default-lon=-49.264 -default-zoom=13 -default-layer="Google Satellite"
-```
-
-#### ピャチゴルスク、ベシュタウ山（1940〜50年代）— ソ連初の原爆用ウラン鉱山；地区全域に汚染
-
-```
-./chicha-isotope-map -default-lat=44.089 -default-lon=42.976 -default-zoom=11 -default-layer="Google Satellite"
-```
-
-
-オプション付きで起動するには：
-
-```bash
-chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=yourpassword --db-name=isotope_db --pg-ssl-mode=prefer
-```
-
-### PostgreSQL 接続例（`pgx`ドライバ）：
-
-```bash
-chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=my_secure_password --db-name=radiation_data --pg-ssl-mode=require
-```
-
-この構成では、ローカルマシン上の `radiation_data` という PostgreSQL データベースに接続します。パスワードやホスト名は適宜変更してください。
+起動後、デフォルトではポート 8765 を待ち受けています。
+[http://localhost:8765](http://localhost:8765) を開いてください。
 
 ---
 
-### Webインターフェース
+## 🤝 なぜ自分のノードを？
 
-1. ブラウザで [http://localhost:8765](http://localhost:8765) を開きます。
-2. **Upload** ボタンをクリックして、データファイルをアップロードします。
-3. 地図上のマーカーにマウスを乗せると、放射線量、タイムスタンプ、位置情報が表示されます。
+* **独立性:** データはあなたの手元にあり、他人のネットワークに依存しません。
+* **ネットワークの強靭性:** ノードが多ければ多いほど、妨害や改ざんは難しくなります。
+* **地域のバックグラウンド履歴:** あなたの地域の放射線地図を長期保存できます。
 
----
+あなたのサーバー一台一台が、もう一つの情報の灯台です。世界をより透明にしてくれてありがとう！
 
-## ☢️ **なぜ重要なのか**
-
-放射線は見えませんが、危険です。土壌、水、植物に入り込み、蓄積していきます。このプログラムは、汚染がどこまで広がっているかを可視化し、理解と行動につなげます。
-
----
-
-> **「もしも同位体が自分の物語を語れたなら、このプログラムは要らなかったでしょう。でも語れないからこそ、Chicha-Isotope-Map がその声になるのです。」**
+Chicha アイソトープマップは、ドミトリー・イグナテンコ放射線研究ラボのために作られ、日本のコミュニティ Safecast に触発されました。彼らは悲劇を知識へと変えた市民科学者の集団です。放射線の真実を探し、測り、伝えることで、あなたは見えないものを見えるようにし、チェルノブイリやフクシマを繰り返さないための力になります。あなたの活動は科学・安全・希望の光です。バックグラウンド放射線を恐怖の種ではなく理解の源へと変え、探し、測り、共有し、勇気を持って最初の一歩を踏み出してくれてありがとう。
