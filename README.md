@@ -2,134 +2,146 @@
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
 
-### 🌌 **chicha-isotope-map** — explorer of radiation's hidden paths.
 
-> **"See the unseen." This program visualizes radioactive traces, turning invisible pathways into vibrant maps.**
+# 🌌 Chicha‑Isotope‑Map — a guide to the hidden paths of radiation
 
----
+Chicha‑Isotope‑Map isn’t just software; it’s a window into the world of micro‑particles, invisible to the eye yet obvious to an instrument. Before, you could only guess at them; now they’re drawn as bright dots on a map, from calm green to alarming red.
 
-## 📖 **About the Project**
+* **What does it read, and from where?**
 
-**Chicha-Isotope-Map** reveals the invisible world of radioactive particles. Beneath your feet, isotopes leave traces as they travel, carried by wind, vehicles, or people. This program visualizes them on a map, coloring each trace—from green (safe) to red (danger).
+  * From `.kml`, `.kmz`, `.json`, `.rctrk` files (AtomFast, RadiaCode).
+  * It saves everything in its own database so that years from now you can say: “On 12 March 2024 it was 4.1 µR/h here.”
 
-It reads data from formats like `.kml`, `.kmz`, `.json`, and `.rctrk` (AtomFast and RadiaCode) and stores it in a database. Years later, you can look back and see how radiation levels changed over time.
+* **What’s our starting point?**
 
----
-
-### 🌍 **Inspired by Nature**
-
-The program uses **natural background radiation** as a baseline. In untouched areas, normal radiation is around **1–4 µR/h**. Anything above this is flagged as **radioactive contamination**. Chicha-Isotope-Map tracks these anomalies, turning invisible footprints into visible warnings.
+  * Natural background radiation: in a “clean” area it’s roughly 0.8–4 µR/h.
+  * Anything higher is foreign contamination. You’ll see how isotopes were scattered by wind, cars and people, like footprints on freshly fallen snow.
 
 ---
 
-### 📸 **Live Demo**
+### 📸 **Screenshots**
 
-<a href="https://jutsa.ru" target="_blank">See the program in action here.</a>
-
----
-
-### 📸 **Visual Example**
-
-In the Soviet era, an open-air swimming pool was built in Kislovodsk Park. The concrete may have come from a factory in Pyatigorsk that processed radioactive ore from Mount Beshtau. Trucks carried materials, leaving invisible dust on the roads. Decades later, these traces still show up on the map as yellow marks—like patches of autumn leaves. The rest of the park remains clean, peaceful, and green.
-<img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
+... Back in the Soviet era they were building an open-air swimming pool in Kislovodsk Park. Perhaps they used concrete from a plant in Pyatigorsk, where radioactive ore from Mount Beshtau had once been processed. Lorries drove along the road and dust from their wheels settled on the asphalt, leaving invisible marks. Years have passed, yet these traces still glow, like memories of the past. The dust that blew around the construction site settled in the park — on the map it’s yellow, like patches of autumn leaves. Everything else in the park is clean, calm, green. <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
 
 ---
 
-## 📥 **Download and Get Started** 📥
+### 📸 **Demo**
 
-### Linux 64-bit amd64: 
-Note: Install as ROOT user. 
+<a href="https://jutsa.ru" target="_blank">You can see the programme working in real time here.</a>
+
+---
+
+## 🚀 Installation and your own node in 5 minutes!
+
+### 1. Quick start with Docker
+
+**Why Docker?**
+Docker packs the programme and its environment into a “container”. You don’t need to configure databases and dependencies by hand — just run the ready-made image.
+
+#### Local run (port 5000)
+
 ```bash
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+docker run -d \
+  --name chicha-isotope-map \
+  -e PORT=5000 \
+  -p 5000:5000 \
+  -v isotope-data:/var/lib/postgresql/data \
+  matveynator/chicha-isotope-map:latest
 ```
 
-### Mac OS X Intel:
-Note: Install as ROOT user.
+Open [http://localhost:5000](http://localhost:5000) in your browser to see the map.
+
+#### Under your own domain with HTTPS
+
+1. Make sure `domain.com` points to your server’s IP.
+2. Ports 80 and 443 are free.
+3. Run the command as **root**:
+
 ```bash
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+docker run -d \
+  --name chicha-isotope-map \
+  -e DOMAIN=domain.com \
+  -p 80:80 -p 443:443 \
+  -v isotope-data:/var/lib/postgresql/data \
+  matveynator/chicha-isotope-map:latest
 ```
 
-### Mac OS X Apple Silicon:
-Note: Install as ROOT user.
-```bash
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map; chmod +x /usr/local/bin/chicha-isotope-map; chicha-isotope-map --version;
+The programme will automatically obtain and renew SSL certificates.
+
+#### Additional map settings (check --help for available options)
+
+Optionally set a starting point and style:
+
+```text
+  -e DEFAULT_LAT=51.389      # latitude
+  -e DEFAULT_LON=30.099      # longitude
+  -e DEFAULT_ZOOM=11         # zoom level
+  -e DEFAULT_LAYER="OpenStreetMap" or "Google Satellite"
 ```
-                
-[Download for all other platforms: Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)             
+
+#### Regular backups (once a day)
+
+Add to `crontab -e`:
+
+```bash
+0 3 * * * docker exec chicha-isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz
+```
+
+#### Restoring from an archive
+
+```bash
+docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
+
+zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotope-map psql -U chicha_isotope_map chicha_isotope_map
+```
 
 ---
 
-## 🛠 **How to Use?**
+### 2. Installing without Docker
 
-Run the program with default settings:
-```bash
-chicha-isotope-map
-```
+If you’re not keen on containers, download a ready-made binary and launch it in seconds — even easier!
 
-#### Chernobyl (1986) — steam explosion & graphite fire; massive fallout across Europe
-```
-./chicha-isotope-map -default-lat=51.389 -default-lon=30.099 -default-zoom=11 -default-layer="Google Satellite"
-```
+> Run the commands as **root** (`sudo -i` or `sudo ...`).
 
-#### Fukushima Daiichi (2011) — tsunami disabled cooling; core melts & releases to sea/air
-```
-./chicha-isotope-map -default-lat=37.421 -default-lon=141.033 -default-zoom=12 -default-layer="Google Satellite"
-```
+* **Linux x64**:
 
-#### Kyshtym / Mayak (1957) — waste‑tank explosion; radioactive plume over the Urals
-```
-./chicha-isotope-map -default-lat=55.700 -default-lon=60.800 -default-zoom=9 -default-layer="Google Satellite"
-```
+  ```bash
+  curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 \
+    > /usr/local/bin/chicha-isotope-map \
+    && chmod +x /usr/local/bin/chicha-isotope-map \
+    && chicha-isotope-map
+  ```
 
-#### Three Mile Island (1979) — partial core meltdown; limited off‑site release
-```
-./chicha-isotope-map -default-lat=40.153 -default-lon=-76.723 -default-zoom=12 -default-layer="Google Satellite"
-```
+* **macOS Intel**:
 
-#### Windscale (1957) — graphite‑reactor fire; iodine‑131 release over UK
-```
-./chicha-isotope-map -default-lat=54.432 -default-lon=-3.553 -default-zoom=12 -default-layer="Google Satellite"
-```
+  ```bash
+  curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 \
+    > /usr/local/bin/chicha-isotope-map \
+    && chmod +x /usr/local/bin/chicha-isotope-map \
+    && chicha-isotope-map
+  ```
 
-#### Goiânia (1987) — orphaned Cs‑137 source opened; city‑wide contamination
-```
-./chicha-isotope-map -default-lat=-16.686 -default-lon=-49.264 -default-zoom=13 -default-layer="Google Satellite"
-```
+* **macOS Apple Silicon**:
 
-#### Pyatigorsk, Mount Beshtau (1940s‑50s) — first USSR atomic bomb uranium mines; district‑wide contamination
-```
-./chicha-isotope-map -default-lat=44.089 -default-lon=42.976 -default-zoom=11 -default-layer="Google Satellite"
-```
+  ```bash
+  curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 \
+    > /usr/local/bin/chicha-isotope-map \
+    && chmod +x /usr/local/bin/chicha-isotope-map \
+    && chicha-isotope-map
+  ```
 
-Or customize with additional options:
-```bash
-chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=yourpassword --db-name=isotope_db --pg-ssl-mode=prefer
-```
-
-### PostgreSQL Example (`pgx` driver):
-```bash
-chicha-isotope-map --port=8765 --db-type=pgx --db-host=localhost --db-port=5432 --db-user=postgres --db-pass=my_secure_password --db-name=radiation_data --pg-ssl-mode=require
-```
-
-This configuration connects to a PostgreSQL database named `radiation_data` on the local machine. Replace `my_secure_password` with your database password. Adjust the host, port, or database name as needed.
+By default the programme listens on port 8765. Open [http://localhost:8765](http://localhost:8765).
 
 ---
 
-### Web Interface:
+## 🤝 Why run your own node?
 
-1. Open [http://localhost:8765](http://localhost:8765) in your web browser.
-2. Use the **Upload** button to add your data files.
-3. Explore the map: hover over markers to view radiation levels, timestamps, and locations.
+* **Independence:** your data stays with you and doesn’t depend on someone else’s network.
+* **Network resilience:** the more nodes, the harder it is to compromise.
+* **Local background history:** preserve your region’s radiation map for years to come.
 
----
+Every server you add is another beacon of information. Thank you for making the world more transparent!
 
-## ☢️ **Why It Matters**
+The Chicha Isotope Map was created for Dmitry Ignatenko’s Radiation Research Laboratory and inspired by the Japanese Safecast community — a group of citizen scientists who turned tragedy into knowledge. By seeking, measuring and sharing the truth about radiation, you make the invisible visible, helping the world avoid another Chernobyl or Fukushima. Your work is the light of science, safety and hope. Thank you for turning background radiation from a cause for fear into a source of understanding, for searching, measuring, sharing — and for having the courage to go first.
 
-Radiation is invisible but dangerous. It doesn’t just stay in one place—it seeps into soil, water, and plants, accumulating over time. This program helps you see where contamination has spread, making the invisible visible and empowering you to understand and act.
-
----
-
-> **"If isotopes could tell their stories, they wouldn’t need this program. But since they can’t, Chicha-Isotope-Map speaks for them."**
-
-> *Chicha Isotope Map* was created for **Dmitry Ignatenko’s Radiation Research Laboratory** and is deeply inspired by Japan’s [**Safecast**](https://map.safecast.org) community of citizen‑scientists who turned crisis into knowledge. By searching, measuring, and sharing the truth about radiation, you make the invisible visible and help ensure that tragedies like **Chernobyl** and **Fukushima** remain in the past. Your work lights a path of science, safety, and hope.  Thank you for making the invisible visible, where background radiation is not fear but a source of knowledge — and for seeking, measuring, sharing, and bravely going first.  
 
