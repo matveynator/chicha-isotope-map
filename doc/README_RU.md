@@ -23,6 +23,8 @@ Chicha‑Isotope‑Map — это не просто программа, это �
 
 ### 📸 **Демо**
 
+<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
+
 <a href="https://jutsa.ru" target="_blank">Вот здесь можно посмотреть работу программы в реальном времени.</a>
 
 ---
