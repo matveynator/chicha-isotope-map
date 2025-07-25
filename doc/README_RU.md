@@ -44,12 +44,14 @@
 ## 1 · Быстрый старт в Docker
 
 
-### Локальный порт (5000)      
+### Локальный порт (например порт 5000)      
 ```
 docker run -d --name chicha-isotope-map -e PORT=5000 -p 5000:5000 -v isotope-data:/var/lib/postgresql/data matveynator/chicha-isotope-map:latest
 ```
  
 ### Домен + HTTPS (`domain.com`) 
+Ваш домен domain.com должен быть прописан на IP адрес вашего сервера в DNS, и на сервере должны быть разрешены и не заняты порты 80 (HTTP) и 443 (HTTPS), программа автоматически получит необходимые сертификаты и будет продлевать их каждый месяц тоже автоматически. Запускать программу надо с правами суперпользователя.
+
 ```
 docker run -d --name chicha-isotope-map -e DOMAIN=domain.com  -p 80:80 -p 443:443 -v isotope-data:/var/lib/postgresql/data matveynator/chicha-isotope-map:latest
 ``` 
