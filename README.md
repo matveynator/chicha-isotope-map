@@ -1,6 +1,3 @@
-> *Chicha Isotope Map* was created for **Dmitry Ignatenko’s Radiation Research Laboratory** and is deeply inspired by Japan’s [**Safecast**](https://map.safecast.org) community of citizen‑scientists who turned crisis into knowledge. By searching, measuring, and sharing the truth about radiation, you make the invisible visible and help ensure that tragedies like **Chernobyl** and **Fukushima** remain in the past. Your work lights a path of science, safety, and hope.  Thank you for making the invisible visible, where background radiation is not fear but a source of knowledge — and for seeking, measuring, sharing, and bravely going first.  
-
-
 - [🇫🇷 Français](/doc/README_FR.md)
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
@@ -133,3 +130,6 @@ Radiation is invisible but dangerous. It doesn’t just stay in one place—it s
 ---
 
 > **"If isotopes could tell their stories, they wouldn’t need this program. But since they can’t, Chicha-Isotope-Map speaks for them."**
+
+> *Chicha Isotope Map* was created for **Dmitry Ignatenko’s Radiation Research Laboratory** and is deeply inspired by Japan’s [**Safecast**](https://map.safecast.org) community of citizen‑scientists who turned crisis into knowledge. By searching, measuring, and sharing the truth about radiation, you make the invisible visible and help ensure that tragedies like **Chernobyl** and **Fukushima** remain in the past. Your work lights a path of science, safety, and hope.  Thank you for making the invisible visible, where background radiation is not fear but a source of knowledge — and for seeking, measuring, sharing, and bravely going first.  
+
