@@ -2,6 +2,8 @@
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
 
+# 🌌 Chicha‑Isotope‑Map — your guide to radiation’s hidden trails
+
 ## 🚀 Installation & your own node in 5 minutes!
 
 ### 1. Quick start with Docker
@@ -108,8 +110,6 @@ By default the programme listens on port 8765. Open [http://localhost:8765](http
 Every one of your servers is another beacon of information. Thank you for making the world that bit clearer!
 
 --- 
-
-# 🌌 Chicha‑Isotope‑Map — your guide to radiation’s hidden trails
 
 Chicha‑Isotope‑Map isn’t just a bit of software; it’s a window onto a world of microscopic particles — invisible to the eye, yet loud and clear to an instrument. Once you could only guess at them; now they’re splashed across the map as bright dots: from calm greens to alarming reds.
 
