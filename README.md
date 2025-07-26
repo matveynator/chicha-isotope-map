@@ -2,36 +2,6 @@
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
 
-# 🌌 Chicha‑Isotope‑Map — your guide to radiation’s hidden trails
-
-Chicha‑Isotope‑Map isn’t just a bit of software; it’s a window onto a world of microscopic particles — invisible to the eye, yet loud and clear to an instrument. Once you could only guess at them; now they’re splashed across the map as bright dots: from calm greens to alarming reds.
-
-* **What does it read, and from where?**
-
-  * Files in `.kml`, `.kmz`, `.json`, `.rctrk` (AtomFast, RadiaCode) formats.
-  * Everything is stored in its own database, so years later you can say with certainty: “On 12 March 2024 it was 4.1 µR/h here.”
-
-* **What’s our point of reference?**
-
-  * The natural background: in a “clean” spot it’s roughly 0.8–4 µR/h.
-  * Anything above that is alien contamination. You’ll see how isotopes were scattered by wind, cars and people — like footprints in freshly fallen snow.
-
----
-
-### 📸 **Screenshots**
-
-... Back in Soviet times they were building an open-air swimming pool in Kislovodsk Park. Perhaps they used concrete from a plant in Pyatigorsk, where radioactive ore from Mount Beshtau had once been processed. Lorries trundled along the road, dust from their tyres settled on the tarmac, leaving invisible marks. Years have passed, yet those traces still glow, like memories of the past. Dust blown around the building site settled in the park — on the map it shows up yellow, like splashes of autumn leaves. Everything else in the park is clean, calm, green. <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
-
----
-
-### 📸 **Demo**
-
-<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
-
-<a href="https://jutsa.ru" target="_blank">Here you can see the programme running in real time.</a>
-
----
-
 ## 🚀 Installation & your own node in 5 minutes!
 
 ### 1. Quick start with Docker
@@ -136,6 +106,38 @@ By default the programme listens on port 8765. Open [http://localhost:8765](http
 * **Local background history:** preserve your region’s radiation map for years to come.
 
 Every one of your servers is another beacon of information. Thank you for making the world that bit clearer!
+
+--- 
+
+# 🌌 Chicha‑Isotope‑Map — your guide to radiation’s hidden trails
+
+Chicha‑Isotope‑Map isn’t just a bit of software; it’s a window onto a world of microscopic particles — invisible to the eye, yet loud and clear to an instrument. Once you could only guess at them; now they’re splashed across the map as bright dots: from calm greens to alarming reds.
+
+* **What does it read, and from where?**
+
+  * Files in `.kml`, `.kmz`, `.json`, `.rctrk` (AtomFast, RadiaCode) formats.
+  * Everything is stored in its own database, so years later you can say with certainty: “On 12 March 2024 it was 4.1 µR/h here.”
+
+* **What’s our point of reference?**
+
+  * The natural background: in a “clean” spot it’s roughly 0.8–4 µR/h.
+  * Anything above that is alien contamination. You’ll see how isotopes were scattered by wind, cars and people — like footprints in freshly fallen snow.
+
+---
+
+### 📸 **Screenshots**
+
+... Back in Soviet times they were building an open-air swimming pool in Kislovodsk Park. Perhaps they used concrete from a plant in Pyatigorsk, where radioactive ore from Mount Beshtau had once been processed. Lorries trundled along the road, dust from their tyres settled on the tarmac, leaving invisible marks. Years have passed, yet those traces still glow, like memories of the past. Dust blown around the building site settled in the park — on the map it shows up yellow, like splashes of autumn leaves. Everything else in the park is clean, calm, green. <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
+
+---
+
+### 📸 **Demo**
+
+<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
+
+<a href="https://jutsa.ru" target="_blank">Here you can see the programme running in real time.</a>
+
+---
 
 The Chicha Isotope Map was created for Dmitry Ignatenko’s Radiation Research Laboratory and inspired by Japan’s Safecast community — citizen scientists who turned tragedy into knowledge. By seeking, measuring and sharing the truth about radiation, you make the invisible visible, helping the world avoid another Chernobyl or Fukushima. Your work is the light of science, safety and hope. Thank you for turning background radiation from a cause for fear into a source of understanding — for searching, measuring, sharing, and stepping forward with courage.
 
