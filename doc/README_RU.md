@@ -9,18 +9,17 @@
 **Почему Docker?**
 Docker упаковывает программу и её окружение в «контейнер». Вам не нужно вручную настраивать базы и зависимости — просто запустите готовый образ.
 
-#### Локальный запуск (порт 5000)
+#### Локальный запуск (порт 8765)
 
 ```bash
 docker run -d \
   --name chicha-isotope-map \
-  -e PORT=5000 \
-  -p 5000:5000 \
+  -p 8765:8765 \
   -v isotope-data:/var/lib/postgresql/data \
   matveynator/chicha-isotope-map:latest
 ```
 
-Открываете в браузере [http://localhost:5000](http://localhost:5000) и видите карту.
+Открываете в браузере [http://localhost:8765](http://localhost:8765) и видите карту.
 
 #### В зоне своего домена и с HTTPS
 
