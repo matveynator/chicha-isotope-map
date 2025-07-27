@@ -32,9 +32,9 @@ jobs:
           - { goos: netbsd,  goarch: amd64, goversion: "1.22" }
 
           # ---------- Windows ----------
-          - { goos: windows, goarch: amd64, goversion: "1.22" }
+          - { goos: windows, goarch: amd64, goversion: "1.20.14" }
           - { goos: windows, goarch: 386,   goversion: "1.20.14" }   # 👈 старый рантайм для Win-x86
-          - { goos: windows, goarch: arm64, goversion: "1.22" }
+          - { goos: windows, goarch: arm64, goversion: "1.20.14" }
 
     steps:
       - name: Checkout
