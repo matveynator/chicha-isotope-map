@@ -33,7 +33,6 @@ jobs:
 
           # ---------- Windows (все ↘︎ Go 1.20.14) ----------
           - { goos: windows, goarch: amd64, goversion: "1.20.14" }
-          - { goos: windows, goarch: 386,   goversion: "1.20.14" }
           - { goos: windows, goarch: arm64, goversion: "1.20.14" }
 
     steps:
