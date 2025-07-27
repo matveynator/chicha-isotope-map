@@ -1,3 +1,8 @@
+- [🇬🇧 English](/README.md)
+- [🇫🇷 Français](/doc/README_FR.md)
+- [🇯🇵 日本語](/doc/README_JP.md)
+- [🇷🇺 Русский](/doc/README_RU.md)
+
 # 🌌 Chicha‑Isotope‑Map ― 放射線の隠れた小径へのガイド
 
 Chicha‑Isotope‑Map は単なるプログラムではありません。肉眼では見えないが計測器には確かに感じられる微粒子の世界を覗くための「窓」です。これまでは「きっとあるはず」と推測するしかなかったものが、今は地図上に鮮やかな点として描かれます――穏やかな緑から、不安を呼ぶ赤まで。
