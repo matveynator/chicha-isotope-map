@@ -3,8 +3,8 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 	"log"
+	"strings"
 )
 
 // Database represents the interface for interacting with the database.
@@ -452,10 +452,12 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 
 	// --- базовый WHERE -------------------------------------------
 	var (
-		sb      strings.Builder
-		args    []interface{}
-		ph      = func(n int) string { // placeholder
-			if dbType == "pgx" { return fmt.Sprintf("$%d", n) }
+		sb   strings.Builder
+		args []interface{}
+		ph   = func(n int) string { // placeholder
+			if dbType == "pgx" {
+				return fmt.Sprintf("$%d", n)
+			}
 			return "?"
 		}
 	)
@@ -472,7 +474,9 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 	if len(speedRanges) > 0 {
 		sb.WriteString(" AND (")
 		for i, r := range speedRanges {
-			if i > 0 { sb.WriteString(" OR ") }
+			if i > 0 {
+				sb.WriteString(" OR ")
+			}
 			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
 			args = append(args, r.Min, r.Max)
 		}
@@ -487,7 +491,9 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 
 	// pgx использует $1,$2,… — мы их уже расставили через ph()
 	rows, err := db.DB.Query(query, args...)
-	if err != nil { return nil, fmt.Errorf("query: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
 	defer rows.Close()
 
 	var out []Marker
@@ -509,14 +515,14 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 // viewport, match the requested zoom level and fall into at least one
 // of the supplied speed ranges.
 //
-// • trackID         – UUID or any unique identifier of the track.
-// • zoom            – current Leaflet/XYZ-tile zoom level.
-// • minLat/minLon   – south-west corner of the requested bounding box.
-// • maxLat/maxLon   – north-east corner of the requested bounding box.
-// • speedRanges     – zero, one or many closed intervals [Min, Max] m/s.
-//                     Empty → no speed filter at all.
-// • dbType          – "pgx" → PostgreSQL dollar-placeholders ($1,$2,…),
-//                     anything else → use "?" (SQLite, Genji, MySQL…).
+//   - trackID         – UUID or any unique identifier of the track.
+//   - zoom            – current Leaflet/XYZ-tile zoom level.
+//   - minLat/minLon   – south-west corner of the requested bounding box.
+//   - maxLat/maxLon   – north-east corner of the requested bounding box.
+//   - speedRanges     – zero, one or many closed intervals [Min, Max] m/s.
+//     Empty → no speed filter at all.
+//   - dbType          – "pgx" → PostgreSQL dollar-placeholders ($1,$2,…),
+//     anything else → use "?" (SQLite, Genji, MySQL…).
 //
 // The function never locks—concurrency is achieved by running each call
 // in its own goroutine and passing the result through a channel if the
@@ -608,4 +614,3 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	}
 	return markers, rows.Err()
 }
-
