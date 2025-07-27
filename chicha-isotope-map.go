@@ -465,24 +465,6 @@ func parseFloat(value string) float64 {
 	return parsedValue
 }
 
-func extractDoseRate(description string) float64 {
-	re := regexp.MustCompile(`(\d+(\.\d+)?) µR/h`)
-	match := re.FindStringSubmatch(description)
-	if len(match) > 0 {
-		// µR/h -> µSv/h
-		return parseFloat(match[1]) / 100.0
-	}
-	return 0
-}
-
-func extractCountRate(description string) float64 {
-	re := regexp.MustCompile(`(\d+(\.\d+)?) cps`)
-	match := re.FindStringSubmatch(description)
-	if len(match) > 0 {
-		return parseFloat(match[1])
-	}
-	return 0
-}
 
 func getTimeZoneByLongitude(lon float64) *time.Location {
 	switch {
@@ -561,65 +543,121 @@ func getTimeZoneByLongitude(lon float64) *time.Location {
 	}
 }
 
-func parseDate(description string, loc *time.Location) int64 {
-	re := regexp.MustCompile(`<b>([A-Za-z]{3} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2})<\/b>`)
-	match := re.FindStringSubmatch(description)
-	if len(match) > 0 {
-		dateString := match[1]
-		layout := "Jan 2, 2006 15:04:05"
-		t, err := time.ParseInLocation(layout, dateString, loc)
-		if err == nil {
-			return t.Unix()
-		}
-		log.Println("Error parsing date:", err)
+
+// -----------------------------------------------------------------------------
+// extractDoseRate — извлекает дозу из фрагмента текста.
+//  • «12.3 µR/h»  → 0.123 µSv/h   (1 µR/h ≈ 0.01 µSv/h)
+//  • «0.136 uSv/h» → 0.136 µSv/h  (Safecast)
+// -----------------------------------------------------------------------------
+func extractDoseRate(s string) float64 {
+	µr := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*µ?R/h`)
+	if m := µr.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1]) / 100.0 // µR/h → µSv/h
+	}
+
+	usv := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*uSv/h`)
+	if m := usv.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1])          // уже в µSv/h
 	}
 	return 0
 }
 
-func parseKML(data []byte) ([]database.Marker, error) {
-	var markers []database.Marker
-	var longitudes []float64
+// -----------------------------------------------------------------------------
+// extractCountRate — ищет счёт • cps • CPM и нормирует к cps.
+// -----------------------------------------------------------------------------
+func extractCountRate(s string) float64 {
+	cps := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*cps`)
+	if m := cps.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1])
+	}
 
-	coordinatePattern := regexp.MustCompile(`<coordinates>(.*?)<\/coordinates>`)
-	descriptionPattern := regexp.MustCompile(`<description><!\[CDATA\[(.*?)\]\]><\/description>`)
+	cpm := regexp.MustCompile(`(?i)CPM\s*Value\s*=\s*(\d+(?:\.\d+)?)`)
+	if m := cpm.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1]) / 60.0 // 1 мин → секунды
+	}
+	return 0
+}
 
-	coordinates := coordinatePattern.FindAllStringSubmatch(string(data), -1)
-	descriptions := descriptionPattern.FindAllStringSubmatch(string(data), -1)
+// -----------------------------------------------------------------------------
+// parseDate — поддерживает оба формата:
+//  • «May 23, 2012 04:10:08»   (старый .rctrk / AtomFast KML)
+//  • «2012/05/23 04:10:08»     (Safecast)
+// loc — часовой пояс, рассчитанный по долготе (можно nil → UTC).
+// -----------------------------------------------------------------------------
+func parseDate(s string, loc *time.Location) int64 {
+	if loc == nil {
+		loc = time.UTC
+	}
 
-	for i := 0; i < len(coordinates) && i < len(descriptions); i++ {
-		coords := strings.Split(strings.TrimSpace(coordinates[i][1]), ",")
-		if len(coords) >= 2 {
-			lon := parseFloat(coords[0])
-			lat := parseFloat(coords[1])
-			longitudes = append(longitudes, lon)
-
-			doseRate := extractDoseRate(descriptions[i][1])
-			countRate := extractCountRate(descriptions[i][1])
-
-			marker := database.Marker{
-				DoseRate:  doseRate,
-				Lat:       lat,
-				Lon:       lon,
-				CountRate: countRate,
-			}
-			markers = append(markers, marker)
+	if m := regexp.MustCompile(`([A-Za-z]{3} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2})`).FindStringSubmatch(s); len(m) > 0 {
+		const layout = "Jan 2, 2006 15:04:05"
+		if t, err := time.ParseInLocation(layout, m[1], loc); err == nil {
+			return t.Unix()
 		}
 	}
-
-	var avgLon float64
-	for _, lon := range longitudes {
-		avgLon += lon
+	if m := regexp.MustCompile(`(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`).FindStringSubmatch(s); len(m) > 0 {
+		const layout = "2006/01/02 15:04:05"
+		if t, err := time.ParseInLocation(layout, m[1], loc); err == nil {
+			return t.Unix()
+		}
 	}
-	if len(longitudes) > 0 {
-		avgLon /= float64(len(longitudes))
-	}
-	loc := getTimeZoneByLongitude(avgLon)
+	return 0
+}
 
-	for i := range markers {
-		markers[i].Date = parseDate(descriptions[i][1], loc)
+// -----------------------------------------------------------------------------
+// parseKML — универсальный парсер KML (обычный + Safecast).
+// Для каждой <Placemark> ищет:
+//  • координату  (первые lon,lat)
+//  • дозу        — <name> 0.123 uSv/h          или «… µR/h» / «… µSv/h» в <description>
+//  • счёт        — «… cps» или «CPM Value = …»
+//  • дату        — как в parseDate()
+// -----------------------------------------------------------------------------
+func parseKML(data []byte) ([]database.Marker, error) {
+	var markers []database.Marker
+
+	placemarkRe := regexp.MustCompile(`(?s)<Placemark[^>]*>(.*?)</Placemark>`)
+	for _, pm := range placemarkRe.FindAllStringSubmatch(string(data), -1) {
+		seg := pm[1]
+
+		// --- координаты ---------------------------------------------------
+		coordRe := regexp.MustCompile(`<coordinates>\s*([-\d.]+),([-\d.]+)`)
+		cm := coordRe.FindStringSubmatch(seg)
+		if len(cm) < 3 {
+			continue // без координат — бесполезно
+		}
+		lon, lat := parseFloat(cm[1]), parseFloat(cm[2])
+
+		// --- текстовые поля ----------------------------------------------
+		name := ""
+		if m := regexp.MustCompile(`<name>([^<]+)</name>`).FindStringSubmatch(seg); len(m) > 1 {
+			name = strings.TrimSpace(m[1])
+		}
+		desc := ""
+		if m := regexp.MustCompile(`(?s)<description[^>]*>(.*?)</description>`).FindStringSubmatch(seg); len(m) > 1 {
+			desc = strings.TrimSpace(m[1])
+		}
+
+		// --- извлекаем значения ------------------------------------------
+		dose   := extractDoseRate(name)
+		if dose == 0 {
+			dose = extractDoseRate(desc)
+		}
+		count  := extractCountRate(desc)
+		date   := parseDate(desc, getTimeZoneByLongitude(lon))
+
+		markers = append(markers, database.Marker{
+			DoseRate:  dose,
+			CountRate: count,
+			Lat:       lat,
+			Lon:       lon,
+			Date:      date,
+		})
 	}
 	return markers, nil
 }
+
+
+
 func processAndStoreMarkers(markers []database.Marker, trackID string, db *database.Database, dbType string) error {
 	// Устанавливаем TrackID всем маркерам
 	for i := range markers {
