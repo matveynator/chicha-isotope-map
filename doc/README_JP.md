@@ -3,95 +3,73 @@
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
 
-# 🌌 Chicha‑Isotope‑Map ― 放射線の隠れた小径へのガイド
 
-Chicha‑Isotope‑Map は単なるプログラムではありません。肉眼では見えないが計測器には確かに感じられる微粒子の世界を覗くための「窓」です。これまでは「きっとあるはず」と推測するしかなかったものが、今は地図上に鮮やかな点として描かれます――穏やかな緑から、不安を呼ぶ赤まで。
-
-* **何を、どこから読み込むの？**
-
-  * `.kml`, `.kmz`, `.json`, `.rctrk`（AtomFast, RadiaCode）形式のファイルから読み込みます。
-  * すべてを独自のデータベースに保存するので、数年後でも正確に振り返れます。
-    例：「2024年3月12日、ここは 4.1 µR/h だった」と。
-
-* **基準は何？**
-
-  * 自然放射線のバックグラウンド： “きれい” な場所ではおおよそ 0.8〜4 µR/h。
-  * それ以上は外来の汚染です。風や車、人によってアイソトープがどのように拡散したか、雪原についた足跡のように地図上で確認できます。
+# ☢️ Chicha‑Isotope‑Map — 個人向けの放射線マップ
 
 ---
 
-### 📸 **スクリーンショット**
+## 🚀 インストールと自前ノード：コマンド2つで完了
 
-…ソ連時代、キスロヴォツク公園では屋外プールが建設されていました。もしかすると、ベシュタウ山の放射性鉱石をかつて処理していたピャチゴルスクの工場からコンクリートを持ってきたのかもしれません。道を走ったトラックの車輪から舞い上がった粉塵はアスファルトに降り積もり、目には見えない印を残しました。年月が経った今でも、その痕跡は微かに光り続け、まるで昔の記憶のようです。工事現場から舞い散った塵は公園に降り積もり、地図上では秋の落ち葉のような黄色の斑点に見えます。一方、公園の他の部分は清浄で穏やかな緑です。 <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
+余計なものは一切なし。イメージにデータベース（PostgreSQL）同梱。コマンドをコピーして実行すれば、すぐ使えます。
 
----
-
-### 📸 **デモ**
-
-<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
-
-<a href="https://jutsa.ru" target="_blank">こちらでリアルタイム動作を見ることができます。</a>
-
----
-
-## 🚀 インストールと自前ノードの立ち上げ（5分で完了！）
-
-### 1. Docker でクイックスタート
-
-**なぜ Docker？**
-Docker はプログラムとその実行環境を「コンテナ」にまとめます。データベースや依存関係を手作業で整える必要はありません。用意されたイメージを実行するだけです。
-
-#### ローカル実行（ポート 5000）
+#### 🔥 ローカル（ポート 8765）
 
 ```bash
 docker run -d \
   --name chicha-isotope-map \
-  -e PORT=5000 \
-  -p 5000:5000 \
-  -v isotope-data:/var/lib/postgresql/data \
+  -p 8765:8765 \
+  -v chicha-data:/var/lib/postgresql/data \
+  -e DEFAULT_LAT=44.08832 \
+  -e DEFAULT_LON=42.97577 \
+  -e DEFAULT_ZOOM=11 \
+  -e DEFAULT_LAYER="OpenStreetMap" \
+  --restart unless-stopped \
   matveynator/chicha-isotope-map:latest
 ```
 
-ブラウザで [http://localhost:5000](http://localhost:5000) を開くと地図が表示されます。
+開く: [http://localhost:8765](http://localhost:8765)
 
-#### 自分のドメイン＋HTTPSで運用する
-
-1. `domain.com` があなたのサーバーの IP を指していることを確認。
-2. ポート 80 と 443 が空いていることを確認。
-3. **root** 権限で以下を実行：
+#### 🔥 自分のドメインで HTTPS の公開ノード
 
 ```bash
 docker run -d \
   --name chicha-isotope-map \
-  -e DOMAIN=domain.com \
   -p 80:80 -p 443:443 \
-  -v isotope-data:/var/lib/postgresql/data \
+  -v chicha-data:/var/lib/postgresql/data \
+  -e DOMAIN=example.org \
+  -e DEFAULT_LAT=44.08832 \
+  -e DEFAULT_LON=42.97577 \
+  -e DEFAULT_ZOOM=11 \
+  -e DEFAULT_LAYER="OpenStreetMap" \
+  --restart unless-stopped \
   matveynator/chicha-isotope-map:latest
 ```
 
-プログラムが自動的に SSL 証明書を取得・更新します。
+証明書発行後、こちらへアクセスしてください: [https://example.org](https://example.org)
 
-#### 地図の追加設定
+---
 
-利用可能なオプションは `--help` で確認できます。
-必要に応じて開始位置やスタイルを指定：
+### ⚙️ 環境変数での設定（必要最小限）
 
-```text
-  -e DEFAULT_LAT=51.389      # 緯度
-  -e DEFAULT_LON=30.099      # 経度
-  -e DEFAULT_ZOOM=11         # ズームレベル
-  -e DEFAULT_LAYER="OpenStreetMap" または "Google Satellite"
-```
+* `DOMAIN` — 公開ノード用。80/443 で HTTPS が有効になり、Let’s Encrypt による自動証明書発行を行います。
+* `DEFAULT_LAT`, `DEFAULT_LON` — マップの初期座標。
+* `DEFAULT_ZOOM` — 初期ズーム（11 は都市レベルで見やすい設定）。
+* `DEFAULT_LAYER` — `OpenStreetMap` または `Google Satellite`。
+* `PORT` — アプリ内部のポート（既定は 8765。通常は変更不要）。
 
-#### 定期バックアップ（1日1回）
+> ヒント：データは `-v chicha-data:/var/lib/postgresql/data` のボリュームに置いておくと、コンテナ更新後も保持されます。
 
-`crontab -e` に追加：
+---
+
+### 💾 バックアップと復元（かんたん）
+
+**毎日のバックアップ（03:00）:**
 
 ```bash
 0 3 * * * docker exec chicha-isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz
 ```
 
-#### アーカイブからの復元
+**アーカイブからの復元:**
 
 ```bash
 docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
@@ -101,44 +79,170 @@ zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotop
 
 ---
 
-### 2. Docker を使わないインストール
+## ⬇️ 実行ファイルのダウンロード（Docker なし）
 
-コンテナが好きでない方は、ビルド済みバイナリをダウンロードして一瞬で起動できます。さらに簡単です！
+ご利用の環境向けバイナリをダウンロードし、実行権限を付与して起動します。
 
-> コマンドは **root** 権限で実行してください（`sudo -i` または `sudo ...`）。
+**Linux x64**
 
-* **Linux x64**:
-
-```
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
-```
-
-* **macOS Intel**:
-
-```
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
 ```
 
-* **macOS Apple Silicon**:
+**macOS Intel (x86\_64)**
 
-```
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
 ```
 
-その他のプラットフォーム（Windows / ARM / BSDなど）はリリースページから取得できます：
+**macOS Apple Silicon (arm64)**
+
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
+```
+
+その他のプラットフォーム（Windows / ARM / BSD）はリリースページをご覧ください：
 [https://github.com/matveynator/chicha-isotope-map/releases/tag/latest](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)
-
-起動後、デフォルトではポート 8765 を待ち受けています。
-[http://localhost:8765](http://localhost:8765) を開いてください。
 
 ---
 
-## 🤝 なぜ自分のノードを？
+## 🖥 通常起動（Docker なし）：フラグと使用例
 
-* **独立性:** データはあなたの手元にあり、他人のネットワークに依存しません。
-* **ネットワークの強靭性:** ノードが多ければ多いほど、妨害や改ざんは難しくなります。
-* **地域のバックグラウンド履歴:** あなたの地域の放射線地図を長期保存できます。
+バイナリ `chicha-isotope-map` を直接起動する場合の要点です。まず重要項目、続いて追加パラメータを示します。
 
-あなたのサーバー一台一台が、もう一つの情報の灯台です。世界をより透明にしてくれてありがとう！
+### 重要
 
-Chicha アイソトープマップは、ドミトリー・イグナテンコ放射線研究ラボのために作られ、日本のコミュニティ Safecast に触発されました。彼らは悲劇を知識へと変えた市民科学者の集団です。放射線の真実を探し、測り、伝えることで、あなたは見えないものを見えるようにし、チェルノブイリやフクシマを繰り返さないための力になります。あなたの活動は科学・安全・希望の光です。バックグラウンド放射線を恐怖の種ではなく理解の源へと変え、探し、測り、共有し、勇気を持って最初の一歩を踏み出してくれてありがとう。
+* `-domain string` — HTTPS を有効化し、Let’s Encrypt の自動証明書で 80/443 を使用します。ドメインがサーバーに向いており、80/443 が空いている必要があります。
+
+  * 例: `sudo chicha-isotope-map -domain maps.example.org -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11 -default-layer "OpenStreetMap"`
+
+* `-port int` — HTTP サーバーのポート（既定 8765）。ドメインなしのローカル実行に便利です。
+
+  * 例: `chicha-isotope-map -port 8765`
+
+* `-default-lat float` と `-default-lon float` — マップの初期緯度・経度。
+
+  * 例: `-default-lat 44.08832 -default-lon 42.97577`
+
+* `-default-zoom int` — 初期ズーム（都市部は通常 11–13）。
+
+  * 例: `-default-zoom 11`
+
+* `-default-layer string` — ベースレイヤー：`OpenStreetMap` または `Google Satellite`。
+
+  * 例: `-default-layer "Google Satellite"`
+
+### ストレージ（必要な場合）
+
+* `-db-type string` — DB ドライバ：`genji`、`sqlite`、`pgx`（PostgreSQL）。既定は `genji`。
+* `-db-path string` — `genji`/`sqlite` 用の DB ファイルパス（未指定時はカレントディレクトリ）。
+
+  * 例: `-db-type sqlite -db-path /var/lib/chicha/chicha.sqlite`
+* `-db-host string`, `-db-port int`（既定 5432）, `-db-name string`, `-db-user string`, `-db-pass string` — `pgx` 用の PostgreSQL 接続設定。
+
+  * 例: `-db-type pgx -db-host 127.0.0.1 -db-port 5432 -db-name chicha_isotope_map -db-user postgres -db-pass secret`
+* `-pg-ssl-mode string` — PostgreSQL の SSL モード：`disable`、`allow`、`prefer`（既定）、`require`、`verify-ca`、`verify-full`。
+
+  * 例: `-pg-ssl-mode require`
+
+### サービス系
+
+* `-version` — バージョンを表示して終了。
+
+### クイック例
+
+* **ローカル（HTTPS なし）:**
+
+  ```bash
+  chicha-isotope-map \
+    -port 8765 \
+    -default-lat 44.08832 -default-lon 42.97577 \
+    -default-zoom 11 \
+    -default-layer "OpenStreetMap"
+  ```
+
+* **80/443 で HTTPS の公開サーバー:**
+
+  ```bash
+  sudo chicha-isotope-map \
+    -domain maps.example.org \
+    -default-lat 44.08832 -default-lon 42.97577 \
+    -default-zoom 11 \
+    -default-layer "OpenStreetMap"
+  ```
+
+* **1 ファイルに保存（SQLite）:**
+
+  ```bash
+  chicha-isotope-map \
+    -db-type sqlite -db-path /var/lib/chicha-isotope-map.sqlite \
+    -port 8765 \
+    -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11
+  ```
+
+* **PostgreSQL に接続:**
+
+  ```bash
+  chicha-isotope-map \
+    -db-type pgx \
+    -db-host 127.0.0.1 -db-port 5432 \
+    -db-name chicha_isotope_map -db-user postgres -db-pass secret \
+    -pg-ssl-mode require \
+    -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11
+  ```
+
+---
+
+## 🤝 自前ノードを立てる理由
+
+* **シンプル：** 自分のコミュニティには、自分たちのマップを。
+* **有益：** 街／地域／事業所のバックグラウンド履歴を、手元に長期保存。
+* **ネットワークのため：** ノードが増えるほど、透明性とレジリエンスが高まります。
+
+---
+
+Chicha‑Isotope‑Map は単なるプログラムではありません。肉眼では見えないが計測器には映る微粒子の世界を覗く小さな窓です。かつては「あるかもしれない」と想像するしかなかったものが、今は地図上に色の点で描かれます。穏やかな緑から、警戒の赤まで。
+
+* **何をどこから読み込む？**
+
+  * `.kml`、`.kmz`、`.json`、`.rctrk`（AtomFast、RadiaCode など）のファイルから。
+  * すべてを独自 DB に保存し、何年先でも正確に振り返れます。「2008年3月12日、この場所は 4.1 µR/h だった？」に答えられるように。
+
+* **基準は？**
+
+  * 自然放射線レベル。クリーンな場所ではおよそ 0.8–4 µR/h。
+  * それを超えるものは人工的な汚染。新雪に残る足跡のように、風や車、人の動きで同位体がどのように広がったかが見えてきます。
+
+---
+
+### 📸 **スクリーンショット**
+
+…ソ連時代、キスロヴォツク公園に屋外プールを建設していました。もしかすると、ベシュタウ山の鉱石をかつて処理していたピャチゴルスクの工場からコンクリートを運んだのかもしれません。道を走るトラックの車輪から舞い上がった粉じんがアスファルトに落ち、目には見えない印を残す――そんな情景です。年月が経っても、その痕跡はいまだにほのかに光り、過去の記憶のように残っています。工事から広がった粉じんは公園の周りに降り積もり、地図では黄色の斑点として現れます。まるで落ち葉のように。一方で、公園のその他の場所は穏やかでクリーンな緑です。<img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
+
+---
+
+### 📸 **デモ**
+
+<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
+
+<a href="https://jutsa.ru" target="_blank">こちらで実際の動作をリアルタイムで確認できます。</a>
+
+---
+
+### 📣 自分のノードをコミュニティに告知するには
+
+1. ドメインで HTTPS のノードを立てます（`-e DOMAIN=...` と 80/443 の公開）。
+2. スクリーンショットと簡単な説明（都市名・エリア・計測範囲など）を用意します。
+3. プロジェクトのリポジトリの Issue に投稿して知らせてください。
+
+Chicha の同位体マップは**ドミトリー・イグナテンコ放射線研究所**のために作られ、日本のコミュニティ **Safecast** に着想を得ています。市民科学者の集まりである彼らは、福島の悲劇を科学的知見へと変えました。放射線の真実を探し、測り、広めることで、あなたは見えないものを見える形にし、世界がチェルノブイリやフクシマを繰り返さないよう力を尽くしています。あなたの活動は、科学・安全・希望の灯です。バックグラウンド放射線を恐れの源ではなく理解の糸口へと変え、探し、測り、共有し、そして勇気をもって先頭に立ってくれることに、心から感謝します。
+
