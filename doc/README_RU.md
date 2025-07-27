@@ -1,3 +1,9 @@
+- [🇬🇧 English](/README.md)
+- [🇫🇷 Français](/doc/README_FR.md)
+- [🇯🇵 日本語](/doc/README_JP.md)
+- [🇷🇺 Русский](/doc/README_RU.md)
+
+
 # 🌌 Chicha‑Isotope‑Map — персональная радиационная карта.
 
 ---
