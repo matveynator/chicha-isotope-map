@@ -1134,7 +1134,7 @@ func main() {
 		// Обычный HTTP на порт из -port
 		addr := fmt.Sprintf(":%d", *port)
 		go func() {
-			log.Printf("HTTP server ➜ %s", addr)
+			log.Printf("HTTP server ➜ http://localhost:%s", addr)
 			if err := http.ListenAndServe(addr, rootHandler); err != nil {
 				log.Printf("HTTP server error: %v", err)
 			}
