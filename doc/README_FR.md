@@ -3,7 +3,7 @@
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
 
-# 🌌 Chicha‑Isotope‑Map — carte personnelle de la radioactivité
+# ☢️ Chicha‑Isotope‑Map — carte personnelle de la radioactivité
 
 ---
 
