@@ -182,7 +182,7 @@ sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download
 
   ```bash
   chicha-isotope-map \
-    -db-type sqlite -db-path /var/lib/chicha/chicha.sqlite \
+    -db-type sqlite -db-path /var/lib/chicha-isotope-map.sqlite \
     -port 8765 \
     -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11
   ```
