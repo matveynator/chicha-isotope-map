@@ -17,28 +17,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux,  goarch: amd64 }
-          - { goos: linux,  goarch: 386 }
-          - { goos: linux,  goarch: arm64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: darwin, goarch: arm64 }
-          - { goos: freebsd, goarch: amd64 }
-          - { goos: openbsd, goarch: amd64 }
-          - { goos: netbsd, goarch: amd64 }
-          - { goos: windows, goarch: amd64 }
-          - { goos: windows, goarch: 386 }
-          - { goos: windows, goarch: arm64 }
+          # ---------- Linux ----------
+          - { goos: linux,  goarch: amd64, goversion: "1.22" }
+          - { goos: linux,  goarch: 386,   goversion: "1.22" }
+          - { goos: linux,  goarch: arm64, goversion: "1.22" }
+
+          # ---------- macOS ----------
+          - { goos: darwin, goarch: amd64, goversion: "1.22" }
+          - { goos: darwin, goarch: arm64, goversion: "1.22" }
+
+          # ---------- *BSD ----------
+          - { goos: freebsd, goarch: amd64, goversion: "1.22" }
+          - { goos: openbsd, goarch: amd64, goversion: "1.22" }
+          - { goos: netbsd,  goarch: amd64, goversion: "1.22" }
+
+          # ---------- Windows ----------
+          - { goos: windows, goarch: amd64, goversion: "1.22" }
+          - { goos: windows, goarch: 386,   goversion: "1.20.14" }   # 👈 старый рантайм для Win-x86
+          - { goos: windows, goarch: arm64, goversion: "1.22" }
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Уникальный каталог для модулей — зависит от GOOS/GOARCH
       - name: Define isolated Go module cache
-        run: |
-          echo "GOMODCACHE=$HOME/.gomodcache-${{ matrix.goos }}-${{ matrix.goarch }}" >> $GITHUB_ENV
+        run: echo "GOMODCACHE=$HOME/.gomodcache-${{ matrix.goos }}-${{ matrix.goarch }}" >> $GITHUB_ENV
 
-      # ⚠️ Подготавливаем/очищаем каталог, иначе tar => exit 2
       - name: Prepare module cache dir
         run: |
           rm -rf "$GOMODCACHE" || true
@@ -51,7 +55,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "${{ matrix.goversion }}"
           cache: true
           cache-dependency-path: go.sum
 
@@ -62,7 +66,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           VERSION=${{ github.run_number }}
-          echo "Building version $VERSION for $GOOS/$GOARCH"
+          echo "Building version $VERSION for $GOOS/$GOARCH (Go ${{ matrix.goversion }})"
 
           mkdir -p dist
           BIN_NAME="chicha-isotope-map_${GOOS}_${GOARCH}"
