@@ -1,6 +1,4 @@
-// driver-postgresql-pq386.go
-//go:build windows && 386
-// +build windows,386
+//go:build (windows && 386) || (windows && amd64) || (windows && arm64)
 
 package database
 

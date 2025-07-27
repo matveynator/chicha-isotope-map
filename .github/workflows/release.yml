@@ -18,18 +18,18 @@ jobs:
       matrix:
         include:
           # ---------- Linux ----------
-          - { goos: linux,  goarch: amd64, goversion: "1.20.14" }
-          - { goos: linux,  goarch: 386,   goversion: "1.20.14" }
-          - { goos: linux,  goarch: arm64, goversion: "1.20.14" }
+          - { goos: linux,  goarch: amd64, goversion: "1.22" }
+          - { goos: linux,  goarch: 386,   goversion: "1.22" }
+          - { goos: linux,  goarch: arm64, goversion: "1.22" }
 
           # ---------- macOS ----------
-          - { goos: darwin, goarch: amd64, goversion: "1.20.14" }
-          - { goos: darwin, goarch: arm64, goversion: "1.20.14" }
+          - { goos: darwin, goarch: amd64, goversion: "1.22" }
+          - { goos: darwin, goarch: arm64, goversion: "1.22" }
 
           # ---------- *BSD ----------
-          - { goos: freebsd, goarch: amd64, goversion: "1.20.14" }
-          - { goos: openbsd, goarch: amd64, goversion: "1.20.14" }
-          - { goos: netbsd,  goarch: amd64, goversion: "1.20.14" }
+          - { goos: freebsd, goarch: amd64, goversion: "1.22" }
+          - { goos: openbsd, goarch: amd64, goversion: "1.22" }
+          - { goos: netbsd,  goarch: amd64, goversion: "1.22" }
 
           # ---------- Windows ----------
           - { goos: windows, goarch: amd64, goversion: "1.20.14" }
