@@ -1,7 +1,8 @@
 module chicha-isotope-map
 
-go 1.20.14
+go 1.21
 
+toolchain go1.23.2
 
 require (
 	github.com/genjidb/genji v0.15.0

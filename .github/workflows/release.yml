@@ -31,9 +31,9 @@ jobs:
           - { goos: openbsd, goarch: amd64, goversion: "1.23" }
           - { goos: netbsd,  goarch: amd64, goversion: "1.23" }
 
-          # ---------- Windows ----------
+          # ---------- Windows (все ↘︎ Go 1.20.14) ----------
           - { goos: windows, goarch: amd64, goversion: "1.20.14" }
-          - { goos: windows, goarch: 386,   goversion: "1.20.14" }   # 👈 старый рантайм для Win-x86
+          - { goos: windows, goarch: 386,   goversion: "1.20.14" }
           - { goos: windows, goarch: arm64, goversion: "1.20.14" }
 
     steps:
@@ -50,14 +50,21 @@ jobs:
 
       - name: Init go.mod if absent
         run: |
-          test -f go.mod || go mod init chicha-isotope-map 
+          test -f go.mod || go mod init chicha-isotope-map
 
+      # ⬇️  Устанавливаем нужную версию Go по матрице
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "${{ matrix.goversion }}"
           cache: true
           cache-dependency-path: go.sum
+
+      # ⬇️  Удаляем директиву toolchain, если компилятор старее 1.21
+      - name: Strip 'toolchain' directive for legacy Go
+        if: startsWith(matrix.goversion, '1.20')
+        run: |
+          sed -i '/^toolchain /d' go.mod
 
       - name: Build ${{ matrix.goos }}/${{ matrix.goarch }} (static)
         env:
@@ -70,7 +77,6 @@ jobs:
 
           mkdir -p dist
           BIN_NAME="chicha-isotope-map_${GOOS}_${GOARCH}"
-          # Добавляем расширение .exe для Windows
           if [ "$GOOS" = "windows" ]; then
             BIN_NAME="${BIN_NAME}.exe"
           fi
