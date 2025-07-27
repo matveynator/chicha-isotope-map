@@ -1,91 +1,74 @@
-# 🌌 Chicha‑Isotope‑Map — guide des sentiers cachés de la radiation
+- [🇬🇧 English](/README.md)
+- [🇫🇷 Français](/doc/README_FR.md)
+- [🇯🇵 日本語](/doc/README_JP.md)
+- [🇷🇺 Русский](/doc/README_RU.md)
 
-Chicha‑Isotope‑Map n’est pas qu’un programme : c’est une fenêtre sur le monde des microparticules, invisibles à l’œil nu mais détectables par les instruments. Autrefois, on ne pouvait que les deviner ; désormais, elles apparaissent en points lumineux sur la carte : du vert apaisant au rouge inquiétant.
-
-* **Que lit-il et d’où vient l’info ?**
-
-  * À partir de fichiers aux formats `.kml`, `.kmz`, `.json`, `.rctrk` (AtomFast, RadiaCode).
-  * Il enregistre tout dans sa propre base afin que, des années plus tard, vous puissiez savoir précisément : « Le 12 mars 2024, ici, il y avait 4,1 µR/h ».
-
-* **Sur quoi nous basons-nous ?**
-
-  * Sur le bruit de fond naturel de la radioactivité : dans un endroit « propre », on est autour de 0,8–4 µR/h.
-  * Tout ce qui dépasse est une pollution étrangère. Vous verrez comment les isotopes ont été dispersés par le vent, les voitures et les personnes, comme des traces sur une neige fraîchement tombée.
+# 🌌 Chicha‑Isotope‑Map — carte personnelle de la radioactivité
 
 ---
 
-### 📸 **Captures d’écran**
+## 🚀 Installation et nœud auto‑hébergé en 2 commandes
 
-… À l’époque soviétique, on construisait une piscine à ciel ouvert dans le parc de Kislovodsk. Il est possible qu’on ait utilisé du béton provenant d’une usine à Piatigorsk, où l’on retraitait autrefois du minerai radioactif de la montagne Bechtau. Des camions circulaient sur la route, et la poussière de leurs roues se déposait sur l’asphalte, y laissant des marques invisibles. Les années ont passé, mais ces traces brillent encore, comme des souvenirs du passé. La poussière envolée autour du chantier s’est déposée dans le parc — sur la carte elle est en jaune, tels des taches de feuilles d’automne. Le reste du parc est propre, calme, vert. <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
+Rien de superflu. L’image embarque déjà la base (PostgreSQL). Copiez la commande, lancez‑la — et c’est parti.
 
----
-
-### 📸 **Démo**
-
-<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
-
-<a href="https://jutsa.ru" target="_blank">Vous pouvez voir le programme en fonctionnement en temps réel ici.</a>
-
----
-
-## 🚀 Installation et nœud personnel en 5 minutes !
-
-### 1. Démarrage rapide avec Docker
-
-**Pourquoi Docker ?**
-Docker empaquette le programme et son environnement dans un « conteneur ». Pas besoin de configurer manuellement bases de données et dépendances — vous lancez simplement l’image prête à l’emploi.
-
-#### Lancement local (port 5000)
+#### 🔥 En local (port 8765)
 
 ```bash
 docker run -d \
   --name chicha-isotope-map \
-  -e PORT=5000 \
-  -p 5000:5000 \
-  -v isotope-data:/var/lib/postgresql/data \
+  -p 8765:8765 \
+  -v chicha-data:/var/lib/postgresql/data \
+  -e DEFAULT_LAT=44.08832 \
+  -e DEFAULT_LON=42.97577 \
+  -e DEFAULT_ZOOM=11 \
+  -e DEFAULT_LAYER="OpenStreetMap" \
+  --restart unless-stopped \
   matveynator/chicha-isotope-map:latest
 ```
 
-Ouvrez votre navigateur sur [http://localhost:5000](http://localhost:5000) et admirez la carte.
+Ouvrez : [http://localhost:8765](http://localhost:8765)
 
-#### Sur votre propre domaine avec HTTPS
-
-1. Assurez-vous que `domain.com` pointe vers l’IP de votre serveur.
-2. Les ports 80 et 443 doivent être libres.
-3. Lancez la commande en **root** :
+#### 🔥 Nœud public avec HTTPS sur votre domaine
 
 ```bash
 docker run -d \
   --name chicha-isotope-map \
-  -e DOMAIN=domain.com \
   -p 80:80 -p 443:443 \
-  -v isotope-data:/var/lib/postgresql/data \
+  -v chicha-data:/var/lib/postgresql/data \
+  -e DOMAIN=example.org \
+  -e DEFAULT_LAT=44.08832 \
+  -e DEFAULT_LON=42.97577 \
+  -e DEFAULT_ZOOM=11 \
+  -e DEFAULT_LAYER="OpenStreetMap" \
+  --restart unless-stopped \
   matveynator/chicha-isotope-map:latest
 ```
 
-Le programme obtiendra et renouvellera automatiquement les certificats SSL.
+Après l’émission du certificat, rendez‑vous sur : [https://example.org](https://example.org)
 
-#### Réglages supplémentaires de la carte
+---
 
-Toutes les options disponibles sont visibles via --help.
-Vous pouvez définir le point de départ et le style :
+### ⚙️ Réglages via variables d’environnement (le strict nécessaire)
 
-```text
-  -e DEFAULT_LAT=51.389      # latitude
-  -e DEFAULT_LON=30.099      # longitude
-  -e DEFAULT_ZOOM=11         # niveau de zoom
-  -e DEFAULT_LAYER="OpenStreetMap" ou "Google Satellite"
-```
+* `DOMAIN` — active le HTTPS sur 80/443 et les certificats automatiques Let’s Encrypt (pour un nœud public).
+* `DEFAULT_LAT`, `DEFAULT_LON` — coordonnées initiales de la carte.
+* `DEFAULT_ZOOM` — niveau de zoom initial (11 — pratique pour une vue urbaine).
+* `DEFAULT_LAYER` — `OpenStreetMap` ou `Google Satellite`.
+* `PORT` — port interne de l’appli (8765 par défaut ; en général on ne le change pas).
 
-#### Sauvegarde régulière (quotidienne)
+> Astuce : conservez les données sur le volume `-v chicha-data:/var/lib/postgresql/data` afin qu’elles survivent aux mises à jour du conteneur.
 
-Ajoutez dans `crontab -e` :
+---
+
+### 💾 Sauvegarde et restauration (simple)
+
+**Sauvegarde quotidienne (03:00) :**
 
 ```bash
 0 3 * * * docker exec chicha-isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz
 ```
 
-#### Restauration depuis une archive
+**Restauration depuis l’archive :**
 
 ```bash
 docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
@@ -95,42 +78,172 @@ zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotop
 
 ---
 
-### 2. Installation sans Docker
+## ⬇️ Télécharger les exécutables prêts à l’emploi (sans Docker)
 
-Si vous n’aimez pas les conteneurs, téléchargez le binaire prêt à l’emploi et lancez-le en une seconde, c’est encore plus simple !
+Téléchargez le binaire pour votre système, rendez‑le exécutable et lancez‑le.
 
-> Exécutez les commandes en **root** (`sudo -i` ou `sudo ...`).
+**Linux x64**
 
-* **Linux x64** :
-
-```
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
-```
-
-* **macOS Intel** :
-
-```
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
 ```
 
-* **macOS Apple Silicon** :
+**macOS Intel (x86\_64)**
 
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
 ```
-curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 > /usr/local/bin/chicha-isotope-map && chmod +x /usr/local/bin/chicha-isotope-map && chicha-isotope-map
+
+**macOS Apple Silicon (arm64)**
+
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
 ```
 
-Les autres plateformes — Windows / ARM / BSD — sont disponibles sur la page des versions : [https://github.com/matveynator/chicha-isotope-map/releases/tag/latest](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)
-
-Après le lancement, le programme écoute par défaut sur le port 8765. Ouvrez [http://localhost:8765](http://localhost:8765).
+Autres plateformes (Windows / ARM / BSD) — sur la page des releases :
+[https://github.com/matveynator/chicha-isotope-map/releases/tag/latest](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)
 
 ---
 
-## 🤝 Pourquoi avoir votre propre nœud ?
+## 🖥 Lancement classique (sans Docker) : options et exemples
 
-* **Indépendance** : vos données restent chez vous, sans dépendre du réseau de quelqu’un d’autre.
-* **Résilience du réseau** : plus il y a de nœuds, plus il est difficile de le compromettre.
-* **Mémoire locale du fond** : conservez la carte de la radioactivité de votre région pour les années à venir.
+Si vous lancez directement le binaire `chicha-isotope-map`, voici l’essentiel. D’abord le plus important ; plus bas, des paramètres supplémentaires.
 
-Chaque serveur que vous déployez est un phare d’information supplémentaire. Merci de rendre le monde plus transparent !
+### À savoir
 
-La carte des isotopes Chicha a été créée pour le Laboratoire de recherches radiologiques de Dmitri Ignatenko et s’inspire de la communauté japonaise Safecast — un groupe de citoyens-scientifiques qui ont transformé une tragédie en savoir. En cherchant, en mesurant et en diffusant la vérité sur la radioactivité, vous rendez l’invisible visible, aidant le monde à ne pas répéter Tchernobyl et Fukushima. Votre travail est la lumière de la science, de la sécurité et de l’espoir. Merci de transformer le rayonnement de fond d’un motif de peur en source de compréhension, de chercher, mesurer, partager — et d’avancer les premiers avec courage.
+* `-domain string` — active le HTTPS et l’écoute sur les ports 80 et 443 avec certificats Let’s Encrypt automatiques. Le domaine doit pointer vers votre serveur et les ports 80/443 doivent être libres.
+
+  * Exemple : `sudo chicha-isotope-map -domain maps.example.org -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11 -default-layer "OpenStreetMap"`
+
+* `-port int` — port du serveur HTTP (8765 par défaut). Pratique pour un lancement local sans domaine.
+
+  * Exemple : `chicha-isotope-map -port 8765`
+
+* `-default-lat float` et `-default-lon float` — latitude et longitude initiales de la carte.
+
+  * Exemple : `-default-lat 44.08832 -default-lon 42.97577`
+
+* `-default-zoom int` — niveau de zoom initial (en ville : 11–13).
+
+  * Exemple : `-default-zoom 11`
+
+* `-default-layer string` — couche de base : `OpenStreetMap` ou `Google Satellite`.
+
+  * Exemple : `-default-layer "Google Satellite"`
+
+### Stockage (si besoin)
+
+* `-db-type string` — pilote de BD : `genji`, `sqlite`, `pgx` (PostgreSQL). Par défaut : `genji`.
+
+* `-db-path string` — chemin du fichier BD pour `genji`/`sqlite` (si omis — répertoire courant).
+
+  * Exemple : `-db-type sqlite -db-path /var/lib/chicha/chicha.sqlite`
+
+* `-db-host string`, `-db-port int` (5432 par défaut), `-db-name string`, `-db-user string`, `-db-pass string` — paramètres de connexion PostgreSQL pour `pgx`.
+
+  * Exemple : `-db-type pgx -db-host 127.0.0.1 -db-port 5432 -db-name chicha_isotope_map -db-user postgres -db-pass secret`
+
+* `-pg-ssl-mode string` — mode SSL pour PostgreSQL : `disable`, `allow`, `prefer` (par défaut), `require`, `verify-ca`, `verify-full`.
+
+  * Exemple : `-pg-ssl-mode require`
+
+### Service
+
+* `-version` — afficher la version et quitter.
+
+### Exemples rapides
+
+* **En local, sans HTTPS :**
+
+  ```bash
+  chicha-isotope-map \
+    -port 8765 \
+    -default-lat 44.08832 -default-lon 42.97577 \
+    -default-zoom 11 \
+    -default-layer "OpenStreetMap"
+  ```
+
+* **Serveur public avec HTTPS sur 80/443 :**
+
+  ```bash
+  sudo chicha-isotope-map \
+    -domain maps.example.org \
+    -default-lat 44.08832 -default-lon 42.97577 \
+    -default-zoom 11 \
+    -default-layer "OpenStreetMap"
+  ```
+
+* **Stockage dans un seul fichier (SQLite) :**
+
+  ```bash
+  chicha-isotope-map \
+    -db-type sqlite -db-path /var/lib/chicha-isotope-map.sqlite \
+    -port 8765 \
+    -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11
+  ```
+
+* **Connexion à PostgreSQL :**
+
+  ```bash
+  chicha-isotope-map \
+    -db-type pgx \
+    -db-host 127.0.0.1 -db-port 5432 \
+    -db-name chicha_isotope_map -db-user postgres -db-pass secret \
+    -pg-ssl-mode require \
+    -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11
+  ```
+
+---
+
+## 🤝 Pourquoi héberger votre propre nœud ?
+
+* **Simple :** vous avez votre communauté — vous avez votre carte.
+* **Utile :** l’historique local du fond de votre ville/quartier/site reste chez vous, pour toujours.
+* **Important pour le réseau :** plus de nœuds → plus de transparence et de résilience.
+
+---
+
+Chicha‑Isotope‑Map n’est pas qu’un logiciel, c’est une fenêtre sur le monde des microparticules, invisibles à l’œil nu mais bien réelles pour l’instrument. Hier, on ne pouvait que les deviner ; aujourd’hui, elles s’affichent en points lumineux sur la carte, du vert apaisé au rouge inquiétant.
+
+* **Que lit‑elle et d’où ?**
+
+  * À partir de fichiers aux formats `.kml`, `.kmz`, `.json`, `.rctrk` (AtomFast, RadiaCode, etc.).
+  * Elle enregistre tout dans sa propre base pour qu’avec le temps vous puissiez savoir précisément : « Le 12 mars 2008, ici, il y avait 4,1 µR/h. »
+
+* **Sur quoi s’appuie‑t‑on ?**
+
+  * Sur le fond naturel de la radioactivité : dans un endroit « propre » — environ 0,8–4 µR/h.
+  * Tout ce qui dépasse indique une contamination étrangère. Vous verrez comment les isotopes se dispersent avec le vent, les voitures et les gens, comme des traces sur une neige fraîche.
+
+---
+
+### 📸 **Captures d’écran**
+
+... À l’époque soviétique, on construisait une piscine à ciel ouvert dans le parc de Kislovodsk. Peut‑être a‑t‑on utilisé du béton venant de l’usine de Piatigorsk, où l’on traitait autrefois du minerai radioactif extrait du mont Bechtau. Sur la route, les camions passaient ; la poussière de leurs roues se déposait sur l’asphalte, laissant des marques invisibles. Les années ont passé, mais ces traces brillent encore, comme des souvenirs du passé. La poussière dispersée autour du chantier s’est posée dans le parc — sur la carte elle apparaît en jaune, comme des taches de feuilles d’automne. Tout le reste du parc est propre, calme, vert. <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
+
+---
+
+### 📸 **Démo**
+
+<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
+
+<a href="https://jutsa.ru" target="_blank">Vous pouvez voir le programme à l’œuvre en temps réel ici.</a>
+
+---
+
+### 📣 Annoncer votre nœud à la communauté
+
+1. Déployez un nœud sur un domaine avec HTTPS (`-e DOMAIN=...` + redirection des ports `80` et `443`).
+2. Ajoutez une capture d’écran et une courte description (ville, quartier, zone couverte par vos mesures).
+3. Signalez‑vous dans une Issue du dépôt du projet.
+
+La carte des isotopes Chicha a été créée pour la **Laboratoire de recherches radiologiques de Dmitri Ignatenko** et s’inspire de la **communauté japonaise Safecast** — un groupe de citoyens‑scientifiques qui ont transformé la tragédie de Fukushima en connaissance. En cherchant, en mesurant et en partageant la vérité sur la radioactivité, vous rendez l’invisible visible, aidant le monde à ne pas répéter Tchernobyl et Fukushima. Votre travail est une lumière de science, de sécurité et d’espoir. Merci de faire du rayonnement de fond non pas une source de peur, mais une source de compréhension ; merci de chercher, mesurer, partager — et d’avancer les premiers avec courage.
