@@ -1050,9 +1050,8 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// getMarkersHandler — если клиент передаёт zoom и границы,
-// можно брать именно те маркеры, что соответствуют запрошенному зуму.
-// Тогда никакой дополнительной логики в runtime не нужно — маркеры уже подготовлены.
+// getMarkersHandler — берёт маркеры в заданном окне и фильтрах
+// +НОВОЕ: dateFrom/dateTo (UNIX-seconds) диапазон времени.
 func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	q              := r.URL.Query()
 	zoom, _        := strconv.Atoi(q.Get("zoom"))
@@ -1062,7 +1061,7 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	maxLon, _      := strconv.ParseFloat(q.Get("maxLon"), 64)
 	trackID        := q.Get("trackID")
 
-	// ----------- парсим speed-фильтр -----------
+	// ----- ✈️🚗🚶 фильтр скорости  ---------------------------------
 	var sr []database.SpeedRange
 	if s := q.Get("speeds"); s != "" {
 		for _, tag := range strings.Split(s, ",") {
@@ -1071,29 +1070,43 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	// если ни одного диапазона не осталось — значит все выключены, возвращаем пустой массив
-	if len(sr) == 0 && q.Get("speeds") != "" {
+	if len(sr) == 0 && q.Get("speeds") != "" { // все выключены
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("[]"))
 		return
 	}
 
-	// ----------- запрос в БД -----------
+	// ----- ⏱️  фильтр времени  ------------------------------------
+	var (
+		dateFrom int64
+		dateTo   int64
+	)
+	if s := q.Get("dateFrom"); s != "" {
+		dateFrom, _ = strconv.ParseInt(s, 10, 64)
+	}
+	if s := q.Get("dateTo"); s != "" {
+		dateTo, _ = strconv.ParseInt(s, 10, 64)
+	}
+
+	// ----- запрос к БД  ------------------------------------------
 	var (
 		markers []database.Marker
 		err     error
 	)
 	if trackID != "" {
 		markers, err = db.GetMarkersByTrackIDZoomBoundsSpeed(
-			trackID, zoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
+			trackID, zoom, minLat, minLon, maxLat, maxLon,
+			dateFrom, dateTo, sr, *dbType)
 	} else {
 		markers, err = db.GetMarkersByZoomBoundsSpeed(
-			zoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
+			zoom, minLat, minLon, maxLat, maxLon,
+			dateFrom, dateTo, sr, *dbType)
 	}
 	if err != nil {
 		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(markers)
 }

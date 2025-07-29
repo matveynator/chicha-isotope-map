@@ -441,26 +441,26 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 // SpeedRange задаёт замкнутый диапазон [Min, Max] скорости.
 type SpeedRange struct{ Min, Max float64 }
 
-// GetMarkersByZoomBoundsSpeed выбирает маркеры по зуму, границам и диапазонам скорости.
-// Если speedRanges пуст, фильтр скорости не применяется.
+// GetMarkersByZoomBoundsSpeed — z/bounds/date/speed фильтр
 func (db *Database) GetMarkersByZoomBoundsSpeed(
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
+	dateFrom, dateTo int64,               // ⏱️ NOVO
 	speedRanges []SpeedRange,
 	dbType string,
 ) ([]Marker, error) {
 
-	// --- базовый WHERE -------------------------------------------
+	ph := func(n int) string {
+		if dbType == "pgx" { return fmt.Sprintf("$%d", n) }
+		return "?"
+	}
+
 	var (
 		sb   strings.Builder
 		args []interface{}
-		ph   = func(n int) string { // placeholder
-			if dbType == "pgx" {
-				return fmt.Sprintf("$%d", n)
-			}
-			return "?"
-		}
 	)
+
+	// ---- обязательные условия -----------------------------------
 	sb.WriteString("zoom = " + ph(len(args)+1))
 	args = append(args, zoom)
 
@@ -470,37 +470,39 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
 	args = append(args, minLon, maxLon)
 
-	// --- speed-фильтр -------------------------------------------
+	// ---- фильтр по времени --------------------------------------
+	if dateFrom > 0 {
+		sb.WriteString(" AND date >= " + ph(len(args)+1))
+		args = append(args, dateFrom)
+	}
+	if dateTo > 0 {
+		sb.WriteString(" AND date <= " + ph(len(args)+1))
+		args = append(args, dateTo)
+	}
+
+	// ---- фильтр скоростей ---------------------------------------
 	if len(speedRanges) > 0 {
 		sb.WriteString(" AND (")
 		for i, r := range speedRanges {
-			if i > 0 {
-				sb.WriteString(" OR ")
-			}
+			if i > 0 { sb.WriteString(" OR ") }
 			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
 			args = append(args, r.Min, r.Max)
 		}
 		sb.WriteString(")")
 	}
 
-	// --- SQL окончательно ---------------------------------------
-	query := fmt.Sprintf(`
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE %s;`, sb.String())
+	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID
+	                      FROM markers WHERE %s;`, sb.String())
 
-	// pgx использует $1,$2,… — мы их уже расставили через ph()
 	rows, err := db.DB.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query: %w", err)
-	}
+	if err != nil { return nil, fmt.Errorf("query: %w", err) }
 	defer rows.Close()
 
 	var out []Marker
 	for rows.Next() {
 		var m Marker
-		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date,
-			&m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+		if err := rows.Scan(&m.ID,&m.DoseRate,&m.Date,&m.Lon,&m.Lat,
+		                    &m.CountRate,&m.Zoom,&m.Speed,&m.TrackID); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		out = append(out, m)
@@ -534,25 +536,21 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	trackID string,
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
+	dateFrom, dateTo int64,           // ⏱️ NOVO
 	speedRanges []SpeedRange,
 	dbType string,
 ) ([]Marker, error) {
 
-	// ---------- helper to emit positional placeholders -------------
 	ph := func(n int) string {
-		if dbType == "pgx" {
-			return fmt.Sprintf("$%d", n) // PostgreSQL style: $1, $2, …
-		}
-		return "?" // common '?' placeholder (SQLite / MySQL / Genji / …)
+		if dbType == "pgx" { return fmt.Sprintf("$%d", n) }
+		return "?"
 	}
 
-	// ---------- build WHERE clause incrementally -------------------
 	var (
-		sb   strings.Builder // keeps WHERE fragment
-		args []interface{}   // associated bound values
+		sb   strings.Builder
+		args []interface{}
 	)
 
-	// 1. Fixed conditions -------------------------------------------------
 	sb.WriteString("trackID = " + ph(len(args)+1))
 	args = append(args, trackID)
 
@@ -565,52 +563,41 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
 	args = append(args, minLon, maxLon)
 
-	// 2. Optional speed filter --------------------------------------------
+	if dateFrom > 0 {
+		sb.WriteString(" AND date >= " + ph(len(args)+1))
+		args = append(args, dateFrom)
+	}
+	if dateTo > 0 {
+		sb.WriteString(" AND date <= " + ph(len(args)+1))
+		args = append(args, dateTo)
+	}
+
 	if len(speedRanges) > 0 {
 		sb.WriteString(" AND (")
 		for i, r := range speedRanges {
-			if i > 0 {
-				sb.WriteString(" OR ")
-			}
+			if i > 0 { sb.WriteString(" OR ") }
 			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
 			args = append(args, r.Min, r.Max)
 		}
 		sb.WriteString(")")
 	}
 
-	// 3. Final SQL statement ----------------------------------------------
-	query := fmt.Sprintf(`
-		SELECT
-			id, doseRate, date, lon, lat, countRate,
-			zoom, speed, trackID
-		FROM markers
-		WHERE %s;`, sb.String())
+	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID
+	                      FROM markers WHERE %s;`, sb.String())
 
-	// ---------- execute ---------------------------------------------------
 	rows, err := db.DB.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query: %w", err)
-	}
+	if err != nil { return nil, fmt.Errorf("query: %w", err) }
 	defer rows.Close()
 
-	// ---------- stream → struct slice ------------------------------------
-	var markers []Marker
+	var out []Marker
 	for rows.Next() {
 		var m Marker
-		if err := rows.Scan(
-			&m.ID,
-			&m.DoseRate,
-			&m.Date,
-			&m.Lon,
-			&m.Lat,
-			&m.CountRate,
-			&m.Zoom,
-			&m.Speed,
-			&m.TrackID,
-		); err != nil {
+		if err := rows.Scan(&m.ID,&m.DoseRate,&m.Date,&m.Lon,&m.Lat,
+		                    &m.CountRate,&m.Zoom,&m.Speed,&m.TrackID); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
-		markers = append(markers, m)
+		out = append(out, m)
 	}
-	return markers, rows.Err()
+	return out, rows.Err()
 }
+

@@ -7,7 +7,9 @@
 		<title>{{translate "title"}}</title>
 
 		<!-- Подключение CSS Leaflet -->
-		<link rel="stylesheet" href="/static/leaflet.css" />
+		<link rel="stylesheet" href="/static/leaflet.css">
+    <link rel="stylesheet" href="/static/nouislider.min.css">
+
 
 		<style>
 /* Общие стили */
@@ -205,6 +207,68 @@ body, html {
 				.back-to-all-btn:hover {
 					background-color: #f4f4f4;
 				}
+
+
+				/* ─────────–– Slider clean-look patch ─────────── */
+				.date-slider-box {
+					padding: 6px;
+					width: 45px;
+				}
+
+				/* 0) базовая геометрия контейнера: буфер = 8 px
+					 (размер ручки / 2)  => ручка при крайних значениях
+				НЕ выходит за пределы оси                       */
+				#dateSlider{
+					width:6px;                 /* толщина оси             */
+					height:130px;              /* фактическая длина трека */
+					padding:0px 0;             /* ↑ внутр. отступ сверху/снизу */
+					box-sizing:content-box;    /* важен для padding-внутри */
+ 					margin:16px auto 26px;
+				}
+
+				/* 1) сама ось (серая)  */
+				#dateSlider .noUi-base{
+					background:#bfbfbf;
+					width:100%;                /* 6 px ширина               */
+					height:100%;               /* 130 px – 2 × 8 px padding */
+				}
+
+				/* 2) цветная часть ТОЛЬКО между ручками */
+				#dateSlider .noUi-connect{
+					background:#1e88e5;        /* ваш фирменный/любой цвет */
+				}
+
+				.noUi-vertical .noUi-handle{
+					width:32px;
+					height:20px;
+					left:-18px;              /* центрируем по 6-px оси */
+					border-radius:3px;
+					background:#f6f6f6;      /* светлая ручка */
+					border:1px solid #ccc;   /* серая обводка */
+					box-shadow:0 1px 3px rgba(0,0,0,.25);
+					cursor:grab;
+				}
+				/* 4) убираем «усики»-псевдоэлементы */
+				.noUi-handle:before,
+				.noUi-handle:after{ display:none; }
+
+				/* 5) на мобильных чуть крупнее таргет */
+				@media (pointer:coarse){
+					.noUi-vertical .noUi-handle{
+						width:22px;
+						height:22px;
+						left:-8px;
+					}
+				}
+
+				.slider-label{
+					margin:2px 0;
+					font-size:11px;
+					line-height:1.15em;
+					white-space:nowrap;
+				}
+
+
 		</style>
 
 		<!-- Скрипт переводов -->
@@ -280,6 +344,12 @@ body, html {
 
 		<!-- Подключение JavaScript библиотеки Leaflet -->
 		<script src="/static/leaflet.js"></script>
+
+    <!-- Slider -->
+    <script src="/static/nouislider.min.js"></script>
+    <script src="/static/wNumb.min.js"></script>
+
+
 
 		<!-- Вспомогательные функции -->
 		<script>
@@ -408,6 +478,34 @@ function loadSpeedFilterState() {
 	} catch (e) {
 		return def;
 	}
+}
+
+// ---------- helpers for time-range state ------------------------
+function loadDateRangeState() {
+	try { return JSON.parse(sessionStorage.getItem('dateRangeState')) || null; }
+	catch(e){ return null; }
+}
+function saveDateRangeState(st) {
+	sessionStorage.setItem('dateRangeState', JSON.stringify(st));
+}
+
+/**
+ * Возвращает строку «Месяц ГГГГ» на языке браузера
+ * (на большинстве устройств Chrome/Firefox выдаст «Авг 2025»,
+ * Safari — «Aug 2025» и т.д.).
+ */
+function tsToNiceStr(ts){
+    return new Date(ts * 1000)
+        .toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+}
+
+
+// возвращает |diff| в месяцах между двумя unix-секундами
+function monthsApart(ts0, ts1){
+    const d0 = new Date(ts0 * 1000);
+    const d1 = new Date(ts1 * 1000);
+    return Math.abs((d1.getFullYear() - d0.getFullYear()) * 12 +
+                    (d1.getMonth()     - d0.getMonth()));
 }
 
 /**
@@ -555,8 +653,91 @@ document.addEventListener('DOMContentLoaded', function () {
 
 	// Call it
 	createSpeedFilterControls();   
+	createDateRangeSlider();
+
 
 });
+
+
+
+/**
+ * createDateRangeSlider()
+ * Вертикальный double-slider для фильтра даты.
+ * Показывается, только если одновременно видно ≥ 2 trackID.
+ */
+function createDateRangeSlider() {
+    // ── переменные контрола ────────────────────────────────────
+    let sliderInited      = false;
+    let dateSliderVisible = false;   // текущее состояние
+
+    // ── контейнер Leaflet-control ──────────────────────────────
+    let sliderBox;
+
+    const DateCtrl = L.Control.extend({
+        onAdd() {
+            sliderBox = L.DomUtil.create('div',
+                'leaflet-control-layers date-slider-box');
+            sliderBox.style.display = 'none';      // скрыт по умолчанию
+
+            sliderBox.innerHTML = `
+                <div id="lblMax" class="slider-label"></div>
+                <div id="dateSlider"></div>
+                <div id="lblMin" class="slider-label"></div>`;
+            L.DomEvent.disableClickPropagation(sliderBox);
+            return sliderBox;
+        }
+    });
+    new DateCtrl({ position: 'topleft' }).addTo(map);
+
+    // ── показать / скрыть слайдер ──────────────────────────────
+    function setDateSliderVisibility(show) {
+        if (show === dateSliderVisible) return;
+        dateSliderVisible = show;
+        sliderBox.style.display = show ? 'block' : 'none';
+
+        // при скрытии сбрасываем фильтр
+        if (!show) sessionStorage.removeItem('dateRangeState');
+    }
+    window.__setDateSliderVisibility = setDateSliderVisibility;
+
+    // ── инициализация noUiSlider (один раз) ────────────────────
+    const slider = document.getElementById('dateSlider');
+
+    function initSliderOnce(minTs, maxTs) {
+        if (sliderInited) return;
+        sliderInited = true;
+
+
+        const stored = loadDateRangeState();
+        const start  = stored || [minTs, maxTs];
+
+        noUiSlider.create(slider, {
+            start,
+            connect: true,
+            orientation: 'vertical',
+            direction: 'rtl',
+            step: 3600,                 // 1 час
+            range: { min: minTs, max: maxTs },
+            format: wNumb({ decimals: 0 })
+        });
+
+        const lblMin = document.getElementById('lblMin');
+        const lblMax = document.getElementById('lblMax');
+
+        slider.noUiSlider.on('update', () => {
+            const [v0, v1] = slider.noUiSlider.get().map(Number);
+						lblMin.textContent = tsToNiceStr(v0);
+						lblMax.textContent = tsToNiceStr(v1);
+        });
+
+        slider.noUiSlider.on('change', () => {
+            saveDateRangeState(slider.noUiSlider.get().map(Number));
+            debounceUpdateMarkers();
+        });
+    }
+    window.__initSliderOnce = initSliderOnce;
+}
+	
 
 // Определение функций
 
@@ -584,83 +765,106 @@ function getPopupContent(marker) {
  *  применяет фильтр скоростей и рисует круги.
  *  Главное нововведение: AbortController + аккуратный .catch().
  * ──────────────────────────────────────────────────────────────*/
-function updateMarkers() {
-	/* отменяем висящий запрос (если был) и создаём новый контроллер */
-	if (markerFetchController) markerFetchController.abort();
-	markerFetchController = new AbortController();
+function updateMarkers(){
+    if (markerFetchController) markerFetchController.abort();
+    markerFetchController = new AbortController();
 
-	const zoomLevel = map.getZoom();
-	const bounds    = map.getBounds();
+    const zoom   = map.getZoom();
+    const bounds = map.getBounds();
 
-	const params = {
-		zoom  : zoomLevel,
-		minLat: bounds.getSouthWest().lat,
-		minLon: bounds.getSouthWest().lng,
-		maxLat: bounds.getNorthEast().lat,
-		maxLon: bounds.getNorthEast().lng
-	};
+    const params = {
+        zoom  : zoom,
+        minLat: bounds.getSouthWest().lat,
+        minLon: bounds.getSouthWest().lng,
+        maxLat: bounds.getNorthEast().lat,
+        maxLon: bounds.getNorthEast().lng
+    };
 
-	/* --- кто из ✈️🚗🚶 включён — отправляем на сервер --- */
-		const st     = loadSpeedFilterState();
-	const speeds = [];
-	if (st.plane) speeds.push('plane');
-	if (st.car)   speeds.push('car');
-	if (st.ped)   speeds.push('ped');
-	if (speeds.length && speeds.length !== 3) {
-		params.speeds = speeds.join(',');
-	}
+    // --- ✈🚗🚶 фильтр скоростей -------------------------------
+    const sp = loadSpeedFilterState();
+    const speeds = [];
+    if (sp.plane) speeds.push('plane');
+    if (sp.car)   speeds.push('car');
+    if (sp.ped)   speeds.push('ped');
+    if (speeds.length && speeds.length !== 3){
+        params.speeds = speeds.join(',');
+    }
 
-	/* если мы в режиме трека — добавляем trackID */
-		if (isTrackView && currentTrackID) params.trackID = currentTrackID;
+    // --- трековый режим --------------------------------------
+    if (isTrackView && currentTrackID){
+        params.trackID = currentTrackID;
+    }
 
-	const url = '/get_markers?' + new URLSearchParams(params);
+    fetch('/get_markers?' + new URLSearchParams(params),
+          { signal: markerFetchController.signal })
+        .then(r => { if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+        .then(data => {
+            if (!Array.isArray(data)) data = [];
 
-	fetch(url, { signal: markerFetchController.signal })
-		.then(r => {
-			if (!r.ok) throw new Error(`HTTP ${r.status}`);
-			return r.json();
-		})
-		.then(json => {
-			/* нормализуем payload к массиву */
-				let data = [];
-			if (Array.isArray(json))             data = json;
-			else if (json && Array.isArray(json.markers)) data = json.markers;
-			else if (json !== null) console.warn('Unexpected payload:', json);
+            // ---- статистика по трекам/датам -----------------
+            const tracks = new Set();
+            let minTs = Infinity, maxTs = -Infinity;
+            data.forEach(m=>{
+                if (m.trackID) tracks.add(m.trackID);
+                minTs = Math.min(minTs, m.date);
+                maxTs = Math.max(maxTs, m.date);
+            });
 
-			/* удаляем старые круги */
-				for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
-			circleMarkers = {};
+            const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
+                                   ? monthsApart(minTs, maxTs) : 0;
 
-			/* рисуем новые */
-				data.forEach(marker => {
-					if (!shouldDisplayBySpeed(marker.speed)) return;
+            // нужен ли слайдер? (≥2 трека И разброс > 1 месяц)
+            const needSlider = !isTrackView &&
+                               tracks.size > 1 &&
+                               dateSpanMonths > 1;
 
-					const key    = marker.id || marker.trackID;
-					const color  = getGradientColor(marker.doseRate);
-					const radius = getRadius(marker.doseRate, zoomLevel);
+            if (window.__setDateSliderVisibility){
+                window.__setDateSliderVisibility(needSlider);
+            }
 
-					const cm = L.circleMarker([marker.lat, marker.lon], {
-						radius, fillColor: color, color,
-						weight: 1,
-						opacity: getFillOpacity(marker.speed) + 0.1,
-						fillOpacity: getFillOpacity(marker.speed)
-					})
-						.addTo(map)
-						.bindTooltip(getTooltipContent(marker),
-							{ direction:'top', className:'custom-tooltip',
-								offset:[0,-8], permanent:false })
-						.bindPopup(getPopupContent(marker));
+            // первое появление — инициализируем
+            if (needSlider && window.__initSliderOnce && data.length){
+                window.__initSliderOnce(minTs, maxTs);
+                window.__initSliderOnce = null;
+            }
 
-					cm.doseRate          = marker.doseRate; // для ресайза при zoom
-					circleMarkers[key]   = cm;
-				});
-		})
-		.catch(err => {
-			/* AbortError (Chrome) и «Load failed» (Firefox) игнорируем */
-				if (err.name === 'AbortError' ||
-					(err.message && err.message.includes('Load failed'))) return;
-			console.error('Error fetching markers:', err);
-		});
+            // если слайдера нет → сбрасываем фильтр времени
+            let dateState = null;
+            if (needSlider){
+                dateState = loadDateRangeState();
+                if (dateState){
+                    data = data.filter(m => m.date >= dateState[0] &&
+                                            m.date <= dateState[1]);
+                }
+            }
+
+            // ---- рендер маркеров ----------------------------
+            for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+            circleMarkers = {};
+
+            data.forEach(m=>{
+                if (!shouldDisplayBySpeed(m.speed)) return;
+
+                const cm = L.circleMarker([m.lat, m.lon], {
+                    radius      : getRadius(m.doseRate, zoom),
+                    fillColor   : getGradientColor(m.doseRate),
+                    color       : getGradientColor(m.doseRate),
+                    weight      : 1,
+                    opacity     : getFillOpacity(m.speed) + 0.1,
+                    fillOpacity : getFillOpacity(m.speed)
+                })
+                .addTo(map)
+                .bindTooltip(getTooltipContent(m),
+                    { direction:'top', className:'custom-tooltip', offset:[0,-8] })
+                .bindPopup(getPopupContent(m));
+
+                circleMarkers[m.id || m.trackID] = cm;
+            });
+        })
+        .catch(err=>{
+            if (err.name === 'AbortError') return;
+            console.error('fetch:', err);
+        });
 }
 
 
