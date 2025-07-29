@@ -63,6 +63,7 @@ var db *database.Database
 // ==========
 const (
 	markerRadiusPx = 10.0 // радиус кружка в пикселях
+  minValidTS     = 1262304000   // 2010-01-01 00:00:00 UTC
 )
 
 type SpeedRange struct{ Min, Max float64 }
@@ -239,6 +240,25 @@ func filterZeroMarkers(markers []database.Marker) []database.Marker {
 	}
 	return filteredMarkers
 }
+
+
+// NEW ────────────────
+func isValidDate(ts int64) bool {
+    // допустимо «сегодня плюс сутки» с учётом часовых поясов
+    max := time.Now().Add(24 * time.Hour).Unix()
+    return ts >= minValidTS && ts <= max
+}
+
+func filterInvalidDateMarkers(markers []database.Marker) []database.Marker {
+    out := markers[:0]
+    for _, m := range markers {
+        if isValidDate(m.Date) {
+            out = append(out, m)
+        }
+    }
+    return out
+}
+
 
 // Проекция Web Mercator приблизительно переводит широту/долготу в "метры".
 // Формулы стандартные, здесь используется для перевода в пиксельные координаты.
@@ -666,6 +686,12 @@ func processAndStoreMarkers(markers []database.Marker, trackID string, db *datab
 
 	// Фильтрация нулевых значений
 	markers = filterZeroMarkers(markers)
+
+	// processAndStoreMarkers()  – сразу после filterZeroMarkers()
+	markers = filterInvalidDateMarkers(markers)  // NEW
+	if len(markers) == 0 {
+		return fmt.Errorf("all markers have invalid dates")
+	}
 
 	// Расчёт скорости
 	markers = calculateSpeedForMarkers(markers)
