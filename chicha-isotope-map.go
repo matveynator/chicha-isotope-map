@@ -685,7 +685,10 @@ func processAndStoreMarkers(markers []database.Marker, trackID string, db *datab
 	}
 
 	// Фильтрация нулевых значений
-	markers = filterZeroMarkers(markers)
+  markers = filterZeroMarkers(markers)
+  if len(markers) == 0 {
+    return fmt.Errorf("no markers with non-zero dose left after filtering")
+  }
 
 	// processAndStoreMarkers()  – сразу после filterZeroMarkers()
 	markers = filterInvalidDateMarkers(markers)  // NEW
