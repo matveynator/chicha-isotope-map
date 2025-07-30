@@ -268,6 +268,35 @@ body, html {
 					white-space:nowrap;
 				}
 
+				/* ───── переключатель “Год / Месяц” ───── */
+				.slider-toggle{
+					display:flex; gap:2px; margin:2px 0 4px;
+					font-size:11px; line-height:1; user-select:none;
+				}
+				.slider-toggle button{
+					flex:1 1 0; padding:2px 4px;
+					border:1px solid #bbb; background:#f5f5f5;
+					border-radius:3px; cursor:pointer;
+				}
+				.slider-toggle button.active{
+					background:#1e88e5; color:#fff; border-color:#1e88e5;
+        }
+
+        /* ─── Year-mode: делаем ползунок такого же роста, как месячный ─── */
+        #yearSlider{
+          /* копия параметров из #dateSlider */
+          width:6px;                 /* толщина оси            */
+          height:130px;              /* длина трека            */
+          padding:0;                 /* внутренний отступ      */
+          margin:16px auto 26px;     /* те же отступы          */
+          box-sizing:content-box;
+        }
+        /* серая «рельса» и синий connect-бар */
+        #yearSlider .noUi-base      {background:#bfbfbf;width:100%;height:100%;}
+        #yearSlider .noUi-connect   {background:#bfbfbf;}
+
+
+
 
 		</style>
 
@@ -659,84 +688,149 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 
-
 /**
  * createDateRangeSlider()
- * Вертикальный double-slider для фильтра даты.
- * Показывается, только если одновременно видно ≥ 2 trackID.
+ *  • Вертикальный double-slider (месяцы) И single-slider (годы)
+ *  • Переключатель Y / M
+ *  • Годовой режим — по умолчанию
  */
-function createDateRangeSlider() {
-    // ── переменные контрола ────────────────────────────────────
-    let sliderInited      = false;
-    let dateSliderVisible = false;   // текущее состояние
+function createDateRangeSlider(){
+	/* ── переменные состояния ─────────────────────────────── */
+	let sliderBox, yearSlider, monthSlider;
+	let mode  = 'year';                      // 'year' | 'month'
+	let initY = false, initM = false;        // lazy-init флаги
 
-    // ── контейнер Leaflet-control ──────────────────────────────
-    let sliderBox;
+	/* ── Leaflet-контрол ──────────────────────────────────── */
+	const DateCtrl = L.Control.extend({
+		onAdd(){
+			sliderBox = L.DomUtil.create('div',
+			  'leaflet-control-layers date-slider-box');
+      sliderBox.style.display = 'none';   // пока не нужно
+      sliderBox.innerHTML = `
+        <div class="slider-toggle">
+        <button id="btnYear"  class="active">Y</button>
+        <button id="btnMonth">M</button>
+        </div>
+        <div id="lblMax" class="slider-label"></div>
+        <div id="yearSlider"></div>
+        <div id="dateSlider"></div>
+        <div id="lblMin" class="slider-label"></div>`;
+			return sliderBox;
+		}
+	});
+	new DateCtrl({ position:'topleft' }).addTo(map);
 
-    const DateCtrl = L.Control.extend({
-        onAdd() {
-            sliderBox = L.DomUtil.create('div',
-                'leaflet-control-layers date-slider-box');
-            sliderBox.style.display = 'none';      // скрыт по умолчанию
+	/* ───────── переключатель режимов ───────── */
+		const btnY = sliderBox.querySelector('#btnYear');
+	const btnM = sliderBox.querySelector('#btnMonth');
+	btnY.onclick = () => switchMode('year');
+	btnM.onclick = () => switchMode('month');
 
-            sliderBox.innerHTML = `
-                <div id="lblMax" class="slider-label"></div>
-                <div id="dateSlider"></div>
-                <div id="lblMin" class="slider-label"></div>`;
-            L.DomEvent.disableClickPropagation(sliderBox);
-            return sliderBox;
-        }
-    });
-    new DateCtrl({ position: 'topleft' }).addTo(map);
+	function switchMode(next){
+		/* ―― если режим не меняется, выходим ―― */
+			if (mode === next) return;
 
-    // ── показать / скрыть слайдер ──────────────────────────────
-    function setDateSliderVisibility(show) {
-        if (show === dateSliderVisible) return;
-        dateSliderVisible = show;
-        sliderBox.style.display = show ? 'block' : 'none';
+		/* ―― синхронизируем значения ползунков ―― */
+			if (next === 'year'){                 // M → Y
+				/* берём дату «от» как реперного месяца */
+					const [fromTs] = monthSlider.noUiSlider.get().map(Number);
+				const y = new Date(fromTs * 1000).getUTCFullYear();
+				yearSlider.noUiSlider.set(y);     // целиком этот год
+			} else {                             // Y → M
+				const y = +yearSlider.noUiSlider.get();
+				const from = Date.UTC(y, 0, 1) / 1000;
+				const to   = Date.UTC(y + 1, 0, 1) / 1000 - 1;
+				monthSlider.noUiSlider.set([from, to]);
+			}
 
-        // при скрытии сбрасываем фильтр
-        if (!show) sessionStorage.removeItem('dateRangeState');
-    }
-    window.__setDateSliderVisibility = setDateSliderVisibility;
+		/* ―― визуальное переключение ―― */
+			mode = next;
+		btnY.classList.toggle('active', next === 'year');
+		btnM.classList.toggle('active', next === 'month');
+		yearSlider.style.display  = next === 'year'  ? 'block' : 'none';
+		monthSlider.style.display = next === 'month' ? 'block' : 'none';
 
-    // ── инициализация noUiSlider (один раз) ────────────────────
-    const slider = document.getElementById('dateSlider');
+		/* ―― применяем фильтр / сохраняем состояние ―― */
+			updateDateFilter();
+	}
 
-    function initSliderOnce(minTs, maxTs) {
-        if (sliderInited) return;
-        sliderInited = true;
+	/* ── показать / скрыть коробку ─────────────────────────── */
+	let visible = false;
+	window.__setDateSliderVisibility = show=>{
+		if(show === visible) return;
+		visible = show;
+		sliderBox.style.display = show ? 'block' : 'none';
+		if(!show) sessionStorage.removeItem('dateRangeState');
+	};
 
+	/* ── инициализация noUiSlider-ов (ленивая) ─────────────── */
+	window.__initSliderOnce = (minTs, maxTs)=>{
+		const lblMin = sliderBox.querySelector('#lblMin');
+		const lblMax = sliderBox.querySelector('#lblMax');
 
-        const stored = loadDateRangeState();
-        const start  = stored || [minTs, maxTs];
+		/* YEAR-slider (один бегунок) */
+		if(!initY){
+			yearSlider = sliderBox.querySelector('#yearSlider');
+			const minYear = new Date(minTs*1000).getUTCFullYear();
+			const maxYear = new Date(maxTs*1000).getUTCFullYear();
+			const stored  = loadDateRangeState() || [(minYear|0)];
+			noUiSlider.create(yearSlider,{
+				start      : stored[0],
+				connect    : [true,false],
+				orientation: 'vertical',
+				direction  : 'rtl',
+				step       : 1,
+				range      : { min:minYear, max:maxYear },
+				format     : wNumb({ decimals:0 })
+			});
+			yearSlider.noUiSlider.on('update',([y])=>{
+				lblMin.textContent = '';
+				lblMax.textContent = y;
+			});
+			yearSlider.noUiSlider.on('change',updateDateFilter);
+			initY = true;
+		}
 
-        noUiSlider.create(slider, {
-            start,
-            connect: true,
-            orientation: 'vertical',
-            direction: 'rtl',
-            step: 3600,                 // 1 час
-            range: { min: minTs, max: maxTs },
-            format: wNumb({ decimals: 0 })
-        });
+		/* MONTH-slider (двойной) */
+		if(!initM){
+			monthSlider = sliderBox.querySelector('#dateSlider');
+			const stored = loadDateRangeState() || [minTs, maxTs];
+			noUiSlider.create(monthSlider,{
+				start       : stored,
+				connect     : true,
+				orientation : 'vertical',
+				direction   : 'rtl',
+				step        : 3600,                 // 1 ч
+				range       : { min:minTs, max:maxTs },
+				format      : wNumb({ decimals:0 })
+			});
+			monthSlider.noUiSlider.on('update',()=>{
+				const [v0,v1] = monthSlider.noUiSlider.get().map(Number);
+				lblMin.textContent = tsToNiceStr(v0);
+				lblMax.textContent = tsToNiceStr(v1);
+			});
+			monthSlider.noUiSlider.on('change',updateDateFilter);
+			monthSlider.style.display = 'none';   // скрыт по умолчанию
+			initM = true;
+		}
+	};
 
-        const lblMin = document.getElementById('lblMin');
-        const lblMax = document.getElementById('lblMax');
-
-        slider.noUiSlider.on('update', () => {
-            const [v0, v1] = slider.noUiSlider.get().map(Number);
-						lblMin.textContent = tsToNiceStr(v0);
-						lblMax.textContent = tsToNiceStr(v1);
-        });
-
-        slider.noUiSlider.on('change', () => {
-            saveDateRangeState(slider.noUiSlider.get().map(Number));
-            debounceUpdateMarkers();
-        });
-    }
-    window.__initSliderOnce = initSliderOnce;
+	/* ── перевод значения текущего слайдера → dateRangeState ─ */
+	function updateDateFilter(){
+		let range;
+		if(mode==='year'){
+			const y = +yearSlider.noUiSlider.get();
+			const from = Date.UTC(y,0,1)/1000;
+			const to   = Date.UTC(y+1,0,1)/1000 - 1;
+			range = [from,to];
+		}else{
+			range = monthSlider.noUiSlider.get().map(Number);
+		}
+		saveDateRangeState(range);
+		debounceUpdateMarkers();
+	}
 }
+
 	
 
 // Определение функций
