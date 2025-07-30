@@ -257,6 +257,7 @@
 					font-size:11px;
 					line-height:1.15em;
 					white-space:nowrap;
+					text-align:center; 
 				}
 
 				/* ───── переключатель “Год / Месяц” ───── */
@@ -757,18 +758,22 @@ function createDateRangeSlider(){
 
 
 	const btnReset = sliderBox.querySelector('#btnReset');
-	btnReset.onclick = ()=>{
-		sessionStorage.removeItem('dateRangeState');     // забываем фильтр
-		/* возвращаем бегунки на весь диапазон ------------------------ */
-			if(initY){
-				const yRange = yearSlider.noUiSlider.options.range;
-				yearSlider.noUiSlider.set(yRange.min);
-			}
-		if(initM){
-			const mRange = monthSlider.noUiSlider.options.range;
-			monthSlider.noUiSlider.set([mRange.min, mRange.max]);
+	btnReset.onclick = () => {
+		sessionStorage.removeItem('dateRangeState');
+		if (mode === 'year' && initY){
+			const r = yearSlider.noUiSlider.options.range;
+			yearSlider.noUiSlider.set(r.min);       // бегунок к началу
+			// NEW: подписи = весь диапазон
+			lblMin.textContent = r.min;
+			lblMax.textContent = r.max;
 		}
-		debounceUpdateMarkers();                         // перерисовка
+
+		if (mode === 'month' && initM) {              // активен месячный
+			const r = monthSlider.noUiSlider.options.range;
+			monthSlider.noUiSlider.set([r.min, r.max]); // две ручки
+		}
+
+		debounceUpdateMarkers();
 	};
 
 
@@ -776,18 +781,18 @@ function createDateRangeSlider(){
 		/* ―― если режим не меняется, выходим ―― */
 			if (mode === next) return;
 
-		/* ―― синхронизируем значения ползунков ―― */
-			if (next === 'year'){                 // M → Y
-				/* берём дату «от» как реперного месяца */
-					const [fromTs] = monthSlider.noUiSlider.get().map(Number);
-				const y = new Date(fromTs * 1000).getUTCFullYear();
-				yearSlider.noUiSlider.set(y);     // целиком этот год
-			} else {                             // Y → M
-				const y = +yearSlider.noUiSlider.get();
-				const from = Date.UTC(y, 0, 1) / 1000;
-				const to   = Date.UTC(y + 1, 0, 1) / 1000 - 1;
-				monthSlider.noUiSlider.set([from, to]);
-			}
+
+
+    // NEW: сразу выводим корректные подписи
+    if (next === 'year'){
+        const y = yearSlider.noUiSlider.get();
+        lblMin.textContent = y;
+        lblMax.textContent = y;
+    } else {
+        const [v0, v1] = monthSlider.noUiSlider.get().map(Number);
+        lblMin.textContent = tsToNiceStr(v0);
+        lblMax.textContent = tsToNiceStr(v1);
+    }
 
 		/* ―― визуальное переключение ―― */
 			mode = next;
@@ -829,8 +834,9 @@ function createDateRangeSlider(){
 				range      : { min:minYear, max:maxYear },
 				format     : wNumb({ decimals:0 })
 			});
-			yearSlider.noUiSlider.on('update',([y])=>{
-				lblMin.textContent = '';
+			yearSlider.noUiSlider.on('update', ([y]) => {
+				if (mode !== 'year') return;   // ← игнор в режиме месяцев
+				lblMin.textContent = y;
 				lblMax.textContent = y;
 			});
 			yearSlider.noUiSlider.on('change',updateDateFilter);
@@ -850,8 +856,9 @@ function createDateRangeSlider(){
 				range       : { min:minTs, max:maxTs },
 				format      : wNumb({ decimals:0 })
 			});
-			monthSlider.noUiSlider.on('update',()=>{
-				const [v0,v1] = monthSlider.noUiSlider.get().map(Number);
+			monthSlider.noUiSlider.on('update', () => {
+				if (mode !== 'month') return;  // ← игнор в режиме годов
+				const [v0, v1] = monthSlider.noUiSlider.get().map(Number);
 				lblMin.textContent = tsToNiceStr(v0);
 				lblMax.textContent = tsToNiceStr(v1);
 			});
