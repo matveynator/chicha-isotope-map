@@ -758,52 +758,82 @@ function createDateRangeSlider(){
 
 
 	const btnReset = sliderBox.querySelector('#btnReset');
-	btnReset.onclick = () => {
-		sessionStorage.removeItem('dateRangeState');
-		if (mode === 'year' && initY){
-			const r = yearSlider.noUiSlider.options.range;
-			yearSlider.noUiSlider.set(r.min);       // бегунок к началу
-			// NEW: подписи = весь диапазон
-			lblMin.textContent = r.min;
-			lblMax.textContent = r.max;
-		}
 
-		if (mode === 'month' && initM) {              // активен месячный
-			const r = monthSlider.noUiSlider.options.range;
-			monthSlider.noUiSlider.set([r.min, r.max]); // две ручки
-		}
+	/* ───────── кнопка «⟲ Reset» ───────── */
+		btnReset.onclick = () => {
+			// сбрасываем сохранённый фильтр
+			sessionStorage.removeItem('dateRangeState');
 
-		debounceUpdateMarkers();
-	};
+			// --- годовой слайдер ----------------------------------
+			if (initY) {
+				const rY = yearSlider.noUiSlider.options.range;
+				yearSlider.noUiSlider.set(rY.min);          // ручка к самому началу
+			}
+
+			// --- месячный слайдер  (важно: всегда, даже если сейчас скрыт)
+			if (initM) {
+				const rM = monthSlider.noUiSlider.options.range;
+				monthSlider.noUiSlider.set([rM.min, rM.max]);
+			}
+
+			// --- подписи внизу/вверху ------------------------------
+			const lblMin = sliderBox.querySelector('#lblMin');
+			const lblMax = sliderBox.querySelector('#lblMax');
+
+			if (mode === 'year') {                        // активен годовой
+				const r = yearSlider.noUiSlider.options.range;
+				lblMin.textContent = r.min;
+				lblMax.textContent = r.max;
+			} else {                                      // активен месячный
+				const r = monthSlider.noUiSlider.options.range;
+				lblMin.textContent = tsToNiceStr(r.min);
+				lblMax.textContent = tsToNiceStr(r.max);
+			}
+
+			debounceUpdateMarkers();
+		};
 
 
-	function switchMode(next){
-		/* ―― если режим не меняется, выходим ―― */
-			if (mode === next) return;
+	/* ───────── переключатель режимов ───────── */
+		function switchMode(next) {
+			if (mode === next) return;   // ничего не меняется
 
+			// >>> PATCH 2025-07-30 — синхронизируем M-слайдер с текущим фильтром
+			if (next === 'month' && initM) {
+				const saved = loadDateRangeState();
+				if (saved) {                               // выбран конкретный год
+					monthSlider.noUiSlider.set(saved);
+				} else {                                   // фильтра нет → полный диапазон
+					const r = monthSlider.noUiSlider.options.range;
+					monthSlider.noUiSlider.set([r.min, r.max]);
+				}
+			}
+			// <<< PATCH
 
+																											 /* -- визуальное переключение ---------------------------------- */
+																											 mode = next;
+																											 btnY.classList.toggle('active', next === 'year');
+																											 btnM.classList.toggle('active', next === 'month');
+																											 yearSlider.style.display  = next === 'year'  ? 'block' : 'none';
+																											 monthSlider.style.display = next === 'month' ? 'block' : 'none';
 
-    // NEW: сразу выводим корректные подписи
-    if (next === 'year'){
-        const y = yearSlider.noUiSlider.get();
-        lblMin.textContent = y;
-        lblMax.textContent = y;
-    } else {
-        const [v0, v1] = monthSlider.noUiSlider.get().map(Number);
-        lblMin.textContent = tsToNiceStr(v0);
-        lblMax.textContent = tsToNiceStr(v1);
-    }
+																											 /* -- обновляем подписи ---------------------------------------- */
+																											 const lblMin = sliderBox.querySelector('#lblMin');
+																											 const lblMax = sliderBox.querySelector('#lblMax');
 
-		/* ―― визуальное переключение ―― */
-			mode = next;
-		btnY.classList.toggle('active', next === 'year');
-		btnM.classList.toggle('active', next === 'month');
-		yearSlider.style.display  = next === 'year'  ? 'block' : 'none';
-		monthSlider.style.display = next === 'month' ? 'block' : 'none';
+																											 if (next === 'year') {
+																											 const y = +yearSlider.noUiSlider.get();
+																											 lblMin.textContent = y;
+																											 lblMax.textContent = y;
+																											 } else {
+																											 const [v0, v1] = monthSlider.noUiSlider.get().map(Number);
+																											 lblMin.textContent = tsToNiceStr(v0);
+																											 lblMax.textContent = tsToNiceStr(v1);
+																											 }
 
-		/* ―― применяем фильтр / сохраняем состояние ―― */
-			updateDateFilter();
-	}
+																											 /* -- применяем/снимаем фильтр --------------------------------- */
+																											 updateDateFilter();
+																											 }
 
 	/* ── показать / скрыть коробку ─────────────────────────── */
 	let visible = false;
