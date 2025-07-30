@@ -212,7 +212,7 @@
 				/* ─────────–– Slider clean-look patch ─────────── */
 				.date-slider-box {
 					padding: 6px;
-					width: 45px;
+					width: 50px;
 				}
 
 				/* 0) базовая геометрия контейнера: буфер = 8 px
@@ -251,15 +251,6 @@
 				/* 4) убираем «усики»-псевдоэлементы */
 				.noUi-handle:before,
 				.noUi-handle:after{ display:none; }
-
-				/* 5) на мобильных чуть крупнее таргет */
-				@media (pointer:coarse){
-					.noUi-vertical .noUi-handle{
-						width:22px;
-						height:22px;
-						left:-8px;
-					}
-				}
 
 				.slider-label{
 					margin:2px 0;
