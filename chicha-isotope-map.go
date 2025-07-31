@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+  "html"
 	"errors"
 	"html/template"
 	"io"
@@ -191,6 +192,28 @@ func serveWithDomain(domain string, handler http.Handler) {
 	}).ListenAndServeTLS("", ""); err != nil {
 		log.Printf("HTTPS server error: %v", err)
 	}
+}
+
+
+// logT prints a line like “[sX4KZl][KMZ] read 123 bytes”.
+//
+// * trackID   — unique id of the upload batch
+// * component — short tag: KMZ, KML, RCTRK, Store, Upload, etc.
+// * format / v — the usual printf body
+//
+func logT(trackID, component, format string, v ...any) {
+  log.Printf("[%-6s][%s] %s", trackID, component, fmt.Sprintf(format, v...))
+}
+
+// rxFind returns the first submatch (group #1) of pattern in s or an empty string.
+// Entities are unescaped and result is TrimSpace-обработан.
+func rxFind(s, pattern string) string {
+	re := regexp.MustCompile(pattern)
+	m  := re.FindStringSubmatch(s)
+	if len(m) > 1 {
+		return strings.TrimSpace(html.UnescapeString(m[1]))
+	}
+	return ""
 }
 
 
@@ -624,46 +647,40 @@ func parseDate(s string, loc *time.Location) int64 {
 	return 0
 }
 
-// -----------------------------------------------------------------------------
-// parseKML — универсальный парсер KML (обычный + Safecast).
-// Для каждой <Placemark> ищет:
-//  • координату  (первые lon,lat)
-//  • дозу        — <name> 0.123 uSv/h          или «… µR/h» / «… µSv/h» в <description>
-//  • счёт        — «… cps» или «CPM Value = …»
-//  • дату        — как в parseDate()
-// -----------------------------------------------------------------------------
-func parseKML(data []byte) ([]database.Marker, error) {
-	var markers []database.Marker
+// =====================================================================================
+// parseKML.go  — подпись trackID добавлена
+// =====================================================================================
+func parseKML(trackID string, data []byte) ([]database.Marker, error) {
+	logT(trackID, "KML", "parser start")
 
 	placemarkRe := regexp.MustCompile(`(?s)<Placemark[^>]*>(.*?)</Placemark>`)
-	for _, pm := range placemarkRe.FindAllStringSubmatch(string(data), -1) {
+	placemarks  := placemarkRe.FindAllStringSubmatch(string(data), -1)
+	logT(trackID, "KML", "found %d <Placemark> blocks", len(placemarks))
+
+	var markers []database.Marker
+	for idx, pm := range placemarks {
 		seg := pm[1]
 
-		// --- координаты ---------------------------------------------------
 		coordRe := regexp.MustCompile(`<coordinates>\s*([-\d.]+),([-\d.]+)`)
-		cm := coordRe.FindStringSubmatch(seg)
-		if len(cm) < 3 {
-			continue // без координат — бесполезно
+		coord   := coordRe.FindStringSubmatch(seg)
+		if len(coord) < 3 {
+			logT(trackID, "KML", "skip #%d: no coordinates", idx+1)
+			continue
 		}
-		lon, lat := parseFloat(cm[1]), parseFloat(cm[2])
+		lon, lat := parseFloat(coord[1]), parseFloat(coord[2])
 
-		// --- текстовые поля ----------------------------------------------
-		name := ""
-		if m := regexp.MustCompile(`<name>([^<]+)</name>`).FindStringSubmatch(seg); len(m) > 1 {
-			name = strings.TrimSpace(m[1])
-		}
-		desc := ""
-		if m := regexp.MustCompile(`(?s)<description[^>]*>(.*?)</description>`).FindStringSubmatch(seg); len(m) > 1 {
-			desc = strings.TrimSpace(m[1])
-		}
+		name := rxFind(seg, `<name>([^<]+)</name>`)
+		desc := rxFind(seg, `(?s)<description[^>]*>(.*?)</description>`)
 
-		// --- извлекаем значения ------------------------------------------
-		dose   := extractDoseRate(name)
-		if dose == 0 {
-			dose = extractDoseRate(desc)
+		dose  := extractDoseRate(name)
+		if dose == 0 { dose = extractDoseRate(desc) }
+		count := extractCountRate(desc)
+		date  := parseDate(desc, getTimeZoneByLongitude(lon))
+
+		if dose == 0 && count == 0 {
+			logT(trackID, "KML", "skip #%d: both dose & count are zero", idx+1)
+			continue
 		}
-		count  := extractCountRate(desc)
-		date   := parseDate(desc, getTimeZoneByLongitude(lon))
 
 		markers = append(markers, database.Marker{
 			DoseRate:  dose,
@@ -673,274 +690,376 @@ func parseKML(data []byte) ([]database.Marker, error) {
 			Date:      date,
 		})
 	}
+
+	logT(trackID, "KML", "parser done, parsed=%d markers", len(markers))
+	if len(markers) == 0 {
+		return nil, fmt.Errorf("no valid <Placemark> with numeric data found")
+	}
 	return markers, nil
 }
 
 
 
-func processAndStoreMarkers(markers []database.Marker, trackID string, db *database.Database, dbType string) error {
-	// Устанавливаем TrackID всем маркерам
-	for i := range markers {
-		markers[i].TrackID = trackID
-	}
+// =====================================================================================
+// parseTextRCTRK.go  — теперь принимает trackID
+// =====================================================================================
+func parseTextRCTRK(trackID string, data []byte) ([]database.Marker, error) {
+	logT(trackID, "RCTRK", "text parser start")
 
-	// Фильтрация нулевых значений
-  markers = filterZeroMarkers(markers)
-  if len(markers) == 0 {
-    return fmt.Errorf("no markers with non-zero dose left after filtering")
-  }
-
-	// processAndStoreMarkers()  – сразу после filterZeroMarkers()
-	markers = filterInvalidDateMarkers(markers)  // NEW
-	if len(markers) == 0 {
-		return fmt.Errorf("all markers have invalid dates")
-	}
-
-	// Расчёт скорости
-	markers = calculateSpeedForMarkers(markers)
-
-	// Предварительный расчёт для зумов
-	allZoomMarkers := precomputeMarkersForAllZoomLevels(markers)
-
-	// Сохраняем маркеры в БД
-	for _, m := range allZoomMarkers {
-		if err := db.SaveMarkerAtomic(m, dbType); err != nil {
-			return fmt.Errorf("error saving marker: %v", err)
-		}
-	}
-	return nil
-}
-
-// parseTextRCTRK - парсинг .rctrk текстового
-func parseTextRCTRK(data []byte) ([]database.Marker, error) {
 	var markers []database.Marker
 	lines := strings.Split(string(data), "\n")
-	for i, line := range lines {
-		if i == 0 || strings.HasPrefix(line, "Timestamp") || strings.TrimSpace(line) == "" {
+
+	for idx, line := range lines {
+		if idx == 0 || strings.HasPrefix(line, "Timestamp") || strings.TrimSpace(line) == "" {
 			continue
 		}
+
 		fields := strings.Fields(line)
 		if len(fields) < 8 {
-			log.Printf("Skipping line %d: insufficient fields. Line: %s\n", i+1, line)
+			logT(trackID, "RCTRK", "skip line %d: insufficient fields (%d)", idx+1, len(fields))
 			continue
 		}
-		timeStampStr := fields[1] + " " + fields[2]
-		layout := "2006-01-02 15:04:05"
-		parsedTime, err := time.Parse(layout, timeStampStr)
+
+		tsStr := fields[1] + " " + fields[2]
+		t, err := time.Parse("2006-01-02 15:04:05", tsStr)
 		if err != nil {
-			log.Printf("Skipping line %d: error parsing time. %v\n", i+1, err)
+			logT(trackID, "RCTRK", "skip line %d: time parse error: %v", idx+1, err)
 			continue
 		}
-		lat := parseFloat(fields[3])
-		lon := parseFloat(fields[4])
+
+		lat, lon := parseFloat(fields[3]), parseFloat(fields[4])
 		if lat == 0 || lon == 0 {
-			log.Printf("Skipping line %d: invalid coordinates.\n", i+1)
+			logT(trackID, "RCTRK", "skip line %d: invalid coords (%.6f,%.6f)", idx+1, lat, lon)
 			continue
 		}
-		doseRate := parseFloat(fields[6])
-		countRate := parseFloat(fields[7])
-		if doseRate < 0 || countRate < 0 {
-			log.Printf("Skipping line %d: negative dose or count.\n", i+1)
+
+		doseRaw, countRaw := parseFloat(fields[6]), parseFloat(fields[7])
+		if doseRaw < 0 || countRaw < 0 {
+			logT(trackID, "RCTRK", "skip line %d: negative dose/count", idx+1)
 			continue
 		}
-		marker := database.Marker{
-			DoseRate:  doseRate / 100.0,
-			CountRate: countRate,
+
+		markers = append(markers, database.Marker{
+			DoseRate:  doseRaw / 100.0,
+			CountRate: countRaw,
 			Lat:       lat,
 			Lon:       lon,
-			Date:      parsedTime.Unix(),
-		}
-		markers = append(markers, marker)
+			Date:      t.Unix(),
+		})
 	}
+
+	logT(trackID, "RCTRK", "text parser done, parsed=%d markers", len(markers))
 	return markers, nil
 }
 
+// =============================================================================
+// processKMLFile — handles plain .kml uploads
+// =============================================================================
 func processKMLFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
-	data, err := ioutil.ReadAll(file)
+	logT(trackID, "KML", "▶ start")
+
+	data, err := io.ReadAll(file)
 	if err != nil {
+		logT(trackID, "KML", "✖ read error: %v", err)
 		return fmt.Errorf("error reading KML file: %v", err)
 	}
-	markers, err := parseKML(data)
+	logT(trackID, "KML", "read %d bytes", len(data))
+
+	markers, err := parseKML(trackID, data)
 	if err != nil {
+		logT(trackID, "KML", "✖ parse error: %v", err)
 		return fmt.Errorf("error parsing KML file: %v", err)
 	}
+	logT(trackID, "KML", "parsed %d markers", len(markers))
 
-	return processAndStoreMarkers(markers, trackID, db, dbType)
-}
-
-func processKMZFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("error reading KMZ file: %v", err)
-	}
-	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return fmt.Errorf("error opening KMZ file as ZIP: %v", err)
+	if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
+		logT(trackID, "KML", "✖ processAndStore error: %v", err)
+		return err
 	}
 
-	for _, zipFile := range zipReader.File {
-		if filepath.Ext(zipFile.Name) == ".kml" {
-			kmlFile, err := zipFile.Open()
-			if err != nil {
-				return fmt.Errorf("error opening KML inside KMZ: %v", err)
-			}
-			defer kmlFile.Close()
-
-			kmlData, err := io.ReadAll(kmlFile)
-			if err != nil {
-				return fmt.Errorf("error reading KML inside KMZ: %v", err)
-			}
-			markers, err := parseKML(kmlData)
-			if err != nil {
-				return fmt.Errorf("error parsing KML inside KMZ: %v", err)
-			}
-
-			if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
-				return err
-			}
-		}
-	}
+	logT(trackID, "KML", "✔ done")
 	return nil
 }
 
-func processRCTRKFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		return fmt.Errorf("error reading RCTRK file: %v", err)
-	}
-	rctrkData := database.Data{IsSievert: true}
+// =============================================================================
+// processKMZFile — handles .kmz archives (ZIP with KML inside)
+// =============================================================================
+func processKMZFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
+	logT(trackID, "KMZ", "▶ start")
 
-	if err := json.Unmarshal(data, &rctrkData); err == nil {
-		markers := rctrkData.Markers
-		if !rctrkData.IsSievert {
-			markers = convertRhToSv(markers)
+	data, err := io.ReadAll(file)
+	if err != nil {
+		logT(trackID, "KMZ", "✖ read error: %v", err)
+		return fmt.Errorf("error reading KMZ file: %v", err)
+	}
+	logT(trackID, "KMZ", "read %d bytes", len(data))
+
+	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		logT(trackID, "KMZ", "✖ zip open error: %v", err)
+		return fmt.Errorf("error opening KMZ as ZIP: %v", err)
+	}
+
+	for _, zf := range zipReader.File {
+		if filepath.Ext(zf.Name) != ".kml" {
+			continue
 		}
-		return processAndStoreMarkers(markers, trackID, db, dbType)
+		logT(trackID, "KMZ", "found KML entry %q", zf.Name)
+
+		kmlFile, err := zf.Open()
+		if err != nil {
+			logT(trackID, "KMZ", "✖ entry open error: %v", err)
+			return fmt.Errorf("error opening KML inside KMZ: %v", err)
+		}
+		defer kmlFile.Close()
+
+		kmlData, err := io.ReadAll(kmlFile)
+		if err != nil {
+			logT(trackID, "KMZ", "✖ entry read error: %v", err)
+			return fmt.Errorf("error reading KML inside KMZ: %v", err)
+		}
+
+		markers, err := parseKML(trackID, kmlData)
+		if err != nil {
+			logT(trackID, "KMZ", "✖ entry parse error: %v", err)
+			return fmt.Errorf("error parsing KML inside KMZ: %v", err)
+		}
+		logT(trackID, "KMZ", "parsed %d markers from %q", len(markers), zf.Name)
+
+		if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
+			logT(trackID, "KMZ", "✖ processAndStore error: %v", err)
+			return err
+		}
 	}
 
-	markers, err := parseTextRCTRK(data)
-	if err != nil {
-		return fmt.Errorf("error parsing text RCTRK file: %v", err)
-	}
-
-	return processAndStoreMarkers(markers, trackID, db, dbType)
+	logT(trackID, "KMZ", "✔ done")
+	return nil
 }
 
-func processAtomFastFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
-	data, err := ioutil.ReadAll(file)
+
+
+// =============================================================================
+// processRCTRKFile — handles .rctrk (JSON or text)
+// =============================================================================
+func processRCTRKFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
+	logT(trackID, "RCTRK", "▶ start")
+
+	raw, err := io.ReadAll(file)
 	if err != nil {
+		logT(trackID, "RCTRK", "✖ read error: %v", err)
+		return fmt.Errorf("error reading RCTRK file: %v", err)
+	}
+	logT(trackID, "RCTRK", "read %d bytes", len(raw))
+
+	// try JSON first ------------------------------------------------------------
+	var rctrkData database.Data
+	if err := json.Unmarshal(raw, &rctrkData); err == nil {
+		logT(trackID, "RCTRK", "JSON format detected, %d markers", len(rctrkData.Markers))
+		markers := rctrkData.Markers
+		if !rctrkData.IsSievert {
+			logT(trackID, "RCTRK", "converting Rh→Sv")
+			markers = convertRhToSv(markers)
+		}
+		if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
+			logT(trackID, "RCTRK", "✖ processAndStore error: %v", err)
+			return err
+		}
+	} else {
+		// fallback text parser ---------------------------------------------------
+		logT(trackID, "RCTRK", "fallback to text parser (%v)", err)
+		markers, err := parseTextRCTRK(trackID, raw)
+		if err != nil {
+			logT(trackID, "RCTRK", "✖ text parse error: %v", err)
+			return fmt.Errorf("error parsing text RCTRK: %v", err)
+		}
+		logT(trackID, "RCTRK", "parsed %d markers (text)", len(markers))
+
+		if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
+			logT(trackID, "RCTRK", "✖ processAndStore error: %v", err)
+			return err
+		}
+	}
+
+	logT(trackID, "RCTRK", "✔ done")
+	return nil
+}
+
+
+// =============================================================================
+// processAtomFastFile — handles Atom Fast JSON export
+// =============================================================================
+func processAtomFastFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
+	logT(trackID, "Atom", "▶ start")
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		logT(trackID, "Atom", "✖ read error: %v", err)
 		return fmt.Errorf("error reading AtomFast JSON file: %v", err)
 	}
-	var atomFastData []struct {
+	logT(trackID, "Atom", "read %d bytes", len(data))
+
+	var records []struct {
 		D   float64 `json:"d"`
 		Lat float64 `json:"lat"`
 		Lng float64 `json:"lng"`
 		T   int64   `json:"t"`
 	}
-	if err := json.Unmarshal(data, &atomFastData); err != nil {
+	if err := json.Unmarshal(data, &records); err != nil {
+		logT(trackID, "Atom", "✖ parse error: %v", err)
 		return fmt.Errorf("error parsing AtomFast file: %v", err)
 	}
-	var markers []database.Marker
-	for _, record := range atomFastData {
+	logT(trackID, "Atom", "parsed %d markers", len(records))
+
+	markers := make([]database.Marker, 0, len(records))
+	for _, r := range records {
 		markers = append(markers, database.Marker{
-			DoseRate:  record.D,
-			Date:      record.T / 1000,
-			Lon:       record.Lng,
-			Lat:       record.Lat,
-			CountRate: record.D,
+			DoseRate:  r.D,
+			Date:      r.T / 1000,
+			Lon:       r.Lng,
+			Lat:       r.Lat,
+			CountRate: r.D,
 		})
 	}
 
-	return processAndStoreMarkers(markers, trackID, db, dbType)
+	if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
+		logT(trackID, "Atom", "✖ processAndStore error: %v", err)
+		return err
+	}
+
+	logT(trackID, "Atom", "✔ done")
+	return nil
 }
 
-// =====================
-// Обработка /upload
-// =====================
+// =============================================================================
+// processAndStoreMarkers — common pipeline & DB save
+// =============================================================================
+func processAndStoreMarkers(markers []database.Marker, trackID string, db *database.Database, dbType string) error {
+	logT(trackID, "Store", "▶ start, incoming=%d markers", len(markers))
+
+	for i := range markers {
+		markers[i].TrackID = trackID
+	}
+
+	markers = filterZeroMarkers(markers)
+	logT(trackID, "Store", "after zero-filter: %d", len(markers))
+	if len(markers) == 0 {
+		return fmt.Errorf("no markers with non-zero dose left after filtering")
+	}
+
+	markers = filterInvalidDateMarkers(markers)
+	logT(trackID, "Store", "after date-filter: %d", len(markers))
+	if len(markers) == 0 {
+		return fmt.Errorf("all markers have invalid dates")
+	}
+
+	markers = calculateSpeedForMarkers(markers)
+	logT(trackID, "Store", "speed calculated")
+
+	allZoomMarkers := precomputeMarkersForAllZoomLevels(markers)
+	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoomMarkers))
+
+	for _, m := range allZoomMarkers {
+		if err := db.SaveMarkerAtomic(m, dbType); err != nil {
+			logT(trackID, "Store", "✖ save error: %v", err)
+			return fmt.Errorf("error saving marker: %v", err)
+		}
+	}
+
+	logT(trackID, "Store", "✔ stored")
+	return nil
+}
+
+
+// =============================================================================
+// uploadHandler — HTTP /upload endpoint
+// =============================================================================
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	// Parse multipart form (limit ≈100 MiB)
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		log.Printf("[GLOBAL][Upload] ✖ multipart parse error: %v", err)
 		http.Error(w, "Error uploading file", http.StatusInternalServerError)
 		return
 	}
+
 	files := r.MultipartForm.File["files[]"]
 	if len(files) == 0 {
 		http.Error(w, "No files selected", http.StatusBadRequest)
 		return
 	}
+
 	trackID := GenerateSerialNumber()
+	logT(trackID, "Upload", "▶ start, totalFiles=%d", len(files))
 
-	var minLat, minLon, maxLat, maxLon float64
-	minLat, minLon = 90.0, 180.0
-	maxLat, maxLon = -90.0, -180.0
+	minLat, minLon :=  90.0, 180.0
+	maxLat, maxLon := -90.0, -180.0
 
-	for _, fileHeader := range files {
-		file, err := fileHeader.Open()
+	for _, fh := range files {
+		logT(trackID, "Upload", `file=%q size=%d bytes`, fh.Filename, fh.Size)
+
+		file, err := fh.Open()
 		if err != nil {
+			logT(trackID, "Upload", "✖ open error: %v", err)
 			http.Error(w, "Error opening file", http.StatusBadRequest)
 			return
 		}
 		defer file.Close()
 
-		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-		switch ext {
+		var procErr error
+		switch ext := strings.ToLower(filepath.Ext(fh.Filename)); ext {
 		case ".kml":
-			err = processKMLFile(file, trackID, db, *dbType)
+			procErr = processKMLFile(file, trackID, db, *dbType)
 		case ".kmz":
-			err = processKMZFile(file, trackID, db, *dbType)
+			procErr = processKMZFile(file, trackID, db, *dbType)
 		case ".rctrk":
-			err = processRCTRKFile(file, trackID, db, *dbType)
+			procErr = processRCTRKFile(file, trackID, db, *dbType)
 		case ".json":
-			err = processAtomFastFile(file, trackID, db, *dbType)
+			procErr = processAtomFastFile(file, trackID, db, *dbType)
 		default:
+			logT(trackID, "Upload", "✖ unsupported extension %q", ext)
 			http.Error(w, "Unsupported file type", http.StatusBadRequest)
 			return
 		}
 
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if procErr != nil {
+			logT(trackID, "Upload", "✖ processing error: %v", procErr)
+			http.Error(w, procErr.Error(), http.StatusInternalServerError)
 			return
 		}
+		logT(trackID, "Upload", `✔ processed "%s"`, fh.Filename)
 
-		// после обработки каждого файла, запросим маркеры из БД, чтобы вычислить границы трека
+		// Update bounding box
 		markers, err := db.GetMarkersByTrackID(trackID, *dbType)
 		if err != nil {
+			logT(trackID, "Upload", "✖ DB fetch error: %v", err)
 			http.Error(w, "Error fetching markers after upload", http.StatusInternalServerError)
 			return
 		}
-
-		// Обновим границы
-		for _, marker := range markers {
-			if marker.Lat < minLat {
-				minLat = marker.Lat
-			}
-			if marker.Lat > maxLat {
-				maxLat = marker.Lat
-			}
-			if marker.Lon < minLon {
-				minLon = marker.Lon
-			}
-			if marker.Lon > maxLon {
-				maxLon = marker.Lon
-			}
+		for _, m := range markers {
+			if m.Lat < minLat { minLat = m.Lat }
+			if m.Lat > maxLat { maxLat = m.Lat }
+			if m.Lon < minLon { minLon = m.Lon }
+			if m.Lon > maxLon { maxLon = m.Lon }
 		}
 	}
 
-	if minLat == 90.0 || minLon == 180.0 || maxLat == -90.0 || maxLon == -180.0 {
-		log.Println("Error: Unable to calculate bounds, no valid markers found.")
+	if minLat == 90.0 {
+		logT(trackID, "Upload", "✖ no valid markers")
 		http.Error(w, "No valid data in file", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Track: %s bounds: minLat=%f, minLon=%f, maxLat=%f, maxLon=%f\n", trackID, minLat, minLon, maxLat, maxLon)
-	trackURL := fmt.Sprintf("/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
-		trackID, minLat, minLon, maxLat, maxLon, "OpenStreetMap")
+	logT(trackID, "Upload", "✔ done bounds=(%f,%f)-(%f,%f)", minLat, minLon, maxLat, maxLon)
 
-	response := map[string]interface{}{
+	trackURL := fmt.Sprintf(
+		"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=OpenStreetMap",
+		trackID, minLat, minLon, maxLat, maxLon)
+
+	resp := map[string]interface{}{
 		"status":   "success",
 		"trackURL": trackURL,
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // =====================
