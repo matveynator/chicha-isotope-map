@@ -586,59 +586,106 @@ func getTimeZoneByLongitude(lon float64) *time.Location {
 
 
 // -----------------------------------------------------------------------------
-// extractDoseRate — извлекает дозу из фрагмента текста.
-//  • «12.3 µR/h»  → 0.123 µSv/h   (1 µR/h ≈ 0.01 µSv/h)
-//  • «0.136 uSv/h» → 0.136 µSv/h  (Safecast)
+// extractDoseRate — extracts the dose rate from an arbitrary text fragment.
+//
+//   • «12.3 µR/h»  → 0.123 µSv/h      (1 µR/h ≈ 0.01 µSv/h, legacy iPhone dump)
+//   • «0.136 uSv/h»→ 0.136 µSv/h      (Safecast)
+//   • «0.29 мкЗв/ч»→ 0.29  µSv/h      (Radiacode-101 Android, RU locale)
 // -----------------------------------------------------------------------------
 func extractDoseRate(s string) float64 {
-	µr := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*µ?R/h`)
-	if m := µr.FindStringSubmatch(s); len(m) > 0 {
-		return parseFloat(m[1]) / 100.0 // µR/h → µSv/h
+	// block: legacy µR/h → µSv/h
+	reMicroRh := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*µ?R/h`)
+	if m := reMicroRh.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1]) / 100.0 // convert µR/h → µSv/h
 	}
 
-	usv := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*uSv/h`)
-	if m := usv.FindStringSubmatch(s); len(m) > 0 {
-		return parseFloat(m[1])          // уже в µSv/h
+	// block: standard uSv/h (Safecast, iPhone)
+	reMicroSv := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*uSv/h`)
+	if m := reMicroSv.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1]) // already in µSv/h
+	}
+
+	// block: russian «мкЗв/ч» (μSv/h in Cyrillic)
+	reRuMicroSv := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*мк?з?в/ч`)
+	if m := reRuMicroSv.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1]) // already in µSv/h
 	}
 	return 0
 }
 
 // -----------------------------------------------------------------------------
-// extractCountRate — ищет счёт • cps • CPM и нормирует к cps.
+// extractCountRate — searches for count rate and normalises it to cps.
+//
+//   • «24 cps»      → 24
+//   • «1500 CPM»    → 25  (1 min → sec)
+//   • «24.7 имп/c»  → 24.7 (Radiacode-101 Android, RU locale)
 // -----------------------------------------------------------------------------
 func extractCountRate(s string) float64 {
-	cps := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*cps`)
-	if m := cps.FindStringSubmatch(s); len(m) > 0 {
+	// block: cps (all locales)
+	reCPS := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*cps`)
+	if m := reCPS.FindStringSubmatch(s); len(m) > 0 {
 		return parseFloat(m[1])
 	}
 
-	cpm := regexp.MustCompile(`(?i)CPM\s*Value\s*=\s*(\d+(?:\.\d+)?)`)
-	if m := cpm.FindStringSubmatch(s); len(m) > 0 {
-		return parseFloat(m[1]) / 60.0 // 1 мин → секунды
+	// block: CPM (Safecast CSV)
+	reCPM := regexp.MustCompile(`(?i)CPM\s*Value\s*=\s*(\d+(?:\.\d+)?)`)
+	if m := reCPM.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1]) / 60.0 // 1 minute → seconds
+	}
+
+	// block: russian «имп/с» or «имп/c» (cyrillic / latin 'c')
+	reRU := regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*имп\s*/\s*[cс]`)
+	if m := reRU.FindStringSubmatch(s); len(m) > 0 {
+		return parseFloat(m[1])
 	}
 	return 0
 }
 
 // -----------------------------------------------------------------------------
-// parseDate — поддерживает оба формата:
-//  • «May 23, 2012 04:10:08»   (старый .rctrk / AtomFast KML)
-//  • «2012/05/23 04:10:08»     (Safecast)
-// loc — часовой пояс, рассчитанный по долготе (можно nil → UTC).
+// parseDate — recognises three date formats:
+//
+//   • «May 23, 2012 04:10:08»      (old .rctrk / AtomFast KML)
+//   • «2012/05/23 04:10:08»        (Safecast)
+//   • «26 июл 2025 11:29:54»       (Radiacode-101 Android, RU locale)
+//
+// loc — time-zone calculated from longitude (nil → UTC).
 // -----------------------------------------------------------------------------
 func parseDate(s string, loc *time.Location) int64 {
 	if loc == nil {
 		loc = time.UTC
 	}
 
+	// block: English «Jan 2, 2006 …»
 	if m := regexp.MustCompile(`([A-Za-z]{3} \d{1,2}, \d{4} \d{2}:\d{2}:\d{2})`).FindStringSubmatch(s); len(m) > 0 {
 		const layout = "Jan 2, 2006 15:04:05"
 		if t, err := time.ParseInLocation(layout, m[1], loc); err == nil {
 			return t.Unix()
 		}
 	}
+
+	// block: ISO-ish «2006/01/02 …»
 	if m := regexp.MustCompile(`(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`).FindStringSubmatch(s); len(m) > 0 {
 		const layout = "2006/01/02 15:04:05"
 		if t, err := time.ParseInLocation(layout, m[1], loc); err == nil {
+			return t.Unix()
+		}
+	}
+
+	// block: Russian «02 янв 2006 …»
+	reRu := regexp.MustCompile(`(\d{1,2})\s+([А-Яа-я]{3})\s+(\d{4})\s+(\d{2}:\d{2}:\d{2})`)
+	if m := reRu.FindStringSubmatch(s); len(m) > 0 {
+		// map short russian month → number
+		ruMon := map[string]string{
+			"янв": "01", "фев": "02", "мар": "03", "апр": "04",
+			"май": "05", "июн": "06", "июл": "07", "авг": "08",
+			"сен": "09", "окт": "10", "ноя": "11", "дек": "12",
+		}
+		monNum, ok := ruMon[strings.ToLower(m[2])]
+		if !ok { return 0 }
+
+		// build ISO-like string and parse
+		dateStr := fmt.Sprintf("%s-%s-%02s %s", m[3], monNum, m[1], m[4])
+		if t, err := time.ParseInLocation("2006-01-02 15:04:05", dateStr, loc); err == nil {
 			return t.Unix()
 		}
 	}
