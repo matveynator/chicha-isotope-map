@@ -32,6 +32,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 
 	"chicha-isotope-map/pkg/database"
+  "chicha-isotope-map/pkg/logger"
 )
 
 //go:embed public_html/*
@@ -195,14 +196,11 @@ func serveWithDomain(domain string, handler http.Handler) {
 }
 
 
-// logT prints a line like “[sX4KZl][KMZ] read 123 bytes”.
-//
-// * trackID   — unique id of the upload batch
-// * component — short tag: KMZ, KML, RCTRK, Store, Upload, etc.
-// * format / v — the usual printf body
-//
+// logT формирует строку "[trackID][component] …" и передаёт её в пакет logger.
+// logger сам решит: буферизовать или вывести сразу.
 func logT(trackID, component, format string, v ...any) {
-  log.Printf("[%-6s][%s] %s", trackID, component, fmt.Sprintf(format, v...))
+	line := fmt.Sprintf("[%-6s][%s] %s", trackID, component, fmt.Sprintf(format, v...))
+	logger.Append(trackID, line)
 }
 
 // rxFind returns the first submatch (group #1) of pattern in s or an empty string.
@@ -970,17 +968,13 @@ func processAndStoreMarkers(markers []database.Marker, trackID string, db *datab
 }
 
 
-// =============================================================================
 // uploadHandler — HTTP /upload endpoint
-// =============================================================================
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
-	// Parse multipart form (limit ≈100 MiB)
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		log.Printf("[GLOBAL][Upload] ✖ multipart parse error: %v", err)
 		http.Error(w, "Error uploading file", http.StatusInternalServerError)
 		return
 	}
-
 	files := r.MultipartForm.File["files[]"]
 	if len(files) == 0 {
 		http.Error(w, "No files selected", http.StatusBadRequest)
@@ -990,15 +984,17 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	trackID := GenerateSerialNumber()
 	logT(trackID, "Upload", "▶ start, totalFiles=%d", len(files))
 
-	minLat, minLon :=  90.0, 180.0
+	minLat, minLon := 90.0, 180.0
 	maxLat, maxLon := -90.0, -180.0
 
 	for _, fh := range files {
+		// --- prepare per-file buffer -------------------------------------
+		logger.Begin(trackID)
 		logT(trackID, "Upload", `file=%q size=%d bytes`, fh.Filename, fh.Size)
 
 		file, err := fh.Open()
 		if err != nil {
-			logT(trackID, "Upload", "✖ open error: %v", err)
+			logger.FlushError(trackID, fmt.Errorf("open error: %w", err))
 			http.Error(w, "Error opening file", http.StatusBadRequest)
 			return
 		}
@@ -1015,22 +1011,23 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		case ".json":
 			procErr = processAtomFastFile(file, trackID, db, *dbType)
 		default:
-			logT(trackID, "Upload", "✖ unsupported extension %q", ext)
+			logger.FlushError(trackID, fmt.Errorf("unsupported extension %q", ext))
 			http.Error(w, "Unsupported file type", http.StatusBadRequest)
 			return
 		}
 
 		if procErr != nil {
-			logT(trackID, "Upload", "✖ processing error: %v", procErr)
+			logger.FlushError(trackID, procErr)
 			http.Error(w, procErr.Error(), http.StatusInternalServerError)
 			return
 		}
-		logT(trackID, "Upload", `✔ processed "%s"`, fh.Filename)
+		// --- success → concise line, buffer forgotten --------------------
+		logger.Success(trackID, fh.Filename)
 
-		// Update bounding box
+		// bounding-box update (unchanged) ---------------------------------
 		markers, err := db.GetMarkersByTrackID(trackID, *dbType)
 		if err != nil {
-			logT(trackID, "Upload", "✖ DB fetch error: %v", err)
+			logger.FlushError(trackID, fmt.Errorf("DB fetch error: %w", err))
 			http.Error(w, "Error fetching markers after upload", http.StatusInternalServerError)
 			return
 		}
@@ -1043,7 +1040,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if minLat == 90.0 {
-		logT(trackID, "Upload", "✖ no valid markers")
+		logger.FlushError(trackID, errors.New("no valid markers"))
 		http.Error(w, "No valid data in file", http.StatusBadRequest)
 		return
 	}
