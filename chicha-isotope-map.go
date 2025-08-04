@@ -6,6 +6,8 @@ import (
 	"embed"
 	"net"
 	"encoding/json"
+	"encoding/xml"
+  "encoding/csv"
 	"flag"
 	"fmt"
   "html"
@@ -693,6 +695,143 @@ func parseDate(s string, loc *time.Location) int64 {
 }
 
 // =====================================================================================
+// parseGPX.go — потоковый парсер GPX 1.1 (AtomSwift)
+// =====================================================================================
+//
+// Формат AtomSwift:
+//   <trkpt lat="…" lon="…">
+//     <time>2025-04-19T14:57:46Z</time>
+//     …
+//     <extensions>
+//       <atom:marker>
+//          <atom:doserate>0.018526316</atom:doserate>  <!-- µSv/h -->
+//          <atom:cp2s>1.0</atom:cp2s>                   <!-- counts / 2 s -->
+//          <atom:speed>0.41898388</atom:speed>          <!-- m/s -->
+//       </atom:marker>
+//     </extensions>
+//
+// Все интересующие поля находятся внутри <trkpt>.  Парсим потоково без
+// дополнительного выделения памяти, никаких mutex – только канал результатов
+// внутри ф-ции (go-routine → main goroutine).
+//
+func parseGPX(trackID string, data []byte) ([]database.Marker, error) {
+	logT(trackID, "GPX", "parser start")
+
+	type result struct {
+		marker database.Marker
+		err    error
+	}
+
+	out := make(chan result)             // канал результатов
+	go func() {                          // парсер-горутин
+		defer close(out)
+
+		dec := xml.NewDecoder(bytes.NewReader(data))
+		var (
+			inTrkpt  bool
+			lat, lon float64
+			tUnix    int64
+			doseSv   float64
+			count    float64
+			speed    float64
+		)
+
+		for {
+			tok, err := dec.Token()
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				out <- result{err: fmt.Errorf("XML decode: %w", err)}
+				return
+			}
+
+			switch el := tok.(type) {
+
+			// ---------- <trkpt lat="…" lon="…"> ----------
+			case xml.StartElement:
+				switch el.Name.Local {
+				case "trkpt":
+					inTrkpt = true
+					lat, lon, tUnix, doseSv, count, speed = 0, 0, 0, 0, 0, 0 // reset
+					for _, a := range el.Attr {
+						switch a.Name.Local {
+						case "lat":
+							lat = parseFloat(a.Value)
+						case "lon":
+							lon = parseFloat(a.Value)
+						}
+					}
+
+				case "time":
+					if inTrkpt {
+						var ts string
+						_ = dec.DecodeElement(&ts, &el)
+						if tt, err := time.Parse(time.RFC3339, ts); err == nil {
+							tUnix = tt.Unix()
+						}
+					}
+
+				case "doserate":
+					if inTrkpt {
+						var s string
+						_ = dec.DecodeElement(&s, &el)
+						doseSv = parseFloat(s)         // уже µSv/h
+					}
+
+				case "cp2s":
+					if inTrkpt {
+						var s string
+						_ = dec.DecodeElement(&s, &el)
+						count = parseFloat(s) / 2.0     // → cps
+					}
+
+				case "speed":
+					if inTrkpt {
+						var s string
+						_ = dec.DecodeElement(&s, &el)
+						speed = parseFloat(s)
+					}
+				}
+
+			// ---------- </trkpt> ----------
+			case xml.EndElement:
+				if el.Name.Local == "trkpt" && inTrkpt {
+					inTrkpt = false
+					if doseSv == 0 && count == 0 {
+						continue // пропускаем «пустые» точки
+					}
+					out <- result{marker: database.Marker{
+						Lat:       lat,
+						Lon:       lon,
+						Date:      tUnix,
+						DoseRate:  doseSv,
+						CountRate: count,
+						Speed:     speed,
+					}}
+				}
+			}
+		}
+	}()
+
+	// --- собираем результаты из канала ---------------------------------
+	var markers []database.Marker
+	for r := range out {
+		if r.err != nil {
+			logT(trackID, "GPX", "✖ %v", r.err)
+			return nil, r.err
+		}
+		markers = append(markers, r.marker)
+	}
+	logT(trackID, "GPX", "parser done, parsed=%d markers", len(markers))
+	if len(markers) == 0 {
+		return nil, fmt.Errorf("no <trkpt> with numeric data found")
+	}
+	return markers, nil
+}
+
+
+// =====================================================================================
 // parseKML.go  — подпись trackID добавлена
 // =====================================================================================
 func parseKML(trackID string, data []byte) ([]database.Marker, error) {
@@ -796,6 +935,133 @@ func parseTextRCTRK(trackID string, data []byte) ([]database.Marker, error) {
 	logT(trackID, "RCTRK", "text parser done, parsed=%d markers", len(markers))
 	return markers, nil
 }
+
+// =============================================================================
+// parseAtomSwiftCSV — parses .csv produced by AtomSwift logger.
+// Expected header (semicolon-separated):
+//   unix timestamp;doserate (uSv/h);lat;lng;wgs84_alt (m.);
+//   speed (m/s);cps;cp_2s;horizontal accuracy;marker type;SE (%)
+// We keep only the fields we need.
+//
+// NOTE: • All doses are already in µSv/h.
+//       • Count-rate is cps (field #6).
+//       • Speed comes directly from field #5 (m/s) but will be recomputed
+//         later by calculateSpeedForMarkers(); we still store the raw value
+//         so the first point has something reasonable.
+// -----------------------------------------------------------------------------
+func parseAtomSwiftCSV(trackID string, data []byte) ([]database.Marker, error) {
+	logT(trackID, "CSV", "parser start")
+
+	r := csv.NewReader(bytes.NewReader(data))
+	r.Comma = ';'
+	r.FieldsPerRecord = -1 // let us handle variable lines
+
+	rows, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("CSV read: %v", err)
+	}
+	if len(rows) < 2 {
+		return nil, fmt.Errorf("CSV contains no data rows")
+	}
+
+	var markers []database.Marker
+	for idx, rec := range rows[1:] { // skip header
+		if len(rec) < 7 {
+			logT(trackID, "CSV", "skip row %d: insufficient fields (%d)", idx+2, len(rec))
+			continue
+		}
+		ts, err := strconv.ParseInt(strings.TrimSpace(rec[0]), 10, 64)
+		if err != nil {
+			logT(trackID, "CSV", "skip row %d: bad timestamp", idx+2)
+			continue
+		}
+
+		dose  := parseFloat(rec[1])                // µSv/h
+		lat   := parseFloat(rec[2])
+		lon   := parseFloat(rec[3])
+		speed := parseFloat(rec[5])                // m/s
+		cps   := parseFloat(rec[6])
+
+		if lat == 0 || lon == 0 || dose == 0 {
+			logT(trackID, "CSV", "skip row %d: invalid coords/dose", idx+2)
+			continue
+		}
+
+		markers = append(markers, database.Marker{
+			DoseRate:  dose,
+			CountRate: cps,
+			Lat:       lat,
+			Lon:       lon,
+			Date:      ts,
+			Speed:     speed,
+		})
+	}
+
+	logT(trackID, "CSV", "parser done, parsed=%d markers", len(markers))
+	if len(markers) == 0 {
+		return nil, fmt.Errorf("no valid data rows found")
+	}
+	return markers, nil
+}
+
+// =============================================================================
+// processAtomSwiftCSVFile — handles plain .csv uploads from AtomSwift
+// =============================================================================
+func processAtomSwiftCSVFile(file multipart.File, trackID string,
+	db *database.Database, dbType string) error {
+
+	logT(trackID, "CSV", "▶ start")
+	raw, err := io.ReadAll(file)
+	if err != nil {
+		logT(trackID, "CSV", "✖ read error: %v", err)
+		return fmt.Errorf("error reading AtomSwift CSV: %v", err)
+	}
+
+	markers, err := parseAtomSwiftCSV(trackID, raw)
+	if err != nil {
+		logT(trackID, "CSV", "✖ parse error: %v", err)
+		return err
+	}
+	logT(trackID, "CSV", "parsed %d markers", len(markers))
+
+	if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
+		logT(trackID, "CSV", "✖ processAndStore error: %v", err)
+		return err
+	}
+
+	logT(trackID, "CSV", "✔ done")
+	return nil
+}
+
+// =============================================================================
+// processGPXFile — handles plain .gpx uploads
+// =============================================================================
+func processGPXFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
+	logT(trackID, "GPX", "▶ start")
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		logT(trackID, "GPX", "✖ read error: %v", err)
+		return fmt.Errorf("error reading GPX file: %v", err)
+	}
+	logT(trackID, "GPX", "read %d bytes", len(data))
+
+	markers, err := parseGPX(trackID, data)
+	if err != nil {
+		logT(trackID, "GPX", "✖ parse error: %v", err)
+		return fmt.Errorf("error parsing GPX file: %v", err)
+	}
+	logT(trackID, "GPX", "parsed %d markers", len(markers))
+
+	if err := processAndStoreMarkers(markers, trackID, db, dbType); err != nil {
+		logT(trackID, "GPX", "✖ processAndStore error: %v", err)
+		return err
+	}
+
+	logT(trackID, "GPX", "✔ done")
+	return nil
+}
+
 
 // =============================================================================
 // processKMLFile — handles plain .kml uploads
@@ -1057,6 +1323,12 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			procErr = processRCTRKFile(file, trackID, db, *dbType)
 		case ".json":
 			procErr = processAtomFastFile(file, trackID, db, *dbType)
+		case ".csv":
+			procErr = processAtomSwiftCSVFile(file, trackID, db, *dbType)
+		case ".gpx":
+			procErr = processGPXFile(file, trackID, db, *dbType)
+
+
 		default:
 			logger.FlushError(trackID, fmt.Errorf("unsupported extension %q", ext))
 			http.Error(w, "Unsupported file type", http.StatusBadRequest)
