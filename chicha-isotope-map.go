@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+  "bufio" 
 	"embed"
 	"net"
 	"encoding/json"
@@ -714,26 +715,28 @@ func parseDate(s string, loc *time.Location) int64 {
 // дополнительного выделения памяти, никаких mutex – только канал результатов
 // внутри ф-ции (go-routine → main goroutine).
 //
-func parseGPX(trackID string, data []byte) ([]database.Marker, error) {
-	logT(trackID, "GPX", "parser start")
+// =====================================================================================
+// parseGPX (stream) — token-driven GPX 1.1 parser (AtomSwift).
+// Uses xml.Decoder directly on io.Reader, so we do *zero* extra allocations.
+// =====================================================================================
+func parseGPX(trackID string, r io.Reader) ([]database.Marker, error) {
+	logT(trackID, "GPX", "parser start (stream)")
 
 	type result struct {
 		marker database.Marker
 		err    error
 	}
 
-	out := make(chan result)             // канал результатов
-	go func() {                          // парсер-горутин
+	out := make(chan result)
+	go func() { // parser goroutine
 		defer close(out)
 
-		dec := xml.NewDecoder(bytes.NewReader(data))
+		dec := xml.NewDecoder(r)
 		var (
-			inTrkpt  bool
-			lat, lon float64
-			tUnix    int64
-			doseSv   float64
-			count    float64
-			speed    float64
+			inTrkpt          bool
+			lat, lon         float64
+			tUnix, doseSv    float64
+			count, speed     float64
 		)
 
 		for {
@@ -747,45 +750,38 @@ func parseGPX(trackID string, data []byte) ([]database.Marker, error) {
 			}
 
 			switch el := tok.(type) {
-
-			// ---------- <trkpt lat="…" lon="…"> ----------
 			case xml.StartElement:
 				switch el.Name.Local {
 				case "trkpt":
 					inTrkpt = true
-					lat, lon, tUnix, doseSv, count, speed = 0, 0, 0, 0, 0, 0 // reset
+					lat, lon, tUnix, doseSv, count, speed = 0, 0, 0, 0, 0, 0
 					for _, a := range el.Attr {
-						switch a.Name.Local {
-						case "lat":
+						if a.Name.Local == "lat" {
 							lat = parseFloat(a.Value)
-						case "lon":
+						} else if a.Name.Local == "lon" {
 							lon = parseFloat(a.Value)
 						}
 					}
-
 				case "time":
 					if inTrkpt {
 						var ts string
 						_ = dec.DecodeElement(&ts, &el)
 						if tt, err := time.Parse(time.RFC3339, ts); err == nil {
-							tUnix = tt.Unix()
+							tUnix = float64(tt.Unix())
 						}
 					}
-
 				case "doserate":
 					if inTrkpt {
 						var s string
 						_ = dec.DecodeElement(&s, &el)
-						doseSv = parseFloat(s)         // уже µSv/h
+						doseSv = parseFloat(s)
 					}
-
 				case "cp2s":
 					if inTrkpt {
 						var s string
 						_ = dec.DecodeElement(&s, &el)
-						count = parseFloat(s) / 2.0     // → cps
+						count = parseFloat(s) / 2.0
 					}
-
 				case "speed":
 					if inTrkpt {
 						var s string
@@ -793,18 +789,16 @@ func parseGPX(trackID string, data []byte) ([]database.Marker, error) {
 						speed = parseFloat(s)
 					}
 				}
-
-			// ---------- </trkpt> ----------
 			case xml.EndElement:
 				if el.Name.Local == "trkpt" && inTrkpt {
 					inTrkpt = false
 					if doseSv == 0 && count == 0 {
-						continue // пропускаем «пустые» точки
+						continue
 					}
 					out <- result{marker: database.Marker{
 						Lat:       lat,
 						Lon:       lon,
-						Date:      tUnix,
+						Date:      int64(tUnix),
 						DoseRate:  doseSv,
 						CountRate: count,
 						Speed:     speed,
@@ -814,7 +808,6 @@ func parseGPX(trackID string, data []byte) ([]database.Marker, error) {
 		}
 	}()
 
-	// --- собираем результаты из канала ---------------------------------
 	var markers []database.Marker
 	for r := range out {
 		if r.err != nil {
@@ -832,47 +825,72 @@ func parseGPX(trackID string, data []byte) ([]database.Marker, error) {
 
 
 // =====================================================================================
-// parseKML.go  — подпись trackID добавлена
+// parseKML (stream) — SAX-style KML parser; avoids huge regexp & string copies.
+// Supports classic Safecast & AtomFast style Placemarks.
 // =====================================================================================
-func parseKML(trackID string, data []byte) ([]database.Marker, error) {
-	logT(trackID, "KML", "parser start")
+func parseKML(trackID string, r io.Reader) ([]database.Marker, error) {
+	logT(trackID, "KML", "parser start (stream)")
 
-	placemarkRe := regexp.MustCompile(`(?s)<Placemark[^>]*>(.*?)</Placemark>`)
-	placemarks  := placemarkRe.FindAllStringSubmatch(string(data), -1)
-	logT(trackID, "KML", "found %d <Placemark> blocks", len(placemarks))
+	dec := xml.NewDecoder(r)
+	var (
+		inPlacemark    bool
+		lat, lon       float64
+		name, desc     string
+		markers        []database.Marker
+	)
 
-	var markers []database.Marker
-	for idx, pm := range placemarks {
-		seg := pm[1]
-
-		coordRe := regexp.MustCompile(`<coordinates>\s*([-\d.]+),([-\d.]+)`)
-		coord   := coordRe.FindStringSubmatch(seg)
-		if len(coord) < 3 {
-			logT(trackID, "KML", "skip #%d: no coordinates", idx+1)
-			continue
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
 		}
-		lon, lat := parseFloat(coord[1]), parseFloat(coord[2])
-
-		name := rxFind(seg, `<name>([^<]+)</name>`)
-		desc := rxFind(seg, `(?s)<description[^>]*>(.*?)</description>`)
-
-		dose  := extractDoseRate(name)
-		if dose == 0 { dose = extractDoseRate(desc) }
-		count := extractCountRate(desc)
-		date  := parseDate(desc, getTimeZoneByLongitude(lon))
-
-		if dose == 0 && count == 0 {
-			logT(trackID, "KML", "skip #%d: both dose & count are zero", idx+1)
-			continue
+		if err != nil {
+			return nil, fmt.Errorf("XML decode: %v", err)
 		}
 
-		markers = append(markers, database.Marker{
-			DoseRate:  dose,
-			CountRate: count,
-			Lat:       lat,
-			Lon:       lon,
-			Date:      date,
-		})
+		switch el := tok.(type) {
+		case xml.StartElement:
+			switch el.Name.Local {
+			case "Placemark":
+				inPlacemark, lat, lon, name, desc = true, 0, 0, "", ""
+			case "name":
+				if inPlacemark {
+					_ = dec.DecodeElement(&name, &el)
+				}
+			case "description":
+				if inPlacemark {
+					_ = dec.DecodeElement(&desc, &el)
+				}
+			case "coordinates":
+				if inPlacemark {
+					var coord string
+					_ = dec.DecodeElement(&coord, &el)
+					parts := strings.Split(coord, ",")
+					if len(parts) >= 2 {
+						lon = parseFloat(parts[0])
+						lat = parseFloat(parts[1])
+					}
+				}
+			}
+		case xml.EndElement:
+			if el.Name.Local == "Placemark" && inPlacemark {
+				inPlacemark = false
+				dose  := extractDoseRate(name)
+				if dose == 0 { dose = extractDoseRate(desc) }
+				count := extractCountRate(desc)
+				date  := parseDate(desc, getTimeZoneByLongitude(lon))
+				if dose == 0 && count == 0 {
+					continue
+				}
+				markers = append(markers, database.Marker{
+					DoseRate:  dose,
+					CountRate: count,
+					Lat:       lat,
+					Lon:       lon,
+					Date:      date,
+				})
+			}
+		}
 	}
 
 	logT(trackID, "KML", "parser done, parsed=%d markers", len(markers))
@@ -936,54 +954,54 @@ func parseTextRCTRK(trackID string, data []byte) ([]database.Marker, error) {
 	return markers, nil
 }
 
-// =============================================================================
-// parseAtomSwiftCSV — parses .csv produced by AtomSwift logger.
-// Expected header (semicolon-separated):
-//   unix timestamp;doserate (uSv/h);lat;lng;wgs84_alt (m.);
-//   speed (m/s);cps;cp_2s;horizontal accuracy;marker type;SE (%)
-// We keep only the fields we need.
-//
-// NOTE: • All doses are already in µSv/h.
-//       • Count-rate is cps (field #6).
-//       • Speed comes directly from field #5 (m/s) but will be recomputed
-//         later by calculateSpeedForMarkers(); we still store the raw value
-//         so the first point has something reasonable.
-// -----------------------------------------------------------------------------
-func parseAtomSwiftCSV(trackID string, data []byte) ([]database.Marker, error) {
-	logT(trackID, "CSV", "parser start")
+// =====================================================================================
+// parseAtomSwiftCSV (stream) — parses huge .csv produced by AtomSwift logger
+// fast & memory-friendly: no ReadAll(), we read record-by-record through bufio.Reader.
+// =====================================================================================
+func parseAtomSwiftCSV(trackID string, r io.Reader) ([]database.Marker, error) {
+	logT(trackID, "CSV", "parser start (stream)")
 
-	r := csv.NewReader(bytes.NewReader(data))
-	r.Comma = ';'
-	r.FieldsPerRecord = -1 // let us handle variable lines
+	br := bufio.NewReaderSize(r, 512*1024) // 512 KiB read-ahead buffer
+	cr := csv.NewReader(br)
+	cr.Comma = ';'
+	cr.FieldsPerRecord = -1 // keep tolerant
 
-	rows, err := r.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("CSV read: %v", err)
-	}
-	if len(rows) < 2 {
-		return nil, fmt.Errorf("CSV contains no data rows")
+	// skip header -----------------------------------------------------------
+	if _, err := cr.Read(); err != nil {
+		return nil, fmt.Errorf("CSV header: %v", err)
 	}
 
-	var markers []database.Marker
-	for idx, rec := range rows[1:] { // skip header
-		if len(rec) < 7 {
-			logT(trackID, "CSV", "skip row %d: insufficient fields (%d)", idx+2, len(rec))
+	markers := make([]database.Marker, 0, 4096) // pre-allocate reasonable cap
+	rowN := 1
+	for {
+		rec, err := cr.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			logT(trackID, "CSV", "row %d: %v", rowN+1, err)
 			continue
 		}
+		rowN++
+
+		if len(rec) < 7 {
+			logT(trackID, "CSV", "skip row %d: insufficient fields (%d)", rowN, len(rec))
+			continue
+		}
+
 		ts, err := strconv.ParseInt(strings.TrimSpace(rec[0]), 10, 64)
 		if err != nil {
-			logT(trackID, "CSV", "skip row %d: bad timestamp", idx+2)
+			logT(trackID, "CSV", "skip row %d: bad timestamp", rowN)
 			continue
 		}
 
-		dose  := parseFloat(rec[1])                // µSv/h
+		dose  := parseFloat(rec[1]) // µSv/h
 		lat   := parseFloat(rec[2])
 		lon   := parseFloat(rec[3])
-		speed := parseFloat(rec[5])                // m/s
+		speed := parseFloat(rec[5]) // m/s
 		cps   := parseFloat(rec[6])
 
 		if lat == 0 || lon == 0 || dose == 0 {
-			logT(trackID, "CSV", "skip row %d: invalid coords/dose", idx+2)
 			continue
 		}
 
@@ -997,27 +1015,23 @@ func parseAtomSwiftCSV(trackID string, data []byte) ([]database.Marker, error) {
 		})
 	}
 
-	logT(trackID, "CSV", "parser done, parsed=%d markers", len(markers))
 	if len(markers) == 0 {
 		return nil, fmt.Errorf("no valid data rows found")
 	}
+	logT(trackID, "CSV", "parser done, parsed=%d markers", len(markers))
 	return markers, nil
 }
 
 // =============================================================================
-// processAtomSwiftCSVFile — handles plain .csv uploads from AtomSwift
+// processAtomSwiftCSVFile — handles plain .csv uploads from AtomSwift (logger)
+// STREAM version: no buffering – we feed the file straight to the parser.
 // =============================================================================
 func processAtomSwiftCSVFile(file multipart.File, trackID string,
 	db *database.Database, dbType string) error {
 
-	logT(trackID, "CSV", "▶ start")
-	raw, err := io.ReadAll(file)
-	if err != nil {
-		logT(trackID, "CSV", "✖ read error: %v", err)
-		return fmt.Errorf("error reading AtomSwift CSV: %v", err)
-	}
+	logT(trackID, "CSV", "▶ start (stream)")
 
-	markers, err := parseAtomSwiftCSV(trackID, raw)
+	markers, err := parseAtomSwiftCSV(trackID, file)
 	if err != nil {
 		logT(trackID, "CSV", "✖ parse error: %v", err)
 		return err
@@ -1034,19 +1048,14 @@ func processAtomSwiftCSVFile(file multipart.File, trackID string,
 }
 
 // =============================================================================
-// processGPXFile — handles plain .gpx uploads
+// processGPXFile — handles plain .gpx uploads (stream)
 // =============================================================================
-func processGPXFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
-	logT(trackID, "GPX", "▶ start")
+func processGPXFile(file multipart.File, trackID string,
+	db *database.Database, dbType string) error {
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		logT(trackID, "GPX", "✖ read error: %v", err)
-		return fmt.Errorf("error reading GPX file: %v", err)
-	}
-	logT(trackID, "GPX", "read %d bytes", len(data))
+	logT(trackID, "GPX", "▶ start (stream)")
 
-	markers, err := parseGPX(trackID, data)
+	markers, err := parseGPX(trackID, file)
 	if err != nil {
 		logT(trackID, "GPX", "✖ parse error: %v", err)
 		return fmt.Errorf("error parsing GPX file: %v", err)
@@ -1057,26 +1066,20 @@ func processGPXFile(file multipart.File, trackID string, db *database.Database, 
 		logT(trackID, "GPX", "✖ processAndStore error: %v", err)
 		return err
 	}
-
 	logT(trackID, "GPX", "✔ done")
 	return nil
 }
 
 
 // =============================================================================
-// processKMLFile — handles plain .kml uploads
+// processKMLFile — handles plain .kml uploads (stream)
 // =============================================================================
-func processKMLFile(file multipart.File, trackID string, db *database.Database, dbType string) error {
-	logT(trackID, "KML", "▶ start")
+func processKMLFile(file multipart.File, trackID string,
+	db *database.Database, dbType string) error {
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		logT(trackID, "KML", "✖ read error: %v", err)
-		return fmt.Errorf("error reading KML file: %v", err)
-	}
-	logT(trackID, "KML", "read %d bytes", len(data))
+	logT(trackID, "KML", "▶ start (stream)")
 
-	markers, err := parseKML(trackID, data)
+	markers, err := parseKML(trackID, file)
 	if err != nil {
 		logT(trackID, "KML", "✖ parse error: %v", err)
 		return fmt.Errorf("error parsing KML file: %v", err)
@@ -1130,7 +1133,8 @@ func processKMZFile(file multipart.File, trackID string, db *database.Database, 
 			return fmt.Errorf("error reading KML inside KMZ: %v", err)
 		}
 
-		markers, err := parseKML(trackID, kmlData)
+		markers, err := parseKML(trackID, bytes.NewReader(kmlData))
+
 		if err != nil {
 			logT(trackID, "KMZ", "✖ entry parse error: %v", err)
 			return fmt.Errorf("error parsing KML inside KMZ: %v", err)
