@@ -384,8 +384,7 @@
 		</a>
 
 		<div class="program-info">
-			<strong>{{translate "description"}}</strong><br>
-			v.<a href="https://github.com/matveynator/chicha-isotope-map/releases/tag/latest" target="_blank">{{ .Version }}</a>
+			<a href="https://github.com/matveynator/chicha-isotope-map/releases/tag/latest" target="_blank"><strong>{{translate "description"}}</strong> (version: {{ .Version }})</a>
 		</div>
 
 		<!-- Контейнер для карты -->
@@ -442,13 +441,17 @@ function getRadius(doseRate, zoomLevel) {
 /**
  * Decide whether the marker with given speed (m/s)
  * should be displayed according to current speed-filter state.
+ * В режиме просмотра ОДНОГО трека фильтрации нет — показываем всё.
  */
 function shouldDisplayBySpeed(speed) {
-	const st = loadSpeedFilterState();
-	if (speed >= 70 && speed <= 500) return st.plane;
-	if (speed >= 7  && speed <  70)  return st.car;
-	/* speed < 7 m/s ⇒ pedestrian */
-	return st.ped;
+    /* ── ключевая строка ─────────────────────────────── */
+    if (isTrackView) return true;        // ← NEW: фильтр отключён
+
+    const st = loadSpeedFilterState();   // глобальный режим
+    if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
+    if (speed >= 7  && speed <  70)  return st.car;    // 🚗
+    /* speed < 7 m/s  → pedestrian */
+    return st.ped;                                      // 🚶
 }
 
 
@@ -657,6 +660,9 @@ document.addEventListener('DOMContentLoaded', function () {
 	 * Default state: ✈️ off, 🚗 on, 🚶 on.
 	 */
 	function createSpeedFilterControls() {
+
+     if (isTrackView) return;   //не отображаем в режиме трека
+
 		// load previously saved state (or defaults)
 		const state = loadSpeedFilterState();
 
@@ -720,6 +726,9 @@ document.addEventListener('DOMContentLoaded', function () {
  *  • Годовой режим — по умолчанию
  */
 function createDateRangeSlider(){
+
+  if (isTrackView) return;   //не отображаем в режиме трека
+
 	/* ── переменные состояния ─────────────────────────────── */
 	let sliderBox, yearSlider, monthSlider;
 	let mode  = 'year';                      // 'year' | 'month'
@@ -986,13 +995,15 @@ function updateMarkers(){
     };
 
     // --- ✈🚗🚶 фильтр скоростей -------------------------------
-    const sp = loadSpeedFilterState();
-    const speeds = [];
-    if (sp.plane) speeds.push('plane');
-    if (sp.car)   speeds.push('car');
-    if (sp.ped)   speeds.push('ped');
-    if (speeds.length && speeds.length !== 3){
-        params.speeds = speeds.join(',');
+    if (!isTrackView) {            // <── фильтруем ТОЛЬКО в глобальном режиме
+      const sp = loadSpeedFilterState();
+      const speeds = [];
+      if (sp.plane) speeds.push('plane');
+      if (sp.car)   speeds.push('car');
+      if (sp.ped)   speeds.push('ped');
+      if (speeds.length && speeds.length !== 3){
+          params.speeds = speeds.join(',');
+      }
     }
 
     // --- трековый режим --------------------------------------
@@ -1034,13 +1045,15 @@ function updateMarkers(){
             }
 
             // если слайдера нет → сбрасываем фильтр времени
-            let dateState = null;
-            if (needSlider){
-                dateState = loadDateRangeState();
-                if (dateState){
-                    data = data.filter(m => m.date >= dateState[0] &&
-                                            m.date <= dateState[1]);
-                }
+            if (!isTrackView && needSlider){
+              let dateState = null;
+              if (needSlider){
+                  dateState = loadDateRangeState();
+                  if (dateState){
+                      data = data.filter(m => m.date >= dateState[0] &&
+                                              m.date <= dateState[1]);
+                  }
+              }
             }
 
             // ---- рендер маркеров ----------------------------

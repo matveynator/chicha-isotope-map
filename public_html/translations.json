@@ -2,7 +2,7 @@
   "ru": {
     "title": "Карта Чичиных изотопов — скрытые радиоактивные пути",
     "upload_button": "Загрузить [+]",
-    "description": "Скрытые радиоактивные пути",
+    "description": "Радиационная карта",
     "radiation_dose": "Доза радиации",
     "count_rate": "Скорость счета",
     "speed": "Скорость",
@@ -28,7 +28,7 @@
   "en": {
     "title": "Chicha Isotope Map — Hidden Radioactive Paths",
     "upload_button": "Upload [+]",
-    "description": "Hidden Radioactive Paths",
+    "description": "Radiation Map",
     "radiation_dose": "Radiation Dose",
     "count_rate": "Count Rate",
     "speed": "Speed",
