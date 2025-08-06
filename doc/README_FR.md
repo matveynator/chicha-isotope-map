@@ -216,7 +216,7 @@ Chicha‑Isotope‑Map n’est pas qu’un logiciel, c’est une fenêtre sur le
 
 * **Que lit‑elle et d’où ?**
 
-  * À partir de fichiers aux formats `.kml`, `.kmz`, `.json`, `.rctrk` (AtomFast, RadiaCode, etc.).
+  * À partir de fichiers aux formats `.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx` formats (AtomFast, RadiaCode, Safecast еtc.).
   * Elle enregistre tout dans sa propre base pour qu’avec le temps vous puissiez savoir précisément : « Le 12 mars 2008, ici, il y avait 4,1 µR/h. »
 
 * **Sur quoi s’appuie‑t‑on ?**
