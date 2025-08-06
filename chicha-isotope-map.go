@@ -48,7 +48,7 @@ var content embed.FS
 var doseData database.Data
 
 var domain = flag.String("domain", "", "Use 80 and 443 ports. Automatic HTTPS cert via Let's Encrypt.")
-var dbType = flag.String("db-type", "genji", "Type of the database driver: genji, sqlite, or pgx (postgresql)")
+var dbType = flag.String("db-type", "sqlite", "Type of the database driver: genji, sqlite, or pgx (postgresql)")
 var dbPath = flag.String("db-path", "", "Path to the database file(defaults to the current folder, applicable for genji, sqlite drivers.)")
 var dbHost = flag.String("db-host", "127.0.0.1", "Database host (applicable for pgx driver)")
 var dbPort = flag.Int("db-port", 5432, "Database port (applicable for pgx driver)")
