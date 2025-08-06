@@ -983,19 +983,21 @@ func parseGPX(trackID string, r io.Reader) ([]database.Marker, error) {
 }
 
 
-// =====================================================================================
-// parseKML (stream) — SAX-style KML parser; avoids huge regexp & string copies.
-// Supports classic Safecast & AtomFast style Placemarks.
-// =====================================================================================
+// parseKML (stream) — SAX-style KML parser with *constant* time-zone
+// for the whole file.  Fixes wrong speeds on tracks that cross
+// several time-zones (e.g. airplanes).
 func parseKML(trackID string, r io.Reader) ([]database.Marker, error) {
 	logT(trackID, "KML", "parser start (stream)")
 
 	dec := xml.NewDecoder(r)
+
 	var (
-		inPlacemark    bool
-		lat, lon       float64
-		name, desc     string
-		markers        []database.Marker
+		inPlacemark            bool
+		lat, lon               float64
+		name, desc             string
+		markers                []database.Marker
+		tz                     *time.Location // ← NEW: chosen once
+		tzLocked               bool           // ←   and then locked
 	)
 
 	for {
@@ -1029,6 +1031,11 @@ func parseKML(trackID string, r io.Reader) ([]database.Marker, error) {
 						lon = parseFloat(parts[0])
 						lat = parseFloat(parts[1])
 					}
+					// ── выбираем TZ только *один раз* ─────────────
+					if !tzLocked {
+						tz = getTimeZoneByLongitude(lon)
+						tzLocked = true
+					}
 				}
 			}
 		case xml.EndElement:
@@ -1037,7 +1044,7 @@ func parseKML(trackID string, r io.Reader) ([]database.Marker, error) {
 				dose  := extractDoseRate(name)
 				if dose == 0 { dose = extractDoseRate(desc) }
 				count := extractCountRate(desc)
-				date  := parseDate(desc, getTimeZoneByLongitude(lon))
+				date  := parseDate(desc, tz) // ← используем ЕДИНЫЙ TZ
 				if dose == 0 && count == 0 {
 					continue
 				}
