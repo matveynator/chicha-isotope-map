@@ -460,33 +460,125 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 	return result
 }
 
+// calculateSpeedForMarkers fills Marker.Speed (m/s) for **every** point.
+//
+// Algorithm
+// =========
+// 1.  Sort markers chronologically (ascending Unix time).
+// 2.  Pairwise speed: for each neighbour pair with Δt>0 compute v=d/Δt; this
+//     gives нам хотя бы несколько валидных скоростей.
+// 3.  Gap-filling:  for любой непрерывной серии Speed==0
+//       ┌ both neighbours exist ─► take avg speed between them
+//       ├ only left neighbour    ─► copy its speed
+//       └ only right neighbour   ─► copy its speed
+//     All markers inside the gap receive the chosen value.
+// 4.  Fallback: if, after step 3, some zeros still remain (whole track had
+//     no Δt>0 inside), we compute average speed between the *first* and the
+//     *last* marker and assign it to everyone.
+//
+// Complexity O(N), lock-free — the slice is owned by this goroutine.
+//
+// Limits: speeds outside 0…1000 m/s (≈0…3600 km/h) are considered glitches
+//         and ignored while calculating new values.
 func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
-	if len(markers) == 0 { // <-- добавлено
+	if len(markers) == 0 {
 		return markers
 	}
 
+	// ── 1. Ensure chronological order ────────────────────────────────
 	sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
 
+	const maxSpeed = 1000.0 // m/s
+
+	// ── 2. Raw pairwise speeds ───────────────────────────────────────
 	for i := 1; i < len(markers); i++ {
-		prev, curr := markers[i-1], markers[i]
-		dist := haversineDistance(prev.Lat, prev.Lon, curr.Lat, curr.Lon)
-		timeDiff := curr.Date - prev.Date
-		if timeDiff > 0 {
-			speed := dist / float64(timeDiff)
-			if speed >= 0 && speed <= 1000 {
-				markers[i].Speed = speed
-			} else {
-				markers[i].Speed = markers[i-1].Speed
+		dt := markers[i].Date - markers[i-1].Date
+		if dt <= 0 {
+			continue // duplicate timestamp — skip for now
+		}
+		dist := haversineDistance(
+			markers[i-1].Lat, markers[i-1].Lon,
+			markers[i].Lat,   markers[i].Lon)
+		v := dist / float64(dt)
+		if v >= 0 && v <= maxSpeed {
+			markers[i].Speed = v
+		}
+	}
+
+	// Propagate speed to very first marker if possible
+	if len(markers) > 1 && markers[0].Speed == 0 {
+		markers[0].Speed = markers[1].Speed
+	}
+
+	// ── 3. Fill every zero-speed gap with an average value ───────────
+	lastWithSpeed := -1
+	i := 0
+	for i < len(markers) {
+		if markers[i].Speed > 0 {
+			lastWithSpeed = i
+			i++
+			continue
+		}
+
+		// Found start of a zero-speed run
+		gapStart := i
+		for i < len(markers) && markers[i].Speed == 0 {
+			i++
+		}
+		gapEnd := i - 1               // inclusive
+		nextWithSpeed := -1
+		if i < len(markers) && markers[i].Speed > 0 {
+			nextWithSpeed = i
+		}
+
+		var fill float64
+		switch {
+		case lastWithSpeed != -1 && nextWithSpeed != -1:
+			// both neighbours exist — average speed between them
+			dt := markers[nextWithSpeed].Date - markers[lastWithSpeed].Date
+			if dt > 0 {
+				dist := haversineDistance(
+					markers[lastWithSpeed].Lat, markers[lastWithSpeed].Lon,
+					markers[nextWithSpeed].Lat, markers[nextWithSpeed].Lon)
+				fill = dist / float64(dt)
+			}
+		case lastWithSpeed != -1:
+			fill = markers[lastWithSpeed].Speed
+		case nextWithSpeed != -1:
+			fill = markers[nextWithSpeed].Speed
+		}
+
+		if fill > 0 && fill <= maxSpeed {
+			for j := gapStart; j <= gapEnd; j++ {
+				markers[j].Speed = fill
+			}
+		}
+		// loop continues with i pointing to first non-gap marker
+	}
+
+	// ── 4. Global fallback (entire track duplicates) ─────────────────
+	needFallback := false
+	for _, m := range markers {
+		if m.Speed == 0 {
+			needFallback = true
+			break
+		}
+	}
+	if needFallback {
+		dt := markers[len(markers)-1].Date - markers[0].Date
+		if dt > 0 {
+			dist := haversineDistance(
+				markers[0].Lat, markers[0].Lon,
+				markers[len(markers)-1].Lat, markers[len(markers)-1].Lon)
+			v := dist / float64(dt)
+			if v >= 0 && v <= maxSpeed {
+				for k := range markers {
+					markers[k].Speed = v
+				}
 			}
 		}
 	}
 
-	// Обновлённая защита
-	if len(markers) > 1 {
-		markers[0].Speed = markers[1].Speed
-	} else {
-		markers[0].Speed = 0
-	}
 	return markers
 }
 
