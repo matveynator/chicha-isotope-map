@@ -173,14 +173,19 @@ CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers(trackID);
 }
 
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
-// Works with pgx, genji and sqlite.
+//
+// • PostgreSQL (pgx) – опираемся на BIGSERIAL, id не передаём;
+// • SQLite и Genji   – если id == 0, берём следующий из idGenerator.
+//   Это устраняет ошибку, когда все агрегатные маркеры имели id-0
+//   и вторая вставка ломалась на UNIQUE PRIMARY KEY.
+//
 func (db *Database) SaveMarkerAtomic(
 	exec sqlExecutor, m Marker, dbType string,
 ) error {
 
 	switch dbType {
 
-	// ────────────────────────────────────────────────────────── PGX ────
+	// ──────────────────────────── PostgreSQL (pgx) ───────────
 	case "pgx":
 		_, err := exec.Exec(`
 INSERT INTO markers
@@ -191,8 +196,12 @@ ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID)
 		return err
 
-	// ──────────────────────────────── Genji / SQLite — '?' placeholders
+	// ─────────────────────── SQLite / Genji / другие ─────────
 	default:
+		if m.ID == 0 {
+			// берём следующий уникальный id из генератора
+			m.ID = <-db.idGenerator
+		}
 		_, err := exec.Exec(`
 INSERT INTO markers
       (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID)

@@ -1374,7 +1374,10 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	global := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
 
 	for _, fh := range files {
-		f, _ := fh.Open(); defer f.Close()
+		logT(trackID, "Upload", "file received: %s", fh.Filename)
+
+		f, _ := fh.Open()
+		defer f.Close()
 
 		var (
 			bbox database.Bounds
@@ -1403,16 +1406,26 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// расширяем глобальные границы
-		if bbox.MinLat < global.MinLat { global.MinLat = bbox.MinLat }
-		if bbox.MaxLat > global.MaxLat { global.MaxLat = bbox.MaxLat }
-		if bbox.MinLon < global.MinLon { global.MinLon = bbox.MinLon }
-		if bbox.MaxLon > global.MaxLon { global.MaxLon = bbox.MaxLon }
+		if bbox.MinLat < global.MinLat {
+			global.MinLat = bbox.MinLat
+		}
+		if bbox.MaxLat > global.MaxLat {
+			global.MaxLat = bbox.MaxLat
+		}
+		if bbox.MinLon < global.MinLon {
+			global.MinLon = bbox.MinLon
+		}
+		if bbox.MaxLon > global.MaxLon {
+			global.MaxLon = bbox.MaxLon
+		}
 	}
 
 	trackURL := fmt.Sprintf(
 		"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
 		trackID, global.MinLat, global.MinLon, global.MaxLat, global.MaxLon,
 		"OpenStreetMap")
+
+	logT(trackID, "Upload", "redirecting browser to: %s", trackURL)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -1486,44 +1499,34 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 // =====================
 // WEB  — страница трека
 // =====================
+// trackHandler — страница одного трека.
+// Теперь НЕ загружает маркеры в HTML: JS сам запросит нужный зум.
 func trackHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 
 	// /trackid/<ID>
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 3 {
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 3 {
 		http.Error(w, "TrackID not provided", http.StatusBadRequest)
 		return
 	}
-	trackID := pathParts[2]
+	trackID := parts[2]           // всё равно понадобится в JS
 
-	// Параметры прямоугольника (могут быть нулями)
-	minLat, _ := strconv.ParseFloat(r.URL.Query().Get("minLat"), 64)
-	minLon, _ := strconv.ParseFloat(r.URL.Query().Get("minLon"), 64)
-	maxLat, _ := strconv.ParseFloat(r.URL.Query().Get("maxLat"), 64)
-	maxLon, _ := strconv.ParseFloat(r.URL.Query().Get("maxLon"), 64)
-
-	// Маркеры трека в заданных границах (может вернуться пустой срез — это ок)
-	markers, err := db.GetMarkersByTrackIDAndBounds(trackID, minLat, minLon, maxLat, maxLon, *dbType)
-	if err != nil {
-		http.Error(w, "Error fetching markers", http.StatusInternalServerError)
-		return
-	}
-
-	// Шаблон тот же, что и для главной карты
+	// --- шаблон ----------------------------------------------------------------
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
 		"translate": func(key string) string {
-			if val, ok := translations[lang][key]; ok {
-				return val
+			if v, ok := translations[lang][key]; ok {
+				return v
 			}
 			return translations["en"][key]
 		},
-		"toJSON": func(data interface{}) (string, error) {
-			bytes, err := json.Marshal(data)
-			return string(bytes), err
+		"toJSON": func(v any) (string, error) {
+			b, err := json.Marshal(v)
+			return string(b), err
 		},
 	}).ParseFS(content, "public_html/map.html"))
 
+	// отдаём пустой срез маркеров
 	data := struct {
 		Markers      []database.Marker
 		Version      string
@@ -1534,7 +1537,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultZoom  int
 		DefaultLayer string
 	}{
-		Markers:      markers,
+		Markers:      nil,             // ← ключевое изменение
 		Version:      CompileVersion,
 		Translations: translations,
 		Lang:         lang,
@@ -1546,15 +1549,18 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		log.Printf("Error executing template: %v", err)
+		log.Printf("template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := buf.WriteTo(w); err != nil {
-		log.Printf("Error writing response: %v", err)
+		log.Printf("write resp: %v", err)
 	}
+
+	// Ради отладки: показываем, что HTML отдали без тяжёлых данных
+	log.Printf("Track page %s rendered with 0 inline markers", trackID)
 }
 
 // getMarkersHandler — берёт маркеры в заданном окне и фильтрах
