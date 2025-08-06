@@ -108,7 +108,8 @@ func (db *Database) InitSchema(config Config) error {
             speed REAL,
             trackID VARCHAR(30)
         );
-        CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers(doseRate, date, lon, lat, countRate, zoom, speed, trackID);
+
         CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
 				CREATE INDEX IF NOT EXISTS idx_markers_trackid_bounds ON markers (trackID, lat, lon);
         CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
@@ -127,27 +128,34 @@ func (db *Database) InitSchema(config Config) error {
             speed REAL,
             trackID TEXT
         );
-        CREATE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers(doseRate, date, lon, lat, countRate, zoom, speed, trackID);
         CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
 				CREATE INDEX IF NOT EXISTS idx_markers_trackid_bounds ON markers (trackID, lat, lon);
         CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
         `
 
-	case "genji": // Genji
-		schema = `
-        CREATE TABLE IF NOT EXISTS markers (
-            id INTEGER PRIMARY KEY,
-            doseRate REAL,
-            date INTEGER,
-            lon REAL,
-            lat REAL,
-            countRate REAL,
-            zoom INTEGER,
-            speed REAL,
-            trackID TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
-        `
+       case "genji": // Genji embedded DB
+	schema = `
+CREATE TABLE IF NOT EXISTS markers (
+    id        INTEGER PRIMARY KEY,              -- обязателен и НЕ генерится сам
+    doseRate  REAL,
+    date      INTEGER,
+    lon       REAL,
+    lat       REAL,
+    countRate REAL,
+    zoom      INTEGER,
+    speed     REAL,
+    trackID   TEXT
+);
+/* уникальный ключ по всем измерительным полям —
+   дубликаты будем гасить через ON CONFLICT DO NOTHING */
+CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
+       ON markers(doseRate,date,lon,lat,countRate,zoom,speed,trackID);
+
+CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers(trackID);
+`
+ 
+
 	default:
 		return fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
@@ -161,92 +169,45 @@ func (db *Database) InitSchema(config Config) error {
 	return nil
 }
 
-// SaveMarkerAtomic saves a marker atomically using the idGenerator channel for unique IDs.
-func (db *Database) SaveMarkerAtomic(marker Marker, dbType string) error {
-	var count int
-	var query string
+// SaveMarkerAtomic inserts a marker inside an open tx (or db) and ignores duplicates.
+// Works for: pgx | genji | sqlite. No pre-SELECT, no mutexes — pure SQL.
+func (db *Database) SaveMarkerAtomic(
+	exec sqlExecutor,        // *sql.Tx inside batch OR *sql.DB for one-shot
+	m Marker, dbType string, // dbType: "pgx" | "genji" | "sqlite"
+) error {
 
-	// Determine SQL query based on database type
-	switch dbType {
-	case "pgx":
-		query = `
-		SELECT COUNT(1)
-		FROM markers
-		WHERE doseRate = $1 AND date = $2 AND lon = $3 AND lat = $4 AND countRate = $5 AND zoom = $6 AND speed = $7 AND trackID = $8`
-	default:
-		query = `
-		SELECT COUNT(1)
-		FROM markers
-		WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ? AND zoom = ? AND speed = ? AND trackID = ?`
+	// Generate local id for non-Postgres drivers
+	if dbType != "pgx" {
+		m.ID = <-db.idGenerator
 	}
 
-	// Execute query to check if marker exists
-	err := db.DB.QueryRow(query,
-		marker.DoseRate,
-		marker.Date,
-		marker.Lon,
-		marker.Lat,
-		marker.CountRate,
-		marker.Zoom,
-		marker.Speed,
-		marker.TrackID).Scan(&count)
+	switch dbType {
 
-	if err != nil {
+	case "pgx": // PostgreSQL
+		_, err := exec.Exec(`
+INSERT INTO markers
+      (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+ON CONFLICT ON CONSTRAINT idx_markers_unique DO NOTHING`,
+			m.DoseRate, m.Date, m.Lon, m.Lat,
+			m.CountRate, m.Zoom, m.Speed, m.TrackID)
+		return err
+
+	default: // genji & sqlite — «?» placeholders
+		_, err := exec.Exec(`
+INSERT INTO markers
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID)
+VALUES (?,?,?,?,?,?,?,?,?)
+ON CONFLICT DO NOTHING`,
+			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
+			m.CountRate, m.Zoom, m.Speed, m.TrackID)
 		return err
 	}
+}
 
-	// If marker exists, return nil
-	if count > 0 {
-		log.Printf("Marker (%f, %d, %f, %f, %f, %d, %f, %s) already exists.\n", marker.DoseRate, marker.Date, marker.Lon, marker.Lat, marker.CountRate, marker.Zoom, marker.Speed, marker.TrackID)
-		return nil
-	}
-
-	// Get next ID from generator if not using SERIAL (PostgreSQL)
-	if dbType != "pgx" {
-		nextID := <-db.idGenerator
-		marker.ID = nextID
-	}
-
-	// Insert new marker with generated ID
-	switch dbType {
-	case "pgx":
-		query = `
-		INSERT INTO markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	default:
-		query = `
-		INSERT INTO markers (id, doseRate, date, lon, lat, countRate, zoom, speed, trackID)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	}
-
-	if dbType == "pgx" {
-		_, err = db.DB.Exec(query,
-			marker.DoseRate,
-			marker.Date,
-			marker.Lon,
-			marker.Lat,
-			marker.CountRate,
-			marker.Zoom,
-			marker.Speed,
-			marker.TrackID)
-	} else {
-		_, err = db.DB.Exec(query,
-			marker.ID,
-			marker.DoseRate,
-			marker.Date,
-			marker.Lon,
-			marker.Lat,
-			marker.CountRate,
-			marker.Zoom,
-			marker.Speed,
-			marker.TrackID)
-	}
-
-	if err != nil {
-		return fmt.Errorf("error inserting marker: %v", err)
-	}
-
-	return nil
+// sqlExecutor is satisfied by both *sql.Tx and *sql.DB
+type sqlExecutor interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.

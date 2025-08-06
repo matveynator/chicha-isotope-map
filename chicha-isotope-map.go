@@ -1,6 +1,11 @@
 package main
 
 import (
+
+// профилировщик
+//  _ "net/http/pprof"
+
+
 	"archive/zip"
 	"bytes"
   "bufio" 
@@ -76,7 +81,7 @@ type SpeedRange struct{ Min, Max float64 }
 var speedCatalog = map[string]SpeedRange{
 	"ped":   {0, 7},      // < 7 м/с   (~0-25 км/ч)
 	"car":   {7, 70},     // 7–70 м/с  (~25-250 км/ч)
-	"plane": {70, 500},   // > 70 м/с  (~250-1800 км/ч)
+	"plane": {70, 1000},   // > 70 м/с  (~250-1800 км/ч)
 }
 
 
@@ -311,8 +316,61 @@ func latLonToPixel(lat, lon float64, zoom int) (px, py float64) {
 	return webMercatorToPixel(x, y, zoom)
 }
 
+
+// fastMergeMarkersByZoom группирует маркеры в «ячейку» сетки
+// (диаметр = 2*radiusPx) и усредняет данные кластера.
+// • O(N) • без мьютексов • подходит для любых зумов.
+func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) []database.Marker {
+	if len(markers) == 0 {
+		return nil
+	}
+
+	cell := 2*radiusPx + 1 // px
+	type acc struct {
+		sumLat, sumLon, sumDose, sumCnt, sumSp float64
+		latest                                  int64
+		n                                       int
+	}
+	cl := make(map[int64]*acc) // key := cx<<32 | cy
+
+	for _, m := range markers {
+		px, py := latLonToPixel(m.Lat, m.Lon, zoom)
+		key := int64(int(px/cell))<<32 | int64(int32(py/cell))
+		a := cl[key]
+		if a == nil {
+			a = &acc{}
+			cl[key] = a
+		}
+		a.sumLat += m.Lat
+		a.sumLon += m.Lon
+		a.sumDose += m.DoseRate
+		a.sumCnt += m.CountRate
+		a.sumSp += m.Speed
+		if m.Date > a.latest { a.latest = m.Date }
+		a.n++
+	}
+
+	out := make([]database.Marker, 0, len(cl))
+	for _, c := range cl {
+		n := float64(c.n)
+		out = append(out, database.Marker{
+			Lat:       c.sumLat / n,
+			Lon:       c.sumLon / n,
+			DoseRate:  c.sumDose / n,
+			CountRate: c.sumCnt / n,
+			Speed:     c.sumSp / n,
+			Date:      c.latest,
+			Zoom:      zoom,
+			TrackID:   markers[0].TrackID,
+		})
+	}
+	return out
+}
+
+
 // mergeMarkersByZoom “сливает” (усредняет) маркеры, которые пересекаются в пиксельных координатах
 // на текущем зуме. Если расстояние между центрами меньше 2*markerRadiusPx (плюс 1px “запас”), то объединяем.
+// deprecated
 func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) []database.Marker {
 	if len(markers) == 0 {
 		return nil
@@ -416,7 +474,7 @@ func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 		timeDiff := curr.Date - prev.Date
 		if timeDiff > 0 {
 			speed := dist / float64(timeDiff)
-			if speed >= 0 && speed <= 300 {
+			if speed >= 0 && speed <= 1000 {
 				markers[i].Speed = speed
 			} else {
 				markers[i].Speed = markers[i-1].Speed
@@ -441,22 +499,32 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	return 2 * R * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
-// precomputeMarkersForAllZoomLevels вычисляет заранее маркеры для всех (1..20) уровней зума
-// и возвращает итоговый массив
-// Базовый радиус, при котором на 20-м зуме маркеры совсем не сливаются
-
 func radiusForZoom(zoom int) float64 {
-	// линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
-	return markerRadiusPx * float64(zoom) / 20.0
+  // линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
+  return markerRadiusPx * float64(zoom) / 20.0
 }
 
+// precomputeMarkersForAllZoomLevels создаёт агрегаты для z=1…20
+// Параллельно: для каждого зума — своя goroutine, сбор через канал.
 func precomputeMarkersForAllZoomLevels(src []database.Marker) []database.Marker {
-	var out []database.Marker
-	for z := 1; z <= 20; z++ {
-		merged := mergeMarkersByZoom(src, z, radiusForZoom(z))
-		out = append(out, merged...)
+	type job struct {
+		z   int
+		out []database.Marker
 	}
-	return out
+	ch := make(chan job, 20)
+
+	for z := 1; z <= 20; z++ {
+		go func(zoom int) {
+			merged := fastMergeMarkersByZoom(src, zoom, radiusForZoom(zoom))
+			ch <- job{z: zoom, out: merged}
+		}(z)
+	}
+
+	var res []database.Marker
+	for i := 0; i < 20; i++ {
+		res = append(res, (<-ch).out...)
+	}
+	return res
 }
 
 // =====================
@@ -1273,15 +1341,22 @@ func processAndStoreMarkers(markers []database.Marker, trackID string, db *datab
 	allZoomMarkers := precomputeMarkersForAllZoomLevels(markers)
 	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoomMarkers))
 
-	for _, m := range allZoomMarkers {
-		if err := db.SaveMarkerAtomic(m, dbType); err != nil {
-			logT(trackID, "Store", "✖ save error: %v", err)
-			return fmt.Errorf("error saving marker: %v", err)
-		}
-	}
 
-	logT(trackID, "Store", "✔ stored")
-	return nil
+tx, err := db.DB.Begin()
+if err != nil { return fmt.Errorf("tx begin: %w", err) }
+for _, m := range allZoomMarkers {
+	if err := db.SaveMarkerAtomic(tx, m, dbType); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("save: %w", err)
+	}
+}
+if err := tx.Commit(); err != nil {
+	return fmt.Errorf("tx commit: %w", err)
+}
+logT(trackID, "Store", "✔ stored")
+return nil
+
+
 }
 
 
