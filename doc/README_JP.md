@@ -214,7 +214,7 @@ Chicha‑Isotope‑Map は単なるプログラムではありません。肉眼
 
 * **何をどこから読み込む？**
 
-  * `.kml`、`.kmz`、`.json`、`.rctrk`（AtomFast、RadiaCode など）のファイルから。
+  * `.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx` (AtomFast, RadiaCode, Safecast など）のファイルから。
   * すべてを独自 DB に保存し、何年先でも正確に振り返れます。「2008年3月12日、この場所は 4.1 µR/h だった？」に答えられるように。
 
 * **基準は？**
