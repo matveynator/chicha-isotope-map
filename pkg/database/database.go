@@ -97,17 +97,20 @@ func (db *Database) InitSchema(config Config) error {
 	switch config.DBType {
 	case "pgx": // PostgreSQL
 		schema = `
-        CREATE TABLE IF NOT EXISTS markers (
-            id SERIAL PRIMARY KEY,
-            doseRate REAL,
-            date BIGINT,
-            lon REAL,
-            lat REAL,
-            countRate REAL,
-            zoom INTEGER,
-            speed REAL,
-            trackID VARCHAR(30)
-        );
+		CREATE TABLE IF NOT EXISTS markers (
+			id         BIGSERIAL PRIMARY KEY,
+			doseRate   DOUBLE PRECISION,
+			date       BIGINT,
+			lon        DOUBLE PRECISION,
+			lat        DOUBLE PRECISION,
+			countRate  DOUBLE PRECISION,
+			zoom       INTEGER,
+			speed      DOUBLE PRECISION,
+			trackID    TEXT,
+			CONSTRAINT markers_unique
+			UNIQUE (doseRate, date, lon, lat, countRate, zoom, speed, trackID)
+		);
+
         CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers(doseRate, date, lon, lat, countRate, zoom, speed, trackID);
 
         CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
@@ -169,31 +172,27 @@ CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers(trackID);
 	return nil
 }
 
-// SaveMarkerAtomic inserts a marker inside an open tx (or db) and ignores duplicates.
-// Works for: pgx | genji | sqlite. No pre-SELECT, no mutexes — pure SQL.
+// SaveMarkerAtomic inserts a marker and silently ignores duplicates.
+// Works with pgx, genji and sqlite.
 func (db *Database) SaveMarkerAtomic(
-	exec sqlExecutor,        // *sql.Tx inside batch OR *sql.DB for one-shot
-	m Marker, dbType string, // dbType: "pgx" | "genji" | "sqlite"
+	exec sqlExecutor, m Marker, dbType string,
 ) error {
-
-	// Generate local id for non-Postgres drivers
-	if dbType != "pgx" {
-		m.ID = <-db.idGenerator
-	}
 
 	switch dbType {
 
-	case "pgx": // PostgreSQL
+	// ────────────────────────────────────────────────────────── PGX ────
+	case "pgx":
 		_, err := exec.Exec(`
 INSERT INTO markers
       (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-ON CONFLICT ON CONSTRAINT idx_markers_unique DO NOTHING`,
+ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID)
 		return err
 
-	default: // genji & sqlite — «?» placeholders
+	// ──────────────────────────────── Genji / SQLite — '?' placeholders
+	default:
 		_, err := exec.Exec(`
 INSERT INTO markers
       (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID)
@@ -205,10 +204,11 @@ ON CONFLICT DO NOTHING`,
 	}
 }
 
-// sqlExecutor is satisfied by both *sql.Tx and *sql.DB
+// sqlExecutor is satisfied by both *sql.Tx and *sql.DB.
 type sqlExecutor interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
+
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.
 func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
