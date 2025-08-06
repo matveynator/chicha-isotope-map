@@ -20,3 +20,10 @@ type Data struct {
 	Title     string   `json:"title"`   // Title or description of the dataset
 	IsSievert bool     `json:"sv"`      // Indicates if data is in Sievert format
 }
+
+// Bounds описывает прямоугольник (minLat,minLon) – (maxLat,maxLon).
+type Bounds struct {
+	MinLat, MinLon float64
+	MaxLat, MaxLon float64
+}
+
