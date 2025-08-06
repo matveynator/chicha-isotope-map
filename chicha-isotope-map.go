@@ -2,9 +2,8 @@ package main
 
 import (
 
-// профилировщик
+// профилировщик http://localhost:8765/debug/pprof/profile?seconds=30
 //  _ "net/http/pprof"
-
 
 	"archive/zip"
 	"bytes"
