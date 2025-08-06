@@ -216,7 +216,7 @@ Chicha‑Isotope‑Map isn’t just software — it’s a window into a world of
 
 * **What does it read, and from where?**
 
-  * Files in `.kml`, `.kmz`, `.json`, `.rctrk` formats (AtomFast, RadiaCode, and others).
+  * Files in `.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx` formats (AtomFast, RadiaCode, Safecast and others).
   * Everything is saved to its own database so that years later you can say, “On March 12, 2008, this spot measured 4.1 µR/h.”
 
 * **What’s our baseline?**
