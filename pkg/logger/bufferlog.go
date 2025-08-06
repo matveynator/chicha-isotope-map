@@ -29,10 +29,10 @@ const (
 type cmd struct {
 	act      action
 	trackID  string
-	message  string        // для Append
-	filename string        // для Success
-	err      error         // для FlushErr
-	when     time.Time     // отметка времени (для сортировки, если надо)
+	message  string    // для Append
+	filename string    // для Success
+	err      error     // для FlushErr
+	when     time.Time // отметка времени (для сортировки, если надо)
 }
 
 // --- публичные точки-входа (только отправляют в канал) ----------------------
@@ -94,4 +94,3 @@ func runloop() {
 		}
 	}
 }
-

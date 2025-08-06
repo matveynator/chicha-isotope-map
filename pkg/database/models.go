@@ -26,4 +26,3 @@ type Bounds struct {
 	MinLat, MinLon float64
 	MaxLat, MaxLon float64
 }
-

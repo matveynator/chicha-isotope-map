@@ -137,8 +137,8 @@ func (db *Database) InitSchema(config Config) error {
         CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
         `
 
-       case "genji": // Genji embedded DB
-	schema = `
+	case "genji": // Genji embedded DB
+		schema = `
 CREATE TABLE IF NOT EXISTS markers (
     id        INTEGER PRIMARY KEY,              -- обязателен и НЕ генерится сам
     doseRate  REAL,
@@ -157,7 +157,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
 
 CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers(trackID);
 `
- 
 
 	default:
 		return fmt.Errorf("unsupported database type: %s", config.DBType)
@@ -174,11 +173,10 @@ CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers(trackID);
 
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
 //
-// • PostgreSQL (pgx) – опираемся на BIGSERIAL, id не передаём;
-// • SQLite и Genji   – если id == 0, берём следующий из idGenerator.
-//   Это устраняет ошибку, когда все агрегатные маркеры имели id-0
-//   и вторая вставка ломалась на UNIQUE PRIMARY KEY.
-//
+//   - PostgreSQL (pgx) – опираемся на BIGSERIAL, id не передаём;
+//   - SQLite и Genji   – если id == 0, берём следующий из idGenerator.
+//     Это устраняет ошибку, когда все агрегатные маркеры имели id-0
+//     и вторая вставка ломалась на UNIQUE PRIMARY KEY.
 func (db *Database) SaveMarkerAtomic(
 	exec sqlExecutor, m Marker, dbType string,
 ) error {
@@ -217,7 +215,6 @@ ON CONFLICT DO NOTHING`,
 type sqlExecutor interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
-
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.
 func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
@@ -415,13 +412,15 @@ type SpeedRange struct{ Min, Max float64 }
 func (db *Database) GetMarkersByZoomBoundsSpeed(
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
-	dateFrom, dateTo int64,               // ⏱️ NOVO
+	dateFrom, dateTo int64, // ⏱️ NOVO
 	speedRanges []SpeedRange,
 	dbType string,
 ) ([]Marker, error) {
 
 	ph := func(n int) string {
-		if dbType == "pgx" { return fmt.Sprintf("$%d", n) }
+		if dbType == "pgx" {
+			return fmt.Sprintf("$%d", n)
+		}
 		return "?"
 	}
 
@@ -454,7 +453,9 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 	if len(speedRanges) > 0 {
 		sb.WriteString(" AND (")
 		for i, r := range speedRanges {
-			if i > 0 { sb.WriteString(" OR ") }
+			if i > 0 {
+				sb.WriteString(" OR ")
+			}
 			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
 			args = append(args, r.Min, r.Max)
 		}
@@ -465,14 +466,16 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 	                      FROM markers WHERE %s;`, sb.String())
 
 	rows, err := db.DB.Query(query, args...)
-	if err != nil { return nil, fmt.Errorf("query: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
 	defer rows.Close()
 
 	var out []Marker
 	for rows.Next() {
 		var m Marker
-		if err := rows.Scan(&m.ID,&m.DoseRate,&m.Date,&m.Lon,&m.Lat,
-		                    &m.CountRate,&m.Zoom,&m.Speed,&m.TrackID); err != nil {
+		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
+			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		out = append(out, m)
@@ -506,13 +509,15 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	trackID string,
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
-	dateFrom, dateTo int64,           // ⏱️ NOVO
+	dateFrom, dateTo int64, // ⏱️ NOVO
 	speedRanges []SpeedRange,
 	dbType string,
 ) ([]Marker, error) {
 
 	ph := func(n int) string {
-		if dbType == "pgx" { return fmt.Sprintf("$%d", n) }
+		if dbType == "pgx" {
+			return fmt.Sprintf("$%d", n)
+		}
 		return "?"
 	}
 
@@ -545,7 +550,9 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	if len(speedRanges) > 0 {
 		sb.WriteString(" AND (")
 		for i, r := range speedRanges {
-			if i > 0 { sb.WriteString(" OR ") }
+			if i > 0 {
+				sb.WriteString(" OR ")
+			}
 			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
 			args = append(args, r.Min, r.Max)
 		}
@@ -556,18 +563,19 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	                      FROM markers WHERE %s;`, sb.String())
 
 	rows, err := db.DB.Query(query, args...)
-	if err != nil { return nil, fmt.Errorf("query: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
 	defer rows.Close()
 
 	var out []Marker
 	for rows.Next() {
 		var m Marker
-		if err := rows.Scan(&m.ID,&m.DoseRate,&m.Date,&m.Lon,&m.Lat,
-		                    &m.CountRate,&m.Zoom,&m.Speed,&m.TrackID); err != nil {
+		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
+			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		out = append(out, m)
 	}
 	return out, rows.Err()
 }
-

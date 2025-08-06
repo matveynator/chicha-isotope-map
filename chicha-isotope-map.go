@@ -2,44 +2,44 @@ package main
 
 import (
 
-// профилировщик http://localhost:8765/debug/pprof/profile?seconds=30
-//  _ "net/http/pprof"
+	// профилировщик http://localhost:8765/debug/pprof/profile?seconds=30
+	//  _ "net/http/pprof"
 
 	"archive/zip"
+	"bufio"
 	"bytes"
-  "bufio" 
+	"context"
+	"crypto/tls"
 	"embed"
-	"net"
+	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
-  "encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
-  "html"
-	"errors"
+	"golang.org/x/crypto/acme/autocert"
+	"html"
 	"html/template"
 	"io"
 	"io/fs"
 	"io/ioutil"
 	"log"
-	"os"
-	"context"
-	"crypto/tls"
-	"runtime"
 	"math"
 	"math/rand"
 	"mime/multipart"
+	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"golang.org/x/crypto/acme/autocert"
 
 	"chicha-isotope-map/pkg/database"
-  "chicha-isotope-map/pkg/logger"
+	"chicha-isotope-map/pkg/logger"
 )
 
 //go:embed public_html/*
@@ -71,18 +71,17 @@ var db *database.Database
 // Константы для слияния маркеров
 // ==========
 const (
-	markerRadiusPx = 10.0 // радиус кружка в пикселях
-  minValidTS     = 1262304000   // 2010-01-01 00:00:00 UTC
+	markerRadiusPx = 10.0       // радиус кружка в пикселях
+	minValidTS     = 1262304000 // 2010-01-01 00:00:00 UTC
 )
 
 type SpeedRange struct{ Min, Max float64 }
 
 var speedCatalog = map[string]SpeedRange{
-	"ped":   {0, 7},      // < 7 м/с   (~0-25 км/ч)
-	"car":   {7, 70},     // 7–70 м/с  (~25-250 км/ч)
-	"plane": {70, 1000},   // > 70 м/с  (~250-1800 км/ч)
+	"ped":   {0, 7},     // < 7 м/с   (~0-25 км/ч)
+	"car":   {7, 70},    // 7–70 м/с  (~25-250 км/ч)
+	"plane": {70, 1000}, // > 70 м/с  (~250-1800 км/ч)
 }
-
 
 // withServerHeader оборачивает любой http.Handler, добавляя
 // заголовок "Server: chicha-isotope-map/<CompileVersion>".
@@ -101,8 +100,6 @@ func withServerHeader(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 }
-
-
 
 // serveWithDomain запускает:
 //   • :80  — ACME HTTP-01 + 301-redirect на https://<domain>/…
@@ -202,7 +199,6 @@ func serveWithDomain(domain string, handler http.Handler) {
 	}
 }
 
-
 // logT формирует строку "[trackID][component] …" и передаёт её в пакет logger.
 // logger сам решит: буферизовать или вывести сразу.
 func logT(trackID, component, format string, v ...any) {
@@ -214,13 +210,12 @@ func logT(trackID, component, format string, v ...any) {
 // Entities are unescaped and result is TrimSpace-обработан.
 func rxFind(s, pattern string) string {
 	re := regexp.MustCompile(pattern)
-	m  := re.FindStringSubmatch(s)
+	m := re.FindStringSubmatch(s)
 	if len(m) > 1 {
 		return strings.TrimSpace(html.UnescapeString(m[1]))
 	}
 	return ""
 }
-
 
 // GenerateSerialNumber генерирует TrackID
 func GenerateSerialNumber() string {
@@ -269,24 +264,22 @@ func filterZeroMarkers(markers []database.Marker) []database.Marker {
 	return filteredMarkers
 }
 
-
 // NEW ────────────────
 func isValidDate(ts int64) bool {
-    // допустимо «сегодня плюс сутки» с учётом часовых поясов
-    max := time.Now().Add(24 * time.Hour).Unix()
-    return ts >= minValidTS && ts <= max
+	// допустимо «сегодня плюс сутки» с учётом часовых поясов
+	max := time.Now().Add(24 * time.Hour).Unix()
+	return ts >= minValidTS && ts <= max
 }
 
 func filterInvalidDateMarkers(markers []database.Marker) []database.Marker {
-    out := markers[:0]
-    for _, m := range markers {
-        if isValidDate(m.Date) {
-            out = append(out, m)
-        }
-    }
-    return out
+	out := markers[:0]
+	for _, m := range markers {
+		if isValidDate(m.Date) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
-
 
 // Проекция Web Mercator приблизительно переводит широту/долготу в "метры".
 // Формулы стандартные, здесь используется для перевода в пиксельные координаты.
@@ -315,7 +308,6 @@ func latLonToPixel(lat, lon float64, zoom int) (px, py float64) {
 	return webMercatorToPixel(x, y, zoom)
 }
 
-
 // fastMergeMarkersByZoom группирует маркеры в «ячейку» сетки
 // (диаметр = 2*radiusPx) и усредняет данные кластера.
 // • O(N) • без мьютексов • подходит для любых зумов.
@@ -327,8 +319,8 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 	cell := 2*radiusPx + 1 // px
 	type acc struct {
 		sumLat, sumLon, sumDose, sumCnt, sumSp float64
-		latest                                  int64
-		n                                       int
+		latest                                 int64
+		n                                      int
 	}
 	cl := make(map[int64]*acc) // key := cx<<32 | cy
 
@@ -345,7 +337,9 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 		a.sumDose += m.DoseRate
 		a.sumCnt += m.CountRate
 		a.sumSp += m.Speed
-		if m.Date > a.latest { a.latest = m.Date }
+		if m.Date > a.latest {
+			a.latest = m.Date
+		}
 		a.n++
 	}
 
@@ -365,7 +359,6 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 	}
 	return out
 }
-
 
 // mergeMarkersByZoom “сливает” (усредняет) маркеры, которые пересекаются в пиксельных координатах
 // на текущем зуме. Если расстояние между центрами меньше 2*markerRadiusPx (плюс 1px “запас”), то объединяем.
@@ -464,22 +457,23 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 //
 // Algorithm
 // =========
-// 1.  Sort markers chronologically (ascending Unix time).
-// 2.  Pairwise speed: for each neighbour pair with Δt>0 compute v=d/Δt; this
+//  1. Sort markers chronologically (ascending Unix time).
+//  2. Pairwise speed: for each neighbour pair with Δt>0 compute v=d/Δt; this
 //     gives нам хотя бы несколько валидных скоростей.
-// 3.  Gap-filling:  for любой непрерывной серии Speed==0
-//       ┌ both neighbours exist ─► take avg speed between them
-//       ├ only left neighbour    ─► copy its speed
-//       └ only right neighbour   ─► copy its speed
+//  3. Gap-filling:  for любой непрерывной серии Speed==0
+//     ┌ both neighbours exist ─► take avg speed between them
+//     ├ only left neighbour    ─► copy its speed
+//     └ only right neighbour   ─► copy its speed
 //     All markers inside the gap receive the chosen value.
-// 4.  Fallback: if, after step 3, some zeros still remain (whole track had
+//  4. Fallback: if, after step 3, some zeros still remain (whole track had
 //     no Δt>0 inside), we compute average speed between the *first* and the
 //     *last* marker and assign it to everyone.
 //
 // Complexity O(N), lock-free — the slice is owned by this goroutine.
 //
 // Limits: speeds outside 0…1000 m/s (≈0…3600 km/h) are considered glitches
-//         and ignored while calculating new values.
+//
+//	and ignored while calculating new values.
 func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 	if len(markers) == 0 {
 		return markers
@@ -498,7 +492,7 @@ func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 		}
 		dist := haversineDistance(
 			markers[i-1].Lat, markers[i-1].Lon,
-			markers[i].Lat,   markers[i].Lon)
+			markers[i].Lat, markers[i].Lon)
 		v := dist / float64(dt)
 		if v >= 0 && v <= maxSpeed {
 			markers[i].Speed = v
@@ -525,7 +519,7 @@ func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 		for i < len(markers) && markers[i].Speed == 0 {
 			i++
 		}
-		gapEnd := i - 1               // inclusive
+		gapEnd := i - 1 // inclusive
 		nextWithSpeed := -1
 		if i < len(markers) && markers[i].Speed > 0 {
 			nextWithSpeed = i
@@ -591,8 +585,8 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 }
 
 func radiusForZoom(zoom int) float64 {
-  // линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
-  return markerRadiusPx * float64(zoom) / 20.0
+	// линейная шкала: z=20 → 10 px, z=10 → 5 px, z=5 → 2.5 px …
+	return markerRadiusPx * float64(zoom) / 20.0
 }
 
 // precomputeMarkersForAllZoomLevels создаёт агрегаты для z=1…20
@@ -667,7 +661,6 @@ func parseFloat(value string) float64 {
 	parsedValue, _ := strconv.ParseFloat(value, 64)
 	return parsedValue
 }
-
 
 func getTimeZoneByLongitude(lon float64) *time.Location {
 	switch {
@@ -746,13 +739,13 @@ func getTimeZoneByLongitude(lon float64) *time.Location {
 	}
 }
 
-
 // -----------------------------------------------------------------------------
 // extractDoseRate — extracts the dose rate from an arbitrary text fragment.
 //
-//   • «12.3 µR/h»  → 0.123 µSv/h      (1 µR/h ≈ 0.01 µSv/h, legacy iPhone dump)
-//   • «0.136 uSv/h»→ 0.136 µSv/h      (Safecast)
-//   • «0.29 мкЗв/ч»→ 0.29  µSv/h      (Radiacode-101 Android, RU locale)
+//   - «12.3 µR/h»  → 0.123 µSv/h      (1 µR/h ≈ 0.01 µSv/h, legacy iPhone dump)
+//   - «0.136 uSv/h»→ 0.136 µSv/h      (Safecast)
+//   - «0.29 мкЗв/ч»→ 0.29  µSv/h      (Radiacode-101 Android, RU locale)
+//
 // -----------------------------------------------------------------------------
 func extractDoseRate(s string) float64 {
 	// block: legacy µR/h → µSv/h
@@ -778,9 +771,10 @@ func extractDoseRate(s string) float64 {
 // -----------------------------------------------------------------------------
 // extractCountRate — searches for count rate and normalises it to cps.
 //
-//   • «24 cps»      → 24
-//   • «1500 CPM»    → 25  (1 min → sec)
-//   • «24.7 имп/c»  → 24.7 (Radiacode-101 Android, RU locale)
+//   - «24 cps»      → 24
+//   - «1500 CPM»    → 25  (1 min → sec)
+//   - «24.7 имп/c»  → 24.7 (Radiacode-101 Android, RU locale)
+//
 // -----------------------------------------------------------------------------
 func extractCountRate(s string) float64 {
 	// block: cps (all locales)
@@ -806,9 +800,9 @@ func extractCountRate(s string) float64 {
 // -----------------------------------------------------------------------------
 // parseDate — recognises three date formats:
 //
-//   • «May 23, 2012 04:10:08»      (old .rctrk / AtomFast KML)
-//   • «2012/05/23 04:10:08»        (Safecast)
-//   • «26 июл 2025 11:29:54»       (Radiacode-101 Android, RU locale)
+//   - «May 23, 2012 04:10:08»      (old .rctrk / AtomFast KML)
+//   - «2012/05/23 04:10:08»        (Safecast)
+//   - «26 июл 2025 11:29:54»       (Radiacode-101 Android, RU locale)
 //
 // loc — time-zone calculated from longitude (nil → UTC).
 // -----------------------------------------------------------------------------
@@ -843,7 +837,9 @@ func parseDate(s string, loc *time.Location) int64 {
 			"сен": "09", "окт": "10", "ноя": "11", "дек": "12",
 		}
 		monNum, ok := ruMon[strings.ToLower(m[2])]
-		if !ok { return 0 }
+		if !ok {
+			return 0
+		}
 
 		// build ISO-like string and parse
 		dateStr := fmt.Sprintf("%s-%s-%02s %s", m[3], monNum, m[1], m[4])
@@ -859,16 +855,17 @@ func parseDate(s string, loc *time.Location) int64 {
 // =====================================================================================
 //
 // Формат AtomSwift:
-//   <trkpt lat="…" lon="…">
-//     <time>2025-04-19T14:57:46Z</time>
-//     …
-//     <extensions>
-//       <atom:marker>
-//          <atom:doserate>0.018526316</atom:doserate>  <!-- µSv/h -->
-//          <atom:cp2s>1.0</atom:cp2s>                   <!-- counts / 2 s -->
-//          <atom:speed>0.41898388</atom:speed>          <!-- m/s -->
-//       </atom:marker>
-//     </extensions>
+//
+//	<trkpt lat="…" lon="…">
+//	  <time>2025-04-19T14:57:46Z</time>
+//	  …
+//	  <extensions>
+//	    <atom:marker>
+//	       <atom:doserate>0.018526316</atom:doserate>  <!-- µSv/h -->
+//	       <atom:cp2s>1.0</atom:cp2s>                   <!-- counts / 2 s -->
+//	       <atom:speed>0.41898388</atom:speed>          <!-- m/s -->
+//	    </atom:marker>
+//	  </extensions>
 //
 // Все интересующие поля находятся внутри <trkpt>.  Парсим потоково без
 // дополнительного выделения памяти, никаких mutex – только канал результатов
@@ -892,10 +889,10 @@ func parseGPX(trackID string, r io.Reader) ([]database.Marker, error) {
 
 		dec := xml.NewDecoder(r)
 		var (
-			inTrkpt          bool
-			lat, lon         float64
-			tUnix, doseSv    float64
-			count, speed     float64
+			inTrkpt       bool
+			lat, lon      float64
+			tUnix, doseSv float64
+			count, speed  float64
 		)
 
 		for {
@@ -982,7 +979,6 @@ func parseGPX(trackID string, r io.Reader) ([]database.Marker, error) {
 	return markers, nil
 }
 
-
 // parseKML (stream) — SAX-style KML parser with *constant* time-zone
 // for the whole file.  Fixes wrong speeds on tracks that cross
 // several time-zones (e.g. airplanes).
@@ -992,12 +988,12 @@ func parseKML(trackID string, r io.Reader) ([]database.Marker, error) {
 	dec := xml.NewDecoder(r)
 
 	var (
-		inPlacemark            bool
-		lat, lon               float64
-		name, desc             string
-		markers                []database.Marker
-		tz                     *time.Location // ← NEW: chosen once
-		tzLocked               bool           // ←   and then locked
+		inPlacemark bool
+		lat, lon    float64
+		name, desc  string
+		markers     []database.Marker
+		tz          *time.Location // ← NEW: chosen once
+		tzLocked    bool           // ←   and then locked
 	)
 
 	for {
@@ -1041,10 +1037,12 @@ func parseKML(trackID string, r io.Reader) ([]database.Marker, error) {
 		case xml.EndElement:
 			if el.Name.Local == "Placemark" && inPlacemark {
 				inPlacemark = false
-				dose  := extractDoseRate(name)
-				if dose == 0 { dose = extractDoseRate(desc) }
+				dose := extractDoseRate(name)
+				if dose == 0 {
+					dose = extractDoseRate(desc)
+				}
 				count := extractCountRate(desc)
-				date  := parseDate(desc, tz) // ← используем ЕДИНЫЙ TZ
+				date := parseDate(desc, tz) // ← используем ЕДИНЫЙ TZ
 				if dose == 0 && count == 0 {
 					continue
 				}
@@ -1065,8 +1063,6 @@ func parseKML(trackID string, r io.Reader) ([]database.Marker, error) {
 	}
 	return markers, nil
 }
-
-
 
 // =====================================================================================
 // parseTextRCTRK.go  — теперь принимает trackID
@@ -1161,11 +1157,11 @@ func parseAtomSwiftCSV(trackID string, r io.Reader) ([]database.Marker, error) {
 			continue
 		}
 
-		dose  := parseFloat(rec[1]) // µSv/h
-		lat   := parseFloat(rec[2])
-		lon   := parseFloat(rec[3])
+		dose := parseFloat(rec[1]) // µSv/h
+		lat := parseFloat(rec[2])
+		lon := parseFloat(rec[3])
 		speed := parseFloat(rec[5]) // m/s
-		cps   := parseFloat(rec[6])
+		cps := parseFloat(rec[6])
 
 		if lat == 0 || lon == 0 || dose == 0 {
 			continue
@@ -1190,10 +1186,10 @@ func parseAtomSwiftCSV(trackID string, r io.Reader) ([]database.Marker, error) {
 
 // processAtomSwiftCSVFile handles *.csv uploads from AtomSwift logger.
 func processAtomSwiftCSVFile(
-	file    multipart.File,
+	file multipart.File,
 	trackID string,
-	db      *database.Database,
-	dbType  string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, error) {
 
 	logT(trackID, "CSV", "▶ start (stream)")
@@ -1205,7 +1201,9 @@ func processAtomSwiftCSVFile(
 	logT(trackID, "CSV", "parsed %d markers", len(markers))
 
 	bbox, err := processAndStoreMarkers(markers, trackID, db, dbType)
-	if err != nil { return bbox, err }
+	if err != nil {
+		return bbox, err
+	}
 
 	logT(trackID, "CSV", "✔ done")
 	return bbox, nil
@@ -1213,10 +1211,10 @@ func processAtomSwiftCSVFile(
 
 // processGPXFile handles plain *.gpx uploads in streaming mode.
 func processGPXFile(
-	file    multipart.File,
+	file multipart.File,
 	trackID string,
-	db      *database.Database,
-	dbType  string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, error) {
 
 	logT(trackID, "GPX", "▶ start (stream)")
@@ -1228,19 +1226,20 @@ func processGPXFile(
 	logT(trackID, "GPX", "parsed %d markers", len(markers))
 
 	bbox, err := processAndStoreMarkers(markers, trackID, db, dbType)
-	if err != nil { return bbox, err }
+	if err != nil {
+		return bbox, err
+	}
 
 	logT(trackID, "GPX", "✔ done")
 	return bbox, nil
 }
 
-
 // processKMLFile handles plain *.kml uploads in streaming mode.
 func processKMLFile(
-	file    multipart.File,
+	file multipart.File,
 	trackID string,
-	db      *database.Database,
-	dbType  string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, error) {
 
 	logT(trackID, "KML", "▶ start (stream)")
@@ -1261,10 +1260,10 @@ func processKMLFile(
 
 // processKMZFile handles *.kmz (ZIP archive with KML inside).
 func processKMZFile(
-	file    multipart.File,
+	file multipart.File,
 	trackID string,
-	db      *database.Database,
-	dbType  string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, error) {
 
 	logT(trackID, "KMZ", "▶ start")
@@ -1299,20 +1298,28 @@ func processKMZFile(
 		logT(trackID, "KMZ", "parsed %d markers from %q", len(kmlMarkers), zf.Name)
 
 		bbox, err := processAndStoreMarkers(kmlMarkers, trackID, db, dbType)
-		if err != nil { return global, err }
+		if err != nil {
+			return global, err
+		}
 
 		// expand global bbox
-		if bbox.MinLat < global.MinLat { global.MinLat = bbox.MinLat }
-		if bbox.MaxLat > global.MaxLat { global.MaxLat = bbox.MaxLat }
-		if bbox.MinLon < global.MinLon { global.MinLon = bbox.MinLon }
-		if bbox.MaxLon > global.MaxLon { global.MaxLon = bbox.MaxLon }
+		if bbox.MinLat < global.MinLat {
+			global.MinLat = bbox.MinLat
+		}
+		if bbox.MaxLat > global.MaxLat {
+			global.MaxLat = bbox.MaxLat
+		}
+		if bbox.MinLon < global.MinLon {
+			global.MinLon = bbox.MinLon
+		}
+		if bbox.MaxLon > global.MaxLon {
+			global.MaxLon = bbox.MaxLon
+		}
 	}
 
 	logT(trackID, "KMZ", "✔ done")
 	return global, nil
 }
-
-
 
 // -----------------------------------------------------------------------------
 // processRCTRKFile  —  handles *.rctrk uploads (JSON or legacy plain-text).
@@ -1321,10 +1328,10 @@ func processKMZFile(
 // object to trigger automatic µR/h → µSv/h conversion.
 // -----------------------------------------------------------------------------
 func processRCTRKFile(
-	file    multipart.File,
+	file multipart.File,
 	trackID string,
-	db      *database.Database,
-	dbType  string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, error) {
 
 	logT(trackID, "RCTRK", "▶ start")
@@ -1360,13 +1367,12 @@ func processRCTRKFile(
 	return processAndStoreMarkers(markers, trackID, db, dbType)
 }
 
-
 // processAtomFastFile handles Atom Fast JSON export (*.json).
 func processAtomFastFile(
-	file    multipart.File,
+	file multipart.File,
 	trackID string,
-	db      *database.Database,
-	dbType  string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, error) {
 
 	logT(trackID, "AtomFast", "▶ start")
@@ -1391,10 +1397,10 @@ func processAtomFastFile(
 	for _, r := range records {
 		markers = append(markers, database.Marker{
 			DoseRate:  r.D,
-			CountRate: r.D,          // AtomFast stores cps in same field
+			CountRate: r.D, // AtomFast stores cps in same field
 			Lat:       r.Lat,
 			Lon:       r.Lng,
-			Date:      r.T / 1000,   // ms → s
+			Date:      r.T / 1000, // ms → s
 		})
 	}
 
@@ -1412,8 +1418,8 @@ func processAtomFastFile(
 func processAndStoreMarkers(
 	markers []database.Marker,
 	trackID string,
-	db      *database.Database,
-	dbType  string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, error) {
 
 	logT(trackID, "Store", "▶ start, incoming=%d markers", len(markers))
@@ -1421,10 +1427,18 @@ func processAndStoreMarkers(
 	// ── step 0: bounding box (cheap) ─────────────────────────────────────
 	bbox := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
 	for _, m := range markers {
-		if m.Lat < bbox.MinLat { bbox.MinLat = m.Lat }
-		if m.Lat > bbox.MaxLat { bbox.MaxLat = m.Lat }
-		if m.Lon < bbox.MinLon { bbox.MinLon = m.Lon }
-		if m.Lon > bbox.MaxLon { bbox.MaxLon = m.Lon }
+		if m.Lat < bbox.MinLat {
+			bbox.MinLat = m.Lat
+		}
+		if m.Lat > bbox.MaxLat {
+			bbox.MaxLat = m.Lat
+		}
+		if m.Lon < bbox.MinLon {
+			bbox.MinLon = m.Lon
+		}
+		if m.Lon > bbox.MaxLon {
+			bbox.MaxLon = m.Lon
+		}
 	}
 
 	// ── step 1: attach TrackID ───────────────────────────────────────────
@@ -1448,7 +1462,9 @@ func processAndStoreMarkers(
 
 	// ── step 5: one transaction, conflict-free insert ────────────────────
 	tx, err := db.DB.Begin()
-	if err != nil { return bbox, err }
+	if err != nil {
+		return bbox, err
+	}
 
 	for _, m := range allZoom {
 		if err := db.SaveMarkerAtomic(tx, m, dbType); err != nil {
@@ -1463,7 +1479,6 @@ func processAndStoreMarkers(
 	logT(trackID, "Store", "✔ stored")
 	return bbox, nil
 }
-	
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
@@ -1619,7 +1634,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "TrackID not provided", http.StatusBadRequest)
 		return
 	}
-	trackID := parts[2]           // всё равно понадобится в JS
+	trackID := parts[2] // всё равно понадобится в JS
 
 	// --- шаблон ----------------------------------------------------------------
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
@@ -1646,7 +1661,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultZoom  int
 		DefaultLayer string
 	}{
-		Markers:      nil,             // ← ключевое изменение
+		Markers:      nil, // ← ключевое изменение
 		Version:      CompileVersion,
 		Translations: translations,
 		Lang:         lang,
@@ -1675,13 +1690,13 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 // getMarkersHandler — берёт маркеры в заданном окне и фильтрах
 // +НОВОЕ: dateFrom/dateTo (UNIX-seconds) диапазон времени.
 func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
-	q              := r.URL.Query()
-	zoom, _        := strconv.Atoi(q.Get("zoom"))
-	minLat, _      := strconv.ParseFloat(q.Get("minLat"), 64)
-	minLon, _      := strconv.ParseFloat(q.Get("minLon"), 64)
-	maxLat, _      := strconv.ParseFloat(q.Get("maxLat"), 64)
-	maxLon, _      := strconv.ParseFloat(q.Get("maxLon"), 64)
-	trackID        := q.Get("trackID")
+	q := r.URL.Query()
+	zoom, _ := strconv.Atoi(q.Get("zoom"))
+	minLat, _ := strconv.ParseFloat(q.Get("minLat"), 64)
+	minLon, _ := strconv.ParseFloat(q.Get("minLon"), 64)
+	maxLat, _ := strconv.ParseFloat(q.Get("maxLat"), 64)
+	maxLon, _ := strconv.ParseFloat(q.Get("maxLon"), 64)
+	trackID := q.Get("trackID")
 
 	// ----- ✈️🚗🚶 фильтр скорости  ---------------------------------
 	var sr []database.SpeedRange
@@ -1746,9 +1761,6 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 // application continues running.  A final `select{}` keeps the
 // main goroutine alive without resorting to mutexes.
 
-
-
-
 // main: парсинг флагов, инициализация БД и запуск веб-серверов.
 // Добавлен withServerHeader для всех запросов.
 // =====================
@@ -1783,19 +1795,25 @@ func main() {
 	}
 	var err error
 	db, err = database.NewDatabase(dbCfg)
-	if err != nil { log.Fatalf("DB init: %v", err) }
-	if err = db.InitSchema(dbCfg); err != nil { log.Fatalf("DB schema: %v", err) }
+	if err != nil {
+		log.Fatalf("DB init: %v", err)
+	}
+	if err = db.InitSchema(dbCfg); err != nil {
+		log.Fatalf("DB schema: %v", err)
+	}
 
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")
-	if err != nil { log.Fatalf("static fs: %v", err) }
+	if err != nil {
+		log.Fatalf("static fs: %v", err)
+	}
 
 	http.Handle("/static/", http.StripPrefix("/static/",
 		http.FileServer(http.FS(staticFS))))
-	http.HandleFunc("/",            mapHandler)
-	http.HandleFunc("/upload",      uploadHandler)
+	http.HandleFunc("/", mapHandler)
+	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
-	http.HandleFunc("/trackid/",    trackHandler)
+	http.HandleFunc("/trackid/", trackHandler)
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
 
@@ -1817,4 +1835,3 @@ func main() {
 	// 6. Держим main-goroutine живой
 	select {}
 }
-
