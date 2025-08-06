@@ -1307,7 +1307,12 @@ func processKMZFile(
 
 
 
-// processRCTRKFile handles *.rctrk (JSON or plain-text) uploads.
+// -----------------------------------------------------------------------------
+// processRCTRKFile  —  handles *.rctrk uploads (JSON or legacy plain-text).
+// Modern Radiacode Android exports JSON with doseRate already in µSv/h.
+// Legacy iPhone dumps still use µR/h; they MUST set "sv": false in the root
+// object to trigger automatic µR/h → µSv/h conversion.
+// -----------------------------------------------------------------------------
 func processRCTRKFile(
 	file    multipart.File,
 	trackID string,
@@ -1322,18 +1327,23 @@ func processRCTRKFile(
 		return database.Bounds{}, fmt.Errorf("read RCTRK: %w", err)
 	}
 
-	// Try JSON first
-	var dataJSON database.Data
-	if err := json.Unmarshal(raw, &dataJSON); err == nil {
-		logT(trackID, "RCTRK", "JSON detected, %d markers", len(dataJSON.Markers))
-		m := dataJSON.Markers
-		if !dataJSON.IsSievert {
-			m = convertRhToSv(m)
+	// ---------- JSON branch ---------------------------------------------------
+	var data database.Data
+	if err := json.Unmarshal(raw, &data); err == nil {
+		logT(trackID, "RCTRK", "JSON detected, %d markers", len(data.Markers))
+
+		markers := data.Markers
+
+		// Convert only when producer explicitly says "sv": false → numbers in µR/h
+		// (absence of the field means µSv/h already).
+		if bytes.Contains(raw, []byte(`"sv":`)) && !data.IsSievert {
+			markers = convertRhToSv(markers)
 		}
-		return processAndStoreMarkers(m, trackID, db, dbType)
+
+		return processAndStoreMarkers(markers, trackID, db, dbType)
 	}
 
-	// Fallback: plain text
+	// ---------- plain-text fallback -------------------------------------------
 	markers, err := parseTextRCTRK(trackID, raw)
 	if err != nil {
 		return database.Bounds{}, fmt.Errorf("parse text RCTRK: %w", err)
