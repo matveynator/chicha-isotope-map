@@ -246,7 +246,8 @@ Chicha‑Isotope‑Map isn’t just software — it’s a window into a world of
 2. Add a screenshot and a brief blurb (city, area, what your measurements cover).
 3. Leave a note in the project repository’s Issues.
 
-The Chicha Isotope Map was created for the **Dmitry Ignatenko Radiation Research Lab** and inspired by **Safecast**, the Japanese community of citizen‑scientists who turned the Fukushima tragedy into scientific knowledge. By searching, measuring, and sharing the truth about radiation, you make the invisible visible and help the world avoid repeating Chernobyl and Fukushima. Your work is the light of science, safety, and hope. Thank you for turning background radiation from a source of fear into a source of understanding — for seeking, measuring, sharing, and having the courage to go first.
+The Chicha Isotope Map was created for the Dmitry Ignatenko Radiation Research Lab, and finds its inspiration in Safecast — the remarkable Japanese community of citizen-scientists who transformed the tragedy of Fukushima into a gift of scientific knowledge. By searching, measuring, and openly sharing the truth about radiation, you make the invisible visible. In doing so, you help the world avoid repeating the painful lessons of Chernobyl and Fukushima.
+Your work is a light — of science, of safety, and of hope. Thank you for turning background radiation from something feared into something understood. Thank you for your courage: for seeking, measuring, sharing, and — above all — for being the first to step forward. We also extend our heartfelt gratitude to the AtomFast and Radiacode communities for their invaluable contributions — for measuring, and for generously sharing their data with the world.
 
 
 
