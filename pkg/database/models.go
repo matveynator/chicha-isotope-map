@@ -13,13 +13,15 @@ type Marker struct {
 	TrackID   string  `json:"trackID"`   // Identifier of the track
 }
 
-// Data represents a set of markers and associated metadata.
 type Data struct {
-	ID        string   `json:"id"`      // Unique identifier for the dataset (could be a UUID or string-based ID)
-	Markers   []Marker `json:"markers"` // Slice of Marker structs representing individual measurements
-	Title     string   `json:"title"`   // Title or description of the dataset
-	IsSievert bool     `json:"sv"`      // Indicates if data is in Sievert format
+	ID              string   `json:"id"`
+	Markers         []Marker `json:"markers"`
+	Title           string   `json:"title"`
+	// NEW — принимаем оба варианта имён
+	IsSievert       bool `json:"sv"`          // новое поле Radiacode-Android
+	IsSievertLegacy bool `json:"isSievert"`   // старые iOS-дампы
 }
+
 
 // Bounds описывает прямоугольник (minLat,minLon) – (maxLat,maxLon).
 type Bounds struct {

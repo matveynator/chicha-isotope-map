@@ -1322,10 +1322,9 @@ func processKMZFile(
 }
 
 // -----------------------------------------------------------------------------
-// processRCTRKFile  —  handles *.rctrk uploads (JSON or legacy plain-text).
-// Modern Radiacode Android exports JSON with doseRate already in µSv/h.
-// Legacy iPhone dumps still use µR/h; they MUST set "sv": false in the root
-// object to trigger automatic µR/h → µSv/h conversion.
+// processRCTRKFile — принимает *.rctrk (Radiacode) в JSON- или текстовом виде.
+// Поддерживает оба признака единиц: "sv" (новый Android) и "isSievert" (старый iOS).
+// Если ни одного флага нет — считаем, что числа уже в µSv/h и конвертацию НЕ делаем.
 // -----------------------------------------------------------------------------
 func processRCTRKFile(
 	file multipart.File,
@@ -1341,23 +1340,36 @@ func processRCTRKFile(
 		return database.Bounds{}, fmt.Errorf("read RCTRK: %w", err)
 	}
 
-	// ---------- JSON branch ---------------------------------------------------
-	var data database.Data
-	if err := json.Unmarshal(raw, &data); err == nil {
-		logT(trackID, "RCTRK", "JSON detected, %d markers", len(data.Markers))
-
-		markers := data.Markers
-
-		// Convert only when producer explicitly says "sv": false → numbers in µR/h
-		// (absence of the field means µSv/h already).
-		if bytes.Contains(raw, []byte(`"sv":`)) && !data.IsSievert {
-			markers = convertRhToSv(markers)
-		}
-
-		return processAndStoreMarkers(markers, trackID, db, dbType)
+	// ---------- JSON ----------------------------------------------------------
+	// По умолчанию оба флага TRUE ⇒ «единицы уже µSv/h».
+	data := database.Data{
+		IsSievert:       true,
+		IsSievertLegacy: true,
 	}
 
-	// ---------- plain-text fallback -------------------------------------------
+	if err := json.Unmarshal(raw, &data); err == nil && len(data.Markers) > 0 {
+		logT(trackID, "RCTRK", "JSON detected, %d markers", len(data.Markers))
+
+		// Выясняем, были ли в файле хоть какие-то флаги.
+		// Для этого дешево парсим ключи верхнего уровня.
+		var keys map[string]json.RawMessage
+		_ = json.Unmarshal(raw, &keys) // ошибок игнорируем — структура уже распарсена
+
+		_, hasSV := keys["sv"]
+		_, hasOld := keys["isSievert"]
+
+		flagPresent := hasSV || hasOld
+
+		needConvert := flagPresent && (!data.IsSievert || !data.IsSievertLegacy)
+		if needConvert {
+			logT(trackID, "RCTRK", "µR/h detected → converting to µSv/h")
+			data.Markers = convertRhToSv(data.Markers)
+		}
+
+		return processAndStoreMarkers(data.Markers, trackID, db, dbType)
+	}
+
+	// ---------- plain-text fallback ------------------------------------------
 	markers, err := parseTextRCTRK(trackID, raw)
 	if err != nil {
 		return database.Bounds{}, fmt.Errorf("parse text RCTRK: %w", err)
