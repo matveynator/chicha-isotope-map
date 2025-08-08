@@ -2,6 +2,7 @@
   "ru": {
     "title": "Чичина карта изотопов — радиоактивная карта планеты Земля",
     "upload_button": "Загрузить [+]",
+    "upload_button_tooltip": "Добавьте свой трек замеров на карту. Поддерживаются форматы: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Можно загрузить несколько файлов, после чего откроется страница трека.",
     "description": "Чичина карта радиации",
     "radiation_dose": "Мощность дозы",
     "count_rate": "Скорость счета",
@@ -28,6 +29,7 @@
   "en": {
     "title": "Chicha’s Isotope Map — Radiological Map of Planet Earth",
     "upload_button": "Upload [+]",
+    "upload_button_tooltip": "Add your measurement track to the map. Supported formats: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. You can upload multiple files, and after uploading you'll be taken to the track page.",
     "description": "Chicha’s Radiation Map",
     "radiation_dose": "Dose Rate",
     "count_rate": "Count Rate",
@@ -54,6 +56,7 @@
   "es": {
     "title": "Mapa de Isótopos de Chicha — Mapa radiológico del planeta Tierra",
     "upload_button": "Subir [+]",
+    "upload_button_tooltip": "Agregue su recorrido de mediciones al mapa. Formatos compatibles: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Puede subir varios archivos y, después de la carga, se abrirá la página del recorrido.",
     "description": "Mapa de radiación de Chicha",
     "radiation_dose": "Tasa de dosis",
     "count_rate": "Tasa de conteo",
@@ -80,6 +83,7 @@
   "fr": {
     "title": "Carte des isotopes de Chicha — Carte radiologique de la planète Terre",
     "upload_button": "Téléverser [+]",
+    "upload_button_tooltip": "Ajoutez votre parcours de mesures à la carte. Formats pris en charge : .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Vous pouvez téléverser plusieurs fichiers et, après le téléversement, la page du parcours s’ouvrira.",
     "description": "Carte de radiations de Chicha",
     "radiation_dose": "Débit de dose",
     "count_rate": "Taux de comptage",
@@ -106,6 +110,7 @@
   "de": {
     "title": "Chichas Isotopenkarte — Radiologische Karte des Planeten Erde",
     "upload_button": "Hochladen [+]",
+    "upload_button_tooltip": "Fügen Sie Ihre Messstrecke zur Karte hinzu. Unterstützte Formate: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Sie können mehrere Dateien hochladen, danach öffnet sich die Track-Seite.",
     "description": "Chichas Strahlungskarte",
     "radiation_dose": "Dosisleistung",
     "count_rate": "Zählrate",
@@ -132,6 +137,7 @@
   "zh": {
     "title": "Chicha 同位素地图——地球辐射地图",
     "upload_button": "上传 [+]",
+    "upload_button_tooltip": "将您的测量轨迹添加到地图。支持的格式：.kml、.kmz、.gpx、.csv、.rctrk、.json、.log。您可以上传多个文件，上传完成后将打开轨迹页面。",
     "description": "Chicha 的辐射地图",
     "radiation_dose": "剂量率",
     "count_rate": "计数率",
@@ -158,6 +164,7 @@
   "ja": {
     "title": "チチャの同位体マップ — 地球の放射線マップ",
     "upload_button": "アップロード [+]",
+    "upload_button_tooltip": "測定したトラックを地図に追加します。対応形式：.kml、.kmz、.gpx、.csv、.rctrk、.json、.log。複数のファイルをアップロードでき、完了後にトラックページが開きます。",
     "description": "チチャの放射線マップ",
     "radiation_dose": "線量率",
     "count_rate": "計数率",
@@ -184,6 +191,7 @@
   "ko": {
     "title": "치차 동위원소 지도 — 지구 방사선 지도",
     "upload_button": "업로드 [+]",
+    "upload_button_tooltip": "측정 트랙을 지도에 추가하세요. 지원 형식: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. 여러 파일을 업로드할 수 있으며, 업로드가 완료되면 트랙 페이지가 열립니다.",
     "description": "치차의 방사선 지도",
     "radiation_dose": "선량률",
     "count_rate": "계수율",
@@ -210,6 +218,7 @@
   "pt": {
     "title": "Mapa de Isótopos da Chicha — Mapa radiológico do planeta Terra",
     "upload_button": "Enviar [+]",
+    "upload_button_tooltip": "Adicione a sua rota de medições ao mapa. Formatos suportados: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. É possível enviar vários ficheiros e, após o envio, abrirá a página da rota.",
     "description": "Mapa de radiação da Chicha",
     "radiation_dose": "Taxa de dose",
     "count_rate": "Taxa de contagem",
@@ -236,6 +245,7 @@
   "it": {
     "title": "Mappa degli isotopi di Chicha — Mappa radiologica del pianeta Terra",
     "upload_button": "Carica [+]",
+    "upload_button_tooltip": "Aggiungi il tuo percorso di misurazioni alla mappa. Formati supportati: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Puoi caricare più file e, al termine, si aprirà la pagina del percorso.",
     "description": "Mappa della radiazione di Chicha",
     "radiation_dose": "Tasso di dose",
     "count_rate": "Tasso di conteggio",
@@ -262,6 +272,7 @@
   "ar": {
     "title": "خريطة نظائر تشيتشا — خريطة إشعاعية لكوكب الأرض",
     "upload_button": "رفع [+]",
+    "upload_button_tooltip": "أضف مسار القياسات الخاص بك إلى الخريطة. الصيغ المدعومة: .kml، .kmz، .gpx، .csv، .rctrk، .json، .log. يمكنك رفع عدة ملفات، وبعد الرفع ستفتح صفحة المسار.",
     "description": "خريطة الإشعاع لتشيتشا",
     "radiation_dose": "معدل الجرعة",
     "count_rate": "معدل العدّ",
@@ -288,6 +299,7 @@
   "hi": {
     "title": "चिचा समस्थानिक मानचित्र — पृथ्वी ग्रह का विकिरण मानचित्र",
     "upload_button": "अपलोड करें [+]",
+    "upload_button_tooltip": "अपना माप ट्रैक मानचित्र में जोड़ें। समर्थित प्रारूप: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log। आप कई फ़ाइलें अपलोड कर सकते हैं और अपलोड के बाद ट्रैक पेज खुलेगा।",
     "description": "चिचा का विकिरण मानचित्र",
     "radiation_dose": "खुराक दर",
     "count_rate": "गणना दर",
@@ -314,6 +326,7 @@
   "tr": {
     "title": "Chicha İzotop Haritası — Dünya gezegeninin radyolojik haritası",
     "upload_button": "Yükle [+]",
+    "upload_button_tooltip": "Ölçüm rotanızı haritaya ekleyin. Desteklenen formatlar: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Birden fazla dosya yükleyebilir, yükleme sonrası rota sayfası açılır.",
     "description": "Chicha’nın radyasyon haritası",
     "radiation_dose": "Doz hızı",
     "count_rate": "Sayım hızı",
@@ -340,6 +353,7 @@
   "nl": {
     "title": "Chicha Isotopenkaart — Radiologische kaart van planeet Aarde",
     "upload_button": "Uploaden [+]",
+    "upload_button_tooltip": "Voeg uw meettraject toe aan de kaart. Ondersteunde formaten: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. U kunt meerdere bestanden uploaden en na het uploaden wordt de trajectpagina geopend.",
     "description": "Chicha’s stralingskaart",
     "radiation_dose": "Dosisvermogen",
     "count_rate": "Telsnelheid",

@@ -353,10 +353,28 @@
 	</head>
 
 	<body>
+
 		<!-- Контейнер для кнопки загрузки файлов -->
 		<div class="upload-btn-container leaflet-control">
-			<label for="fileInput" class="upload-btn">{{translate "upload_button"}}</label>
-			<input type="file" id="fileInput" style="display: none;" multiple onchange="uploadFiles()">
+			<!--
+		 title/aria-label → короткая подсказка на hover/focus о форматах
+		 и том, что произойдёт после загрузки.
+			-->
+			<label
+				for="fileInput"
+				class="upload-btn"
+				title="{{translate "upload_button_tooltip"}}"
+				aria-label="{{translate "upload_button_tooltip"}}">
+				{{translate "upload_button"}}
+			</label>
+
+			<input
+				type="file"
+				id="fileInput"
+				style="display: none;"
+				multiple
+				accept=""
+				onchange="uploadFiles()">
 		</div>
 
 		<!-- Контейнер для кнопки геолокации -->
