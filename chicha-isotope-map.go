@@ -1709,7 +1709,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ради отладки: показываем, что HTML отдали без тяжёлых данных
-	log.Printf("Track page %s rendered with 0 inline markers", trackID)
+	log.Printf("Track page %s rendered.", trackID)
 }
 
 // getMarkersHandler — берёт маркеры в заданном окне и фильтрах
