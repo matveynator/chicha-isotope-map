@@ -579,3 +579,55 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	}
 	return out, rows.Err()
 }
+
+// DetectExistingTrackID scans the first incoming markers and tries to
+// recognise an already-stored track.  
+// If ≥ threshold identical markers (lat,lon,date,doseRate) point to the
+// same TrackID, that TrackID is returned; otherwise an empty string is returned.
+//
+// – Works with any SQL driver: only simple equality, no vendor features.
+// – No mutexes: each call owns its slice and DB handle is concurrency-safe.
+// – Follows the “return early” advice: exits as soon as threshold is reached.
+func (db *Database) DetectExistingTrackID(
+	markers []Marker,               // freshly-parsed markers (any zoom)
+	threshold int,                  // how many identical points constitute identity
+	dbType string,                  // "pgx" | "sqlite" | "genji" | …
+) (string, error) {
+
+	if len(markers) == 0 {
+		return "", nil // nothing to compare
+	}
+	if threshold <= 0 {
+		threshold = 10 // sane default
+	}
+
+	// Helper: build driver-neutral query text in one place.
+	query := map[string]string{
+		"pgx":   `SELECT trackID FROM markers WHERE lat=$1 AND lon=$2 AND date=$3 AND doseRate=$4 LIMIT 1`,
+		"other": `SELECT trackID FROM markers WHERE lat=?  AND lon=?  AND date=? AND doseRate=?  LIMIT 1`,
+	}
+	q := query["other"]
+	if dbType == "pgx" {
+		q = query["pgx"]
+	}
+
+	hits := make(map[string]int) // TrackID → identical-points counter
+
+	for _, m := range markers {
+		var tid string
+		err := db.DB.QueryRow(q, m.Lat, m.Lon, m.Date, m.DoseRate).Scan(&tid)
+		switch {
+		case err == sql.ErrNoRows:
+			continue // no identical point yet → keep scanning
+		case err != nil:
+			return "", fmt.Errorf("DetectExistingTrackID: %w", err)
+		default:
+			hits[tid]++
+			if hits[tid] >= threshold {
+				return tid, nil // FOUND!
+			}
+		}
+	}
+	return "", nil // unique track — safe to create a new one
+}
+
