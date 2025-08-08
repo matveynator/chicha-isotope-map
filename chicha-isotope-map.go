@@ -1315,6 +1315,10 @@ func processKMZFile(
 		if bbox.MaxLon > global.MaxLon {
 			global.MaxLon = bbox.MaxLon
 		}
+   
+    logT(trackID, "KMZ", "✔ done")
+    return global, trackID, nil
+
 	}
 
 	logT(trackID, "KMZ", "✔ done")
