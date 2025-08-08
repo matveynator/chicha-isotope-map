@@ -246,4 +246,17 @@ Chicha‑Isotope‑Map n’est pas qu’un logiciel, c’est une fenêtre sur le
 2. Ajoutez une capture d’écran et une courte description (ville, quartier, zone couverte par vos mesures).
 3. Signalez‑vous dans une Issue du dépôt du projet.
 
-La carte des isotopes Chicha a été créée pour la **Laboratoire de recherches radiologiques de Dmitri Ignatenko** et s’inspire de la **communauté japonaise Safecast** — un groupe de citoyens‑scientifiques qui ont transformé la tragédie de Fukushima en connaissance. En cherchant, en mesurant et en partageant la vérité sur la radioactivité, vous rendez l’invisible visible, aidant le monde à ne pas répéter Tchernobyl et Fukushima. Votre travail est une lumière de science, de sécurité et d’espoir. Merci de faire du rayonnement de fond non pas une source de peur, mais une source de compréhension ; merci de chercher, mesurer, partager — et d’avancer les premiers avec courage.
+---
+
+La carte *Chicha Isotope Map* a été créée pour le **Laboratoire de recherche sur la radioprotection Dmitry Ignatenko**, avec l’inspiration profonde du projet japonais **Safecast** — cette communauté de scientifiques citoyens qui a su transformer la tragédie de Fukushima en savoir scientifique.
+
+En cherchant, en mesurant et en partageant avec courage la vérité sur la radiation, vous rendez visible l’invisible, et contribuez ainsi à éviter que le monde ne répète les erreurs de Tchernobyl et de Fukushima.
+
+Votre travail est une lumière — celle de la science, de la sécurité, et de l’espérance.
+
+Merci d’avoir fait de la radioactivité naturelle non plus une source de crainte, mais un objet de compréhension.
+
+Merci de chercher, de mesurer, de partager, et surtout — d’oser être les premiers.
+
+Nous adressons aussi notre gratitude aux communautés **AtomFast** et **Radiacode** pour leurs précieuses mesures et leur générosité dans le partage des données.
+
