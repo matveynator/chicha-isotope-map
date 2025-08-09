@@ -20,6 +20,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 	"html"
 	"html/template"
+  "image/color"
 	"io"
 	"io/fs"
 	"io/ioutil"
@@ -40,7 +41,7 @@ import (
 
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/logger"
-  "chicha-isotope-map/pkg/qrpng"
+  "chicha-isotope-map/pkg/qrlogoext"
 )
 
 //go:embed public_html/*
@@ -683,20 +684,65 @@ func loadTranslations(fs embed.FS, filename string) {
 
 func getPreferredLanguage(r *http.Request) string {
 	langHeader := r.Header.Get("Accept-Language")
-	supportedLanguages := []string{
-		"en", "zh", "es", "hi", "ar", "fr", "ru", "pt", "de", "ja", "tr", "it",
-		"ko", "pl", "uk", "mn", "no", "fi", "ka", "sv", "he", "nl", "el", "hu",
-		"cs", "ro", "th", "vi", "id", "ms", "bg", "lt", "et", "lv", "sl",
+	if langHeader == "" {
+		return "en"
 	}
+
+	// Поддерживаемые языки (добавлены: da, fa)
+	supported := map[string]struct{}{
+		"en": {}, "zh": {}, "es": {}, "hi": {}, "ar": {}, "fr": {}, "ru": {}, "pt": {}, "de": {}, "ja": {}, "tr": {}, "it": {},
+		"ko": {}, "pl": {}, "uk": {}, "mn": {}, "no": {}, "fi": {}, "ka": {}, "sv": {}, "he": {}, "nl": {}, "el": {}, "hu": {},
+		"cs": {}, "ro": {}, "th": {}, "vi": {}, "id": {}, "ms": {}, "bg": {}, "lt": {}, "et": {}, "lv": {}, "sl": {},
+		"da": {}, "fa": {},
+	}
+
+	// Нормализация/синонимы: приводим варианты к поддерживаемым базовым кодам
+	aliases := map[string]string{
+		// Устаревшие коды
+		"iw": "he", // he (Hebrew)
+		"in": "id", // id (Indonesian)
+
+		// Норвежский: часто приходит nb-NO/nn-NO
+		"nb": "no",
+		"nn": "no",
+
+		// Китайский: сводим к "zh"
+		"zh-cn":   "zh",
+		"zh-sg":   "zh",
+		"zh-hans": "zh",
+		"zh-tw":   "zh",
+		"zh-hk":   "zh",
+		"zh-hant": "zh",
+
+		// Португальский варианты → "pt"
+		"pt-br": "pt",
+		"pt-pt": "pt",
+	}
+
 	langs := strings.Split(langHeader, ",")
-	for _, lang := range langs {
-		lang = strings.TrimSpace(strings.SplitN(lang, ";", 2)[0])
-		for _, supported := range supportedLanguages {
-			if strings.HasPrefix(lang, supported) {
-				return supported
-			}
+	for _, raw := range langs {
+		code := strings.TrimSpace(strings.SplitN(raw, ";", 2)[0])
+		code = strings.ToLower(strings.ReplaceAll(code, "_", "-"))
+
+		// Берём базовую часть до дефиса (например, "de" из "de-DE")
+		base := code
+		if i := strings.Index(code, "-"); i != -1 {
+			base = code[:i]
+		}
+
+		// Применяем алиасы (и к полному коду, и к базе)
+		if a, ok := aliases[code]; ok {
+			base = a
+		} else if a, ok := aliases[base]; ok {
+			base = a
+		}
+
+		// Проверяем поддержку
+		if _, ok := supported[base]; ok {
+			return base
 		}
 	}
+
 	return "en"
 }
 
@@ -1762,35 +1808,44 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Track page %s rendered.", trackID)
 }
 
-// =====================
-// WEB — PNG QR endpoint
-// =====================
-//
-// Why this handler is tiny:
-// - Keeps HTTP concerns here, QR specifics encapsulated in internal/qrpng.
-// - No mutexes: one writer per request; concurrency lives inside qrpng (channels).
+// import "image/color"
+// import "os" (если будешь читать логотип с диска)
+// import "chicha-isotope-map/pkg/qrlogoext"
+
 func qrPngHandler(w http.ResponseWriter, r *http.Request) {
-	// Resolve the URL to encode: prefer ?u=..., else Referer, else current request URI.
 	u := r.URL.Query().Get("u")
 	if u == "" {
 		if ref := r.Referer(); ref != "" {
 			u = ref
 		} else {
 			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
-			}
+			if r.TLS != nil { scheme = "https" }
 			u = scheme + "://" + r.Host + r.URL.RequestURI()
 		}
 	}
-	if len(u) > 4096 { u = u[:4096] } // sanity clamp
+	if len(u) > 4096 { u = u[:4096] }
 
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Disposition", "inline; filename=\"qr.png\"")
 
-	if err := qrpng.EncodePNG(w, []byte(u)); err != nil {
-		http.Error(w, "QR encode: "+err.Error(), http.StatusRequestEntityTooLarge)
+	// (А) если логотип лежит в файле:
+	// logoBytes, _ := os.ReadFile("static/radiation.png")
+
+	// (Б) или без файла — пусть пакет нарисует знак сам:
+	var logoBytes []byte
+
+	opts := qrlogoext.Options{
+		TargetPx:    1500,
+		Fg:          color.RGBA{0, 0, 0, 255},          // чёрные модули
+		Bg:          color.RGBA{255, 255, 255, 255},    // БЕЛЫЙ фон
+		Logo:        color.RGBA{233, 192, 35, 255},        // ЖЕЛТЫЙ знак радиации
+		LogoBoxFrac: 0.32,   // большой центральный квадрат
+		LogoPadding: 16,     // отступ для картинки (если PNG вставляешь)
+	}
+
+	if err := qrlogoext.EncodePNG(w, []byte(u), logoBytes, opts); err != nil {
+		http.Error(w, "QR encode: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
