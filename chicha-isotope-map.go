@@ -40,6 +40,7 @@ import (
 
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/logger"
+  "chicha-isotope-map/pkg/qrpng"
 )
 
 //go:embed public_html/*
@@ -1761,6 +1762,39 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Track page %s rendered.", trackID)
 }
 
+// =====================
+// WEB — PNG QR endpoint
+// =====================
+//
+// Why this handler is tiny:
+// - Keeps HTTP concerns here, QR specifics encapsulated in internal/qrpng.
+// - No mutexes: one writer per request; concurrency lives inside qrpng (channels).
+func qrPngHandler(w http.ResponseWriter, r *http.Request) {
+	// Resolve the URL to encode: prefer ?u=..., else Referer, else current request URI.
+	u := r.URL.Query().Get("u")
+	if u == "" {
+		if ref := r.Referer(); ref != "" {
+			u = ref
+		} else {
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			u = scheme + "://" + r.Host + r.URL.RequestURI()
+		}
+	}
+	if len(u) > 4096 { u = u[:4096] } // sanity clamp
+
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Disposition", "inline; filename=\"qr.png\"")
+
+	if err := qrpng.EncodePNG(w, []byte(u)); err != nil {
+		http.Error(w, "QR encode: "+err.Error(), http.StatusRequestEntityTooLarge)
+		return
+	}
+}
+
 // getMarkersHandler — берёт маркеры в заданном окне и фильтрах
 // +НОВОЕ: dateFrom/dateTo (UNIX-seconds) диапазон времени.
 func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
@@ -1888,6 +1922,7 @@ func main() {
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/trackid/", trackHandler)
+  http.HandleFunc("/qrpng", qrPngHandler)
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
 
