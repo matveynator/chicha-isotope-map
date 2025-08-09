@@ -474,52 +474,94 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 // Limits: speeds outside 0…1000 m/s (≈0…3600 km/h) are considered glitches
 //
 //	and ignored while calculating new values.
+// calculateSpeedForMarkers recomputes Marker.Speed (m/s) for the whole slice,
+// ignoring any pre-filled speeds in the input and auto-normalizing timestamp
+// units (milliseconds vs seconds). We keep the function single-pass friendly
+// and deterministic, no locks needed (slice is owned by the caller).
+//
+// Why this change:
+//   - Some tracks (e.g., 666.json) carry Unix time in milliseconds, which,
+//     if treated as seconds, yields near-zero speeds. We detect ms and divide by 1000.
+//   - We never trust/keep incoming Speed values: always recompute from distance/time.
+//   - We preserve previous aviation parsing behavior for tracks already in seconds.
+//
+// Complexity: O(N).
+// calculateSpeedForMarkers recomputes Speed (m/s) for all markers,
+// normalizing timestamp units (ms → s when needed). We ignore any
+// prefilled speeds and derive velocity from geodesic distance / Δt.
+//
+// Design notes (Go proverbs minded):
+//  - Simplicity: single pass with small helpers.
+//  - Determinism: slice is owned by caller; no locks, no shared state.
+//  - Robustness: auto-detect ms vs s by checking epoch magnitude.
+//
+// Complexity: O(N).
 func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 	if len(markers) == 0 {
 		return markers
 	}
 
-	// ── 1. Ensure chronological order ────────────────────────────────
+	// 1) Chronological order to keep Δt positive and stable.
 	sort.Slice(markers, func(i, j int) bool { return markers[i].Date < markers[j].Date })
 
-	const maxSpeed = 1000.0 // m/s
+	// 2) Decide the epoch units once per track:
+	//    ~1e9 → seconds (Unix s), ~1e12 → milliseconds (Unix ms).
+	//    Check both ends to be safe with mixed sources.
+	scale := 1.0 // seconds by default
+	if markers[0].Date > 1_000_000_000_000 || markers[len(markers)-1].Date > 1_000_000_000_000 {
+		scale = 1000.0 // timestamps are in ms → convert Δt to seconds
+	}
 
-	// ── 2. Raw pairwise speeds ───────────────────────────────────────
+	// helper to get Δt in seconds
+	dtSec := func(prev, curr int64) float64 {
+		if curr <= prev {
+			return 0
+		}
+		return float64(curr-prev) / scale
+	}
+
+	const maxSpeed = 1000.0 // m/s, sanity cap for aircraft
+
+	// 3) Recompute pairwise speeds from distance / Δt.
 	for i := 1; i < len(markers); i++ {
-		dt := markers[i].Date - markers[i-1].Date
+		dt := dtSec(markers[i-1].Date, markers[i].Date)
 		if dt <= 0 {
-			continue // duplicate timestamp — skip for now
+			continue // duplicate or invalid timestamp
 		}
 		dist := haversineDistance(
 			markers[i-1].Lat, markers[i-1].Lon,
-			markers[i].Lat, markers[i].Lon)
-		v := dist / float64(dt)
+			markers[i].Lat, markers[i].Lon,
+		)
+		v := dist / dt // m/s
 		if v >= 0 && v <= maxSpeed {
 			markers[i].Speed = v
+		} else {
+			// Leave zero if insane (spikes/outliers)
+			markers[i].Speed = 0
 		}
 	}
 
-	// Propagate speed to very first marker if possible
+	// 4) Seed the very first point if needed.
 	if len(markers) > 1 && markers[0].Speed == 0 {
 		markers[0].Speed = markers[1].Speed
 	}
 
-	// ── 3. Fill every zero-speed gap with an average value ───────────
+	// 5) Fill zero-speed gaps by borrowing from neighbours.
 	lastWithSpeed := -1
-	i := 0
-	for i < len(markers) {
+	for i := 0; i < len(markers); {
 		if markers[i].Speed > 0 {
 			lastWithSpeed = i
 			i++
 			continue
 		}
-
-		// Found start of a zero-speed run
+		// zero-run [gapStart..gapEnd]
 		gapStart := i
 		for i < len(markers) && markers[i].Speed == 0 {
 			i++
 		}
-		gapEnd := i - 1 // inclusive
+		gapEnd := i - 1
+
+		// right anchor (if any)
 		nextWithSpeed := -1
 		if i < len(markers) && markers[i].Speed > 0 {
 			nextWithSpeed = i
@@ -528,13 +570,14 @@ func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 		var fill float64
 		switch {
 		case lastWithSpeed != -1 && nextWithSpeed != -1:
-			// both neighbours exist — average speed between them
-			dt := markers[nextWithSpeed].Date - markers[lastWithSpeed].Date
+			// Prefer average speed derived from anchors distance/time.
+			dt := dtSec(markers[lastWithSpeed].Date, markers[nextWithSpeed].Date)
 			if dt > 0 {
 				dist := haversineDistance(
 					markers[lastWithSpeed].Lat, markers[lastWithSpeed].Lon,
-					markers[nextWithSpeed].Lat, markers[nextWithSpeed].Lon)
-				fill = dist / float64(dt)
+					markers[nextWithSpeed].Lat, markers[nextWithSpeed].Lon,
+				)
+				fill = dist / dt
 			}
 		case lastWithSpeed != -1:
 			fill = markers[lastWithSpeed].Speed
@@ -547,10 +590,9 @@ func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 				markers[j].Speed = fill
 			}
 		}
-		// loop continues with i pointing to first non-gap marker
 	}
 
-	// ── 4. Global fallback (entire track duplicates) ─────────────────
+	// 6) Global fallback: if anything is still zero, use total distance / total time.
 	needFallback := false
 	for _, m := range markers {
 		if m.Speed == 0 {
@@ -558,16 +600,19 @@ func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 			break
 		}
 	}
-	if needFallback {
-		dt := markers[len(markers)-1].Date - markers[0].Date
-		if dt > 0 {
+	if needFallback && len(markers) >= 2 {
+		totalDt := dtSec(markers[0].Date, markers[len(markers)-1].Date)
+		if totalDt > 0 {
 			dist := haversineDistance(
 				markers[0].Lat, markers[0].Lon,
-				markers[len(markers)-1].Lat, markers[len(markers)-1].Lon)
-			v := dist / float64(dt)
+				markers[len(markers)-1].Lat, markers[len(markers)-1].Lon,
+			)
+			v := dist / totalDt
 			if v >= 0 && v <= maxSpeed {
 				for k := range markers {
-					markers[k].Speed = v
+					if markers[k].Speed == 0 {
+						markers[k].Speed = v
+					}
 				}
 			}
 		}
