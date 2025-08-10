@@ -1,277 +1,277 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<!-- Установка метаданных и подключение CSS -->
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>{{translate "title"}}</title>
+  <head>
+    <!-- Установка метаданных и подключение CSS -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{translate "title"}}</title>
 
-		<!-- Подключение CSS Leaflet -->
-		<link rel="stylesheet" href="/static/leaflet.css">
+    <!-- Подключение CSS Leaflet -->
+    <link rel="stylesheet" href="/static/leaflet.css">
     <link rel="stylesheet" href="/static/nouislider.min.css">
 
 
-		<style>
-        /* Общие стили */
-        body, html {
-	        margin: 0;
-	        padding: 0;
-	        height: 100%;
-	        overflow: hidden; /* Убираем полосы прокрутки */
+    <style>
+/* Общие стили */
+body, html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden; /* Убираем полосы прокрутки */
+}
+
+        /* Контейнер карты */
+        #map {
+          height: 100vh; /* Высота карты на весь экран */
+          margin: 0;
+          overflow: hidden;
         }
 
-				/* Контейнер карты */
-				#map {
-					height: 100vh; /* Высота карты на весь экран */
-					margin: 0;
-					overflow: hidden;
-				}
+        /* Стили для пользовательской подсказки (tooltip) */
+        .custom-tooltip {
+          background-color: white;
+          border-radius: 5px;
+          padding: 10px;
+          color: #333;
+          box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
+        }
 
-				/* Стили для пользовательской подсказки (tooltip) */
-				.custom-tooltip {
-					background-color: white;
-					border-radius: 5px;
-					padding: 10px;
-					color: #333;
-					box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
-				}
+        /* Контейнер для кнопки загрузки файлов */
+        .upload-btn-container {
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          z-index: 1000;
+        }
 
-				/* Контейнер для кнопки загрузки файлов */
-				.upload-btn-container {
-					position: absolute;
-					top: 20px;
-					right: 20px;
-					z-index: 1000;
-				}
+        /* Стили для кнопки загрузки файлов */
+        .upload-btn {
+          background-color: white;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+          padding: 5px 10px;
+          cursor: pointer;
+          font-size: 14px;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        }
 
-				/* Стили для кнопки загрузки файлов */
-				.upload-btn {
-					background-color: white;
-					border: 1px solid #ccc;
-					border-radius: 4px;
-					padding: 5px 10px;
-					cursor: pointer;
-					font-size: 14px;
-					box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-				}
+        /* Оверлей для загрузки файлов */
+        #fileOverlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.7);
+          z-index: 10000;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
 
-				/* Оверлей для загрузки файлов */
-				#fileOverlay {
-					position: fixed;
-					top: 0;
-					left: 0;
-					width: 100%;
-					height: 100%;
-					background-color: rgba(0, 0, 0, 0.7);
-					z-index: 10000;
-					display: flex;
-					justify-content: center;
-					align-items: center;
-				}
+        /* Контейнер прогресса загрузки файлов */
+        #fileProgressContainer {
+          background-color: white;
+          padding: 20px;
+          border-radius: 10px;
+          max-width: 600px;
+          width: 100%;
+          box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+        }
 
-				/* Контейнер прогресса загрузки файлов */
-				#fileProgressContainer {
-					background-color: white;
-					padding: 20px;
-					border-radius: 10px;
-					max-width: 600px;
-					width: 100%;
-					box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-				}
+        /* Индивидуальный прогресс загрузки файла */
+        .file-progress {
+          margin-bottom: 15px;
+        }
 
-				/* Индивидуальный прогресс загрузки файла */
-				.file-progress {
-					margin-bottom: 15px;
-				}
+        .file-name {
+          font-weight: bold;
+          margin-bottom: 5px;
+        }
 
-				.file-name {
-					font-weight: bold;
-					margin-bottom: 5px;
-				}
+        /* Прогресс-бар */
+        .progress-bar {
+          width: 100%;
+          height: 10px;
+          background-color: #f4f4f4;
+          border-radius: 5px;
+          overflow: hidden;
+        }
 
-				/* Прогресс-бар */
-				.progress-bar {
-					width: 100%;
-					height: 10px;
-					background-color: #f4f4f4;
-					border-radius: 5px;
-					overflow: hidden;
-				}
+        .progress-bar-inner {
+          height: 100%;
+          background-color: #4caf50;
+          width: 0%;
+        }
 
-				.progress-bar-inner {
-					height: 100%;
-					background-color: #4caf50;
-					width: 0%;
-				}
+        /* Индикатор обработки на сервере */
+        .server-processing {
+          margin-left: 10px;
+          font-size: 14px;
+          color: #ff9800;
+        }
 
-				/* Индикатор обработки на сервере */
-				.server-processing {
-					margin-left: 10px;
-					font-size: 14px;
-					color: #ff9800;
-				}
+        /* Эффект наведения для кнопки загрузки */
+        .upload-btn:hover {
+          background-color: #f4f4f4;
+        }
 
-				/* Эффект наведения для кнопки загрузки */
-				.upload-btn:hover {
-					background-color: #f4f4f4;
-				}
+        /* Контейнер для кнопки геолокации */
+        .locate-btn-container {
+          position: absolute;
+          top: 60px;
+          right: 20px;
+          z-index: 1000;
+        }
 
-				/* Контейнер для кнопки геолокации */
-				.locate-btn-container {
-					position: absolute;
-					top: 60px;
-					right: 20px;
-					z-index: 1000;
-				}
+        /* Стили для кнопки геолокации */
+        .locate-btn {
+          background-color: white;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+          padding: 5px 10px;
+          cursor: pointer;
+          font-size: 16px;
+          box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
 
-				/* Стили для кнопки геолокации */
-				.locate-btn {
-					background-color: white;
-					border: 1px solid #ccc;
-					border-radius: 4px;
-					padding: 5px 10px;
-					cursor: pointer;
-					font-size: 16px;
-					box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
-					display: flex;
-					align-items: center;
-					justify-content: center;
-				}
+        /* Эффект наведения для кнопки геолокации */
+        .locate-btn:hover {
+          background-color: #f4f4f4;
+        }
 
-				/* Эффект наведения для кнопки геолокации */
-				.locate-btn:hover {
-					background-color: #f4f4f4;
-				}
+        /* Стили для ссылки на GitHub */
+        .github-link {
+          position: absolute;
+          bottom: 20px;
+          left: 20px;
+          z-index: 1000;
+        }
 
-				/* Стили для ссылки на GitHub */
-				.github-link {
-					position: absolute;
-					bottom: 20px;
-					left: 20px;
-					z-index: 1000;
-				}
+        .github-icon {
+          width: 40px;
+          height: 40px;
+          opacity: 0.6;
+        }
 
-				.github-icon {
-					width: 40px;
-					height: 40px;
-					opacity: 0.6;
-				}
+        .github-icon:hover {
+          opacity: 1;
+        }
 
-				.github-icon:hover {
-					opacity: 1;
-				}
+        /* Информация о программе */
+        .program-info {
+          position: absolute;
+          bottom: 20px;
+          left: 70px;
+          z-index: 1000;
+          color: #333;
+          font-size: 14px;
+          opacity: 0.6;
+        }
 
-				/* Информация о программе */
-				.program-info {
-					position: absolute;
-					bottom: 20px;
-					left: 70px;
-					z-index: 1000;
-					color: #333;
-					font-size: 14px;
-					opacity: 0.6;
-				}
+        .program-info a {
+          color: #007bff;
+          text-decoration: none;
+        }
 
-				.program-info a {
-					color: #007bff;
-					text-decoration: none;
-				}
+        .program-info a:hover {
+          text-decoration: underline;
+        }
 
-				.program-info a:hover {
-					text-decoration: underline;
-				}
+        .program-info:hover {
+          opacity: 1;
+        }
 
-				.program-info:hover {
-					opacity: 1;
-				}
+        /* Кнопка "Вернуться ко всем трекам" */
+        .back-to-all-container {
+          position: absolute;
+          top: 120px;
+          right: 20px;
+          z-index: 1000;
+          display: none;
+        }
 
-				/* Кнопка "Вернуться ко всем трекам" */
-				.back-to-all-container {
-					position: absolute;
-					top: 120px;
-					right: 20px;
-					z-index: 1000;
-					display: none;
-				}
+        .back-to-all-btn {
+          background-color: white;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+          padding: 5px 10px;
+          cursor: pointer;
+          font-size: 14px;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        }
 
-				.back-to-all-btn {
-					background-color: white;
-					border: 1px solid #ccc;
-					border-radius: 4px;
-					padding: 5px 10px;
-					cursor: pointer;
-					font-size: 14px;
-					box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-				}
-
-				.back-to-all-btn:hover {
-					background-color: #f4f4f4;
-				}
+        .back-to-all-btn:hover {
+          background-color: #f4f4f4;
+        }
 
 
-				/* ─────────–– Slider clean-look patch ─────────── */
-				.date-slider-box {
-					padding: 6px;
-					width: 50px;
-				}
+        /* ─────────–– Slider clean-look patch ─────────── */
+        .date-slider-box {
+          padding: 6px;
+          width: 50px;
+        }
 
-				/* 0) базовая геометрия контейнера: буфер = 8 px
-					 (размер ручки / 2)  => ручка при крайних значениях
-				НЕ выходит за пределы оси                       */
-				#dateSlider{
-					width:6px;                 /* толщина оси             */
-					height:130px;              /* фактическая длина трека */
-					padding:0px 0;             /* ↑ внутр. отступ сверху/снизу */
-					box-sizing:content-box;    /* важен для padding-внутри */
- 					margin:16px auto 26px;
-				}
+        /* 0) базовая геометрия контейнера: буфер = 8 px
+           (размер ручки / 2)  => ручка при крайних значениях
+        НЕ выходит за пределы оси                       */
+        #dateSlider{
+          width:6px;                 /* толщина оси             */
+          height:130px;              /* фактическая длина трека */
+          padding:0px 0;             /* ↑ внутр. отступ сверху/снизу */
+          box-sizing:content-box;    /* важен для padding-внутри */
+          margin:16px auto 26px;
+        }
 
-				/* 1) сама ось (серая)  */
-				#dateSlider .noUi-base{
-					background:#bfbfbf;
-					width:100%;                /* 6 px ширина               */
-					height:100%;               /* 130 px – 2 × 8 px padding */
-				}
+        /* 1) сама ось (серая)  */
+        #dateSlider .noUi-base{
+          background:#bfbfbf;
+          width:100%;                /* 6 px ширина               */
+          height:100%;               /* 130 px – 2 × 8 px padding */
+        }
 
-				/* 2) цветная часть ТОЛЬКО между ручками */
-				#dateSlider .noUi-connect{
-					background:#1e88e5;        /* ваш фирменный/любой цвет */
-				}
+        /* 2) цветная часть ТОЛЬКО между ручками */
+        #dateSlider .noUi-connect{
+          background:#1e88e5;        /* ваш фирменный/любой цвет */
+        }
 
-				.noUi-vertical .noUi-handle{
-					width:32px;
-					height:20px;
-					left:-18px;              /* центрируем по 6-px оси */
-					border-radius:3px;
-					background:#f6f6f6;      /* светлая ручка */
-					border:1px solid #ccc;   /* серая обводка */
-					box-shadow:0 1px 3px rgba(0,0,0,.25);
-					cursor:grab;
-				}
-				/* 4) убираем «усики»-псевдоэлементы */
-				.noUi-handle:before,
-				.noUi-handle:after{ display:none; }
+        .noUi-vertical .noUi-handle{
+          width:32px;
+          height:20px;
+          left:-18px;              /* центрируем по 6-px оси */
+          border-radius:3px;
+          background:#f6f6f6;      /* светлая ручка */
+          border:1px solid #ccc;   /* серая обводка */
+          box-shadow:0 1px 3px rgba(0,0,0,.25);
+          cursor:grab;
+        }
+        /* 4) убираем «усики»-псевдоэлементы */
+        .noUi-handle:before,
+        .noUi-handle:after{ display:none; }
 
-				.slider-label{
-					margin:2px 0;
-					font-size:11px;
-					line-height:1.15em;
-					white-space:nowrap;
-					text-align:center; 
-				}
+        .slider-label{
+          margin:2px 0;
+          font-size:11px;
+          line-height:1.15em;
+          white-space:nowrap;
+          text-align:center; 
+        }
 
-				/* ───── переключатель “Год / Месяц” ───── */
-				.slider-toggle{
-					display:flex; gap:2px; margin:2px 0 4px;
-					font-size:11px; line-height:1; user-select:none;
-				}
-				.slider-toggle button{
-					flex:1 1 0; padding:2px 4px;
-					border:1px solid #bbb; background:#f5f5f5;
-					border-radius:3px; cursor:pointer;
-				}
-				.slider-toggle button.active{
-					background:#1e88e5; color:#fff; border-color:#1e88e5;
+        /* ───── переключатель “Год / Месяц” ───── */
+        .slider-toggle{
+          display:flex; gap:2px; margin:2px 0 4px;
+          font-size:11px; line-height:1; user-select:none;
+        }
+        .slider-toggle button{
+          flex:1 1 0; padding:2px 4px;
+          border:1px solid #bbb; background:#f5f5f5;
+          border-radius:3px; cursor:pointer;
+        }
+        .slider-toggle button.active{
+          background:#1e88e5; color:#fff; border-color:#1e88e5;
         }
 
         /* ─── Year-mode: делаем ползунок такого же роста, как месячный ─── */
@@ -288,173 +288,173 @@
         #yearSlider .noUi-connect   {background:#bfbfbf;}
 
 
-				.slider-reset-btn{
-					display:block;
-					width:100%;
-					margin-top:4px;
-					padding:2px 4px;
-					font-size:11px;
-					border:1px solid #bbb;
-					background:#f5f5f5;
-					border-radius:3px;
-					cursor:pointer;
-				}
-				.slider-reset-btn:hover{ background:#eaeaea; }
+        .slider-reset-btn{
+          display:block;
+          width:100%;
+          margin-top:4px;
+          padding:2px 4px;
+          font-size:11px;
+          border:1px solid #bbb;
+          background:#f5f5f5;
+          border-radius:3px;
+          cursor:pointer;
+        }
+        .slider-reset-btn:hover{ background:#eaeaea; }
 
-				.loading-overlay{
-					position:absolute;
-					top:50%;left:50%;
-					transform:translate(-50%,-50%);
-					z-index:3000;
-					pointer-events:none;
-				}
-				.spinner{
-					width:40px;height:40px;
-					border:4px solid rgba(0,0,0,.15);
-					border-top:4px solid #1e88e5;
-					border-radius:50%;
-					animation:spin 1s linear infinite;
-				}
-				@keyframes spin{ to{ transform:rotate(360deg); } }
-
-
-				/* Compact QR button */
-				.qr-btn {
-					background: #fff;
-					border: 1px solid #ccc;
-					border-radius: 4px;
-					width: 42px; height: 42px;
-					padding: 4px;
-					display: flex; align-items: center; justify-content: center;
-					cursor: pointer;
-					box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-				}
-				.qr-btn:hover { background: #f5f5f5; }
-				.qr-btn svg { width: 22px; height: 22px; display: block; }
+        .loading-overlay{
+          position:absolute;
+          top:50%;left:50%;
+          transform:translate(-50%,-50%);
+          z-index:3000;
+          pointer-events:none;
+        }
+        .spinner{
+          width:40px;height:40px;
+          border:4px solid rgba(0,0,0,.15);
+          border-top:4px solid #1e88e5;
+          border-radius:50%;
+          animation:spin 1s linear infinite;
+        }
+        @keyframes spin{ to{ transform:rotate(360deg); } }
 
 
-		</style>
-
-		<!-- Скрипт переводов -->
-		<script id="translations-script">
-			// Объект переводов, переданный из Go
-			var translations = JSON.parse('{{ .Translations | toJSON }}');
-				var currentLang = '{{ .Lang }}'; // Текущий язык
-
-				// Функция для получения перевода по ключу
-				function translate(key) {
-						if (!translations['en']) {
-								console.error('English translations not available!');
-								return key;
-						}
-
-						if (translations[currentLang] && translations[currentLang][key]) {
-								return translations[currentLang][key];
-						} else if (translations['en'][key]) {
-								return translations['en'][key];
-						}
-						return key;
-				}
-		</script>
-		<script>
-			const defaultCfg = {
-				lat:  {{printf "%.6f" .DefaultLat}},
-				lon:  {{printf "%.6f" .DefaultLon}},
-				zoom: {{.DefaultZoom}},
-				layer: {{.DefaultLayer}}
-			};
-		</script>
-
-	</head>
-
-	<body>
-
-		<!-- Контейнер для кнопки загрузки файлов -->
-		<div class="upload-btn-container leaflet-control">
-			<!--
-		 title/aria-label → короткая подсказка на hover/focus о форматах
-		 и том, что произойдёт после загрузки.
-			-->
-			<label
-				for="fileInput"
-				class="upload-btn"
-				title="{{translate "upload_button_tooltip"}}"
-				aria-label="{{translate "upload_button_tooltip"}}">
-				{{translate "upload_button"}}
-			</label>
-
-			<input
-				type="file"
-				id="fileInput"
-				style="display: none;"
-				multiple
-				accept=""
-				onchange="uploadFiles()">
-		</div>
-
-		<!-- Контейнер для кнопки геолокации -->
-<div class="locate-btn-container leaflet-control">
-  <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
-    <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width:20px;">
-  </button>
-  <br>
-  <!-- Small QR button under geolocate -->
-  <button id="qrButton" class="qr-btn" title="{{translate "qr_button_tooltip"}}" aria-label="QR code">
-    <svg viewBox="0 0 100 100" role="img" aria-hidden="true">
-      <rect x="0" y="0" width="100" height="100" fill="#fff"/>
-      <rect x="8" y="8" width="28" height="28" fill="#000"/>
-      <rect x="12" y="12" width="20" height="20" fill="#fff"/>
-      <rect x="16" y="16" width="12" height="12" fill="#000"/>
-      <rect x="64" y="8" width="28" height="28" fill="#000"/>
-      <rect x="68" y="12" width="20" height="20" fill="#fff"/>
-      <rect x="72" y="16" width="12" height="12" fill="#000"/>
-      <rect x="8" y="64" width="28" height="28" fill="#000"/>
-      <rect x="12" y="68" width="20" height="20" fill="#fff"/>
-      <rect x="16" y="72" width="12" height="12" fill="#000"/>
-      <rect x="48" y="12" width="8" height="8" fill="#000"/>
-      <rect x="40" y="28" width="8" height="8" fill="#000"/>
-      <rect x="56" y="28" width="8" height="8" fill="#000"/>
-      <rect x="44" y="44" width="8" height="8" fill="#000"/>
-      <rect x="60" y="44" width="8" height="8" fill="#000"/>
-      <rect x="44" y="60" width="8" height="8" fill="#000"/>
-      <rect x="60" y="60" width="8" height="8" fill="#000"/>
-      <rect x="76" y="60" width="8" height="8" fill="#000"/>
-      <rect x="28" y="44" width="8" height="8" fill="#000"/>
-    </svg>
-  </button>
-</div>
-
-		<!-- Контейнер для кнопки "Вернуться ко всем трекам" -->
-		<div class="back-to-all-container leaflet-control" style="display: none;">
-			<button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
-		</div>
-
-		<!-- Оверлей для загрузки файлов -->
-		<div id="fileOverlay" style="display: none;">
-			<div id="fileProgressContainer">
-				<!-- Прогресс загрузки файлов будет добавляться сюда динамически -->
-			</div>
-		</div>
-
-		<!-- Ссылка на GitHub и информация о программе -->
-		<a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
-			<img src="/static/images/GitHub-Mark.png" alt="GitHub" class="github-icon">
-		</a>
-
-		<div class="program-info">
-			<a href="https://github.com/matveynator/chicha-isotope-map/releases/tag/latest" target="_blank"><strong>{{translate "description"}}</strong> (version: {{ .Version }})</a>
-		</div>
-
-		<!-- Контейнер для карты -->
-		<div id="map"></div>
-
-		<div id="loadingOverlay" class="loading-overlay" style="display:none;">
-			<div class="spinner"></div>
-		</div>
+        /* Compact QR button */
+        .qr-btn {
+          background: #fff;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+          width: 42px; height: 42px;
+          padding: 4px;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        }
+        .qr-btn:hover { background: #f5f5f5; }
+        .qr-btn svg { width: 22px; height: 22px; display: block; }
 
 
-		<!-- Подключение JavaScript библиотеки Leaflet -->
-		<script src="/static/leaflet.js"></script>
+    </style>
+
+    <!-- Скрипт переводов -->
+    <script id="translations-script">
+      // Объект переводов, переданный из Go
+      var translations = JSON.parse('{{ .Translations | toJSON }}');
+        var currentLang = '{{ .Lang }}'; // Текущий язык
+
+        // Функция для получения перевода по ключу
+        function translate(key) {
+            if (!translations['en']) {
+                console.error('English translations not available!');
+                return key;
+            }
+
+            if (translations[currentLang] && translations[currentLang][key]) {
+                return translations[currentLang][key];
+            } else if (translations['en'][key]) {
+                return translations['en'][key];
+            }
+            return key;
+        }
+    </script>
+    <script>
+      const defaultCfg = {
+        lat:  {{printf "%.6f" .DefaultLat}},
+        lon:  {{printf "%.6f" .DefaultLon}},
+        zoom: {{.DefaultZoom}},
+        layer: {{.DefaultLayer}}
+      };
+    </script>
+
+  </head>
+
+  <body>
+
+    <!-- Контейнер для кнопки загрузки файлов -->
+    <div class="upload-btn-container leaflet-control">
+      <!--
+        title/aria-label → короткая подсказка на hover/focus о форматах
+        и том, что произойдёт после загрузки.
+      -->
+      <label
+        for="fileInput"
+        class="upload-btn"
+        title="{{translate "upload_button_tooltip"}}"
+        aria-label="{{translate "upload_button_tooltip"}}">
+        {{translate "upload_button"}}
+      </label>
+
+      <input
+        type="file"
+        id="fileInput"
+        style="display: none;"
+        multiple
+        accept=""
+        onchange="uploadFiles()">
+    </div>
+
+    <!-- Контейнер для кнопки геолокации -->
+    <div class="locate-btn-container leaflet-control">
+      <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
+        <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width:20px;">
+      </button>
+      <br>
+      <!-- Small QR button under geolocate -->
+      <button id="qrButton" class="qr-btn" title="{{translate "qr_button_tooltip"}}" aria-label="QR code">
+        <svg viewBox="0 0 100 100" role="img" aria-hidden="true">
+          <rect x="0" y="0" width="100" height="100" fill="#fff"/>
+          <rect x="8" y="8" width="28" height="28" fill="#000"/>
+          <rect x="12" y="12" width="20" height="20" fill="#fff"/>
+          <rect x="16" y="16" width="12" height="12" fill="#000"/>
+          <rect x="64" y="8" width="28" height="28" fill="#000"/>
+          <rect x="68" y="12" width="20" height="20" fill="#fff"/>
+          <rect x="72" y="16" width="12" height="12" fill="#000"/>
+          <rect x="8" y="64" width="28" height="28" fill="#000"/>
+          <rect x="12" y="68" width="20" height="20" fill="#fff"/>
+          <rect x="16" y="72" width="12" height="12" fill="#000"/>
+          <rect x="48" y="12" width="8" height="8" fill="#000"/>
+          <rect x="40" y="28" width="8" height="8" fill="#000"/>
+          <rect x="56" y="28" width="8" height="8" fill="#000"/>
+          <rect x="44" y="44" width="8" height="8" fill="#000"/>
+          <rect x="60" y="44" width="8" height="8" fill="#000"/>
+          <rect x="44" y="60" width="8" height="8" fill="#000"/>
+          <rect x="60" y="60" width="8" height="8" fill="#000"/>
+          <rect x="76" y="60" width="8" height="8" fill="#000"/>
+          <rect x="28" y="44" width="8" height="8" fill="#000"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Контейнер для кнопки "Вернуться ко всем трекам" -->
+    <div class="back-to-all-container leaflet-control" style="display: none;">
+      <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
+    </div>
+
+    <!-- Оверлей для загрузки файлов -->
+    <div id="fileOverlay" style="display: none;">
+      <div id="fileProgressContainer">
+        <!-- Прогресс загрузки файлов будет добавляться сюда динамически -->
+      </div>
+    </div>
+
+    <!-- Ссылка на GitHub и информация о программе -->
+    <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
+      <img src="/static/images/GitHub-Mark.png" alt="GitHub" class="github-icon">
+    </a>
+
+    <div class="program-info">
+      <a href="https://github.com/matveynator/chicha-isotope-map/releases/tag/latest" target="_blank"><strong>{{translate "description"}}</strong> (version: {{ .Version }})</a>
+    </div>
+
+    <!-- Контейнер для карты -->
+    <div id="map"></div>
+
+    <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+      <div class="spinner"></div>
+    </div>
+
+
+    <!-- Подключение JavaScript библиотеки Leaflet -->
+    <script src="/static/leaflet.js"></script>
 
     <!-- Slider -->
     <script src="/static/nouislider.min.js"></script>
@@ -462,37 +462,37 @@
 
 
 
-		<!-- Вспомогательные функции -->
-		<script>
-			// Функция для расчёта цвета маркера на основе уровня радиации
-			function getGradientColor(doseRate) {
-				if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный
-				else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
-				else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
-				else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
-				else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
-				else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
-				else return "#000000"; // Чёрный для очень высоких значений
-			}
+    <!-- Вспомогательные функции -->
+    <script>
+      // Функция для расчёта цвета маркера на основе уровня радиации
+      function getGradientColor(doseRate) {
+        if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный
+        else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
+        else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
+        else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
+        else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
+        else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
+        else return "#000000"; // Чёрный для очень высоких значений
+      }
 
 // Функция интерполяции между двумя цветами
 function interpolateColor(color1, color2, factor) {
-	if (factor < 0) factor = 0;
-	if (factor > 1) factor = 1;
+  if (factor < 0) factor = 0;
+  if (factor > 1) factor = 1;
 
-	const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
-	const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
-	const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
+  const r = Math.round(color1[0] + (color2[0] - color1[0]) * factor);
+  const g = Math.round(color1[1] + (color2[1] - color1[1]) * factor);
+  const b = Math.round(color1[2] + (color2[2] - color1[2]) * factor);
 
-	return `rgb(${r}, ${g}, ${b})`;
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 // Функция для расчёта радиуса маркера на основе уровня зума
 function getRadius(doseRate, zoomLevel) {
-	// раньше: Math.pow(2, (zoomLevel-10)/2)
-	const k = 1.8;                               // масштабируем ~×2
-	let r   = Math.pow(2, (zoomLevel - 10)/2) * k;
-	return Math.max(r, 2);                       // защита от слишком мелких
+  // раньше: Math.pow(2, (zoomLevel-10)/2)
+  const k = 1.8;                               // масштабируем ~×2
+  let r   = Math.pow(2, (zoomLevel - 10)/2) * k;
+  return Math.max(r, 2);                       // защита от слишком мелких
 }
 
 
@@ -502,74 +502,74 @@ function getRadius(doseRate, zoomLevel) {
  * В режиме просмотра ОДНОГО трека фильтрации нет — показываем всё.
  */
 function shouldDisplayBySpeed(speed) {
-    /* ── ключевая строка ─────────────────────────────── */
-    if (isTrackView) return true;        // ← NEW: фильтр отключён
+  /* ── ключевая строка ─────────────────────────────── */
+  if (isTrackView) return true;        // ← NEW: фильтр отключён
 
-    const st = loadSpeedFilterState();   // глобальный режим
-    if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
-    if (speed >= 7  && speed <  70)  return st.car;    // 🚗
-    /* speed < 7 m/s  → pedestrian */
-    return st.ped;                                      // 🚶
+  const st = loadSpeedFilterState();   // глобальный режим
+  if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
+  if (speed >= 7  && speed <  70)  return st.car;    // 🚗
+  /* speed < 7 m/s  → pedestrian */
+  return st.ped;                                      // 🚶
 }
 
 
 // Функция для расчёта прозрачности заливки маркера на основе скорости
 function getFillOpacity(speed) {
-	if (speed <= 5) {
-		return 0.6;
-	} else if (speed >= 20) {
-		return 0.1;
-	} else {
-		var opacityRange = 0.6 - 0.1;
-		var speedRange = 20 - 5;
-		var opacityDecreasePerMs = opacityRange / speedRange;
-		var speedAboveFive = speed - 5;
-		var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
-		var currentOpacity = 0.6 - totalOpacityDecrease;
-		return currentOpacity;
-	}
+  if (speed <= 5) {
+    return 0.6;
+  } else if (speed >= 20) {
+    return 0.1;
+  } else {
+    var opacityRange = 0.6 - 0.1;
+    var speedRange = 20 - 5;
+    var opacityDecreasePerMs = opacityRange / speedRange;
+    var speedAboveFive = speed - 5;
+    var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
+    var currentOpacity = 0.6 - totalOpacityDecrease;
+    return currentOpacity;
+  }
 }
 
 // Функция для отображения содержимого всплывающего окна маркера
 function getTooltipContent(marker) {
-	var date = new Date(marker.date * 1000);
-	var formattedDate = date.toLocaleString();
+  var date = new Date(marker.date * 1000);
+  var formattedDate = date.toLocaleString();
 
-	return `
-		<div class="custom-tooltip">
-		<div class="tooltip-row">
-		<strong>${translate('radiation_dose')}:</strong>
-		<span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
-		</div>
-		<div class="tooltip-row">
-		<strong>${translate('speed')}:</strong>
-		<span>${(marker.speed * 3.6).toFixed(1)} km/h</span>
-		</div>
-		<div class="tooltip-row">
-		<strong>${translate('track_id')}:</strong>
-		<span>${marker.trackID}</span>
-		</div>
-		</div>
-		`;
+  return `
+    <div class="custom-tooltip">
+    <div class="tooltip-row">
+    <strong>${translate('radiation_dose')}:</strong>
+    <span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
+    </div>
+    <div class="tooltip-row">
+    <strong>${translate('speed')}:</strong>
+    <span>${(marker.speed * 3.6).toFixed(1)} km/h</span>
+    </div>
+    <div class="tooltip-row">
+    <strong>${translate('track_id')}:</strong>
+    <span>${marker.trackID}</span>
+    </div>
+    </div>
+    `;
 }
 
 // Функция для получения текущих параметров URL на основе состояния карты
 function getCurrentUrlParams() {
-	var bounds = map.getBounds();
-	var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
-	var minLat = bounds.getSouthWest().lat.toFixed(5);
-	var minLon = bounds.getSouthWest().lng.toFixed(5);
-	var maxLat = bounds.getNorthEast().lat.toFixed(5);
-	var maxLon = bounds.getNorthEast().lng.toFixed(5);
-	var zoom = map.getZoom();
+  var bounds = map.getBounds();
+  var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
+  var minLat = bounds.getSouthWest().lat.toFixed(5);
+  var minLon = bounds.getSouthWest().lng.toFixed(5);
+  var maxLat = bounds.getNorthEast().lat.toFixed(5);
+  var maxLon = bounds.getNorthEast().lng.toFixed(5);
+  var zoom = map.getZoom();
 
-	return `?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+  return `?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
 }
-		</script>
+    </script>
 
-		<!-- Инициализация карты и работа с маркерами -->
-		<script>
-			var map;
+    <!-- Инициализация карты и работа с маркерами -->
+    <script>
+      var map;
 var circleMarkers = {};
 var isTrackView = false;
 var osmLayer, googleSatellite;
@@ -586,22 +586,22 @@ var markerFetchController = null;
  *   ✈️ off, 🚗 on, 🚶 on  (as requested).
  */
 function loadSpeedFilterState() {
-	const def = { plane: false, car: true, ped: true };
-	try {
-		const raw = sessionStorage.getItem('speedFilterState');
-		return raw ? JSON.parse(raw) : def;
-	} catch (e) {
-		return def;
-	}
+  const def = { plane: false, car: true, ped: true };
+  try {
+    const raw = sessionStorage.getItem('speedFilterState');
+    return raw ? JSON.parse(raw) : def;
+  } catch (e) {
+    return def;
+  }
 }
 
 // ---------- helpers for time-range state ------------------------
 function loadDateRangeState() {
-	try { return JSON.parse(sessionStorage.getItem('dateRangeState')) || null; }
-	catch(e){ return null; }
+  try { return JSON.parse(sessionStorage.getItem('dateRangeState')) || null; }
+  catch(e){ return null; }
 }
 function saveDateRangeState(st) {
-	sessionStorage.setItem('dateRangeState', JSON.stringify(st));
+  sessionStorage.setItem('dateRangeState', JSON.stringify(st));
 }
 
 /**
@@ -610,17 +610,17 @@ function saveDateRangeState(st) {
  * Safari — «Aug 2025» и т.д.).
  */
 function tsToNiceStr(ts){
-    return new Date(ts * 1000)
-        .toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  return new Date(ts * 1000)
+    .toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
 }
 
 
 // возвращает |diff| в месяцах между двумя unix-секундами
 function monthsApart(ts0, ts1){
-    const d0 = new Date(ts0 * 1000);
-    const d1 = new Date(ts1 * 1000);
-    return Math.abs((d1.getFullYear() - d0.getFullYear()) * 12 +
-                    (d1.getMonth()     - d0.getMonth()));
+  const d0 = new Date(ts0 * 1000);
+  const d1 = new Date(ts1 * 1000);
+  return Math.abs((d1.getFullYear() - d0.getFullYear()) * 12 +
+    (d1.getMonth()     - d0.getMonth()));
 }
 
 /**
@@ -628,522 +628,540 @@ function monthsApart(ts0, ts1){
  * so the user’s choice is remembered for the whole session.
  */
 function saveSpeedFilterState(state) {
-	sessionStorage.setItem('speedFilterState', JSON.stringify(state));
+  sessionStorage.setItem('speedFilterState', JSON.stringify(state));
 }
 
 
 document.addEventListener('DOMContentLoaded', function () {
 
-	// Инициализация trackID по пути
-	var match = window.location.pathname.match(/^\/trackid\/([a-zA-Z0-9]+)/);
-	if (match) {
-		currentTrackID = match[1];
-		isTrackView = true;
-		// <<< НОВОЕ: сразу показываем кнопку возврата >>>
-		var backBox = document.querySelector('.back-to-all-container');
-		if (backBox) backBox.style.display = 'block';
-	}
-	// Инициализация слоёв карты
-	osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-		maxZoom: 18,
-		attribution: '&copy; OpenStreetMap contributors'
-	});
+  // Инициализация trackID по пути
+  var match = window.location.pathname.match(/^\/trackid\/([a-zA-Z0-9]+)/);
+  if (match) {
+    currentTrackID = match[1];
+    isTrackView = true;
+    // <<< НОВОЕ: сразу показываем кнопку возврата >>>
+    var backBox = document.querySelector('.back-to-all-container');
+    if (backBox) backBox.style.display = 'block';
+  }
+  // Инициализация слоёв карты
+  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap contributors'
+  });
 
-	googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-		maxZoom: 20,
-		attribution: '&copy; Google'
-	});
+  googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    attribution: '&copy; Google'
+  });
 
-	// сразу после создания osmLayer и googleSatellite
-	const urlParams       = new URLSearchParams(window.location.search);
-	const startLayerName  = decodeURIComponent(urlParams.get('layer') || defaultCfg.layer);
-	const startLayer      = startLayerName === 'Google Satellite' ? googleSatellite : osmLayer;
+  // сразу после создания osmLayer и googleSatellite
+  const urlParams       = new URLSearchParams(window.location.search);
+  const startLayerName  = decodeURIComponent(urlParams.get('layer') || defaultCfg.layer);
+  const startLayer      = startLayerName === 'Google Satellite' ? googleSatellite : osmLayer;
 
-	map = L.map('map', {
-		center: [defaultCfg.lat, defaultCfg.lon],
-		zoom  : defaultCfg.zoom,
-		layers: [startLayer],           // только один базовый слой
-	});
+  map = L.map('map', {
+    center: [defaultCfg.lat, defaultCfg.lon],
+    zoom  : defaultCfg.zoom,
+    layers: [startLayer],           // только один базовый слой
+  });
 
-	// Контроллер слоёв
-	var baseLayers = {
-		"OpenStreetMap": osmLayer,
-		"Google Satellite": googleSatellite
-	};
+  // Контроллер слоёв
+  var baseLayers = {
+    "OpenStreetMap": osmLayer,
+    "Google Satellite": googleSatellite
+  };
 
-	L.control.layers(baseLayers, null, {
-		position: 'topleft',
-		collapsed: false
-	}).addTo(map);
+  L.control.layers(baseLayers, null, {
+    position: 'topleft',
+    collapsed: false
+  }).addTo(map);
 
-	// Инициализация режима просмотра трека
-	var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
-	if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
-		isTrackView = true;
+  // Инициализация режима просмотра трека
+  var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
+  if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
+    isTrackView = true;
 
-		// Не отображаем initialMarkers сразу, а загружаем по частям через get_markers
-		map.on('load', debounceUpdateMarkers);
+    // Не отображаем initialMarkers сразу, а загружаем по частям через get_markers
+    map.on('load', debounceUpdateMarkers);
 
-		// Изменение размеров маркеров при зуме
-		map.on('zoomend', function() {
-			adjustMarkerRadius();
-			debounceUpdateMarkers();
-		});
-		map.on('moveend', debounceUpdateMarkers);
-	} else {
-		// Динамическое обновление маркеров в глобальном режиме
-		map.on('load', debounceUpdateMarkers);
-		map.on('zoomend', function() {
-			adjustMarkerRadius();
-			debounceUpdateMarkers();
-		});
-		map.on('moveend', debounceUpdateMarkers);
-		debounceUpdateMarkers;
-	}
+    // Изменение размеров маркеров при зуме
+    map.on('zoomend', function() {
+      adjustMarkerRadius();
+      debounceUpdateMarkers();
+    });
+    map.on('moveend', debounceUpdateMarkers);
+  } else {
+    // Динамическое обновление маркеров в глобальном режиме
+    map.on('load', debounceUpdateMarkers);
+    map.on('zoomend', function() {
+      adjustMarkerRadius();
+      debounceUpdateMarkers();
+    });
+    map.on('moveend', debounceUpdateMarkers);
+    debounceUpdateMarkers;
+  }
 
-	// Загрузка состояния карты из URL
-	loadMapFromUrl();
+  // Загрузка состояния карты из URL
+  loadMapFromUrl();
 
-	// Обновление URL при изменениях на карте
-	map.on('baselayerchange', updateUrl);
-	map.on('moveend', updateUrl);
-	map.on('zoomend', updateUrl);
+  // Обновление URL при изменениях на карте
+  map.on('baselayerchange', updateUrl);
+  map.on('moveend', updateUrl);
+  map.on('zoomend', updateUrl);
 
-	// Инициализация элементов интерфейса
-	initializeUIElements();
+  // Инициализация элементов интерфейса
+  initializeUIElements();
 
-	/**
-	 * Build a Leaflet control with three check-boxes that filter markers
-	 * by recorded speed. Labels now show speed in km/h instead of m/s.
-	 * Default state: ✈️ off, 🚗 on, 🚶 on.
-	 */
-	function createSpeedFilterControls() {
+  /**
+   * Build a Leaflet control with three check-boxes that filter markers
+   * by recorded speed. Labels now show speed in km/h instead of m/s.
+   * Default state: ✈️ off, 🚗 on, 🚶 on.
+   */
+  function createSpeedFilterControls() {
 
-     if (isTrackView) return;   //не отображаем в режиме трека
+    if (isTrackView) return;   //не отображаем в режиме трека
 
-		// load previously saved state (or defaults)
-		const state = loadSpeedFilterState();
+    // load previously saved state (or defaults)
+    const state = loadSpeedFilterState();
 
-		// custom Leaflet control
-		const SpeedCtrl = L.Control.extend({
-			onAdd() {
-				const div = L.DomUtil.create('div', 'leaflet-control-layers');
-				div.style.padding = '6px 10px';
+    // custom Leaflet control
+    const SpeedCtrl = L.Control.extend({
+      onAdd() {
+        const div = L.DomUtil.create('div', 'leaflet-control-layers');
+        div.style.padding = '6px 10px';
 
-				// helper that returns one <label> line
-				const row = (id, emoji, checked) => `
-						<label style="white-space:nowrap;display:block;cursor:pointer;">
-						<input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
-					${emoji}
-						</label>`;
+        // helper that returns one <label> line
+        const row = (id, emoji, checked) => `
+            <label style="white-space:nowrap;display:block;cursor:pointer;">
+            <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
+          ${emoji}
+            </label>`;
 
-				// order: ✈️, 🚗, 🚶  (top → bottom)
-				div.innerHTML =
-					row('sfPlane', '✈️',  state.plane) +
-					row('sfCar',   '🚗', state.car)   +
-					row('sfPed',   '🚶', state.ped);
+        // order: ✈️, 🚗, 🚶  (top → bottom)
+        div.innerHTML =
+          row('sfPlane', '✈️',  state.plane) +
+          row('sfCar',   '🚗', state.car)   +
+          row('sfPed',   '🚶', state.ped);
 
-				// prevent map drag/zoom while clicking inside the control
-				L.DomEvent.disableClickPropagation(div);
+        // prevent map drag/zoom while clicking inside the control
+        L.DomEvent.disableClickPropagation(div);
 
-				// attach change-handlers
-				div.querySelectorAll('input[type=checkbox]').forEach(cb => {
-					cb.addEventListener('change', () => {
-						state.plane = div.querySelector('#sfPlane').checked;
-						state.car   = div.querySelector('#sfCar').checked;
-						state.ped   = div.querySelector('#sfPed').checked;
-						saveSpeedFilterState(state);   // remember choice
-						debounceUpdateMarkers();       // redraw with new filter
-					});
-				});
+        // attach change-handlers
+        div.querySelectorAll('input[type=checkbox]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            state.plane = div.querySelector('#sfPlane').checked;
+            state.car   = div.querySelector('#sfCar').checked;
+            state.ped   = div.querySelector('#sfPed').checked;
+            saveSpeedFilterState(state);   // remember choice
+            debounceUpdateMarkers();       // redraw with new filter
+          });
+        });
 
-				return div;
-			}
-		});
+        return div;
+      }
+    });
 
-		new SpeedCtrl({ position: 'topleft' }).addTo(map);
-	}
-
-
+    new SpeedCtrl({ position: 'topleft' }).addTo(map);
+  }
 
 
 
 
-	// Call it
-	createSpeedFilterControls();   
-	createDateRangeSlider();
+
+
+  // Call it
+  createSpeedFilterControls();   
+  createDateRangeSlider();
 
 
 });
 
 
 /**
- * createDateRangeSlider()
- *  • Вертикальный double-slider (месяцы) И single-slider (годы)
- *  • Переключатель Y / M
- *  • Годовой режим — по умолчанию
+ * Date-range control with two modes:
+ *  - YEAR (single handle): labels show full [minYear..maxYear] when NO user filter is active,
+ *    otherwise they show the chosen year.
+ *  - MONTH (double handle): classic [from..to] range.
+ *
+ * Key ideas:
+ *  • We expose window.__setDateSliderVisibility(show)
+ *  • We expose window.__initSliderOnce(minTs,maxTs) for first build
+ *  • We expose window.__syncDateSliders(minTs,maxTs) to keep ranges/labels
+ *    in sync with the current map viewport on every pan/zoom IF no custom
+ *    time filter is set by the user.
+ *
+ * No globals except 3 window.* hooks; no vendor APIs beyond noUiSlider.
  */
 function createDateRangeSlider(){
 
-  if (isTrackView) return;   //не отображаем в режиме трека
+  if (isTrackView) return;   // no date control in single-track mode
 
-	/* ── переменные состояния ─────────────────────────────── */
-	let sliderBox, yearSlider, monthSlider;
-	let mode  = 'year';                      // 'year' | 'month'
-	let initY = false, initM = false;        // lazy-init флаги
+  let sliderBox, yearSlider, monthSlider;
+  let mode  = 'year';                // 'year' | 'month'
+  let initY = false, initM = false;  // lazy init flags
 
-	/* ── Leaflet-контрол ──────────────────────────────────── */
-	const DateCtrl = L.Control.extend({
-		onAdd(){
-			sliderBox = L.DomUtil.create('div',
-			  'leaflet-control-layers date-slider-box');
-      sliderBox.style.display = 'none';   // пока не нужно
-			sliderBox.innerHTML = `
-				<div class="slider-toggle">
-				<button id="btnYear"  class="active">Y</button>
-				<button id="btnMonth">M</button>
-				</div>
-				<div id="lblMax" class="slider-label"></div>
-				<div id="yearSlider"></div>
-				<div id="dateSlider"></div>
-				<div id="lblMin" class="slider-label"></div>
-				<!-- ▼ НОВОЕ: кнопка сброса диапазона ▼ -->
-				<button id="btnReset" class="slider-reset-btn" title="Reset">⟲ {{translate "show_all"}}</button>
-				<!-- ▲ НОВОЕ ▲ -->
-			`;
+  // We store the "full range" of current viewport to detect
+  // whether a saved filter is actually "show all".
+  let fullRange = null; // [minTs,maxTs]
 
-			return sliderBox;
-		}
-	});
-	new DateCtrl({ position:'topleft' }).addTo(map);
+  const DateCtrl = L.Control.extend({
+    onAdd(){
+      sliderBox = L.DomUtil.create('div','leaflet-control-layers date-slider-box');
+      sliderBox.style.display = 'none'; // hidden until needed
+      sliderBox.innerHTML = `
+        <div class="slider-toggle">
+          <button id="btnYear"  class="active">Y</button>
+          <button id="btnMonth">M</button>
+        </div>
+        <div id="lblMax" class="slider-label"></div>
+        <div id="yearSlider"></div>
+        <div id="dateSlider"></div>
+        <div id="lblMin" class="slider-label"></div>
+        <button id="btnReset" class="slider-reset-btn" title="Reset"> ⟲ </button>
+      `;
+      return sliderBox;
+    }
+  });
+  new DateCtrl({ position:'topleft' }).addTo(map);
 
-	/* ───────── переключатель режимов ───────── */
-	const btnY = sliderBox.querySelector('#btnYear');
-	const btnM = sliderBox.querySelector('#btnMonth');
-	btnY.onclick = () => switchMode('year');
-	btnM.onclick = () => switchMode('month');
+  const btnY = sliderBox.querySelector('#btnYear');
+  const btnM = sliderBox.querySelector('#btnMonth');
+  const btnReset = sliderBox.querySelector('#btnReset');
+  const lblMin = () => sliderBox.querySelector('#lblMin');
+  const lblMax = () => sliderBox.querySelector('#lblMax');
 
+  btnY.onclick = () => switchMode('year');
+  btnM.onclick = () => switchMode('month');
 
-	const btnReset = sliderBox.querySelector('#btnReset');
+  // Show/hide the whole control (called from updateMarkers())
+  window.__setDateSliderVisibility = (show)=>{
+    sliderBox.style.display = show ? 'block' : 'none';
+    if(!show) sessionStorage.removeItem('dateRangeState');
+  };
 
-	/* ───────── кнопка «⟲ Reset» ───────── */
-		btnReset.onclick = () => {
-			// сбрасываем сохранённый фильтр
-			sessionStorage.removeItem('dateRangeState');
+  // One-time creation of both sliders using initial bounds
+  window.__initSliderOnce = (minTs,maxTs)=>{
+    if (initY && initM) return;
+    fullRange = [minTs,maxTs]; // remember initial "full range"
 
-			// --- годовой слайдер ----------------------------------
-			if (initY) {
-				const rY = yearSlider.noUiSlider.options.range;
-				yearSlider.noUiSlider.set(rY.min);          // ручка к самому началу
-			}
+    // YEAR slider (single handle)
+    if(!initY){
+      yearSlider = sliderBox.querySelector('#yearSlider');
+      const minYear = new Date(minTs*1000).getUTCFullYear();
+      const maxYear = new Date(maxTs*1000).getUTCFullYear();
 
-			// --- месячный слайдер  (важно: всегда, даже если сейчас скрыт)
-			if (initM) {
-				const rM = monthSlider.noUiSlider.options.range;
-				monthSlider.noUiSlider.set([rM.min, rM.max]);
-			}
+      noUiSlider.create(yearSlider,{
+        start      : minYear,                // the handle can sit anywhere; labels decide what to show
+        connect    : [true,false],
+        orientation: 'vertical',
+        direction  : 'rtl',
+        step       : 1,
+        range      : { min:minYear, max:maxYear },
+        format     : wNumb({ decimals:0 })
+      });
 
-			// --- подписи внизу/вверху ------------------------------
-			const lblMin = sliderBox.querySelector('#lblMin');
-			const lblMax = sliderBox.querySelector('#lblMax');
+      // Update labels:
+      //  - If NO user filter or filter equals fullRange → show full year bounds.
+      //  - Else → show the chosen year.
+      yearSlider.noUiSlider.on('update', ([y])=>{
+        if (mode !== 'year') return;
+        const saved = loadDateRangeState();
+        const fr = fullRange || [minTs,maxTs];
+        const isFull = !saved || (saved[0] === fr[0] && saved[1] === fr[1]);
+        if (isFull){
+          const r = yearSlider.noUiSlider.options.range;
+          lblMin().textContent = r.min;
+          lblMax().textContent = r.max;
+        } else {
+          lblMin().textContent = y;
+          lblMax().textContent = y;
+        }
+      });
+      yearSlider.noUiSlider.on('change', updateDateFilter);
+      initY = true;
+    }
 
-			if (mode === 'year') {                        // активен годовой
-				const r = yearSlider.noUiSlider.options.range;
-				lblMin.textContent = r.min;
-				lblMax.textContent = r.max;
-			} else {                                      // активен месячный
-				const r = monthSlider.noUiSlider.options.range;
-				lblMin.textContent = tsToNiceStr(r.min);
-				lblMax.textContent = tsToNiceStr(r.max);
-			}
+    // MONTH slider (double handle)
+    if(!initM){
+      monthSlider = sliderBox.querySelector('#dateSlider');
+      noUiSlider.create(monthSlider,{
+        start       : [minTs,maxTs],
+        connect     : true,
+        orientation : 'vertical',
+        direction   : 'rtl',
+        step        : 3600, // 1 hour
+        range       : { min:minTs, max:maxTs },
+        format      : wNumb({ decimals:0 })
+      });
+      monthSlider.noUiSlider.on('update', ()=>{
+        if (mode !== 'month') return;
+        const [v0, v1] = monthSlider.noUiSlider.get().map(Number);
+        lblMin().textContent = tsToNiceStr(v0);
+        lblMax().textContent = tsToNiceStr(v1);
+      });
+      monthSlider.noUiSlider.on('change', updateDateFilter);
+      monthSlider.style.display = 'none';
+      initM = true;
+    }
 
-			debounceUpdateMarkers();
-		};
+    // Initial labels = full bounds
+    if (mode === 'year'){
+      const r = yearSlider.noUiSlider.options.range;
+      lblMin().textContent = r.min;
+      lblMax().textContent = r.max;
+    } else {
+      lblMin().textContent = tsToNiceStr(minTs);
+      lblMax().textContent = tsToNiceStr(maxTs);
+    }
+  };
 
+  // Sync ranges and labels to the *current* viewport on every pan/zoom,
+  // but ONLY when user has not applied a custom time filter.
+  window.__syncDateSliders = (minTs,maxTs)=>{
+    if (!initY || !initM) return; // not built yet
 
-	/* ───────── переключатель режимов ───────── */
+    // Detect whether user has a custom time filter (not full range).
+    const saved = loadDateRangeState();
+    const prevFull = fullRange;
+    fullRange = [minTs,maxTs]; // update "full" range to the new viewport
 
+    const hasCustom =
+      !!saved && !(saved[0] === prevFull?.[0] && saved[1] === prevFull?.[1]) &&
+      !(saved[0] === fullRange[0] && saved[1] === fullRange[1]);
 
-		/* ───────── переключатель режимов ───────── */
-		function switchMode(next){
-			/* ―― если режим не меняется, выходим ―― */
-				if (mode === next) return;
+    // Update YEAR slider bounds
+    const minYear = new Date(minTs*1000).getUTCFullYear();
+    const maxYear = new Date(maxTs*1000).getUTCFullYear();
+    yearSlider.noUiSlider.updateOptions({
+      range: { min:minYear, max:maxYear }
+    }, false);
 
-			const lblMin = sliderBox.querySelector('#lblMin');
-			const lblMax = sliderBox.querySelector('#lblMax');
+    // Update MONTH slider bounds
+    monthSlider.noUiSlider.updateOptions({
+      range: { min:minTs, max:maxTs }
+    }, false);
 
-			/* ---------- PATCH 2025-07-30 v2 ---------- */
-				let skipFilter = false;                       // не вызывать updateDateFilter()?
-				if (next === 'year' && initY){                // переходим в Y-mode
-					const saved = loadDateRangeState();       // что сейчас хранится?
-						if (saved && initM){                      // есть диапазон → сравним
-							const rM   = monthSlider.noUiSlider.options.range;
-							const full = saved[0] === rM.min && saved[1] === rM.max;
-							if (full){                            // карта «сброшена»
-								const rY = yearSlider.noUiSlider.options.range;
-								yearSlider.noUiSlider.set(rY.min);   // чисто визуально
-								lblMin.textContent = rY.min;         // подписи = весь диапазон лет
-								lblMax.textContent = rY.max;
-								skipFilter = true;                   // фильтр не меняем
-							}else{                                // выбран конкретный год
-								const y = new Date(saved[0] * 1000).getUTCFullYear();
-								yearSlider.noUiSlider.set(y);        // синхронизируем бегунок
-								lblMin.textContent = y;
-								lblMax.textContent = y;
-							}
-						}else{                                    // saved == null → фильтра нет
-							const rY = yearSlider.noUiSlider.options.range;
-							yearSlider.noUiSlider.set(rY.min);
-							lblMin.textContent = rY.min;
-							lblMax.textContent = rY.max;
-							skipFilter = true;
-						}
-				}
-			/* ----------------------------------------- */
+    // If no custom filter → force labels to show full bounds and make month slider span all
+    if (!hasCustom){
+      if (mode === 'year'){
+        const r = yearSlider.noUiSlider.options.range;
+        lblMin().textContent = r.min;
+        lblMax().textContent = r.max;
+      } else {
+        monthSlider.noUiSlider.set([minTs,maxTs]);
+        lblMin().textContent = tsToNiceStr(minTs);
+        lblMax().textContent = tsToNiceStr(maxTs);
+      }
+      // persist that "no filter" means full range
+      saveDateRangeState([minTs,maxTs]);
+    }
+  };
 
-				/* ——— аналогичная синхронизация при переходе Y → M (осталась как раньше) ——— */
-				if (next === 'month' && initM){
-					const saved = loadDateRangeState();
-					if (saved){
-						monthSlider.noUiSlider.set(saved);
-					}else{
-						const r = monthSlider.noUiSlider.options.range;
-						monthSlider.noUiSlider.set([r.min, r.max]);
-					}
-					const [v0, v1] = monthSlider.noUiSlider.get().map(Number);
-					lblMin.textContent = tsToNiceStr(v0);
-					lblMax.textContent = tsToNiceStr(v1);
-				}
+  // Reset button → drop custom filter and show full bounds of the *current* viewport
+  btnReset.onclick = ()=>{
+    sessionStorage.removeItem('dateRangeState');
+    if (initY && initM){
+      const rY = yearSlider.noUiSlider.options.range;
+      const rM = monthSlider.noUiSlider.options.range;
+      yearSlider.noUiSlider.set(rY.min);      // handle position is cosmetic
+      monthSlider.noUiSlider.set([rM.min, rM.max]);
 
-			/* ―― визуальное переключение ―― */
-				mode = next;
-			btnY.classList.toggle('active', next === 'year');
-			btnM.classList.toggle('active', next === 'month');
-			yearSlider.style.display  = next === 'year'  ? 'block' : 'none';
-			monthSlider.style.display = next === 'month' ? 'block' : 'none';
+      lblMin().textContent = (mode==='year') ? rY.min : tsToNiceStr(rM.min);
+      lblMax().textContent = (mode==='year') ? rY.max : tsToNiceStr(rM.max);
 
-			/* ―― применяем фильтр, если нужно ―― */
-				if (!skipFilter) updateDateFilter();
-		}
+      // remember "no filter" == full range of the viewport
+      saveDateRangeState([rM.min, rM.max]);
+      debounceUpdateMarkers();
+    }
+  };
 
+  function switchMode(next){
+    if (mode === next) return;
 
-	/* ── показать / скрыть коробку ─────────────────────────── */
-	let visible = false;
-	window.__setDateSliderVisibility = show=>{
-		if(show === visible) return;
-		visible = show;
-		sliderBox.style.display = show ? 'block' : 'none';
-		if(!show) sessionStorage.removeItem('dateRangeState');
-	};
+    mode = next;
+    btnY.classList.toggle('active', next==='year');
+    btnM.classList.toggle('active', next==='month');
+    yearSlider.style.display  = next==='year'  ? 'block' : 'none';
+    monthSlider.style.display = next==='month' ? 'block' : 'none';
 
-	/* ── инициализация noUiSlider-ов (ленивая) ─────────────── */
-	window.__initSliderOnce = (minTs, maxTs)=>{
-		const lblMin = sliderBox.querySelector('#lblMin');
-		const lblMax = sliderBox.querySelector('#lblMax');
+    // Refresh labels on mode switch respecting full/custom state
+    const saved = loadDateRangeState();
+    const fr = fullRange;
+    const isFull = !saved || (fr && saved[0]===fr[0] && saved[1]===fr[1]);
 
-		/* YEAR-slider (один бегунок) */
-		if(!initY){
-			yearSlider = sliderBox.querySelector('#yearSlider');
-			const minYear = new Date(minTs*1000).getUTCFullYear();
-			const maxYear = new Date(maxTs*1000).getUTCFullYear();
-			const stored  = loadDateRangeState() || [(minYear|0)];
-			noUiSlider.create(yearSlider,{
-				start      : stored[0],
-				connect    : [true,false],
-				orientation: 'vertical',
-				direction  : 'rtl',
-				step       : 1,
-				range      : { min:minYear, max:maxYear },
-				format     : wNumb({ decimals:0 })
-			});
-			yearSlider.noUiSlider.on('update', ([y]) => {
-				if (mode !== 'year') return;   // ← игнор в режиме месяцев
-				lblMin.textContent = y;
-				lblMax.textContent = y;
-			});
-			yearSlider.noUiSlider.on('change',updateDateFilter);
-			initY = true;
-		}
+    if (next === 'year'){
+      const r = yearSlider.noUiSlider.options.range;
+      if (isFull){
+        lblMin().textContent = r.min;
+        lblMax().textContent = r.max;
+      } else {
+        const y = +yearSlider.noUiSlider.get();
+        lblMin().textContent = y;
+        lblMax().textContent = y;
+      }
+    } else {
+      const r = monthSlider.noUiSlider.options.range;
+      if (isFull){
+        monthSlider.noUiSlider.set([r.min, r.max]);
+        lblMin().textContent = tsToNiceStr(r.min);
+        lblMax().textContent = tsToNiceStr(r.max);
+      } else {
+        const [v0, v1] = monthSlider.noUiSlider.get().map(Number);
+        lblMin().textContent = tsToNiceStr(v0);
+        lblMax().textContent = tsToNiceStr(v1);
+      }
+    }
 
-		/* MONTH-slider (двойной) */
-		if(!initM){
-			monthSlider = sliderBox.querySelector('#dateSlider');
-			const stored = loadDateRangeState() || [minTs, maxTs];
-			noUiSlider.create(monthSlider,{
-				start       : stored,
-				connect     : true,
-				orientation : 'vertical',
-				direction   : 'rtl',
-				step        : 3600,                 // 1 ч
-				range       : { min:minTs, max:maxTs },
-				format      : wNumb({ decimals:0 })
-			});
-			monthSlider.noUiSlider.on('update', () => {
-				if (mode !== 'month') return;  // ← игнор в режиме годов
-				const [v0, v1] = monthSlider.noUiSlider.get().map(Number);
-				lblMin.textContent = tsToNiceStr(v0);
-				lblMax.textContent = tsToNiceStr(v1);
-			});
-			monthSlider.noUiSlider.on('change',updateDateFilter);
-			monthSlider.style.display = 'none';   // скрыт по умолчанию
-			initM = true;
-		}
-	};
+    // Do not change filter on mode flip; user intent remains the same
+  }
 
-	/* ── перевод значения текущего слайдера → dateRangeState ─ */
-	function updateDateFilter(){
-		let range;
-		if(mode==='year'){
-			const y = +yearSlider.noUiSlider.get();
-			const from = Date.UTC(y,0,1)/1000;
-			const to   = Date.UTC(y+1,0,1)/1000 - 1;
-			range = [from,to];
-		}else{
-			range = monthSlider.noUiSlider.get().map(Number);
-		}
-		saveDateRangeState(range);
-		debounceUpdateMarkers();
-	}
+  function updateDateFilter(){
+    // YEAR mode → make a full [year..year] month span
+    if (mode==='year'){
+      const y = +yearSlider.noUiSlider.get();
+      const from = Date.UTC(y,0,1)/1000;
+      const to   = Date.UTC(y+1,0,1)/1000 - 1;
+      saveDateRangeState([from,to]);
+    } else {
+      saveDateRangeState(monthSlider.noUiSlider.get().map(Number));
+    }
+    debounceUpdateMarkers();
+  }
 }
 
-	
+
 
 // Определение функций
 
 // ---------- POP-UP со ссылкой на трек ----------
 function getPopupContent(marker) {
-	const dateStr = new Date(marker.date * 1000).toLocaleString();
-	return `
-		<div class="custom-tooltip">
-		<div><strong>${translate('radiation_dose')}:</strong>
-	${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
-		</div>
-		<div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
-		<div style="margin-top:4px">
-		<!-- щёлк по ссылке = переход в режим трека -->
-		<a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
-	${translate('track_id')}: ${marker.trackID}
-		</a>
-		</div>
-		</div>`;
+  const dateStr = new Date(marker.date * 1000).toLocaleString();
+  return `
+    <div class="custom-tooltip">
+    <div><strong>${translate('radiation_dose')}:</strong>
+  ${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
+    </div>
+    <div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
+    <div style="margin-top:4px">
+    <!-- щёлк по ссылке = переход в режим трека -->
+    <a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
+  ${translate('track_id')}: ${marker.trackID}
+    </a>
+    </div>
+    </div>`;
 }
 
 
-/* ──────────────────────────────────────────────────────────────
- *  updateMarkers () — запрашивает маркеры для текущего окна карты,
- *  применяет фильтр скоростей и рисует круги.
- *  Главное нововведение: AbortController + аккуратный .catch().
- * ──────────────────────────────────────────────────────────────*/
+/* Request markers for current bounds/zoom, render them,
+ * and keep the date sliders in sync with the viewport.
+ */
 function updateMarkers(){
-	const loadingEl = document.getElementById('loadingOverlay');  // ⬅ spinner
-	if(loadingEl) loadingEl.style.display='block';                // ⬅ spinner
+  const loadingEl = document.getElementById('loadingOverlay');
+  if (loadingEl) loadingEl.style.display='block';
 
-    if (markerFetchController) markerFetchController.abort();
-    markerFetchController = new AbortController();
+  if (markerFetchController) markerFetchController.abort();
+  markerFetchController = new AbortController();
 
-    const zoom   = map.getZoom();
-    const bounds = map.getBounds();
+  const zoom   = map.getZoom();
+  const bounds = map.getBounds();
 
-    const params = {
-        zoom  : zoom,
-        minLat: bounds.getSouthWest().lat,
-        minLon: bounds.getSouthWest().lng,
-        maxLat: bounds.getNorthEast().lat,
-        maxLon: bounds.getNorthEast().lng
-    };
+  const params = {
+    zoom  : zoom,
+    minLat: bounds.getSouthWest().lat,
+    minLon: bounds.getSouthWest().lng,
+    maxLat: bounds.getNorthEast().lat,
+    maxLon: bounds.getNorthEast().lng
+  };
 
-    // --- ✈🚗🚶 фильтр скоростей -------------------------------
-    if (!isTrackView) {            // <── фильтруем ТОЛЬКО в глобальном режиме
-      const sp = loadSpeedFilterState();
-      const speeds = [];
-      if (sp.plane) speeds.push('plane');
-      if (sp.car)   speeds.push('car');
-      if (sp.ped)   speeds.push('ped');
-      if (speeds.length && speeds.length !== 3){
-          params.speeds = speeds.join(',');
+  // speed filter (global view only)
+  if (!isTrackView) {
+    const sp = loadSpeedFilterState();
+    const speeds = [];
+    if (sp.plane) speeds.push('plane');
+    if (sp.car)   speeds.push('car');
+    if (sp.ped)   speeds.push('ped');
+    if (speeds.length && speeds.length !== 3){
+      params.speeds = speeds.join(',');
+    }
+  }
+
+  if (isTrackView && currentTrackID){
+    params.trackID = currentTrackID;
+  }
+
+  fetch('/get_markers?' + new URLSearchParams(params),
+        { signal: markerFetchController.signal })
+    .then(r => { if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(data => {
+      if (!Array.isArray(data)) data = [];
+
+      // compute tracks count & time span for this viewport
+      const tracks = new Set();
+      let minTs = Infinity, maxTs = -Infinity;
+      data.forEach(m=>{
+        if (m.trackID) tracks.add(m.trackID);
+        minTs = Math.min(minTs, m.date);
+        maxTs = Math.max(maxTs, m.date);
+      });
+      const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
+                              ? monthsApart(minTs, maxTs) : 0;
+
+      const needSlider = !isTrackView && tracks.size > 1 && dateSpanMonths > 1;
+
+      if (window.__setDateSliderVisibility){
+        window.__setDateSliderVisibility(needSlider);
       }
-    }
 
-    // --- трековый режим --------------------------------------
-    if (isTrackView && currentTrackID){
-        params.trackID = currentTrackID;
-    }
+      // Build sliders first time
+      if (needSlider && window.__initSliderOnce && isFinite(minTs) && isFinite(maxTs)){
+        window.__initSliderOnce(minTs, maxTs);
+        window.__initSliderOnce = null; // one-shot
+      }
 
-    fetch('/get_markers?' + new URLSearchParams(params),
-          { signal: markerFetchController.signal })
-        .then(r => { if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-        .then(data => {
-            if (!Array.isArray(data)) data = [];
+      // Always keep sliders’ bounds/labels in sync with viewport
+      if (needSlider && window.__syncDateSliders && isFinite(minTs) && isFinite(maxTs)){
+        window.__syncDateSliders(minTs, maxTs);
+      }
 
-            // ---- статистика по трекам/датам -----------------
-            const tracks = new Set();
-            let minTs = Infinity, maxTs = -Infinity;
-            data.forEach(m=>{
-                if (m.trackID) tracks.add(m.trackID);
-                minTs = Math.min(minTs, m.date);
-                maxTs = Math.max(maxTs, m.date);
-            });
+      // Apply time filter ONLY when user selected a custom range
+      if (!isTrackView && needSlider){
+        const saved = loadDateRangeState();
+        // We need full-range of current viewport → ask sync to decide;
+        // __syncDateSliders saved [minTs,maxTs] as "no filter".
+        if (saved && !(saved[0] === minTs && saved[1] === maxTs)){
+          data = data.filter(m => m.date >= saved[0] && m.date <= saved[1]);
+        }
+      }
 
-            const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
-                                   ? monthsApart(minTs, maxTs) : 0;
+      // Render markers
+      for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+      circleMarkers = {};
 
-            // нужен ли слайдер? (≥2 трека И разброс > 1 месяц)
-            const needSlider = !isTrackView &&
-                               tracks.size > 1 &&
-                               dateSpanMonths > 1;
+      data.forEach(m=>{
+        if (!shouldDisplayBySpeed(m.speed)) return;
 
-            if (window.__setDateSliderVisibility){
-                window.__setDateSliderVisibility(needSlider);
-            }
-
-            // первое появление — инициализируем
-            if (needSlider && window.__initSliderOnce && data.length){
-                window.__initSliderOnce(minTs, maxTs);
-                window.__initSliderOnce = null;
-            }
-
-            // если слайдера нет → сбрасываем фильтр времени
-            if (!isTrackView && needSlider){
-              let dateState = null;
-              if (needSlider){
-                  dateState = loadDateRangeState();
-                  if (dateState){
-                      data = data.filter(m => m.date >= dateState[0] &&
-                                              m.date <= dateState[1]);
-                  }
-              }
-            }
-
-            // ---- рендер маркеров ----------------------------
-            for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
-            circleMarkers = {};
-
-            data.forEach(m=>{
-                if (!shouldDisplayBySpeed(m.speed)) return;
-
-                const cm = L.circleMarker([m.lat, m.lon], {
-                    radius      : getRadius(m.doseRate, zoom),
-                    fillColor   : getGradientColor(m.doseRate),
-                    color       : getGradientColor(m.doseRate),
-                    weight      : 1,
-                    opacity     : getFillOpacity(m.speed) + 0.1,
-                    fillOpacity : getFillOpacity(m.speed)
-                })
-                .addTo(map)
-                .bindTooltip(getTooltipContent(m),
-                    { direction:'top', className:'custom-tooltip', offset:[0,-8] })
-                .bindPopup(getPopupContent(m));
-
-                circleMarkers[m.id || m.trackID] = cm;
-            });
+        const cm = L.circleMarker([m.lat, m.lon], {
+          radius      : getRadius(m.doseRate, zoom),
+          fillColor   : getGradientColor(m.doseRate),
+          color       : getGradientColor(m.doseRate),
+          weight      : 1,
+          opacity     : getFillOpacity(m.speed) + 0.1,
+          fillOpacity : getFillOpacity(m.speed)
         })
-        .catch(err=>{
-            if (err.name === 'AbortError') return;
-            console.error('fetch:', err);
-				})
-				.finally(()=>{                                   // ⬅ spinner
-						if(loadingEl) loadingEl.style.display='none';  // ⬅ spinner
-				});
+        .addTo(map)
+        .bindTooltip(getTooltipContent(m),
+            { direction:'top', className:'custom-tooltip', offset:[0,-8] })
+        .bindPopup(getPopupContent(m));
+
+        circleMarkers[m.id || m.trackID] = cm;
+      });
+    })
+    .catch(err=>{
+      if (err.name !== 'AbortError') console.error('fetch:', err);
+    })
+    .finally(()=>{
+      if (loadingEl) loadingEl.style.display='none';
+    });
 }
 
 
@@ -1152,90 +1170,90 @@ function updateMarkers(){
 let debounceTimeout;
 
 function debounceUpdateMarkers() {
-	clearTimeout(debounceTimeout);
-	debounceTimeout = setTimeout(updateMarkers, 300);
+  clearTimeout(debounceTimeout);
+  debounceTimeout = setTimeout(updateMarkers, 300);
 }
 
 function adjustMarkerRadius() {
-	var zoomLevel = map.getZoom();
-	for (let key in circleMarkers) {
-		let marker = circleMarkers[key];
-		let newRadius = getRadius(marker.doseRate, zoomLevel);
-		marker.setRadius(newRadius);
-	}
+  var zoomLevel = map.getZoom();
+  for (let key in circleMarkers) {
+    let marker = circleMarkers[key];
+    let newRadius = getRadius(marker.doseRate, zoomLevel);
+    marker.setRadius(newRadius);
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────
-	*  viewTrack () — переход в режим отдельного трека.
-	*  Добавили currentTrackID = trackID ещё ДО смены window.location.
-	* ──────────────────────────────────────────────────────────────*/
-	function viewTrack(trackID) {
-		currentTrackID = trackID;   // ✦ новое
-		isTrackView    = true;
+ *  viewTrack () — переход в режим отдельного трека.
+ *  Добавили currentTrackID = trackID ещё ДО смены window.location.
+ * ──────────────────────────────────────────────────────────────*/
+function viewTrack(trackID) {
+  currentTrackID = trackID;   // ✦ новое
+  isTrackView    = true;
 
-		const bounds = map.getBounds();
-		const layer  = map.hasLayer(googleSatellite) ? 'Google Satellite'
-			: 'OpenStreetMap';
-		const zoom   = map.getZoom();
+  const bounds = map.getBounds();
+  const layer  = map.hasLayer(googleSatellite) ? 'Google Satellite'
+    : 'OpenStreetMap';
+  const zoom   = map.getZoom();
 
-		const trackURL =
-			`/trackid/${trackID}` +
-			`?minLat=${bounds.getSouthWest().lat}` +
-			`&minLon=${bounds.getSouthWest().lng}` +
-			`&maxLat=${bounds.getNorthEast().lat}` +
-			`&maxLon=${bounds.getNorthEast().lng}` +
-			`&zoom=${zoom}` +
-			`&layer=${encodeURIComponent(layer)}`;
+  const trackURL =
+    `/trackid/${trackID}` +
+    `?minLat=${bounds.getSouthWest().lat}` +
+    `&minLon=${bounds.getSouthWest().lng}` +
+    `&maxLat=${bounds.getNorthEast().lat}` +
+    `&maxLon=${bounds.getNorthEast().lng}` +
+    `&zoom=${zoom}` +
+    `&layer=${encodeURIComponent(layer)}`;
 
-		window.location.href = trackURL;
-	}
+  window.location.href = trackURL;
+}
 
 
 function setBaseLayer(layerName) {
-	if (layerName === 'Google Satellite') {
-		if (map.hasLayer(osmLayer))            map.removeLayer(osmLayer);
-		if (!map.hasLayer(googleSatellite))    googleSatellite.addTo(map);
-	} else {
-		if (map.hasLayer(googleSatellite))     map.removeLayer(googleSatellite);
-		if (!map.hasLayer(osmLayer))           osmLayer.addTo(map);
-	}
+  if (layerName === 'Google Satellite') {
+    if (map.hasLayer(osmLayer))            map.removeLayer(osmLayer);
+    if (!map.hasLayer(googleSatellite))    googleSatellite.addTo(map);
+  } else {
+    if (map.hasLayer(googleSatellite))     map.removeLayer(googleSatellite);
+    if (!map.hasLayer(osmLayer))           osmLayer.addTo(map);
+  }
 }
 
 function loadMapFromUrl() {
-	const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(window.location.search);
 
-	/* базовый слой из URL (или дефолт) */
-		const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
-	setBaseLayer(layer);
+  /* базовый слой из URL (или дефолт) */
+  const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
+  setBaseLayer(layer);
 
-	/* читаем остальные параметры */
-		const minLat = parseFloat(params.get('minLat'));
-	const minLon = parseFloat(params.get('minLon'));
-	const maxLat = parseFloat(params.get('maxLat'));
-	const maxLon = parseFloat(params.get('maxLon'));
+  /* читаем остальные параметры */
+  const minLat = parseFloat(params.get('minLat'));
+  const minLon = parseFloat(params.get('minLon'));
+  const maxLat = parseFloat(params.get('maxLat'));
+  const maxLon = parseFloat(params.get('maxLon'));
 
-	if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
-		map.fitBounds([[minLat, minLon], [maxLat, maxLon]]);
-		adjustMarkerRadius();
-	} else if (isTrackView && trackBounds) {
-		map.fitBounds(trackBounds);
-	} else {
-		map.setView([defaultCfg.lat, defaultCfg.lon], defaultCfg.zoom);
-	}
+  if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
+    map.fitBounds([[minLat, minLon], [maxLat, maxLon]]);
+    adjustMarkerRadius();
+  } else if (isTrackView && trackBounds) {
+    map.fitBounds(trackBounds);
+  } else {
+    map.setView([defaultCfg.lat, defaultCfg.lon], defaultCfg.zoom);
+  }
 }
 
 function updateUrl() {
-	var bounds = map.getBounds();
-	var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
-	var minLat = bounds.getSouthWest().lat.toFixed(5);
-	var minLon = bounds.getSouthWest().lng.toFixed(5);
-	var maxLat = bounds.getNorthEast().lat.toFixed(5);
-	var maxLon = bounds.getNorthEast().lng.toFixed(5);
-	var zoom = map.getZoom();
+  var bounds = map.getBounds();
+  var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
+  var minLat = bounds.getSouthWest().lat.toFixed(5);
+  var minLon = bounds.getSouthWest().lng.toFixed(5);
+  var maxLat = bounds.getNorthEast().lat.toFixed(5);
+  var maxLon = bounds.getNorthEast().lng.toFixed(5);
+  var zoom = map.getZoom();
 
-	var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+  var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
 
-	window.history.replaceState({}, '', newUrl);
+  window.history.replaceState({}, '', newUrl);
 }
 
 function openServerPoster() {
@@ -1264,131 +1282,131 @@ function initializeUIElements() {
 }
 
 function centerMapToLocation() {
-	if (navigator.geolocation) {
-		navigator.geolocation.getCurrentPosition(
-			function(position) {
-				var userLat = position.coords.latitude;
-				var userLon = position.coords.longitude;
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(position) {
+        var userLat = position.coords.latitude;
+        var userLon = position.coords.longitude;
 
-				map.setView([userLat, userLon], 15);
+        map.setView([userLat, userLon], 15);
 
-				L.marker([userLat, userLon]).addTo(map)
-					.bindPopup(translate("your_location")).openPopup();
-			},
-			function(error) {
-				switch(error.code) {
-					case error.PERMISSION_DENIED:
-						alert(translate("location_permission_denied"));
-						break;
-					case error.POSITION_UNAVAILABLE:
-						alert(translate("location_unavailable"));
-						break;
-					case error.TIMEOUT:
-						alert(translate("location_timeout"));
-						break;
-					default:
-						alert(translate("location_error"));
-						break;
-				}
-			}
-		);
-	} else {
-		alert(translate("geolocation_not_supported"));
-	}
+        L.marker([userLat, userLon]).addTo(map)
+          .bindPopup(translate("your_location")).openPopup();
+      },
+      function(error) {
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            alert(translate("location_permission_denied"));
+            break;
+          case error.POSITION_UNAVAILABLE:
+            alert(translate("location_unavailable"));
+            break;
+          case error.TIMEOUT:
+            alert(translate("location_timeout"));
+            break;
+          default:
+            alert(translate("location_error"));
+            break;
+        }
+      }
+    );
+  } else {
+    alert(translate("geolocation_not_supported"));
+  }
 }
-		</script>
+    </script>
 
-		<!-- Скрипт загрузки файлов -->
-		<script>
-			function uploadFiles() {
-				const fileInput  = document.getElementById('fileInput');
-				const files      = fileInput.files;
-				if (!files.length) {
-					alert(translate('select_files'));
-					return;
-				}
+    <!-- Скрипт загрузки файлов -->
+    <script>
+      function uploadFiles() {
+        const fileInput  = document.getElementById('fileInput');
+        const files      = fileInput.files;
+        if (!files.length) {
+          alert(translate('select_files'));
+          return;
+        }
 
-				const fileOverlay          = document.getElementById('fileOverlay');
-				const fileProgressContainer = document.getElementById('fileProgressContainer');
-				fileProgressContainer.innerHTML = '';
-				fileOverlay.style.display  = 'flex';
+        const fileOverlay          = document.getElementById('fileOverlay');
+        const fileProgressContainer = document.getElementById('fileProgressContainer');
+        fileProgressContainer.innerHTML = '';
+        fileOverlay.style.display  = 'flex';
 
-				/* счётчик и ссылка последнего трека */
-				let completedUploads = 0;
-				const totalFiles     = files.length;
-				let lastTrackURL     = null;
+        /* счётчик и ссылка последнего трека */
+        let completedUploads = 0;
+        const totalFiles     = files.length;
+        let lastTrackURL     = null;
 
-				/* создаём XHR для каждого файла, но redirect делаем ОДИН раз */
-				[...files].forEach(file => {
-					/* --- визуальные элементы прогресса (как было) --- */
-					const fileBlock        = document.createElement('div');
-					fileBlock.className    = 'file-progress';
-					const fileName         = document.createElement('div');
-					fileName.className     = 'file-name';
-					fileName.innerText     = file.name;
-					const progressBar      = document.createElement('div');
-					progressBar.className  = 'progress-bar';
-					const progressBarInner = document.createElement('div');
-					progressBarInner.className = 'progress-bar-inner';
-					progressBar.appendChild(progressBarInner);
-					const serverProcessing = document.createElement('div');
-					serverProcessing.className = 'server-processing';
-					serverProcessing.innerText = translate('waiting_for_server');
-					fileBlock.append(fileName, progressBar, serverProcessing);
-					fileProgressContainer.appendChild(fileBlock);
-					/* ------------------------------------------------- */
+        /* создаём XHR для каждого файла, но redirect делаем ОДИН раз */
+        [...files].forEach(file => {
+          /* --- визуальные элементы прогресса (как было) --- */
+          const fileBlock        = document.createElement('div');
+          fileBlock.className    = 'file-progress';
+          const fileName         = document.createElement('div');
+          fileName.className     = 'file-name';
+          fileName.innerText     = file.name;
+          const progressBar      = document.createElement('div');
+          progressBar.className  = 'progress-bar';
+          const progressBarInner = document.createElement('div');
+          progressBarInner.className = 'progress-bar-inner';
+          progressBar.appendChild(progressBarInner);
+          const serverProcessing = document.createElement('div');
+          serverProcessing.className = 'server-processing';
+          serverProcessing.innerText = translate('waiting_for_server');
+          fileBlock.append(fileName, progressBar, serverProcessing);
+          fileProgressContainer.appendChild(fileBlock);
+          /* ------------------------------------------------- */
 
-					const xhr = new XMLHttpRequest();
-					xhr.open('POST', '/upload', true);
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', '/upload', true);
 
-					/* прогресс заливки файла */
-					xhr.upload.onprogress = e => {
-						if (e.lengthComputable) {
-							const percent = (e.loaded / e.total) * 100;
-							progressBarInner.style.width = percent + '%';
-						}
-					};
+          /* прогресс заливки файла */
+          xhr.upload.onprogress = e => {
+            if (e.lengthComputable) {
+              const percent = (e.loaded / e.total) * 100;
+              progressBarInner.style.width = percent + '%';
+            }
+          };
 
-					/* обработка ответа сервера */
-					xhr.onload = () => {
-						if (xhr.status === 200) {
-							const response = JSON.parse(xhr.responseText);
-							if (response.status === 'success') {
-								lastTrackURL             = response.trackURL;   // запоминаем
-								serverProcessing.innerText = translate('processing_complete');
-								serverProcessing.style.color = 'green';
-							} else {
-								serverProcessing.innerText = translate('error_processing_files');
-								serverProcessing.style.color = 'red';
-							}
-						} else {
-							serverProcessing.innerText = translate('error_during_upload');
-							serverProcessing.style.color = 'red';
-						}
+          /* обработка ответа сервера */
+          xhr.onload = () => {
+            if (xhr.status === 200) {
+              const response = JSON.parse(xhr.responseText);
+              if (response.status === 'success') {
+                lastTrackURL             = response.trackURL;   // запоминаем
+                serverProcessing.innerText = translate('processing_complete');
+                serverProcessing.style.color = 'green';
+              } else {
+                serverProcessing.innerText = translate('error_processing_files');
+                serverProcessing.style.color = 'red';
+              }
+            } else {
+              serverProcessing.innerText = translate('error_during_upload');
+              serverProcessing.style.color = 'red';
+            }
 
-						/* увеличиваем счётчик и, если всё готово, переходим */
-						completedUploads++;
-						if (completedUploads === totalFiles) {
-							setTimeout(() => {
-								fileOverlay.style.display = 'none';
-								/* показываем именно последний успешно обработанный трек */
-								if (lastTrackURL) {
-									window.location.href = lastTrackURL;
-								} else {
-									location.reload();   // на случай, если все загрузки упали
-								}
-							}, 700);
-						}
-					};
+            /* увеличиваем счётчик и, если всё готово, переходим */
+              completedUploads++;
+            if (completedUploads === totalFiles) {
+              setTimeout(() => {
+                fileOverlay.style.display = 'none';
+                /* показываем именно последний успешно обработанный трек */
+                  if (lastTrackURL) {
+                    window.location.href = lastTrackURL;
+                  } else {
+                    location.reload();   // на случай, если все загрузки упали
+                  }
+              }, 700);
+            }
+          };
 
-					/* отправляем файл */
-					const formData = new FormData();
-					formData.append('files[]', file);
-					xhr.send(formData);
-				});
-			}
-		</script>
+          /* отправляем файл */
+            const formData = new FormData();
+          formData.append('files[]', file);
+          xhr.send(formData);
+        });
+      }
+    </script>
 
-	</body>
+  </body>
 </html>
 
