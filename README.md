@@ -3,7 +3,7 @@
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
 
-# ☢️ chicha‑isotope‑map = world radiation map!
+#  chicha‑isotope‑map is a world ☢️ radiation map.
 
 ---
 
