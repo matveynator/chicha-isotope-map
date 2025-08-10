@@ -7,6 +7,12 @@
 
 ---
 
+### 📸 **Live demo**
+
+<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/6bb2a32e-d4ad-4b55-8b1a-8704ae5d02c8" /></a>
+
+---
+
 ## 🚀 Install & run your own node in 2 commands
 
 No fluff. The image ships with the database (PostgreSQL) built in. Copy the command, run it — you’re done.
@@ -229,14 +235,6 @@ Chicha‑Isotope‑Map isn’t just software — it’s a window into a world of
 ### 📸 **Screenshots**
 
 ... Back in the Soviet era, an open‑air pool was being built in Kislovodsk Park. They may have used concrete from a plant in Pyatigorsk that once processed radioactive ore from Mount Beshtau. Trucks drove along the road; dust from their wheels settled on the asphalt, leaving invisible marks. Years have passed, yet those traces still glow — memories of what once was. Dust that blew around the construction site settled in the park; on the map it shows up yellow, like patches of autumn leaves. The rest of the park is clean, calm, and green. <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
-
----
-
-### 📸 **Live demo**
-
-<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
-
-<a href="https://jutsa.ru" target="_blank">You can see the app running in real time here.</a>
 
 ---
 
