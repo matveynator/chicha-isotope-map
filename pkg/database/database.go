@@ -90,84 +90,133 @@ func NewDatabase(config Config) (*Database, error) {
 	}, nil
 }
 
-// InitSchema initializes the database schema for storing data (markers).
+// InitSchema initializes/repairs the schema and creates all required indexes.
+// It is called on every start; each statement uses IF NOT EXISTS so it is safe
+// to run repeatedly across PostgreSQL (pgx), SQLite and Genji.
+// We avoid vendor-specific features (no PARTITIONs, no CONCURRENTLY, etc.)
+// and keep SQL portable for any database/sql driver.
 func (db *Database) InitSchema(config Config) error {
 	var schema string
 
 	switch config.DBType {
-	case "pgx": // PostgreSQL
-		schema = `
-		CREATE TABLE IF NOT EXISTS markers (
-			id         BIGSERIAL PRIMARY KEY,
-			doseRate   DOUBLE PRECISION,
-			date       BIGINT,
-			lon        DOUBLE PRECISION,
-			lat        DOUBLE PRECISION,
-			countRate  DOUBLE PRECISION,
-			zoom       INTEGER,
-			speed      DOUBLE PRECISION,
-			trackID    TEXT,
-			CONSTRAINT markers_unique
-			UNIQUE (doseRate, date, lon, lat, countRate, zoom, speed, trackID)
-		);
 
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers(doseRate, date, lon, lat, countRate, zoom, speed, trackID);
-
-        CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
-				CREATE INDEX IF NOT EXISTS idx_markers_trackid_bounds ON markers (trackID, lat, lon);
-        CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
-        `
-
-	case "sqlite": // SQLite
-		schema = `
-        CREATE TABLE IF NOT EXISTS markers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            doseRate REAL,
-            date INTEGER,
-            lon REAL,
-            lat REAL,
-            countRate REAL,
-            zoom INTEGER,
-            speed REAL,
-            trackID TEXT
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers(doseRate, date, lon, lat, countRate, zoom, speed, trackID);
-        CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon);
-				CREATE INDEX IF NOT EXISTS idx_markers_trackid_bounds ON markers (trackID, lat, lon);
-        CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
-        `
-
-	case "genji": // Genji embedded DB
+	// ───────────────────────── PostgreSQL (pgx) ─────────────────────────
+	case "pgx":
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
-    id        INTEGER PRIMARY KEY,              -- обязателен и НЕ генерится сам
-    doseRate  REAL,
-    date      INTEGER,
-    lon       REAL,
-    lat       REAL,
-    countRate REAL,
-    zoom      INTEGER,
-    speed     REAL,
-    trackID   TEXT
+  id         BIGSERIAL PRIMARY KEY,
+  doseRate   DOUBLE PRECISION,
+  date       BIGINT,
+  lon        DOUBLE PRECISION,
+  lat        DOUBLE PRECISION,
+  countRate  DOUBLE PRECISION,
+  zoom       INTEGER,
+  speed      DOUBLE PRECISION,
+  trackID    TEXT,
+  -- named constraint is required for ON CONFLICT ON CONSTRAINT markers_unique
+  CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
-/* уникальный ключ по всем измерительным полям —
-   дубликаты будем гасить через ON CONFLICT DO NOTHING */
-CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
-       ON markers(doseRate,date,lon,lat,countRate,zoom,speed,trackID);
 
-CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers(trackID);
+-- Global map browsing: equality on zoom + range on lat/lon
+CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds
+  ON markers (zoom, lat, lon);
+
+-- Single-track browsing: equality on trackID, zoom + bbox
+CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds
+  ON markers (trackID, zoom, lat, lon);
+
+-- Frequently used filters (time & speed)
+CREATE INDEX IF NOT EXISTS idx_markers_date  ON markers (date);
+CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed);
+
+-- Fast identity probe for DetectExistingTrackID (lat,lon,date,doseRate)
+CREATE INDEX IF NOT EXISTS idx_markers_identity_probe
+  ON markers (lat, lon, date, doseRate);
+
+-- Simple helper
+CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
+`
+
+	// ───────────────────────────── SQLite ───────────────────────────────
+	case "sqlite":
+		schema = `
+CREATE TABLE IF NOT EXISTS markers (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  doseRate  REAL,
+  date      INTEGER,
+  lon       REAL,
+  lat       REAL,
+  countRate REAL,
+  zoom      INTEGER,
+  speed     REAL,
+  trackID   TEXT
+);
+
+-- Portable unique key for deduplication on INSERT OR IGNORE / ON CONFLICT
+CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
+  ON markers(doseRate,date,lon,lat,countRate,zoom,speed,trackID);
+
+-- Global map browsing
+CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds
+  ON markers (zoom, lat, lon);
+
+-- Single-track browsing (zoom must go before bbox)
+CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds
+  ON markers (trackID, zoom, lat, lon);
+
+-- Filters
+CREATE INDEX IF NOT EXISTS idx_markers_date  ON markers (date);
+CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed);
+
+-- Identity probe
+CREATE INDEX IF NOT EXISTS idx_markers_identity_probe
+  ON markers (lat, lon, date, doseRate);
+
+-- Helper
+CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
+`
+
+	// ───────────────────────────── Genji ────────────────────────────────
+	case "genji":
+		// Genji SQL is SQLite-like, keep types generic and portable
+		schema = `
+CREATE TABLE IF NOT EXISTS markers (
+  id        INTEGER PRIMARY KEY,
+  doseRate  REAL,
+  date      INTEGER,
+  lon       REAL,
+  lat       REAL,
+  countRate REAL,
+  zoom      INTEGER,
+  speed     REAL,
+  trackID   TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
+  ON markers(doseRate,date,lon,lat,countRate,zoom,speed,trackID);
+
+CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds
+  ON markers (zoom, lat, lon);
+
+CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds
+  ON markers (trackID, zoom, lat, lon);
+
+CREATE INDEX IF NOT EXISTS idx_markers_date  ON markers (date);
+CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed);
+
+CREATE INDEX IF NOT EXISTS idx_markers_identity_probe
+  ON markers (lat, lon, date, doseRate);
+
+CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
 `
 
 	default:
 		return fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
 
-	// Execute the schema creation
-	_, err := db.DB.Exec(schema)
-	if err != nil {
-		return fmt.Errorf("error initializing database schema: %v", err)
+	if _, err := db.DB.Exec(schema); err != nil {
+		return fmt.Errorf("init schema: %w", err)
 	}
-
 	return nil
 }
 
@@ -581,7 +630,7 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 }
 
 // DetectExistingTrackID scans the first incoming markers and tries to
-// recognise an already-stored track.  
+// recognise an already-stored track.
 // If ≥ threshold identical markers (lat,lon,date,doseRate) point to the
 // same TrackID, that TrackID is returned; otherwise an empty string is returned.
 //
@@ -589,9 +638,9 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 // – No mutexes: each call owns its slice and DB handle is concurrency-safe.
 // – Follows the “return early” advice: exits as soon as threshold is reached.
 func (db *Database) DetectExistingTrackID(
-	markers []Marker,               // freshly-parsed markers (any zoom)
-	threshold int,                  // how many identical points constitute identity
-	dbType string,                  // "pgx" | "sqlite" | "genji" | …
+	markers []Marker, // freshly-parsed markers (any zoom)
+	threshold int, // how many identical points constitute identity
+	dbType string, // "pgx" | "sqlite" | "genji" | …
 ) (string, error) {
 
 	if len(markers) == 0 {
@@ -630,4 +679,3 @@ func (db *Database) DetectExistingTrackID(
 	}
 	return "", nil // unique track — safe to create a new one
 }
-

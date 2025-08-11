@@ -14,14 +14,13 @@ type Marker struct {
 }
 
 type Data struct {
-	ID              string   `json:"id"`
-	Markers         []Marker `json:"markers"`
-	Title           string   `json:"title"`
+	ID      string   `json:"id"`
+	Markers []Marker `json:"markers"`
+	Title   string   `json:"title"`
 	// NEW — принимаем оба варианта имён
-	IsSievert       bool `json:"sv"`          // новое поле Radiacode-Android
-	IsSievertLegacy bool `json:"isSievert"`   // старые iOS-дампы
+	IsSievert       bool `json:"sv"`        // новое поле Radiacode-Android
+	IsSievertLegacy bool `json:"isSievert"` // старые iOS-дампы
 }
-
 
 // Bounds описывает прямоугольник (minLat,minLon) – (maxLat,maxLon).
 type Bounds struct {

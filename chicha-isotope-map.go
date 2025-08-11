@@ -20,7 +20,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 	"html"
 	"html/template"
-  "image/color"
+	"image/color"
 	"io"
 	"io/fs"
 	"io/ioutil"
@@ -41,7 +41,7 @@ import (
 
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/logger"
-  "chicha-isotope-map/pkg/qrlogoext"
+	"chicha-isotope-map/pkg/qrlogoext"
 )
 
 //go:embed public_html/*
@@ -476,6 +476,7 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 // Limits: speeds outside 0…1000 m/s (≈0…3600 km/h) are considered glitches
 //
 //	and ignored while calculating new values.
+//
 // calculateSpeedForMarkers recomputes Marker.Speed (m/s) for the whole slice,
 // ignoring any pre-filled speeds in the input and auto-normalizing timestamp
 // units (milliseconds vs seconds). We keep the function single-pass friendly
@@ -493,9 +494,9 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 // prefilled speeds and derive velocity from geodesic distance / Δt.
 //
 // Design notes (Go proverbs minded):
-//  - Simplicity: single pass with small helpers.
-//  - Determinism: slice is owned by caller; no locks, no shared state.
-//  - Robustness: auto-detect ms vs s by checking epoch magnitude.
+//   - Simplicity: single pass with small helpers.
+//   - Determinism: slice is owned by caller; no locks, no shared state.
+//   - Robustness: auto-detect ms vs s by checking epoch magnitude.
 //
 // Complexity: O(N).
 func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
@@ -1307,7 +1308,7 @@ func processGPXFile(
 	trackID string,
 	db *database.Database,
 	dbType string,
-) (database.Bounds, string,  error) {
+) (database.Bounds, string, error) {
 
 	logT(trackID, "GPX", "▶ start (stream)")
 
@@ -1407,9 +1408,9 @@ func processKMZFile(
 		if bbox.MaxLon > global.MaxLon {
 			global.MaxLon = bbox.MaxLon
 		}
-   
-    logT(trackID, "KMZ", "✔ done")
-    return global, trackID, nil
+
+		logT(trackID, "KMZ", "✔ done")
+		return global, trackID, nil
 
 	}
 
@@ -1528,10 +1529,10 @@ func processAtomFastFile(
 // concurrency.
 func processAndStoreMarkers(
 	markers []database.Marker,
-	initTrackID string,             // initially generated ID
+	initTrackID string, // initially generated ID
 	db *database.Database,
 	dbType string,
-) (database.Bounds,string, error) {
+) (database.Bounds, string, error) {
 
 	// ── step 0: bounding box (cheap) ────────────────────────────────
 	bbox := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
@@ -1617,7 +1618,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// глобальные границы всего набора файлов
 	global := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
 
-  
 	for _, fh := range files {
 		logT(trackID, "Upload", "file received: %s", fh.Filename)
 
@@ -1819,11 +1819,15 @@ func qrPngHandler(w http.ResponseWriter, r *http.Request) {
 			u = ref
 		} else {
 			scheme := "http"
-			if r.TLS != nil { scheme = "https" }
+			if r.TLS != nil {
+				scheme = "https"
+			}
 			u = scheme + "://" + r.Host + r.URL.RequestURI()
 		}
 	}
-	if len(u) > 4096 { u = u[:4096] }
+	if len(u) > 4096 {
+		u = u[:4096]
+	}
 
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
@@ -1837,11 +1841,11 @@ func qrPngHandler(w http.ResponseWriter, r *http.Request) {
 
 	opts := qrlogoext.Options{
 		TargetPx:    1500,
-		Fg:          color.RGBA{0, 0, 0, 255},          // чёрные модули
-		Bg:          color.RGBA{255, 255, 255, 255},    // БЕЛЫЙ фон
-		Logo:        color.RGBA{233, 192, 35, 255},        // ЖЕЛТЫЙ знак радиации
-		LogoBoxFrac: 0.32,   // большой центральный квадрат
-		LogoPadding: 16,     // отступ для картинки (если PNG вставляешь)
+		Fg:          color.RGBA{0, 0, 0, 255},       // чёрные модули
+		Bg:          color.RGBA{255, 255, 255, 255}, // БЕЛЫЙ фон
+		Logo:        color.RGBA{233, 192, 35, 255},  // ЖЕЛТЫЙ знак радиации
+		LogoBoxFrac: 0.32,                           // большой центральный квадрат
+		LogoPadding: 16,                             // отступ для картинки (если PNG вставляешь)
 	}
 
 	if err := qrlogoext.EncodePNG(w, []byte(u), logoBytes, opts); err != nil {
@@ -1977,7 +1981,7 @@ func main() {
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/trackid/", trackHandler)
-  http.HandleFunc("/qrpng", qrPngHandler)
+	http.HandleFunc("/qrpng", qrPngHandler)
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
 

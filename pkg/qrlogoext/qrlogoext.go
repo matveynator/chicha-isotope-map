@@ -38,18 +38,36 @@ type Options struct {
 
 func EncodePNG(w io.Writer, data []byte, logoPNG []byte, opt Options) error {
 	// ---- defaults
-	if opt.TargetPx <= 0 { opt.TargetPx = 1400 }
-	if opt.LogoPadding < 0 { opt.LogoPadding = 0 }
-	if opt.LogoBoxFrac <= 0 { opt.LogoBoxFrac = 0.32 }
-	if opt.LogoBoxFrac < 0.20 { opt.LogoBoxFrac = 0.20 }
-	if opt.LogoBoxFrac > 0.40 { opt.LogoBoxFrac = 0.40 }
-	if (opt.Fg == color.RGBA{}) { opt.Fg = color.RGBA{0, 0, 0, 255} }
-	if (opt.Bg == color.RGBA{}) { opt.Bg = color.RGBA{0xE6, 0xC1, 0x37, 0xFF} } // можно переопределить в хендлере
-	if (opt.Logo == color.RGBA{}) { opt.Logo = color.RGBA{0, 0, 0, 255} }
+	if opt.TargetPx <= 0 {
+		opt.TargetPx = 1400
+	}
+	if opt.LogoPadding < 0 {
+		opt.LogoPadding = 0
+	}
+	if opt.LogoBoxFrac <= 0 {
+		opt.LogoBoxFrac = 0.32
+	}
+	if opt.LogoBoxFrac < 0.20 {
+		opt.LogoBoxFrac = 0.20
+	}
+	if opt.LogoBoxFrac > 0.40 {
+		opt.LogoBoxFrac = 0.40
+	}
+	if (opt.Fg == color.RGBA{}) {
+		opt.Fg = color.RGBA{0, 0, 0, 255}
+	}
+	if (opt.Bg == color.RGBA{}) {
+		opt.Bg = color.RGBA{0xE6, 0xC1, 0x37, 0xFF}
+	} // можно переопределить в хендлере
+	if (opt.Logo == color.RGBA{}) {
+		opt.Logo = color.RGBA{0, 0, 0, 255}
+	}
 
 	// ---- build QR with ECC=H
 	qr, err := qrcode.New(string(data), qrcode.Highest)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	qr.ForegroundColor = opt.Fg
 	qr.BackgroundColor = opt.Bg
 	qr.DisableBorder = false
@@ -64,8 +82,12 @@ func EncodePNG(w io.Writer, data []byte, logoPNG []byte, opt Options) error {
 
 	// ---- central box
 	box := int(opt.LogoBoxFrac * float64(min(W, H)))
-	if box%2 == 1 { box-- }
-	if box < W/6 { box = W / 6 }
+	if box%2 == 1 {
+		box--
+	}
+	if box < W/6 {
+		box = W / 6
+	}
 	cx, cy := W/2, H/2
 	x0 := cx - box/2
 	y0 := cy - box/2
@@ -102,12 +124,12 @@ func drawRadiation(dst *image.RGBA, cx, cy, box int, col color.RGBA) {
 	half := box / 2
 
 	// Longer blades: extend nearly to the box (keep tiny gap).
-	rOuter  := int(0.96 * float64(half)) // раньше было ~0.86
-	rInner  := int(0.35 * float64(rOuter))
+	rOuter := int(0.96 * float64(half)) // раньше было ~0.86
+	rInner := int(0.35 * float64(rOuter))
 	rCenter := int(0.20 * float64(rOuter))
 
 	// Blades (three 60° wedges)
-	drawWedge(dst, cx, cy, rInner, rOuter, deg(90-30),  deg(90+30),  col)
+	drawWedge(dst, cx, cy, rInner, rOuter, deg(90-30), deg(90+30), col)
 	drawWedge(dst, cx, cy, rInner, rOuter, deg(210-30), deg(210+30), col)
 	drawWedge(dst, cx, cy, rInner, rOuter, deg(330-30), deg(330+30), col)
 
@@ -231,6 +253,15 @@ func drawWedge(img *image.RGBA, cx, cy, ri, ro int, a0, a1 float64, col color.RG
 	}
 }
 
-func min(a, b int) int { if a < b { return a }; return b }
-func max(a, b int) int { if a > b { return a }; return b }
-
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
