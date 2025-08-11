@@ -1,10 +1,12 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 // Database represents the interface for interacting with the database.
@@ -90,17 +92,176 @@ func NewDatabase(config Config) (*Database, error) {
 	}, nil
 }
 
-// InitSchema initializes/repairs the schema and creates all required indexes.
-// It is called on every start; each statement uses IF NOT EXISTS so it is safe
-// to run repeatedly across PostgreSQL (pgx), SQLite and Genji.
-// We avoid vendor-specific features (no PARTITIONs, no CONCURRENTLY, etc.)
-// and keep SQL portable for any database/sql driver.
-func (db *Database) InitSchema(config Config) error {
+// EnsureIndexesAsync builds non-critical indexes in background so that
+// HTTP listeners can start immediately. We use channels (no mutexes) and
+// a small worker pool. For SQLite/Genji we force single-worker to avoid
+// "database is locked". For PostgreSQL we allow low parallelism.
+// All statements use IF NOT EXISTS to avoid work when an index already exists.
+func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf func(string, ...any)) {
+	// --- logical block: prepare jobs (portable SQL only) ---
+	type idx struct {
+		name string // for logging only
+		sql  string // CREATE INDEX IF NOT EXISTS ...
+	}
+
+	// Note:
+	// - The unique key required for deduplication and ON CONFLICT is assumed
+	//   to be created synchronously in InitSchema. Here we build "heavy but optional" ones.
+	// - Keep SQL portable across engines (no CONCURRENTLY, no partial indexes).
+	indexes := desiredIndexesPortable(cfg.DBType)
+
+	// Choose worker count by engine. SQLite/Genji → 1 (writer lock); Postgres → 2.
+	workers := 1
+	switch strings.ToLower(cfg.DBType) {
+	case "pgx":
+		workers = 2
+	}
+
+	// --- logical block: channels for jobs and coordination ---
+	jobs := make(chan idx, len(indexes))  // bounded, small
+	done := make(chan struct{})           // closed when all workers exit
+	alive := make(chan struct{}, workers) // a token per worker (to count "alive" workers)
+
+	// feed jobs without blocking startup
+	go func() {
+		for _, it := range indexes {
+			jobs <- it
+		}
+		close(jobs)
+	}()
+
+	// worker function (as a goroutine) – pure channels, no mutex
+	worker := func(id int) {
+		alive <- struct{}{} // mark as alive
+		defer func() { <-alive }()
+
+		for it := range jobs {
+			start := time.Now()
+
+			// Progress pinger: prints every 5s while CREATE INDEX runs
+			ping := make(chan struct{})
+			go func(name string) {
+				t := time.NewTicker(5 * time.Second)
+				defer t.Stop()
+				for {
+					select {
+					case <-ping:
+						return
+					case <-ctx.Done():
+						return
+					case <-t.C:
+						logf("⚙️  building index %s… elapsed=%s (engine=%s). If this takes long: table is large or engine is locking writes.",
+							name, time.Since(start).Truncate(time.Second), cfg.DBType)
+					}
+				}
+			}(it.name)
+
+			logf("▶️  start index %s (worker #%d)", it.name, id)
+			// Important: ExecContext so we can cancel on shutdown
+			if _, err := db.DB.ExecContext(ctx, it.sql); err != nil {
+				close(ping)
+				logf("❌ index %s failed after %s: %v", it.name, time.Since(start).Truncate(time.Millisecond), err)
+				continue // keep other indexes going
+			}
+			close(ping)
+			logf("✅ index %s ready in %s", it.name, time.Since(start).Truncate(time.Millisecond))
+		}
+	}
+
+	// spawn limited workers
+	for i := 1; i <= workers; i++ {
+		go worker(i)
+	}
+
+	// closer: waits until all workers released their "alive" tokens
+	go func() {
+		// wait until all workers are gone (alive is empty)
+		for {
+			if len(alive) == 0 {
+				close(done)
+				return
+			}
+			select {
+			case <-ctx.Done():
+				// context canceled — just wait loop to drain
+				time.Sleep(100 * time.Millisecond)
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}()
+
+	// non-blocking return: we keep EnsureIndexesAsync running in its goroutines
+	// while listeners have already started. If you want to wait somewhere, read from `done`.
+	_ = done
+}
+
+// desiredIndexesPortable returns portable CREATE INDEX statements.
+// We keep SQL compatible with PostgreSQL (pgx), SQLite and Genji.
+func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
+	low := strings.ToLower(dbType)
+	var out []struct{ name, sql string }
+
+	switch low {
+	case "pgx":
+		// Table has a named UNIQUE constraint created synchronously in InitSchema
+		// (required for ON CONFLICT ON CONSTRAINT markers_unique).
+		out = []struct{ name, sql string }{
+			// Global map browsing: equality on zoom + range on lat/lon
+			{"idx_markers_zoom_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
+			// Single-track browsing: equality on trackID, zoom + bbox
+			{"idx_markers_trackid_zoom_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
+			// Filters often used
+			{"idx_markers_date", `CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_speed", `CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			// Identity probe for dedup/merge helpers
+			{"idx_markers_identity_probe",
+				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
+			// Helper
+			{"idx_markers_trackid", `CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+		}
+	case "sqlite", "genji":
+		// For SQLite/Genji the unique constraint is an index; create it here too.
+		out = []struct{ name, sql string }{
+			// Unique key for deduplication of inserts (safe: IF NOT EXISTS)
+			{"idx_markers_unique",
+				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
+			{"idx_markers_zoom_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
+			{"idx_markers_trackid_zoom_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
+			{"idx_markers_date", `CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_speed", `CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			{"idx_markers_identity_probe",
+				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
+			{"idx_markers_trackid", `CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+		}
+	default:
+		// Fallback: be conservative and use the same as SQLite
+		out = []struct{ name, sql string }{
+			{"idx_markers_unique",
+				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
+			{"idx_markers_zoom_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
+			{"idx_markers_trackid_zoom_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
+			{"idx_markers_date", `CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_speed", `CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			{"idx_markers_identity_probe",
+				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
+			{"idx_markers_trackid", `CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+		}
+	}
+	return out
+}
+
+// InitSchema creates minimal required schema synchronously so that
+// the app can accept traffic immediately. Heavy indexes are built
+// later by EnsureIndexesAsync in background.
+func (db *Database) InitSchema(cfg Config) error {
 	var schema string
-
-	switch config.DBType {
-
-	// ───────────────────────── PostgreSQL (pgx) ─────────────────────────
+	switch strings.ToLower(cfg.DBType) {
 	case "pgx":
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
@@ -113,32 +274,10 @@ CREATE TABLE IF NOT EXISTS markers (
   zoom       INTEGER,
   speed      DOUBLE PRECISION,
   trackID    TEXT,
-  -- named constraint is required for ON CONFLICT ON CONSTRAINT markers_unique
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
-);
-
--- Global map browsing: equality on zoom + range on lat/lon
-CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds
-  ON markers (zoom, lat, lon);
-
--- Single-track browsing: equality on trackID, zoom + bbox
-CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds
-  ON markers (trackID, zoom, lat, lon);
-
--- Frequently used filters (time & speed)
-CREATE INDEX IF NOT EXISTS idx_markers_date  ON markers (date);
-CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed);
-
--- Fast identity probe for DetectExistingTrackID (lat,lon,date,doseRate)
-CREATE INDEX IF NOT EXISTS idx_markers_identity_probe
-  ON markers (lat, lon, date, doseRate);
-
--- Simple helper
-CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
-`
-
-	// ───────────────────────────── SQLite ───────────────────────────────
-	case "sqlite":
+);`
+	case "sqlite", "genji":
+		// SQLite/Genji: unique key is an index (table constraints lack IF NOT EXISTS here)
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,67 +290,10 @@ CREATE TABLE IF NOT EXISTS markers (
   speed     REAL,
   trackID   TEXT
 );
-
--- Portable unique key for deduplication on INSERT OR IGNORE / ON CONFLICT
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
-  ON markers(doseRate,date,lon,lat,countRate,zoom,speed,trackID);
-
--- Global map browsing
-CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds
-  ON markers (zoom, lat, lon);
-
--- Single-track browsing (zoom must go before bbox)
-CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds
-  ON markers (trackID, zoom, lat, lon);
-
--- Filters
-CREATE INDEX IF NOT EXISTS idx_markers_date  ON markers (date);
-CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed);
-
--- Identity probe
-CREATE INDEX IF NOT EXISTS idx_markers_identity_probe
-  ON markers (lat, lon, date, doseRate);
-
--- Helper
-CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
-`
-
-	// ───────────────────────────── Genji ────────────────────────────────
-	case "genji":
-		// Genji SQL is SQLite-like, keep types generic and portable
-		schema = `
-CREATE TABLE IF NOT EXISTS markers (
-  id        INTEGER PRIMARY KEY,
-  doseRate  REAL,
-  date      INTEGER,
-  lon       REAL,
-  lat       REAL,
-  countRate REAL,
-  zoom      INTEGER,
-  speed     REAL,
-  trackID   TEXT
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
-  ON markers(doseRate,date,lon,lat,countRate,zoom,speed,trackID);
-
-CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds
-  ON markers (zoom, lat, lon);
-
-CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds
-  ON markers (trackID, zoom, lat, lon);
-
-CREATE INDEX IF NOT EXISTS idx_markers_date  ON markers (date);
-CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed);
-
-CREATE INDEX IF NOT EXISTS idx_markers_identity_probe
-  ON markers (lat, lon, date, doseRate);
-
-CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID);
-`
-
+  ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);`
 	default:
-		return fmt.Errorf("unsupported database type: %s", config.DBType)
+		return fmt.Errorf("unsupported database type: %s", cfg.DBType)
 	}
 
 	if _, err := db.DB.Exec(schema); err != nil {
