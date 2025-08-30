@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 )
@@ -191,6 +192,7 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 	low := strings.ToLower(dbType)
 	switch low {
+
 	case "pgx":
 		return []struct{ name, sql string }{
 			// 1) Composite first — these give the biggest win for map rendering
@@ -198,6 +200,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
 			{"idx_markers_trackid_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
+			// NEW: compound index including speed for single-BETWEEN plans
+			{"idx_markers_zoom_bounds_speed",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
 			{"idx_markers_identity_probe",
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
@@ -208,6 +213,7 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 		}
+
 	case "sqlite", "genji":
 		return []struct{ name, sql string }{
 			{"idx_markers_unique",
@@ -216,6 +222,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
 			{"idx_markers_trackid_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
+			// NEW
+			{"idx_markers_zoom_bounds_speed",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
 			{"idx_markers_identity_probe",
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
@@ -225,6 +234,7 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 		}
+
 	default:
 		// Fallback: same as SQLite
 		return []struct{ name, sql string }{
@@ -569,11 +579,14 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 // SpeedRange задаёт замкнутый диапазон [Min, Max] скорости.
 type SpeedRange struct{ Min, Max float64 }
 
-// GetMarkersByZoomBoundsSpeed — z/bounds/date/speed фильтр
+// GetMarkersByZoomBoundsSpeed — z/bounds/date/speed фильтр.
+// Мини-оптимизация: если несколько speedRanges образуют один непрерывный
+// интервал, склеиваем их в ОДИН "speed BETWEEN lo AND hi", чтобы планировщик
+// использовал составной индекс (zoom,lat,lon,speed).
 func (db *Database) GetMarkersByZoomBoundsSpeed(
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
-	dateFrom, dateTo int64, // ⏱️ NOVO
+	dateFrom, dateTo int64,
 	speedRanges []SpeedRange,
 	dbType string,
 ) ([]Marker, error) {
@@ -600,7 +613,7 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
 	args = append(args, minLon, maxLon)
 
-	// ---- фильтр по времени --------------------------------------
+	// ---- фильтр по времени (опционально) ------------------------
 	if dateFrom > 0 {
 		sb.WriteString(" AND date >= " + ph(len(args)+1))
 		args = append(args, dateFrom)
@@ -610,17 +623,23 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 		args = append(args, dateTo)
 	}
 
-	// ---- фильтр скоростей ---------------------------------------
+	// ---- скорость: склейка смежных диапазонов в один BETWEEN ----
 	if len(speedRanges) > 0 {
-		sb.WriteString(" AND (")
-		for i, r := range speedRanges {
-			if i > 0 {
-				sb.WriteString(" OR ")
+		if ok, lo, hi := mergeContinuousRanges(speedRanges); ok {
+			sb.WriteString(" AND speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+			args = append(args, lo, hi)
+		} else {
+			// Непрерывной склейки нет → оставляем OR-цепочку (старое поведение).
+			sb.WriteString(" AND (")
+			for i, r := range speedRanges {
+				if i > 0 {
+					sb.WriteString(" OR ")
+				}
+				sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+				args = append(args, r.Min, r.Max)
 			}
-			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
-			args = append(args, r.Min, r.Max)
+			sb.WriteString(")")
 		}
-		sb.WriteString(")")
 	}
 
 	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID
@@ -665,12 +684,13 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 // caller needs to merge several queries.
 //
 // It relies solely on the standard         database/sql     package.
-// ------------------------------------------------------------------
+// Та же оптимизация: склейка непрерывных speedRanges в один BETWEEN.
+
 func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	trackID string,
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
-	dateFrom, dateTo int64, // ⏱️ NOVO
+	dateFrom, dateTo int64,
 	speedRanges []SpeedRange,
 	dbType string,
 ) ([]Marker, error) {
@@ -709,15 +729,20 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	}
 
 	if len(speedRanges) > 0 {
-		sb.WriteString(" AND (")
-		for i, r := range speedRanges {
-			if i > 0 {
-				sb.WriteString(" OR ")
+		if ok, lo, hi := mergeContinuousRanges(speedRanges); ok {
+			sb.WriteString(" AND speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+			args = append(args, lo, hi)
+		} else {
+			sb.WriteString(" AND (")
+			for i, r := range speedRanges {
+				if i > 0 {
+					sb.WriteString(" OR ")
+				}
+				sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+				args = append(args, r.Min, r.Max)
 			}
-			sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
-			args = append(args, r.Min, r.Max)
+			sb.WriteString(")")
 		}
-		sb.WriteString(")")
 	}
 
 	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID
@@ -790,4 +815,38 @@ func (db *Database) DetectExistingTrackID(
 		}
 	}
 	return "", nil // unique track — safe to create a new one
+}
+
+// mergeContinuousRanges tries to collapse several [Min,Max] speed ranges
+// into a single continuous interval [lo,hi]. If there is any gap between
+// input ranges, returns ok=false and the caller must fall back to "(... OR ...)".
+//
+// Why:
+//   - A single "speed BETWEEN lo AND hi" helps the planner use a composite
+//     (zoom,lat,lon,speed) index;
+//   - The default UI state (car+ped) forms a continuous [0..70] interval,
+//     so most queries become index-friendly immediately.
+func mergeContinuousRanges(rr []SpeedRange) (ok bool, lo, hi float64) {
+	if len(rr) == 0 {
+		return false, 0, 0
+	}
+	// Work on a copy; keep caller's slice intact.
+	r := append([]SpeedRange(nil), rr...)
+	sort.Slice(r, func(i, j int) bool { return r[i].Min < r[j].Min })
+
+	lo, hi = r[0].Min, r[0].Max
+	for i := 1; i < len(r); i++ {
+		// "Adjacent or overlapping" counts as continuous.
+		// We allow tiny numeric jitter (eps) for floats.
+		const eps = 1e-9
+		if r[i].Min <= hi+eps {
+			if r[i].Max > hi {
+				hi = r[i].Max
+			}
+			continue
+		}
+		// Found a gap → cannot merge into a single interval.
+		return false, 0, 0
+	}
+	return true, lo, hi
 }
