@@ -342,6 +342,99 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
 	return nil
 }
 
+// InsertMarkersBulk inserts markers in batches using multi-row VALUES.
+// - Portable: only standard SQL and database/sql, no vendor extensions.
+// - Fast: far fewer statements, WAL and B-Tree updates coalesce better.
+// - Safe: still respects the unique key via ON CONFLICT DO NOTHING.
+//
+// Go-proverbs applied:
+//   - "A little copying is better than a little dependency" — we build SQL by hand.
+//   - "Don't communicate by sharing memory; share memory by communicating" — idGenerator via channel.
+//   - "Make the zero value useful" — batch<=0 falls back to 500.
+func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType string, batch int) error {
+	if len(markers) == 0 {
+		return nil
+	}
+	if batch <= 0 {
+		batch = 500
+	}
+
+	ph := func(n int) string {
+		if strings.EqualFold(dbType, "pgx") {
+			return fmt.Sprintf("$%d", n)
+		}
+		return "?"
+	}
+
+	i := 0
+	for i < len(markers) {
+		end := i + batch
+		if end > len(markers) {
+			end = len(markers)
+		}
+		chunk := markers[i:end]
+
+		var sb strings.Builder
+		args := make([]interface{}, 0, len(chunk)*9) // worst-case (SQLite needs id)
+
+		switch strings.ToLower(dbType) {
+		case "pgx":
+			// PostgreSQL: BIGSERIAL fills id, no id column in VALUES.
+			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID) VALUES ")
+			argn := 0
+			for j, m := range chunk {
+				if j > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("(")
+				for k := 0; k < 8; k++ {
+					if k > 0 {
+						sb.WriteString(",")
+					}
+					argn++
+					sb.WriteString(ph(argn))
+				}
+				sb.WriteString(")")
+				args = append(args, m.DoseRate, m.Date, m.Lon, m.Lat, m.CountRate, m.Zoom, m.Speed, m.TrackID)
+			}
+			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
+
+		default:
+			// SQLite / Genji: need explicit 'id' if we want to avoid PRIMARY KEY conflicts
+			// when multiple aggregated markers would default to 0.
+			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID) VALUES ")
+			argn := 0
+			for j, m := range chunk {
+				if j > 0 {
+					sb.WriteString(",")
+				}
+				// Ensure id is unique through our channel generator.
+				if m.ID == 0 {
+					m.ID = <-db.idGenerator
+					chunk[j].ID = m.ID
+				}
+				sb.WriteString("(")
+				for k := 0; k < 9; k++ {
+					if k > 0 {
+						sb.WriteString(",")
+					}
+					argn++
+					sb.WriteString(ph(argn))
+				}
+				sb.WriteString(")")
+				args = append(args, m.ID, m.DoseRate, m.Date, m.Lon, m.Lat, m.CountRate, m.Zoom, m.Speed, m.TrackID)
+			}
+			sb.WriteString(" ON CONFLICT DO NOTHING")
+		}
+
+		if _, err := tx.Exec(sb.String(), args...); err != nil {
+			return fmt.Errorf("bulk exec: %w", err)
+		}
+		i = end
+	}
+	return nil
+}
+
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
 //
 //   - PostgreSQL (pgx) – опираемся на BIGSERIAL, id не передаём;

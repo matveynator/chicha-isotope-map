@@ -455,6 +455,51 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 	return result
 }
 
+// pickIdentityProbe returns up to 'limit' evenly spaced, non-zero markers
+// to cheaply "probe" the DB for an existing track. This avoids thousands
+// of random point-lookups on huge tables.
+// • No mutexes: pure functional slice logic.
+// • Streaming friendly: does not allocate more than needed.
+func pickIdentityProbe(src []database.Marker, limit int) []database.Marker {
+	if limit <= 0 || len(src) == 0 {
+		return nil
+	}
+	// 1) filter out zero-dose points (they are common and uninformative)
+	tmp := make([]database.Marker, 0, min(len(src), limit*2))
+	for _, m := range src {
+		if m.DoseRate != 0 || m.CountRate != 0 {
+			tmp = append(tmp, m)
+		}
+	}
+	if len(tmp) == 0 {
+		// fall back to original src if everything was zero
+		tmp = src
+	}
+	// 2) take evenly spaced sample up to 'limit'
+	n := len(tmp)
+	if n <= limit {
+		out := make([]database.Marker, n)
+		copy(out, tmp)
+		return out
+	}
+	out := make([]database.Marker, 0, limit)
+	stride := n / limit
+	if stride <= 0 {
+		stride = 1
+	}
+	for i := 0; i < n && len(out) < limit; i += stride {
+		out = append(out, tmp[i])
+	}
+	return out
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // calculateSpeedForMarkers fills Marker.Speed (m/s) for **every** point.
 //
 // Algorithm
@@ -1518,15 +1563,14 @@ func processAtomFastFile(
 
 // processAndStoreMarkers is the common pipeline:
 // 0. bbox calculation             • O(N)
-// 1. (NEW) detect duplicate track • O(N·q) small, aborts early
+// 1. fast duplicate-track probe   • O(K·q), K ≪ N (early-exit)
 // 2. assign final TrackID         • O(N)
 // 3. basic filters                • O(N)
 // 4. speed calculation            • O(N)
 // 5. pre-compute 20 zoom levels   • O(N) parallel
-// 6. batch-insert into DB         • one transaction
+// 6. batch-insert into DB         • one transaction, multi-row VALUES
 //
-// The function never locks; channels and DB connection pooling take care of
-// concurrency.
+// Concurrency-friendly: no mutexes; DB/sql pool handles connection safety.
 func processAndStoreMarkers(
 	markers []database.Marker,
 	initTrackID string, // initially generated ID
@@ -1553,8 +1597,10 @@ func processAndStoreMarkers(
 
 	trackID := initTrackID
 
-	// ── step 1: NEW — duplicate-track detection ─────────────────────
-	if existing, err := db.DetectExistingTrackID(markers, 10, dbType); err != nil {
+	// ── step 1: fast probe instead of full-scan ─────────────────────
+	// Limit DB random lookups to a tiny sample (e.g. 128 points).
+	probe := pickIdentityProbe(markers, 128)
+	if existing, err := db.DetectExistingTrackID(probe, 10, dbType); err != nil {
 		return bbox, trackID, err
 	} else if existing != "" {
 		logT(trackID, "Store", "⚠ detected existing trackID %s — reusing", existing)
@@ -1582,16 +1628,15 @@ func processAndStoreMarkers(
 	allZoom := precomputeMarkersForAllZoomLevels(markers)
 	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoom))
 
-	// ── step 6: single transaction, conflict-free insert ────────────
+	// ── step 6: single transaction + multi-row VALUES ───────────────
 	tx, err := db.DB.Begin()
 	if err != nil {
 		return bbox, trackID, err
 	}
-	for _, m := range allZoom {
-		if err := db.SaveMarkerAtomic(tx, m, dbType); err != nil {
-			_ = tx.Rollback()
-			return bbox, trackID, fmt.Errorf("save: %w", err)
-		}
+	// Batch size 500–1000 usually gives a good balance on large B-Trees.
+	if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
+		_ = tx.Rollback()
+		return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return bbox, trackID, err
