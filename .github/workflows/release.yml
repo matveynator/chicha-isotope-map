@@ -116,42 +116,43 @@ jobs:
           image: debian:buster
           options: -v ${{ github.workspace }}:/work -w /work
           run: |
-            bash -lc '
-              set -euo pipefail
-              export DEBIAN_FRONTEND=noninteractive
+            # Безопасный heredoc: YAML не ломаем, bash получает скрипт из stdin
+            bash -eo pipefail -s <<'BASH'
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
 
-              # Переключаем apt на архивные репозитории buster
-              cat >/etc/apt/sources.list <<EOF
+            # Переключаем apt на архивные репозитории buster
+            cat >/etc/apt/sources.list <<'EOF'
 deb http://archive.debian.org/debian buster main contrib non-free
 deb http://archive.debian.org/debian-security buster/updates main contrib non-free
 EOF
-              printf "Acquire::Check-Valid-Until \\"false\\";\n" >/etc/apt/apt.conf.d/99archive
+            printf 'Acquire::Check-Valid-Until "false";\n' >/etc/apt/apt.conf.d/99archive
 
-              apt-get -o Acquire::Check-Valid-Until=false update
-              apt-get install -y --no-install-recommends ca-certificates curl build-essential git bash
+            apt-get -o Acquire::Check-Valid-Until=false update
+            apt-get install -y --no-install-recommends ca-certificates curl build-essential git bash
 
-              # Go 1.23
-              curl -fsSL https://go.dev/dl/go1.23.linux-amd64.tar.gz | tar -C /usr/local -xz
-              export PATH=/usr/local/go/bin:$PATH
-              go version
+            # Go 1.23
+            curl -fsSL https://go.dev/dl/go1.23.linux-amd64.tar.gz | tar -C /usr/local -xz
+            export PATH=/usr/local/go/bin:$PATH
+            go version
 
-              # Вытягиваем go-duckdb v2 (libduckdb будет вшита драйвером)
-              go get github.com/marcboeker/go-duckdb/v2@latest
-              go mod tidy
+            # Вытягиваем go-duckdb v2 (libduckdb вшивается драйвером)
+            go get github.com/marcboeker/go-duckdb/v2@latest
+            go mod tidy
 
-              # CGO + статически подлинковать libstdc++/libgcc (glibc остаётся динамической buster)
-              export GOOS=linux GOARCH=amd64
-              export CGO_ENABLED=1
-              export CC=gcc
-              export CXX=g++
-              export CGO_LDFLAGS="-static-libstdc++ -static-libgcc"
+            # CGO + статически подлинковать libstdc++/libgcc (glibc buster остаётся динамич.)
+            export GOOS=linux GOARCH=amd64
+            export CGO_ENABLED=1
+            export CC=gcc
+            export CXX=g++
+            export CGO_LDFLAGS='-static-libstdc++ -static-libgcc'
 
-              mkdir -p dist
-              TAGS="netgo,osusergo,duckdb"
-              go build -tags "$TAGS" \
-                       -ldflags "-s -w -X main.CompileVersion=${GITHUB_RUN_NUMBER}" \
-                       -o dist/chicha-isotope-map_linux_amd64_duckdb
-            '
+            mkdir -p dist
+            TAGS='netgo,osusergo,duckdb'
+            go build -tags "$TAGS" \
+                     -ldflags "-s -w -X main.CompileVersion=${GITHUB_RUN_NUMBER}" \
+                     -o dist/chicha-isotope-map_linux_amd64_duckdb
+            BASH
 
       # --- macOS нативно ---
       - name: Set up Go (macOS)
