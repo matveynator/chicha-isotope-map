@@ -19,7 +19,9 @@ jobs:
           # ---------- Linux ----------
           # amd64: CGO ON + DuckDB
           - { goos: linux,  goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", enable_cgo: true,  duckdb_tag: true }
-          # 386: без DuckDB
+
+            # arm64 и 386: без DuckDB
+          - { goos: linux,  goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04", enable_cgo: false,  duckdb_tag: false }
           - { goos: linux,  goarch: 386,   goversion: "1.23", runner: "ubuntu-24.04", enable_cgo: false, duckdb_tag: false }
 
           # ---------- macOS ----------
