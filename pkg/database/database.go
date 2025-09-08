@@ -42,15 +42,22 @@ type Config struct {
 	Port      int    // The port number (used in database file naming if needed)
 }
 
-// NewDatabase creates and initializes a new database connection.
+// NewDatabase opens DB and configures connection pooling.
+// For SQLite/Genji we force single-connection mode (no concurrent DB access).
 func NewDatabase(config Config) (*Database, error) {
 	var dsn string
 
-	switch config.DBType {
+	switch strings.ToLower(config.DBType) {
 	case "sqlite", "genji":
 		dsn = config.DBPath
 		if dsn == "" {
-			dsn = fmt.Sprintf("database-%d.%s", config.Port, config.DBType)
+			dsn = fmt.Sprintf("database-%d.%s", config.Port, strings.ToLower(config.DBType))
+		}
+	case "duckdb":
+		// файл создастся при первом открытии
+		dsn = config.DBPath
+		if dsn == "" {
+			dsn = fmt.Sprintf("database-%d.duckdb", config.Port)
 		}
 	case "pgx":
 		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
@@ -59,155 +66,165 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
 
-	db, err := sql.Open(config.DBType, dsn)
+	db, err := sql.Open(strings.ToLower(config.DBType), dsn)
 	if err != nil {
 		return nil, fmt.Errorf("error opening the database: %v", err)
 	}
 
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("error connecting to the database: %v", err)
+	// === CRITICAL: serialize SQLite/Genji access over a single underlying connection ===
+	switch strings.ToLower(config.DBType) {
+	case "sqlite", "genji":
+		// One physical connection; no concurrent statements at DB layer.
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+		// Never recycle the single connection (keeps it stable for the whole process).
+		db.SetConnMaxLifetime(0)
 	}
 
-	// Log the database type and location being used
-	log.Printf("Using database driver: %s with DSN: %s", config.DBType, dsn)
+	// Cheap liveness probe with timeout so we don't hang at startup
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("error connecting to the database: %v", err)
+		}
+	}
 
-	// Get the maximum current ID from the database
-	var maxID sql.NullInt64 // Variable to hold the max ID (nullable)
+	log.Printf("Using database driver: %s with DSN: %s", strings.ToLower(config.DBType), dsn)
 
-	// Query to find the maximum ID in the 'markers' table
+	// Bootstrap ID generator from current MAX(id); ignore error if table not created yet
+	var maxID sql.NullInt64
 	_ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxID)
-
-	// If a valid max ID is found, set initialID to maxID + 1
 	initialID := int64(1)
 	if maxID.Valid {
 		initialID = maxID.Int64 + 1
 	}
-
-	// Start the ID generator goroutine
 	idChannel := startIDGenerator(initialID)
 
-	// Return the Database struct with the idGenerator channel
 	return &Database{
 		DB:          db,
 		idGenerator: idChannel,
 	}, nil
 }
 
-// EnsureIndexesAsync builds non-critical indexes in background so that
-// HTTP listeners can start immediately. We use goroutines and channels
-// (no mutexes). To avoid engine-specific locks and name races:
-//
-// - PostgreSQL: single worker (heavy writes & name races), pre-check existence;
-// - SQLite/Genji: single worker (writer lock), pre-check existence.
-//
-// We log progress every 5s. If an index already exists (by pre-check or
-// concurrent creation), we skip and continue.
+// EnsureIndexesAsync builds non-critical indexes in background, politely.
+// - No pinned connections (important for sqlite/genji with MaxOpenConns(1)).
+// - No pre-checks: just CREATE INDEX IF NOT EXISTS.
+// - Retries with exponential backoff on "database is locked"/"SQLITE_BUSY".
 func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf func(string, ...any)) {
 	type idx struct{ name, sql string }
 
-	// Order matters: build the most beneficial composite indexes first.
 	indexes := desiredIndexesPortable(cfg.DBType)
+	if len(indexes) == 0 {
+		return
+	}
 
-	// Worker count: keep 1 for all engines to minimize lock contention and
-	// avoid concurrent name races on PostgreSQL.
-	workers := 1
+	// single worker: avoids DDL self-contention and keeps app responsive
+	worker := func() {
+		logf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", cfg.DBType)
 
-	// Channels: jobs + worker-liveness
-	jobs := make(chan idx, len(indexes))
-	alive := make(chan struct{}, workers)
-
-	// Feed jobs
-	go func() {
 		for _, it := range indexes {
-			jobs <- it
-		}
-		close(jobs)
-	}()
-
-	// Worker
-	worker := func(id int) {
-		alive <- struct{}{}
-		defer func() { <-alive }()
-
-		for it := range jobs {
-			// Pre-check: if index exists, skip (engine-specific catalog query).
-			exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
-			if err != nil {
-				logf("⚠️  index %s: existence check failed, will try to create anyway: %v", it.name, err)
-			} else if exists {
-				logf("⏭️  skip index %s: already exists", it.name)
-				continue
-			}
-
 			start := time.Now()
-			// Progress pinger
-			ping := make(chan struct{})
-			go func(name string) {
-				t := time.NewTicker(5 * time.Second)
-				defer t.Stop()
-				for {
-					select {
-					case <-ping:
-						return
-					case <-ctx.Done():
-						return
-					case <-t.C:
-						logf("⚙️  building index %s… elapsed=%s (engine=%s). If this takes long: table is large or engine is locking writes.",
-							name, time.Since(start).Truncate(time.Second), cfg.DBType)
-					}
-				}
-			}(it.name)
+			logf("▶️  start index %s", it.name)
 
-			logf("▶️  start index %s (worker #%d)", it.name, id)
-			if _, err := db.DB.ExecContext(ctx, it.sql); err != nil {
-				close(ping)
-				// Treat name race as "already exists" (PostgreSQL may raise 23505).
+			// polite retry loop for SQLite/Genji "busy"/locks; portable for others too
+			backoff := 50 * time.Millisecond
+			for {
+				// respect outer context: if cancelled — stop gracefully
+				select {
+				case <-ctx.Done():
+					logf("⏹️  stop index builder due to context cancel: %v", ctx.Err())
+					return
+				default:
+				}
+
+				_, err := db.DB.ExecContext(ctx, it.sql)
+				if err == nil {
+					logf("✅ index %s ready in %s", it.name, time.Since(start).Truncate(time.Millisecond))
+					break
+				}
+
 				msg := strings.ToLower(err.Error())
+				// treat "already exists" style as success (race, or double run)
 				if strings.Contains(msg, "already exists") ||
 					strings.Contains(msg, "duplicate key value") ||
 					strings.Contains(msg, "sqlstate 23505") {
-					logf("⏭️  index %s appears to exist (race). continue. detail: %v", it.name, err)
+					logf("⏭️  index %s appears to exist. continue.", it.name)
+					break
+				}
+
+				// busy/locked → backoff and retry
+				if strings.Contains(msg, "database is locked") ||
+					strings.Contains(msg, "sqlite_busy") ||
+					strings.Contains(msg, "resource busy") ||
+					strings.Contains(msg, "locked") {
+					// cap backoff to 1s, keep it gentle to not starve uploads
+					time.Sleep(backoff)
+					if backoff < time.Second {
+						backoff *= 2
+						if backoff > time.Second {
+							backoff = time.Second
+						}
+					}
 					continue
 				}
-				logf("❌ index %s failed after %s: %v",
-					it.name, time.Since(start).Truncate(time.Millisecond), err)
-				continue
+
+				// other errors: log and continue with next index
+				logf("❌ index %s failed after %s: %v", it.name, time.Since(start).Truncate(time.Millisecond), err)
+				break
 			}
-			close(ping)
-			logf("✅ index %s ready in %s", it.name, time.Since(start).Truncate(time.Millisecond))
 		}
 	}
 
-	// Spawn single worker (see reasoning above)
-	for i := 1; i <= workers; i++ {
-		go worker(i)
-	}
-
-	// Non-blocking: we don't wait here; listeners are already up.
+	// run in background
+	go worker()
 }
 
-// desiredIndexesPortable returns portable CREATE INDEX statements
-// for PostgreSQL (pgx), SQLite and Genji. We avoid engine-specific
-// syntax (no CONCURRENTLY, no partial indexes).
+// desiredIndexesPortable declares the set of indexes we want to have for each engine.
+// Keep SQL portable: only CREATE {UNIQUE} INDEX IF NOT EXISTS on plain columns.
+// We intentionally avoid engine-specific syntax and rely on background creation.
 func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 	low := strings.ToLower(dbType)
 	switch low {
 
 	case "pgx":
+		// PostgreSQL: primary composite indexes that accelerate map/bounds queries.
 		return []struct{ name, sql string }{
-			// 1) Composite first — these give the biggest win for map rendering
+			// 1) Composite first — biggest wins for rendering/bounds
 			{"idx_markers_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
 			{"idx_markers_trackid_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
-			// NEW: compound index including speed for single-BETWEEN plans
+			// Include speed for one-pass range plans
+			{"idx_markers_zoom_bounds_speed",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
+			// Probe for duplicates detection/identity by lat/lon/date/doseRate
+			{"idx_markers_identity_probe",
+				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
+			// 2) Selective singles
+			{"idx_markers_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			{"idx_markers_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_speed",
+				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+		}
+
+	case "duckdb":
+		// DuckDB: same useful composite/single indexes as for PostgreSQL.
+		// Do NOT create an extra UNIQUE index — we already have table-level UNIQUE constraint in schema.
+		return []struct{ name, sql string }{
+			{"idx_markers_zoom_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
+			{"idx_markers_trackid_zoom_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
 			{"idx_markers_zoom_bounds_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
 			{"idx_markers_identity_probe",
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
-			// 2) Heavy singles — build last to reduce startup impact
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
@@ -215,6 +232,7 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 		}
 
 	case "sqlite", "genji":
+		// SQLite/Genji: keep a UNIQUE index (no table-level UNIQUE constraint there).
 		return []struct{ name, sql string }{
 			{"idx_markers_unique",
 				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
@@ -222,7 +240,6 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
 			{"idx_markers_trackid_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
-			// NEW
 			{"idx_markers_zoom_bounds_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
 			{"idx_markers_identity_probe",
@@ -236,7 +253,7 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 		}
 
 	default:
-		// Fallback: same as SQLite
+		// Fallback: behave like SQLite/Genji (portable everywhere that supports IF NOT EXISTS).
 		return []struct{ name, sql string }{
 			{"idx_markers_unique",
 				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
@@ -244,6 +261,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
 			{"idx_markers_trackid_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
+			{"idx_markers_zoom_bounds_speed",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
 			{"idx_markers_identity_probe",
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
@@ -297,12 +316,14 @@ LIMIT 1`
 }
 
 // InitSchema creates minimal required schema synchronously so that
-// the app can accept traffic immediately. Heavy indexes are built
-// later by EnsureIndexesAsync in background.
+// the app can accept traffic immediately. Heavy indexes are built later
+// by EnsureIndexesAsync in background.
 func (db *Database) InitSchema(cfg Config) error {
 	var schema string
+
 	switch strings.ToLower(cfg.DBType) {
 	case "pgx":
+		// PostgreSQL — standard types, named UNIQUE to target by ON CONFLICT
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
   id         BIGSERIAL PRIMARY KEY,
@@ -316,22 +337,44 @@ CREATE TABLE IF NOT EXISTS markers (
   trackID    TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );`
+
 	case "sqlite", "genji":
-		// SQLite/Genji: unique key is an index (table constraints lack IF NOT EXISTS here)
+		// Portable SQLite/Genji side — explicit INTEGER PK
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  doseRate  REAL,
-  date      INTEGER,
-  lon       REAL,
-  lat       REAL,
-  countRate REAL,
-  zoom      INTEGER,
-  speed     REAL,
-  trackID   TEXT
+  id         INTEGER PRIMARY KEY,
+  doseRate   REAL,
+  date       BIGINT,
+  lon        REAL,
+  lat        REAL,
+  countRate  REAL,
+  zoom       INTEGER,
+  speed      REAL,
+  trackID    TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
   ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);`
+
+	case "duckdb":
+		// DuckDB — no SERIAL/AUTOINCREMENT; use a sequence + DEFAULT nextval(...).
+		// Both CREATE SEQUENCE IF NOT EXISTS and ON CONFLICT are supported.
+		// We also keep a named UNIQUE to match our upsert policy.
+		// Ref: DuckDB docs for sequences & ON CONFLICT.
+		schema = `
+CREATE SEQUENCE IF NOT EXISTS markers_id_seq START 1;
+CREATE TABLE IF NOT EXISTS markers (
+  id         BIGINT PRIMARY KEY DEFAULT nextval('markers_id_seq'),
+  doseRate   DOUBLE,
+  date       BIGINT,
+  lon        DOUBLE,
+  lat        DOUBLE,
+  countRate  DOUBLE,
+  zoom       INTEGER,
+  speed      DOUBLE,
+  trackID    TEXT,
+  CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
+);`
+
 	default:
 		return fmt.Errorf("unsupported database type: %s", cfg.DBType)
 	}

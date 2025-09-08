@@ -1,6 +1,7 @@
 *.genji
 *.sqlite
 *.sqlite-journal
+*.duckdb
 binaries
 chicha-isotope-map
 certs
