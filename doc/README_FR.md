@@ -240,9 +240,9 @@ Chicha‑Isotope‑Map n’est pas qu’un logiciel, c’est une fenêtre sur le
 
 ### 📸 **Démo**
 
-<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
+<a href="https://pelora.org" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
 
-<a href="https://jutsa.ru" target="_blank">Vous pouvez voir le programme à l’œuvre en temps réel ici.</a>
+<a href="https://pelora.org" target="_blank">Vous pouvez voir le programme à l’œuvre en temps réel ici.</a>
 
 ---
 
