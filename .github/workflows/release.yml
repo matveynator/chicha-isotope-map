@@ -17,25 +17,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ---------- Linux (CGO ON, DuckDB вшит статикой драйвера) ----------
-          - { goos: linux,  goarch: amd64, goversion: "1.23", runner: "ubuntu-latest",  enable_cgo: true,  use_zig: true }
-          - { goos: linux,  goarch: arm64, goversion: "1.23", runner: "ubuntu-latest",  enable_cgo: true,  use_zig: true }
+          # ---------- Linux (CGO ON + DuckDB tag) ----------
+          - { goos: linux,  goarch: amd64, goversion: "1.23", runner: "ubuntu-latest",  enable_cgo: true,  use_zig: true,  duckdb_tag: true }
+          - { goos: linux,  goarch: arm64, goversion: "1.23", runner: "ubuntu-latest",  enable_cgo: true,  use_zig: true,  duckdb_tag: true }
 
           # Доп. цель без CGO (32-bit) — без DuckDB
-          - { goos: linux,  goarch: 386,   goversion: "1.23", runner: "ubuntu-latest",  enable_cgo: false, use_zig: false }
+          - { goos: linux,  goarch: 386,   goversion: "1.23", runner: "ubuntu-latest",  enable_cgo: false, use_zig: false, duckdb_tag: false }
 
-          # ---------- macOS (CGO ON, DuckDB) ----------
-          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-13",      enable_cgo: true,  use_zig: false }
-          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14",      enable_cgo: true,  use_zig: false }
+          # ---------- macOS (CGO ON + DuckDB tag) ----------
+          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-13",      enable_cgo: true,  use_zig: false, duckdb_tag: true }
+          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14",      enable_cgo: true,  use_zig: false, duckdb_tag: true }
 
           # ---------- *BSD (CGO OFF, без DuckDB) ----------
-          - { goos: freebsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-latest", enable_cgo: false, use_zig: false }
-          - { goos: openbsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-latest", enable_cgo: false, use_zig: false }
-          - { goos: netbsd,  goarch: amd64, goversion: "1.23", runner: "ubuntu-latest", enable_cgo: false, use_zig: false }
+          - { goos: freebsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-latest", enable_cgo: false, use_zig: false, duckdb_tag: false }
+          - { goos: openbsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-latest", enable_cgo: false, use_zig: false, duckdb_tag: false }
+          - { goos: netbsd,  goarch: amd64, goversion: "1.23", runner: "ubuntu-latest", enable_cgo: false, use_zig: false, duckdb_tag: false }
 
-          # ---------- Windows (ВСЕГДА без DuckDB) ----------
-          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest", enable_cgo: false, use_zig: false }
-          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest", enable_cgo: false, use_zig: false }
+          # ---------- Windows (всегда без DuckDB) ----------
+          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest", enable_cgo: false, use_zig: false, duckdb_tag: false }
+          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest", enable_cgo: false, use_zig: false, duckdb_tag: false }
 
     steps:
       - name: Checkout
@@ -48,7 +48,7 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      # ===== Linux: ставим Zig (без apt-get), чтобы кросс-компилить CGO =====
+      # ===== Linux: Zig для CGO без apt-get =====
       - name: Setup Zig (for Linux CGO)
         if: matrix.use_zig
         uses: goto-bus-stop/setup-zig@v2
@@ -65,19 +65,19 @@ jobs:
         shell: pwsh
         run: go mod tidy
 
-      - name: Print toolchain versions (POSIX)
+      - name: Print toolchain (POSIX)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          echo "GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO=${{ matrix.enable_cgo }}"
+          echo "GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO=${{ matrix.enable_cgo }} TAG_DUCKDB=${{ matrix.duckdb_tag }}"
           go env
           if command -v zig >/dev/null 2>&1; then zig version || true; fi
 
-      - name: Print toolchain versions (Windows)
+      - name: Print toolchain (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Write-Host "GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO=${{ matrix.enable_cgo }}"
+          Write-Host "GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO=${{ matrix.enable_cgo }} TAG_DUCKDB=${{ matrix.duckdb_tag }}"
           go env
 
       - name: Build (POSIX)
@@ -89,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=${{ github.run_number }}
-          echo "Building version $VERSION for $GOOS/$GOARCH (Go ${{ matrix.goversion }})"
+          echo "Building version $VERSION for $GOOS/$GOARCH"
 
           # CGO toggle
           if [ "${{ matrix.enable_cgo }}" = "true" ]; then
@@ -98,7 +98,7 @@ jobs:
             export CGO_ENABLED=0
           fi
 
-          # For Linux CGO we use zig cc — без apt-get и кросс-пакетов
+          # Linux CGO через zig cc
           if [ "$GOOS" = "linux" ] && [ "$CGO_ENABLED" = "1" ]; then
             if [ "$GOARCH" = "amd64" ]; then
               export CC="zig cc -target x86_64-linux-gnu"
@@ -107,12 +107,18 @@ jobs:
             fi
           fi
 
+          # Теги сборки
+          TAGS="netgo,osusergo"
+          if [ "${{ matrix.duckdb_tag }}" = "true" ]; then
+            TAGS="$TAGS,duckdb"
+          fi
+
           mkdir -p dist
           BIN_NAME="chicha-isotope-map_${GOOS}_${GOARCH}"
           [ "$GOOS" = "windows" ] && BIN_NAME="${BIN_NAME}.exe"
 
           GOFLAGS="-trimpath -buildvcs=false" \
-          go build -tags netgo,osusergo \
+          go build -tags "$TAGS" \
                    -ldflags "-s -w -X main.CompileVersion=$VERSION" \
                    -o "dist/${BIN_NAME}"
 
@@ -125,15 +131,16 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $VERSION = "${{ github.run_number }}"
-          Write-Host "Building version $VERSION for $env:GOOS/$env:GOARCH (Go ${{ matrix.goversion }})"
+          Write-Host "Building version $VERSION for $env:GOOS/$env:GOARCH"
 
-          # Windows: всегда без CGO (DuckDB отключён)
+          # Windows: всегда без CGO и без DuckDB
           $env:CGO_ENABLED = "0"
+          $tags = "netgo,osusergo"
 
           New-Item -Force -ItemType Directory dist | Out-Null
           $bin = "chicha-isotope-map_${{ matrix.goos }}_${{ matrix.goarch }}.exe"
 
-          go build -tags "netgo,osusergo" `
+          go build -tags $tags `
                    -ldflags "-s -w -X main.CompileVersion=$VERSION" `
                    -o "dist/$bin"
 
@@ -161,3 +168,4 @@ jobs:
           name: "Latest Stable Release"
           prerelease: false
           files: dist-raw/**/*
+
