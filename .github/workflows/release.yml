@@ -116,30 +116,34 @@ jobs:
           image: debian:buster
           options: -v ${{ github.workspace }}:/work -w /work
           run: |
-            set -euo pipefail
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update
-            apt-get install -y --no-install-recommends ca-certificates curl build-essential git
-            curl -fsSL https://go.dev/dl/go1.23.linux-amd64.tar.gz | tar -C /usr/local -xz
-            export PATH=/usr/local/go/bin:$PATH
-            go version
+            bash -lc '
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
 
-            # deps
-            go get github.com/marcboeker/go-duckdb/v2@latest
-            go mod tidy
+              apt-get update
+              apt-get install -y --no-install-recommends ca-certificates curl build-essential git bash
 
-            # CGO + статическая libstdc++/libgcc
-            export GOOS=linux GOARCH=amd64
-            export CGO_ENABLED=1
-            export CC=gcc
-            export CXX=g++
-            export CGO_LDFLAGS="-static-libstdc++ -static-libgcc"
+              curl -fsSL https://go.dev/dl/go1.23.linux-amd64.tar.gz | tar -C /usr/local -xz
+              export PATH=/usr/local/go/bin:$PATH
+              go version
 
-            mkdir -p dist
-            TAGS="netgo,osusergo,duckdb"
-            go build -tags "$TAGS" \
-                     -ldflags "-s -w -X main.CompileVersion=${GITHUB_RUN_NUMBER}" \
-                     -o dist/chicha-isotope-map_linux_amd64_duckdb
+              # deps
+              go get github.com/marcboeker/go-duckdb/v2@latest
+              go mod tidy
+
+              # CGO + статическая libstdc++/libgcc
+              export GOOS=linux GOARCH=amd64
+              export CGO_ENABLED=1
+              export CC=gcc
+              export CXX=g++
+              export CGO_LDFLAGS="-static-libstdc++ -static-libgcc"
+
+              mkdir -p dist
+              TAGS="netgo,osusergo,duckdb"
+              go build -tags "$TAGS" \
+                       -ldflags "-s -w -X main.CompileVersion=${GITHUB_RUN_NUMBER}" \
+                       -o dist/chicha-isotope-map_linux_amd64_duckdb
+            '
 
       # --- macOS нативно ---
       - name: Set up Go (macOS)
@@ -166,7 +170,6 @@ jobs:
         run: |
           set -euo pipefail
           export CGO_ENABLED=1
-          # libduckdb статически вшивается драйвером; libc++ динамическая — это норма на macOS
           VERSION=${{ github.run_number }}
           mkdir -p dist
           BIN="chicha-isotope-map_${GOOS}_${GOARCH}_duckdb"
@@ -196,6 +199,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: latest
-          name: "Latest Stable Release"
+          name: "Latest stable release"
           prerelease: false
           files: dist-raw/**/*
+
