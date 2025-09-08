@@ -122,10 +122,8 @@ jobs:
             export DEBIAN_FRONTEND=noninteractive
 
             # Переключаем apt на архивные репозитории buster
-            cat >/etc/apt/sources.list <<'EOF'
-deb http://archive.debian.org/debian buster main contrib non-free
-deb http://archive.debian.org/debian-security buster/updates main contrib non-free
-EOF
+            printf 'deb http://archive.debian.org/debian buster main contrib non-free' > /etc/apt/sources.list
+            printf 'deb http://archive.debian.org/debian-security buster/updates main contrib non-free' >> /etc/apt/sources.list
             printf 'Acquire::Check-Valid-Until "false";\n' >/etc/apt/apt.conf.d/99archive
 
             apt-get -o Acquire::Check-Valid-Until=false update
