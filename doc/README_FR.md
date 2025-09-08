@@ -148,7 +148,7 @@ Si vous lancez directement le binaire `chicha-isotope-map`, voici l’essentiel.
 
 ### Stockage (si besoin)
 
-* `-db-type string` — pilote de BD : `duckdb`, `genji`, `sqlite`, `pgx` (PostgreSQL). Par défaut : `genji`.
+* `-db-type string` — pilote de BD : `duckdb`, `genji`, `sqlite`, `pgx` (PostgreSQL). Par défaut : `sqlite`.
 
 * `-db-path string` — chemin du fichier BD pour `duckdb`/`genji`/`sqlite` (si omis — répertoire courant).
 
