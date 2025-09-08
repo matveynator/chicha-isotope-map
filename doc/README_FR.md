@@ -7,6 +7,12 @@
 
 ---
 
+La page **DeepWiki** de *Chicha Isotope Map* a été réalisée avec bienveillance par [Rob Ouden](https://github.com/robouden) du projet **Safecast**, à qui nous exprimons notre profonde gratitude.  Elle révèle la structure intime du programme, permettant aux développeurs de comprendre ses fondations, de suivre sa logique et de continuer à l’améliorer.  Grâce à DeepWiki, ce code n’est pas figé : il devient un projet vivant, ouvert à l’évolution et à l’enrichissement collectif.  
+
+👉 [DeepWiki : Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
+
+---
+
 ## 🚀 Installation et nœud auto‑hébergé en 2 commandes
 
 Rien de superflu. L’image embarque déjà la base (PostgreSQL). Copiez la commande, lancez‑la — et c’est parti.
