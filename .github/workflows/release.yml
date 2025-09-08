@@ -1,4 +1,4 @@
-name: Build and Release Stable
+name: Latest stable release build
 
 on:
   push:
@@ -158,6 +158,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: latest
-          name: "Latest Stable Release"
+          name: "Latest stable release"
           prerelease: false
           files: dist-raw/**/*
