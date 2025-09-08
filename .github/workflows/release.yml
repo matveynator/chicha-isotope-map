@@ -1,4 +1,4 @@
-name: Latest stable release build
+name: Latest stable release
 
 on:
   push:
