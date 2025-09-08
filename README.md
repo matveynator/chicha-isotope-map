@@ -14,9 +14,7 @@
 
 ---
 
-The **DeepWiki** page for *Chicha Isotope Map* was kindly created by [Rob Ouden](https://github.com/robouden) from the **Safecast** project, to whom we are deeply grateful.  
-This page opens the inner structure of our program, so that developers may understand its foundations, follow its logic, and continue the work by improving and extending it.  
-Thanks to DeepWiki, the code is not just a tool, but a living project that can grow and evolve with the help of many hands.  
+The **DeepWiki** page for *Chicha Isotope Map* was kindly created by [Rob Ouden](https://github.com/robouden) from the **Safecast** project, to whom we are deeply grateful.  This page opens the inner structure of our program, so that developers may understand its foundations, follow its logic, and continue the work by improving and extending it.  Thanks to DeepWiki, the code is not just a tool, but a living project that can grow and evolve with the help of many hands.  
 
 👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
 
