@@ -156,9 +156,9 @@ If you’re launching the `chicha-isotope-map` binary directly, here’s what ma
 
 ### Storage (if you need it)
 
-* `-db-type string` — DB driver: `genji`, `sqlite`, `pgx` (PostgreSQL). Default is `genji`.
+* `-db-type string` — DB driver: `duckdb`, `genji`, `sqlite`, `pgx` (PostgreSQL). Default is `sqlite`.
 
-* `-db-path string` — DB file path for `genji`/`sqlite` (defaults to current directory if not set).
+* `-db-path string` — DB file path for `duckdb`/`genji`/`sqlite` (defaults to current directory if not set).
 
   * Example: `-db-type sqlite -db-path /var/lib/chicha/chicha.sqlite`
 
