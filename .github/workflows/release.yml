@@ -98,8 +98,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux/amd64: контейнер rockylinux:8 (glibc 2.28) без правки реп, работает из коробки
-          - { target: linux_amd64_duckdb, goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", in_container: true }
           # macOS amd64/arm64: нативно
           - { target: darwin_amd64_duckdb, goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-13", in_container: false }
           - { target: darwin_arm64_duckdb, goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14", in_container: false }
@@ -107,41 +105,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # --- Linux/amd64 в контейнере Rocky Linux 8 (glibc 2.28) ---
-      - name: Build linux/amd64 (duckdb) in Rocky Linux 8 container
-        if: matrix.in_container == true
-        uses: addnab/docker-run-action@v3
-        with:
-          image: rockylinux:8
-          options: -v ${{ github.workspace }}:/work -w /work
-          run: |
-            set -euo pipefail
-            # Инструменты
-            dnf -y install gcc gcc-c++ make git curl bash ca-certificates
-            update-ca-trust
-
-            # Go 1.23
-            curl -fsSL https://go.dev/dl/go1.23.linux-amd64.tar.gz | tar -C /usr/local -xz
-            export PATH=/usr/local/go/bin:$PATH
-            go version
-
-            # deps (вшитая libduckdb через go-duckdb/v2)
-            go get github.com/marcboeker/go-duckdb/v2@latest
-            go mod tidy
-
-            # CGO + статическая libstdc++/libgcc (glibc остаётся динамической 2.28)
-            export GOOS=linux GOARCH=amd64
-            export CGO_ENABLED=1
-            export CC=gcc
-            export CXX=g++
-            export CGO_LDFLAGS="-static-libstdc++ -static-libgcc"
-
-            mkdir -p dist
-            TAGS="netgo,osusergo,duckdb"
-            go build -tags "$TAGS" \
-                     -ldflags "-s -w -X main.CompileVersion=${GITHUB_RUN_NUMBER}" \
-                     -o dist/chicha-isotope-map_linux_amd64_duckdb
 
       # --- macOS нативно ---
       - name: Set up Go (macOS)
@@ -197,6 +160,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: latest
-          name: "Latest Stable Release"
+          name: "latest stable release"
           prerelease: false
           files: dist-raw/**/*
