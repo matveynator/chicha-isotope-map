@@ -8,6 +8,13 @@
 
 ---
 
+*Chicha Isotope Map* の **DeepWiki** ページは、**Safecast** プロジェクトの [Rob Ouden](https://github.com/robouden) さんによって心を込めて作られました。私たちはその貢献に深く感謝しています。  このページはプログラムの内部構造を明らかにし、開発者が基盤を理解し、その論理をたどり、さらに改良を重ねられるようにしています。  DeepWiki によって、このコードは単なる道具ではなく、多くの人の手で育ち続ける生きたプロジェクトとなります。  
+
+👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
+
+
+---
+
 ## 🚀 インストールと自前ノード：コマンド2つで完了
 
 余計なものは一切なし。イメージにデータベース（PostgreSQL）同梱。コマンドをコピーして実行すれば、すぐ使えます。
