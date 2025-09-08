@@ -16,25 +16,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ---------- Linux (CGO ON + DuckDB) ----------
-          - { goos: linux,  goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04",       enable_cgo: true,  duckdb_tag: true }
-          - { goos: linux,  goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04-arm64", enable_cgo: true,  duckdb_tag: true }
+          # ---------- Linux ----------
+          # amd64: CGO ON + DuckDB
+          - { goos: linux,  goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", enable_cgo: true,  duckdb_tag: true }
+          # 386: без DuckDB
+          - { goos: linux,  goarch: 386,   goversion: "1.23", runner: "ubuntu-24.04", enable_cgo: false, duckdb_tag: false }
 
-          # Доп. цель без CGO (32-bit) — без DuckDB
-          - { goos: linux,  goarch: 386,   goversion: "1.23", runner: "ubuntu-24.04",       enable_cgo: false, duckdb_tag: false }
+          # ---------- macOS ----------
+          # amd64 и arm64: CGO ON + DuckDB
+          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-13",     enable_cgo: true,  duckdb_tag: true }
+          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14",     enable_cgo: true,  duckdb_tag: true }
 
-          # ---------- macOS (CGO ON + DuckDB) ----------
-          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-13",            enable_cgo: true,  duckdb_tag: true }
-          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14",            enable_cgo: true,  duckdb_tag: true }
-
-          # ---------- *BSD (CGO OFF, без DuckDB) ----------
-          - { goos: freebsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04",       enable_cgo: false, duckdb_tag: false }
-          - { goos: openbsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04",       enable_cgo: false, duckdb_tag: false }
-          - { goos: netbsd,  goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04",       enable_cgo: false, duckdb_tag: false }
+          # ---------- *BSD (всегда без DuckDB) ----------
+          - { goos: freebsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", enable_cgo: false, duckdb_tag: false }
+          - { goos: openbsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", enable_cgo: false, duckdb_tag: false }
+          - { goos: netbsd,  goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", enable_cgo: false, duckdb_tag: false }
 
           # ---------- Windows (всегда без DuckDB) ----------
-          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest",     enable_cgo: false, duckdb_tag: false }
-          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest",     enable_cgo: false, duckdb_tag: false }
+          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest", enable_cgo: false, duckdb_tag: false }
+          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest", enable_cgo: false, duckdb_tag: false }
 
     steps:
       - name: Checkout
@@ -47,7 +47,6 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      # подтягиваем именно v2 драйвер
       - name: Sync deps (POSIX)
         if: runner.os != 'Windows'
         shell: bash
@@ -95,14 +94,13 @@ jobs:
             export CGO_ENABLED=0
           fi
 
-          # На Linux для C++ рантайма явно линкуем libstdc++
-          if [ "$GOOS" = "linux" ] && [ "$CGO_ENABLED" = "1" ]; then
+          # Linux/amd64 + CGO: явно линкуем libstdc++ (DuckDB тянет C++)
+          if [ "$GOOS" = "linux" ] && [ "$GOARCH" = "amd64" ] && [ "$CGO_ENABLED" = "1" ]; then
             export CC=gcc
             export CXX=g++
             export CGO_LDFLAGS="-lstdc++"
           fi
 
-          # Build tags
           TAGS="netgo,osusergo"
           if [ "${{ matrix.duckdb_tag }}" = "true" ]; then
             TAGS="$TAGS,duckdb"

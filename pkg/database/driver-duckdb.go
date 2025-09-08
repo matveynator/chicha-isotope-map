@@ -1,12 +1,10 @@
-//go:build cgo && duckdb && (linux || darwin) && (amd64 || arm64)
+//go:build cgo && duckdb && ((linux && amd64) || (darwin && (amd64 || arm64)))
 
-// We register the DuckDB driver for database/sql behind build tags.
-// This keeps the default builds CGO-free. Enable with: -tags duckdb
-// Notes:
-//   - DuckDB’s Go driver uses CGO to talk to the C/C++ engine.
-//   - Supported placeholders: "?" and "$1"… (we use "?").
-//   - ON CONFLICT DO NOTHING is supported in DuckDB.
-//
+// DuckDB driver is enabled ONLY on:
+//   - Linux/amd64
+//   - macOS/amd64, macOS/arm64
+// Requires build tag: -tags duckdb
+// Windows and Linux/arm64 are intentionally excluded.
 // Build example:
 //   CGO_ENABLED=1 go build -tags duckdb
 
