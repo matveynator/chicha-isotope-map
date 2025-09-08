@@ -235,7 +235,7 @@ Run with:
 ./chicha-isotope-map -db-type duckdb
 ```
 
-*(On macOS you may simply download the [prebuilt releases](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)*
+*(On macOS you may simply download the [prebuilt releases](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest))*
 
 
 ---
