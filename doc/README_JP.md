@@ -239,9 +239,9 @@ Chicha‑Isotope‑Map は単なるプログラムではありません。肉眼
 
 ### 📸 **デモ**
 
-<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
+<a href="https://pelora.org" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/8d806377-671f-47a0-b918-f2a9afd4123e" /></a>
 
-<a href="https://jutsa.ru" target="_blank">こちらで実際の動作をリアルタイムで確認できます。</a>
+<a href="https://pelora.org" target="_blank">こちらで実際の動作をリアルタイムで確認できます。</a>
 
 ---
 
