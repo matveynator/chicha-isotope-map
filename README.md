@@ -220,9 +220,10 @@ If you’re launching the `chicha-isotope-map` binary directly, here’s what ma
 
 ---
 
-## DuckDB  
+## DuckDB
 
-DuckDB is an embedded database: one file, no server, written in C++. The Go driver uses **CGO** and DuckDB **shared libraries**, so we have to build it every time with:
+DuckDB is an embedded database: one file, no server, written in C++.
+The Go driver depends on **CGO** and **shared libraries**, so we build it with:
 
 ```bash
 CGO_ENABLED=1 go build -tags duckdb
@@ -231,15 +232,11 @@ CGO_ENABLED=1 go build -tags duckdb
 Run with:
 
 ```bash
-./chicha-isotope-map -db-type duckdb -db-path /data.duckdb
+./chicha-isotope-map -db-type duckdb
 ```
 
-### DuckDB Platforms
+*(On macOS you may simply download the [prebuilt releases](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)*
 
-| Platform            | How to use                                            |
-| ------------------- | ----------------------------------------------------- |
-| Linux (amd64)       | Build from source with `CGO_ENABLED=1` and `-tags duckdb`                |
-| macOS (amd64/arm64) | Either build from source or download prebuilt stable release |
 
 ---
 
