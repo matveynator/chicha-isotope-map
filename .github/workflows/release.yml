@@ -98,7 +98,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux/amd64: собираем в Debian 10 контейнере (glibc 2.28) и линкуем -static-libstdc++ -static-libgcc
+          # Linux/amd64: Debian 10 (glibc 2.28) в контейнере + статическая libstdc++/libgcc
           - { target: linux_amd64_duckdb, goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", in_container: true }
           # macOS amd64/arm64: нативно
           - { target: darwin_amd64_duckdb, goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-13", in_container: false }
@@ -108,8 +108,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Linux/amd64 в контейнере Debian 10 (glibc 2.28) ---
-      - name: Build linux/amd64 (duckdb) in Debian 10 container
+      # --- Linux/amd64 в контейнере Debian 10 (glibc 2.28), архивные репы ---
+      - name: Build linux/amd64 (duckdb) in Debian 10 container (archive repos)
         if: matrix.in_container == true
         uses: addnab/docker-run-action@v3
         with:
@@ -120,18 +120,26 @@ jobs:
               set -euo pipefail
               export DEBIAN_FRONTEND=noninteractive
 
-              apt-get update
+              # Переключаем apt на архивные репозитории buster
+              cat >/etc/apt/sources.list <<EOF
+deb http://archive.debian.org/debian buster main contrib non-free
+deb http://archive.debian.org/debian-security buster/updates main contrib non-free
+EOF
+              printf "Acquire::Check-Valid-Until \\"false\\";\n" >/etc/apt/apt.conf.d/99archive
+
+              apt-get -o Acquire::Check-Valid-Until=false update
               apt-get install -y --no-install-recommends ca-certificates curl build-essential git bash
 
+              # Go 1.23
               curl -fsSL https://go.dev/dl/go1.23.linux-amd64.tar.gz | tar -C /usr/local -xz
               export PATH=/usr/local/go/bin:$PATH
               go version
 
-              # deps
+              # Вытягиваем go-duckdb v2 (libduckdb будет вшита драйвером)
               go get github.com/marcboeker/go-duckdb/v2@latest
               go mod tidy
 
-              # CGO + статическая libstdc++/libgcc
+              # CGO + статически подлинковать libstdc++/libgcc (glibc остаётся динамической buster)
               export GOOS=linux GOARCH=amd64
               export CGO_ENABLED=1
               export CC=gcc
