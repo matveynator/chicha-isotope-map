@@ -11,7 +11,7 @@
 
 ### 📸 **Live demo**
 
-<a href="https://pelora.org" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/6bb2a32e-d4ad-4b55-8b1a-8704ae5d02c8" /></a>
+<a href="https://pelora.org" target="_blank"><img width="800"  alt="pelora.org chicha-isotope-map example demo" src="https://github.com/user-attachments/assets/be706959-a2d5-4949-9378-811f4022aa98" /></a>
 
 
 ---
