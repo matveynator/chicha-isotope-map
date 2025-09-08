@@ -9,9 +9,19 @@
 
 ### 📸 **Live demo**
 
-<a href="https://jutsa.ru" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/6bb2a32e-d4ad-4b55-8b1a-8704ae5d02c8" /></a>
+<a href="https://pelora.org" target="_blank"><img width="1156" height="844" alt="Chicha Isotope Map" src="https://github.com/user-attachments/assets/6bb2a32e-d4ad-4b55-8b1a-8704ae5d02c8" /></a>
+
 
 ---
+
+Страницу **DeepWiki** для *Chicha Isotope Map* создал с большим вниманием [Rob Ouden](https://github.com/robouden) из проекта **Safecast**, и мы искренне благодарны ему за этот труд.  
+Эта страница раскрывает внутреннее устройство программы, чтобы разработчики могли понять её основание, уловить её логику и на этой основе продолжить работу — совершенствуя и расширяя проект.  
+Благодаря DeepWiki код становится не просто инструментом, но живым делом, которое может расти и развиваться усилиями многих.  
+
+👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
+
+---
+
 
 ## 🚀 Install & run your own node in 2 commands
 
