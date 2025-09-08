@@ -1,4 +1,4 @@
-//go:build cgo && duckdb && (linux || darwin || windows) && (amd64 || arm64)
+//go:build cgo && duckdb && (linux || darwin) && (amd64 || arm64)
 
 // We register the DuckDB driver for database/sql behind build tags.
 // This keeps the default builds CGO-free. Enable with: -tags duckdb
