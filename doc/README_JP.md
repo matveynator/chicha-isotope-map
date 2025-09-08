@@ -150,8 +150,8 @@ sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download
 
 ### ストレージ（必要な場合）
 
-* `-db-type string` — DB ドライバ：`genji`、`sqlite`、`pgx`（PostgreSQL）。既定は `genji`。
-* `-db-path string` — `genji`/`sqlite` 用の DB ファイルパス（未指定時はカレントディレクトリ）。
+* `-db-type string` — DB ドライバ：`duckdb`、`genji`、`sqlite`、`pgx`（PostgreSQL）。既定は `genji`。
+* `-db-path string` — `duckdb`/`genji`/`sqlite` 用の DB ファイルパス（未指定時はカレントディレクトリ）。
 
   * 例: `-db-type sqlite -db-path /var/lib/chicha/chicha.sqlite`
 * `-db-host string`, `-db-port int`（既定 5432）, `-db-name string`, `-db-user string`, `-db-pass string` — `pgx` 用の PostgreSQL 接続設定。
