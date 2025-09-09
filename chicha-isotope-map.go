@@ -1,4 +1,4 @@
-//async marker loading
+//new: stream markers
 
 package main
 
