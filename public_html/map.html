@@ -639,9 +639,21 @@ function getCurrentUrlParams() {
   var maxLat = bounds.getNorthEast().lat.toFixed(5);
   var maxLon = bounds.getNorthEast().lng.toFixed(5);
   var zoom = map.getZoom();
-
-  return `?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+  // Include speed and date filters so shared links preserve state
+  var st = loadSpeedFilterState();
+  var speeds = [];
+  if (st.ped) speeds.push('ped');
+  if (st.car) speeds.push('car');
+  if (st.plane) speeds.push('plane');
+  var dr = loadDateRangeState();
+  var df = '', dt = '';
+  if (dr && dr.length === 2) {
+    df = '&dateFrom=' + Math.floor(dr[0]);
+    dt = '&dateTo='   + Math.floor(dr[1]);
+  }
+  return `?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}&speeds=${speeds.join(',')}${df}${dt}`;
 }
+
     </script>
 
     <!-- Map initialization and markers -->
@@ -843,6 +855,7 @@ document.addEventListener('DOMContentLoaded', function () {
             state.ped   = div.querySelector('#sfPed').checked;
             saveSpeedFilterState(state);   // remember choice
             debounceUpdateMarkers();       // redraw with new filter
+            updateUrl();                // sync URL with speed filter
           });
         });
 
@@ -1061,6 +1074,7 @@ function createDateRangeSlider(){
       // remember "no filter" == full range of the viewport
       saveDateRangeState([rM.min, rM.max]);
       debounceUpdateMarkers();
+        updateUrl();                // update URL after reset
     }
   };
 
@@ -1115,6 +1129,7 @@ function createDateRangeSlider(){
       saveDateRangeState(monthSlider.noUiSlider.get().map(Number));
     }
     debounceUpdateMarkers();
+      updateUrl();                // sync URL with date filter
   }
 }
 
@@ -1277,6 +1292,24 @@ function setBaseLayer(layerName) {
 function loadMapFromUrl() {
   const params = new URLSearchParams(window.location.search);
 
+  // Restore speed filter from URL parameters so shared links keep the setting
+  if (params.has('speeds')) {
+    const state = { plane:false, car:false, ped:false };
+    params.get('speeds').split(',').forEach(tag => {
+      if (tag === 'plane') state.plane = true;
+      if (tag === 'car')   state.car   = true;
+      if (tag === 'ped')   state.ped   = true;
+    });
+    saveSpeedFilterState(state);
+  }
+
+  // Restore time range from URL if present
+  const df = parseInt(params.get('dateFrom'), 10);
+  const dt = parseInt(params.get('dateTo'), 10);
+  if (!isNaN(df) && !isNaN(dt)) {
+    saveDateRangeState([df, dt]);
+  }
+
   /* base layer from URL or default */
   const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
   setBaseLayer(layer);
@@ -1297,6 +1330,7 @@ function loadMapFromUrl() {
   }
 }
 
+
 function updateUrl() {
   var bounds = map.getBounds();
   var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
@@ -1305,11 +1339,22 @@ function updateUrl() {
   var maxLat = bounds.getNorthEast().lat.toFixed(5);
   var maxLon = bounds.getNorthEast().lng.toFixed(5);
   var zoom = map.getZoom();
-
-  var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
-
+  // Encode speed and time filters into the URL for sharing
+  var st = loadSpeedFilterState();
+  var speeds = [];
+  if (st.ped) speeds.push('ped');
+  if (st.car) speeds.push('car');
+  if (st.plane) speeds.push('plane');
+  var dr = loadDateRangeState();
+  var df = '', dt = '';
+  if (dr && dr.length === 2) {
+    df = '&dateFrom=' + Math.floor(dr[0]);
+    dt = '&dateTo='   + Math.floor(dr[1]);
+  }
+  var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}&speeds=${speeds.join(',')}${df}${dt}`;
   window.history.replaceState({}, '', newUrl);
 }
+
 
 function openServerPoster() {
   if (typeof updateUrl === 'function') { try { updateUrl(); } catch(_){} }
