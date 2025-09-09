@@ -7,7 +7,6 @@ import (
 
 // StreamMarkersByZoomAndBounds streams markers row by row through a channel.
 // It avoids loading large result sets into memory and stops when the context is done.
-// Markers are sorted by timestamp so the track is drawn from start to finish.
 func (db *Database) StreamMarkersByZoomAndBounds(ctx context.Context, zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) (<-chan Marker, <-chan error) {
 	out := make(chan Marker)
 	errCh := make(chan error, 1)
@@ -22,15 +21,13 @@ func (db *Database) StreamMarkersByZoomAndBounds(ctx context.Context, zoom int, 
 			query = `
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
                 FROM markers
-                WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5
-                ORDER BY date ASC;
+                WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
             `
 		default:
 			query = `
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
                 FROM markers
-                WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
-                ORDER BY date ASC;
+                WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
             `
 		}
 
