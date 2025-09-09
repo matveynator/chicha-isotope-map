@@ -27,6 +27,8 @@ body, html {
           --progress-color: #333333;
           --progress-bar-bg: #f4f4f4;
           --progress-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+          --control-bg: rgba(255, 255, 255, 0.25);
+          --control-bg-hover: rgba(255, 255, 255, 0.35);
         }
 
         @media (prefers-color-scheme: dark) {
@@ -36,6 +38,8 @@ body, html {
             --progress-color: #f4f4f4;
             --progress-bar-bg: #555555;
             --progress-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+            --control-bg: rgba(51, 51, 51, 0.25);
+            --control-bg-hover: rgba(51, 51, 51, 0.35);
           }
         }
 
@@ -65,7 +69,7 @@ body, html {
 
         /* Upload button styling */
         .upload-btn {
-          background-color: white;
+          background-color: var(--control-bg);
           border: 1px solid #ccc;
           border-radius: 4px;
           padding: 5px 10px;
@@ -135,7 +139,7 @@ body, html {
 
         /* Upload button hover effect */
         .upload-btn:hover {
-          background-color: #f4f4f4;
+          background-color: var(--control-bg-hover);
         }
 
         /* Container for geolocation button */
@@ -148,7 +152,7 @@ body, html {
 
         /* Geolocation button styling */
         .locate-btn {
-          background-color: white;
+          background-color: var(--control-bg);
           border: 1px solid #ccc;
           border-radius: 4px;
           padding: 5px 10px;
@@ -162,7 +166,7 @@ body, html {
 
         /* Geolocation button hover effect */
         .locate-btn:hover {
-          background-color: #f4f4f4;
+          background-color: var(--control-bg-hover);
         }
 
         /* GitHub link styling */
@@ -218,7 +222,7 @@ body, html {
         }
 
         .back-to-all-btn {
-          background-color: white;
+          background-color: var(--control-bg);
           border: 1px solid #ccc;
           border-radius: 4px;
           padding: 5px 10px;
@@ -228,7 +232,7 @@ body, html {
         }
 
         .back-to-all-btn:hover {
-          background-color: #f4f4f4;
+          background-color: var(--control-bg-hover);
         }
 
 
@@ -289,7 +293,7 @@ body, html {
         }
         .slider-toggle button{
           flex:1 1 0; padding:2px 4px;
-          border:1px solid #bbb; background:#f5f5f5;
+          border:1px solid #bbb; background: var(--control-bg);
           border-radius:3px; cursor:pointer;
         }
         .slider-toggle button.active{
@@ -317,11 +321,11 @@ body, html {
           padding:2px 4px;
           font-size:11px;
           border:1px solid #bbb;
-          background:#f5f5f5;
+          background: var(--control-bg);
           border-radius:3px;
           cursor:pointer;
         }
-        .slider-reset-btn:hover{ background:#eaeaea; }
+        .slider-reset-btn:hover{ background: var(--control-bg-hover); }
 
         .loading-overlay{
           position:absolute;
@@ -342,7 +346,7 @@ body, html {
 
         /* Compact QR button */
         .qr-btn {
-          background: #fff;
+          background: var(--control-bg);
           border: 1px solid #ccc;
           border-radius: 4px;
           width: 42px; height: 42px;
@@ -351,9 +355,23 @@ body, html {
           cursor: pointer;
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
-        .qr-btn:hover { background: #f5f5f5; }
+        .qr-btn:hover { background: var(--control-bg-hover); }
         .qr-btn svg { width: 22px; height: 22px; display: block; }
 
+
+                /* Leaflet controls use semi-transparent backgrounds */
+        .leaflet-control-layers,
+        .leaflet-control-layers-toggle,
+        .leaflet-control-layers-list,
+        .leaflet-control-layers-expanded,
+        .leaflet-bar a {
+          background-color: var(--control-bg);
+        }
+
+        .leaflet-control-layers-toggle:hover,
+        .leaflet-bar a:hover {
+          background-color: var(--control-bg-hover);
+        }
 
         /* Dark theme overrides */
         @media (prefers-color-scheme: dark) {
@@ -370,14 +388,14 @@ body, html {
           .slider-reset-btn, .slider-toggle button,
           .leaflet-control-layers, .leaflet-control-layers-toggle,
           .leaflet-control-layers-list, .leaflet-bar a {
-            background-color: #333;
+            background-color: var(--control-bg);
             border: 1px solid #555;
             color: #eee;
           }
           .upload-btn:hover, .locate-btn:hover, .back-to-all-btn:hover, .qr-btn:hover,
           .slider-reset-btn:hover, .leaflet-control-layers-toggle:hover,
           .leaflet-bar a:hover {
-            background-color: #444;
+            background-color: var(--control-bg-hover);
           }
           .leaflet-control-layers label { color: #eee; }
           .program-info { color: #ccc; }
@@ -389,8 +407,6 @@ body, html {
         .leaflet-control-layers,
         .leaflet-control-layers-expanded,
         .leaflet-control-layers-list {
-          background: none;
-          border: none;
           box-shadow: none;
         }
 
