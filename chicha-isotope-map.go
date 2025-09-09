@@ -2004,9 +2004,18 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	minLon, _ := strconv.ParseFloat(q.Get("minLon"), 64)
 	maxLat, _ := strconv.ParseFloat(q.Get("maxLat"), 64)
 	maxLon, _ := strconv.ParseFloat(q.Get("maxLon"), 64)
-
+	trackID := q.Get("trackID")
+	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
-	src, errCh := db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+	var (
+		src   <-chan database.Marker
+		errCh <-chan error
+	)
+	if trackID != "" {
+		src, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+	} else {
+		src, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+	}
 	agg := aggregateMarkers(ctx, src, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
