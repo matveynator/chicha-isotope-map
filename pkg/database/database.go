@@ -181,9 +181,10 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 	go worker()
 }
 
-// desiredIndexesPortable declares the set of indexes we want to have for each engine.
-// Keep SQL portable: only CREATE {UNIQUE} INDEX IF NOT EXISTS on plain columns.
-// We intentionally avoid engine-specific syntax and rely on background creation.
+// desiredIndexesPortable declares the set of non-essential indexes for each engine.
+// The index on `date` is created synchronously in InitSchema, so it is omitted here.
+// We keep SQL portable: only CREATE {UNIQUE} INDEX IF NOT EXISTS on plain columns
+// and avoid engine-specific syntax, building them later in background.
 func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 	low := strings.ToLower(dbType)
 	switch low {
@@ -205,8 +206,6 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// 2) Selective singles
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
-			{"idx_markers_date",
-				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 		}
@@ -225,8 +224,6 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
-			{"idx_markers_date",
-				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 		}
@@ -246,8 +243,6 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
-			{"idx_markers_date",
-				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 		}
@@ -267,8 +262,6 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
-			{"idx_markers_date",
-				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 		}
@@ -323,7 +316,8 @@ func (db *Database) InitSchema(cfg Config) error {
 
 	switch strings.ToLower(cfg.DBType) {
 	case "pgx":
-		// PostgreSQL — standard types, named UNIQUE to target by ON CONFLICT
+		// PostgreSQL — standard types, named UNIQUE to target by ON CONFLICT.
+		// We also create an index on date so ORDER BY clauses stream efficiently.
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
   id         BIGSERIAL PRIMARY KEY,
@@ -336,10 +330,11 @@ CREATE TABLE IF NOT EXISTS markers (
   speed      DOUBLE PRECISION,
   trackID    TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
-);`
+);
+CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date);`
 
 	case "sqlite", "genji":
-		// Portable SQLite/Genji side — explicit INTEGER PK
+		// Portable SQLite/Genji side — explicit INTEGER PK and supporting date index.
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
   id         INTEGER PRIMARY KEY,
@@ -353,13 +348,12 @@ CREATE TABLE IF NOT EXISTS markers (
   trackID    TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
-  ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);`
+  ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
+CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date);`
 
 	case "duckdb":
 		// DuckDB — no SERIAL/AUTOINCREMENT; use a sequence + DEFAULT nextval(...).
-		// Both CREATE SEQUENCE IF NOT EXISTS and ON CONFLICT are supported.
-		// We also keep a named UNIQUE to match our upsert policy.
-		// Ref: DuckDB docs for sequences & ON CONFLICT.
+		// We keep a named UNIQUE to match our upsert policy and index date for streaming.
 		schema = `
 CREATE SEQUENCE IF NOT EXISTS markers_id_seq START 1;
 CREATE TABLE IF NOT EXISTS markers (
@@ -373,7 +367,8 @@ CREATE TABLE IF NOT EXISTS markers (
   speed      DOUBLE,
   trackID    TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
-);`
+);
+CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date);`
 
 	default:
 		return fmt.Errorf("unsupported database type: %s", cfg.DBType)
@@ -571,6 +566,7 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 }
 
 // GetMarkersByTrackID retrieves markers filtered by trackID.
+// Results are ordered by timestamp to preserve the track direction.
 func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker, error) {
 	var query string
 
@@ -578,16 +574,18 @@ func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker
 	switch dbType {
 	case "pgx":
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = $1;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                FROM markers
+                WHERE trackID = $1
+                ORDER BY date ASC;
+                `
 	default:
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = ?;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                FROM markers
+                WHERE trackID = ?
+                ORDER BY date ASC;
+                `
 	}
 
 	// Execute the query
@@ -618,6 +616,7 @@ func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker
 }
 
 // GetMarkersByTrackIDAndBounds retrieves markers filtered by trackID and geographical bounds.
+// Markers are ordered by timestamp to render the track sequentially.
 func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
 	var query string
 
@@ -625,16 +624,18 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 	switch dbType {
 	case "pgx":
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                FROM markers
+                WHERE trackID = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5
+                ORDER BY date ASC;
+                `
 	default:
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                FROM markers
+                WHERE trackID = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+                ORDER BY date ASC;
+                `
 	}
 
 	// Execute the query
@@ -665,7 +666,8 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 	return markers, nil
 }
 
-// GetMarkersByTrackIDZoomAndBounds исправленный вариант
+// GetMarkersByTrackIDZoomAndBounds returns markers for a track within bounds at a given zoom.
+// Sorting by timestamp keeps the visual trace in chronological order.
 func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 	trackID string,
 	zoom int,
@@ -682,7 +684,8 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
         WHERE  trackID = $1
           AND  zoom     = $2
           AND  lat BETWEEN $3 AND $4
-          AND  lon BETWEEN $5 AND $6;`
+          AND  lon BETWEEN $5 AND $6
+        ORDER BY date ASC;`
 	default: // SQLite / Genji
 		query = `
         SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
@@ -690,7 +693,8 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
         WHERE  trackID = ?
           AND  zoom     = ?
           AND  lat BETWEEN ? AND ?
-          AND  lon BETWEEN ? AND ?;`
+          AND  lon BETWEEN ? AND ?
+        ORDER BY date ASC;`
 	}
 
 	rows, err := db.DB.Query(query,
