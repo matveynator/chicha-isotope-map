@@ -333,28 +333,6 @@ body, html {
         .qr-btn svg { width: 22px; height: 22px; display: block; }
 
 
-        /* Dark theme overrides */
-        @media (prefers-color-scheme: dark) {
-          body, html {
-            background-color: #000;
-            color: #ddd;
-          }
-          .custom-tooltip {
-            background-color: #333;
-            color: #ddd;
-          }
-          .upload-btn, .locate-btn, .back-to-all-btn, .qr-btn, .slider-reset-btn, .slider-toggle button {
-            background-color: #333;
-            border: 1px solid #555;
-            color: #eee;
-          }
-          .upload-btn:hover, .locate-btn:hover, .back-to-all-btn:hover, .qr-btn:hover, .slider-reset-btn:hover {
-            background-color: #444;
-          }
-          .program-info { color: #ccc; }
-          .program-info a { color: #90caf9; }
-        }
-
     </style>
 
     <!-- Скрипт переводов -->
@@ -665,26 +643,15 @@ document.addEventListener('DOMContentLoaded', function () {
     var backBox = document.querySelector('.back-to-all-container');
     if (backBox) backBox.style.display = 'block';
   }
-  // Инициализация слоёв карты с автоматическим выбором темы
-  const media = window.matchMedia('(prefers-color-scheme: dark)');
-  const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-  const osmDark  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-  const googleLight = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-  const googleDark  = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-
-  osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
+  // Инициализация слоёв карты
+  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; OpenStreetMap contributors'
   });
 
-  googleSatellite = L.tileLayer(media.matches ? googleDark : googleLight, {
+  googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
     maxZoom: 20,
     attribution: '&copy; Google'
-  });
-
-  media.addEventListener('change', e => {
-    osmLayer.setUrl(e.matches ? osmDark : osmLight);
-    googleSatellite.setUrl(e.matches ? googleDark : googleLight);
   });
 
   // сразу после создания osmLayer и googleSatellite
