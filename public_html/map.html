@@ -343,14 +343,21 @@ body, html {
             background-color: #333;
             color: #ddd;
           }
-          .upload-btn, .locate-btn, .back-to-all-btn, .qr-btn, .slider-reset-btn, .slider-toggle button {
+          /* Make all controls dark in dark theme */
+          .upload-btn, .locate-btn, .back-to-all-btn, .qr-btn,
+          .slider-reset-btn, .slider-toggle button,
+          .leaflet-control-layers, .leaflet-control-layers-toggle,
+          .leaflet-control-layers-list, .leaflet-bar a {
             background-color: #333;
             border: 1px solid #555;
             color: #eee;
           }
-          .upload-btn:hover, .locate-btn:hover, .back-to-all-btn:hover, .qr-btn:hover, .slider-reset-btn:hover {
+          .upload-btn:hover, .locate-btn:hover, .back-to-all-btn:hover, .qr-btn:hover,
+          .slider-reset-btn:hover, .leaflet-control-layers-toggle:hover,
+          .leaflet-bar a:hover {
             background-color: #444;
           }
+          .leaflet-control-layers label { color: #eee; }
           .program-info { color: #ccc; }
           .program-info a { color: #90caf9; }
         }
@@ -669,22 +676,23 @@ document.addEventListener('DOMContentLoaded', function () {
   const media = window.matchMedia('(prefers-color-scheme: dark)');
   const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   const osmDark  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-  const googleLight = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-  const googleDark  = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+  // Google tiles always use satellite imagery for consistent look
+  const googleSat   = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
 
   osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
     maxZoom: 18,
     attribution: '&copy; OpenStreetMap contributors'
   });
 
-  googleSatellite = L.tileLayer(media.matches ? googleDark : googleLight, {
+  // Use the same satellite layer regardless of theme
+  googleSatellite = L.tileLayer(googleSat, {
     maxZoom: 20,
     attribution: '&copy; Google'
   });
 
   media.addEventListener('change', e => {
     osmLayer.setUrl(e.matches ? osmDark : osmLight);
-    googleSatellite.setUrl(e.matches ? googleDark : googleLight);
+    // Google layer remains unchanged to keep satellite imagery
   });
 
   // сразу после создания osmLayer и googleSatellite
