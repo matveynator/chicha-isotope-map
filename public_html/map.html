@@ -207,10 +207,11 @@ body, html {
           opacity: 1;
         }
 
-        /* "Back to all tracks" button */
+        /* "Back to all tracks" button container.
+           Positioned below the QR button to prevent overlap. */
         .back-to-all-container {
           position: absolute;
-          top: 120px;
+          top: 170px; /* place under geolocation+QR stack */
           right: 20px;
           z-index: 1000;
           display: none;
