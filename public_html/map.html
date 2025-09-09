@@ -1,33 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <!-- Установка метаданных и подключение CSS -->
+    <!-- Set metadata and link CSS -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{translate "title"}}</title>
 
-    <!-- Подключение CSS Leaflet -->
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="/static/leaflet.css">
     <link rel="stylesheet" href="/static/nouislider.min.css">
 
 
     <style>
-/* Общие стили */
+/* General styles */
 body, html {
   margin: 0;
   padding: 0;
   height: 100%;
-  overflow: hidden; /* Убираем полосы прокрутки */
+  overflow: hidden; /* Hide scrollbars */
 }
 
-        /* Контейнер карты */
+        /* Map container */
         #map {
-          height: 100vh; /* Высота карты на весь экран */
+          height: 100vh; /* Map takes full viewport height */
           margin: 0;
           overflow: hidden;
         }
 
-        /* Стили для пользовательской подсказки (tooltip) */
+        /* Custom tooltip styles */
         .custom-tooltip {
           background-color: white;
           border-radius: 5px;
@@ -36,7 +36,7 @@ body, html {
           box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
         }
 
-        /* Контейнер для кнопки загрузки файлов */
+        /* Container for upload button */
         .upload-btn-container {
           position: absolute;
           top: 20px;
@@ -44,7 +44,7 @@ body, html {
           z-index: 1000;
         }
 
-        /* Стили для кнопки загрузки файлов */
+        /* Upload button styling */
         .upload-btn {
           background-color: white;
           border: 1px solid #ccc;
@@ -55,7 +55,7 @@ body, html {
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
 
-        /* Оверлей для загрузки файлов */
+        /* File upload overlay */
         #fileOverlay {
           position: fixed;
           top: 0;
@@ -69,7 +69,7 @@ body, html {
           align-items: center;
         }
 
-        /* Контейнер прогресса загрузки файлов */
+        /* Upload progress container */
         #fileProgressContainer {
           background-color: white;
           padding: 20px;
@@ -79,7 +79,7 @@ body, html {
           box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
         }
 
-        /* Индивидуальный прогресс загрузки файла */
+        /* Individual file upload progress */
         .file-progress {
           margin-bottom: 15px;
         }
@@ -89,7 +89,7 @@ body, html {
           margin-bottom: 5px;
         }
 
-        /* Прогресс-бар */
+        /* Progress bar */
         .progress-bar {
           width: 100%;
           height: 10px;
@@ -104,19 +104,19 @@ body, html {
           width: 0%;
         }
 
-        /* Индикатор обработки на сервере */
+        /* Server processing indicator */
         .server-processing {
           margin-left: 10px;
           font-size: 14px;
           color: #ff9800;
         }
 
-        /* Эффект наведения для кнопки загрузки */
+        /* Upload button hover effect */
         .upload-btn:hover {
           background-color: #f4f4f4;
         }
 
-        /* Контейнер для кнопки геолокации */
+        /* Container for geolocation button */
         .locate-btn-container {
           position: absolute;
           top: 60px;
@@ -124,7 +124,7 @@ body, html {
           z-index: 1000;
         }
 
-        /* Стили для кнопки геолокации */
+        /* Geolocation button styling */
         .locate-btn {
           background-color: white;
           border: 1px solid #ccc;
@@ -138,12 +138,12 @@ body, html {
           justify-content: center;
         }
 
-        /* Эффект наведения для кнопки геолокации */
+        /* Geolocation button hover effect */
         .locate-btn:hover {
           background-color: #f4f4f4;
         }
 
-        /* Стили для ссылки на GitHub */
+        /* GitHub link styling */
         .github-link {
           position: absolute;
           bottom: 20px;
@@ -161,7 +161,7 @@ body, html {
           opacity: 1;
         }
 
-        /* Информация о программе */
+        /* Program info */
         .program-info {
           position: absolute;
           bottom: 20px;
@@ -185,7 +185,7 @@ body, html {
           opacity: 1;
         }
 
-        /* Кнопка "Вернуться ко всем трекам" */
+        /* "Back to all tracks" button */
         .back-to-all-container {
           position: absolute;
           top: 120px;
@@ -215,40 +215,39 @@ body, html {
           width: 50px;
         }
 
-        /* 0) базовая геометрия контейнера: буфер = 8 px
-           (размер ручки / 2)  => ручка при крайних значениях
-        НЕ выходит за пределы оси                       */
+        /* 0) Basic slider container geometry: buffer = 8px
+           (half handle size) so handles never exceed the rail */
         #dateSlider{
-          width:6px;                 /* толщина оси             */
-          height:130px;              /* фактическая длина трека */
-          padding:0px 0;             /* ↑ внутр. отступ сверху/снизу */
-          box-sizing:content-box;    /* важен для padding-внутри */
+          width:6px;                 /* rail thickness */
+          height:130px;              /* actual track length */
+          padding:0px 0;             /* inner top/bottom padding */
+          box-sizing:content-box;    /* ensures padding works */
           margin:16px auto 26px;
         }
 
-        /* 1) сама ось (серая)  */
+        /* 1) grey slider rail */
         #dateSlider .noUi-base{
           background:#bfbfbf;
-          width:100%;                /* 6 px ширина               */
-          height:100%;               /* 130 px – 2 × 8 px padding */
+          width:100%;                /* 6px width */
+          height:100%;               /* 130px minus padding */
         }
 
-        /* 2) цветная часть ТОЛЬКО между ручками */
+        /* 2) colored section only between handles */
         #dateSlider .noUi-connect{
-          background:#1e88e5;        /* ваш фирменный/любой цвет */
+          background:#1e88e5;        /* pick your brand color */
         }
 
         .noUi-vertical .noUi-handle{
           width:32px;
           height:20px;
-          left:-18px;              /* центрируем по 6-px оси */
+          left:-18px;              /* center on 6px rail */
           border-radius:3px;
-          background:#f6f6f6;      /* светлая ручка */
-          border:1px solid #ccc;   /* серая обводка */
+          background:#f6f6f6;      /* light handle */
+          border:1px solid #ccc;   /* grey outline */
           box-shadow:0 1px 3px rgba(0,0,0,.25);
           cursor:grab;
         }
-        /* 4) убираем «усики»-псевдоэлементы */
+        /* 4) remove pseudo-element tails */
         .noUi-handle:before,
         .noUi-handle:after{ display:none; }
 
@@ -260,7 +259,7 @@ body, html {
           text-align:center; 
         }
 
-        /* ───── переключатель “Год / Месяц” ───── */
+        /* ───── Year / Month toggle ───── */
         .slider-toggle{
           display:flex; gap:2px; margin:2px 0 4px;
           font-size:11px; line-height:1; user-select:none;
@@ -274,16 +273,16 @@ body, html {
           background:#1e88e5; color:#fff; border-color:#1e88e5;
         }
 
-        /* ─── Year-mode: делаем ползунок такого же роста, как месячный ─── */
+        /* ─── Year mode: slider height matches month slider ─── */
         #yearSlider{
-          /* копия параметров из #dateSlider */
-          width:6px;                 /* толщина оси            */
-          height:130px;              /* длина трека            */
-          padding:0;                 /* внутренний отступ      */
-          margin:16px auto 26px;     /* те же отступы          */
+          /* copied parameters from #dateSlider */
+          width:6px;                 /* rail thickness */
+          height:130px;              /* track length */
+          padding:0;                 /* inner padding */
+          margin:16px auto 26px;     /* same margins */
           box-sizing:content-box;
         }
-        /* серая «рельса» и синий connect-бар */
+        /* grey rail and blue connect bar */
         #yearSlider .noUi-base      {background:#bfbfbf;width:100%;height:100%;}
         #yearSlider .noUi-connect   {background:#bfbfbf;}
 
@@ -364,13 +363,13 @@ body, html {
 
     </style>
 
-    <!-- Скрипт переводов -->
+    <!-- Translation script -->
     <script id="translations-script">
-      // Объект переводов, переданный из Go
+      // Translation object passed from Go
       var translations = JSON.parse('{{ .Translations | toJSON }}');
-        var currentLang = '{{ .Lang }}'; // Текущий язык
+        var currentLang = '{{ .Lang }}'; // Current language
 
-        // Функция для получения перевода по ключу
+        // Get translation by key
         function translate(key) {
             if (!translations['en']) {
                 console.error('English translations not available!');
@@ -398,11 +397,11 @@ body, html {
 
   <body>
 
-    <!-- Контейнер для кнопки загрузки файлов -->
+    <!-- Container for upload button -->
     <div class="upload-btn-container leaflet-control">
       <!--
-        title/aria-label → короткая подсказка на hover/focus о форматах
-        и том, что произойдёт после загрузки.
+        title/aria-label → short hint on hover/focus about formats
+        and what happens after upload.
       -->
       <label
         for="fileInput"
@@ -421,7 +420,7 @@ body, html {
         onchange="uploadFiles()">
     </div>
 
-    <!-- Контейнер для кнопки геолокации -->
+    <!-- Container for geolocation button -->
     <div class="locate-btn-container leaflet-control">
       <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
         <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width:20px;">
@@ -453,19 +452,19 @@ body, html {
       </button>
     </div>
 
-    <!-- Контейнер для кнопки "Вернуться ко всем трекам" -->
+    <!-- Container for "Back to all tracks" button -->
     <div class="back-to-all-container leaflet-control" style="display: none;">
       <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
     </div>
 
-    <!-- Оверлей для загрузки файлов -->
+    <!-- File upload overlay -->
     <div id="fileOverlay" style="display: none;">
       <div id="fileProgressContainer">
-        <!-- Прогресс загрузки файлов будет добавляться сюда динамически -->
+        <!-- Upload progress entries inserted here dynamically -->
       </div>
     </div>
 
-    <!-- Ссылка на GitHub и информация о программе -->
+    <!-- GitHub link and program info -->
     <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
       <img src="/static/images/GitHub-Mark.png" alt="GitHub" class="github-icon">
     </a>
@@ -474,7 +473,7 @@ body, html {
       <a href="https://github.com/matveynator/chicha-isotope-map/releases/tag/latest" target="_blank"><strong>{{translate "description"}}</strong> (version: {{ .Version }})</a>
     </div>
 
-    <!-- Контейнер для карты -->
+    <!-- Map container -->
     <div id="map"></div>
 
     <div id="loadingOverlay" class="loading-overlay" style="display:none;">
@@ -482,7 +481,7 @@ body, html {
     </div>
 
 
-    <!-- Подключение JavaScript библиотеки Leaflet -->
+    <!-- Load Leaflet JavaScript library -->
     <script src="/static/leaflet.js"></script>
 
     <!-- Slider -->
@@ -491,20 +490,20 @@ body, html {
 
 
 
-    <!-- Вспомогательные функции -->
+    <!-- Helper functions -->
     <script>
-      // Функция для расчёта цвета маркера на основе уровня радиации
+      // Compute marker color from radiation level
       function getGradientColor(doseRate) {
-        if (doseRate <= 0.04) return "#006400"; // Тёмно-зелёный
+        if (doseRate <= 0.04) return "#006400"; // Dark green
         else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
         else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
         else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
         else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
         else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
-        else return "#000000"; // Чёрный для очень высоких значений
+        else return "#000000"; // Black for very high values
       }
 
-// Функция интерполяции между двумя цветами
+// Interpolate between two colors
 function interpolateColor(color1, color2, factor) {
   if (factor < 0) factor = 0;
   if (factor > 1) factor = 1;
@@ -516,25 +515,25 @@ function interpolateColor(color1, color2, factor) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-// Функция для расчёта радиуса маркера на основе уровня зума
+// Calculate marker radius based on zoom level
 function getRadius(doseRate, zoomLevel) {
-  // раньше: Math.pow(2, (zoomLevel-10)/2)
-  const k = 1;                               // масштабируем ~×2
+  // previous formula: Math.pow(2, (zoomLevel-10)/2)
+  const k = 1;                               // scale by ~2
   let r   = Math.pow(2, (zoomLevel - 10)/2.5) * k;
-  return Math.max(r, 2);                       // защита от слишком мелких
+  return Math.max(r, 2);                       // prevent tiny circles
 }
 
 
 /**
  * Decide whether the marker with given speed (m/s)
  * should be displayed according to current speed-filter state.
- * В режиме просмотра ОДНОГО трека фильтрации нет — показываем всё.
+ * In single-track view there is no filtering — show everything.
  */
 function shouldDisplayBySpeed(speed) {
-  /* ── ключевая строка ─────────────────────────────── */
-  if (isTrackView) return true;        // ← NEW: фильтр отключён
+  /* Key line */
+  if (isTrackView) return true;        // filter disabled in track view
 
-  const st = loadSpeedFilterState();   // глобальный режим
+  const st = loadSpeedFilterState();   // global mode
   if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
   if (speed >= 7  && speed <  70)  return st.car;    // 🚗
   /* speed < 7 m/s  → pedestrian */
@@ -542,7 +541,7 @@ function shouldDisplayBySpeed(speed) {
 }
 
 
-// Функция для расчёта прозрачности заливки маркера на основе скорости
+// Compute marker fill opacity based on speed
 function getFillOpacity(speed) {
   if (speed <= 5) {
     return 0.6;
@@ -559,7 +558,7 @@ function getFillOpacity(speed) {
   }
 }
 
-// Функция для отображения содержимого всплывающего окна маркера
+// Build tooltip content for a marker
 function getTooltipContent(marker) {
   var date = new Date(marker.date * 1000);
   var formattedDate = date.toLocaleString();
@@ -582,7 +581,7 @@ function getTooltipContent(marker) {
     `;
 }
 
-// Функция для получения текущих параметров URL на основе состояния карты
+// Get current URL params from map state
 function getCurrentUrlParams() {
   var bounds = map.getBounds();
   var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
@@ -596,7 +595,7 @@ function getCurrentUrlParams() {
 }
     </script>
 
-    <!-- Инициализация карты и работа с маркерами -->
+    <!-- Map initialization and markers -->
     <script>
       var map;
 var circleMarkers = {};
@@ -605,7 +604,7 @@ var osmLayer, googleSatellite;
 var trackBounds;
 var currentTrackID = null;
 
-// ➜ новый контроллер, чтобы отменять предыдущий запрос
+// New controller to cancel previous request
 var markerFetchController = null;
 
 
@@ -634,9 +633,9 @@ function saveDateRangeState(st) {
 }
 
 /**
- * Возвращает строку «Месяц ГГГГ» на языке браузера
- * (на большинстве устройств Chrome/Firefox выдаст «Авг 2025»,
- * Safari — «Aug 2025» и т.д.).
+ * Return a "Month YYYY" string in the browser locale.
+ * Chrome/Firefox often display "Aug 2025",
+ * Safari shows "Aug 2025", etc.
  */
 function tsToNiceStr(ts){
   return new Date(ts * 1000)
@@ -644,7 +643,7 @@ function tsToNiceStr(ts){
 }
 
 
-// возвращает |diff| в месяцах между двумя unix-секундами
+// absolute month difference between two unix timestamps
 function monthsApart(ts0, ts1){
   const d0 = new Date(ts0 * 1000);
   const d1 = new Date(ts1 * 1000);
@@ -663,16 +662,16 @@ function saveSpeedFilterState(state) {
 
 document.addEventListener('DOMContentLoaded', function () {
 
-  // Инициализация trackID по пути
+  // Initialize trackID from path
   var match = window.location.pathname.match(/^\/trackid\/([a-zA-Z0-9]+)/);
   if (match) {
     currentTrackID = match[1];
     isTrackView = true;
-    // <<< НОВОЕ: сразу показываем кнопку возврата >>>
+    // NEW: show back button immediately
     var backBox = document.querySelector('.back-to-all-container');
     if (backBox) backBox.style.display = 'block';
   }
-  // Инициализация слоёв карты с автоматическим выбором темы
+  // Initialize layers and auto theme switch
   const media = window.matchMedia('(prefers-color-scheme: dark)');
   const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   const osmDark  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
@@ -695,7 +694,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Google layer remains unchanged to keep satellite imagery
   });
 
-  // сразу после создания osmLayer и googleSatellite
+  // right after creating osmLayer and googleSatellite
   const urlParams       = new URLSearchParams(window.location.search);
   const startLayerName  = decodeURIComponent(urlParams.get('layer') || defaultCfg.layer);
   const startLayer      = startLayerName === 'Google Satellite' ? googleSatellite : osmLayer;
@@ -703,10 +702,10 @@ document.addEventListener('DOMContentLoaded', function () {
   map = L.map('map', {
     center: [defaultCfg.lat, defaultCfg.lon],
     zoom  : defaultCfg.zoom,
-    layers: [startLayer],           // только один базовый слой
+    layers: [startLayer],           // only one base layer
   });
 
-  // Контроллер слоёв
+  // Layer control
   var baseLayers = {
     "OpenStreetMap": osmLayer,
     "Google Satellite": googleSatellite
@@ -717,22 +716,22 @@ document.addEventListener('DOMContentLoaded', function () {
     collapsed: false
   }).addTo(map);
 
-  // Инициализация режима просмотра трека
+  // Track view initialization
   var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
   if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
     isTrackView = true;
 
-    // Не отображаем initialMarkers сразу, а загружаем по частям через get_markers
+    // Don't show initialMarkers immediately; load them in parts via get_markers
     map.on('load', debounceUpdateMarkers);
 
-    // Изменение размеров маркеров при зуме
+    // Adjust marker size on zoom
     map.on('zoomend', function() {
       adjustMarkerRadius();
       debounceUpdateMarkers();
     });
     map.on('moveend', debounceUpdateMarkers);
   } else {
-    // Динамическое обновление маркеров в глобальном режиме
+    // Dynamic marker updates in global mode
     map.on('load', debounceUpdateMarkers);
     map.on('zoomend', function() {
       adjustMarkerRadius();
@@ -742,15 +741,15 @@ document.addEventListener('DOMContentLoaded', function () {
     debounceUpdateMarkers;
   }
 
-  // Загрузка состояния карты из URL
+  // Load map state from URL
   loadMapFromUrl();
 
-  // Обновление URL при изменениях на карте
+  // Update URL on map changes
   map.on('baselayerchange', updateUrl);
   map.on('moveend', updateUrl);
   map.on('zoomend', updateUrl);
 
-  // Инициализация элементов интерфейса
+  // Initialize UI elements
   initializeUIElements();
 
   /**
@@ -760,7 +759,7 @@ document.addEventListener('DOMContentLoaded', function () {
    */
   function createSpeedFilterControls() {
 
-    if (isTrackView) return;   //не отображаем в режиме трека
+    if (isTrackView) return;   // hidden in track view
 
     // load previously saved state (or defaults)
     const state = loadSpeedFilterState();
@@ -1072,9 +1071,9 @@ function createDateRangeSlider(){
 
 
 
-// Определение функций
+// Function definitions
 
-// ---------- POP-UP со ссылкой на трек ----------
+// ---------- Popup linking to track ----------
 function getPopupContent(marker) {
   const dateStr = new Date(marker.date * 1000).toLocaleString();
   return `
@@ -1084,7 +1083,7 @@ function getPopupContent(marker) {
     </div>
     <div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
     <div style="margin-top:4px">
-    <!-- щёлк по ссылке = переход в режим трека -->
+    <!-- clicking the link switches to track mode -->
     <a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
   ${translate('track_id')}: ${marker.trackID}
     </a>
@@ -1224,12 +1223,12 @@ function adjustMarkerRadius() {
   }
 }
 
-/* ──────────────────────────────────────────────────────────────
- *  viewTrack () — переход в режим отдельного трека.
- *  Добавили currentTrackID = trackID ещё ДО смены window.location.
- * ──────────────────────────────────────────────────────────────*/
+/* -----------------------------------------------------------------
+ *  viewTrack() — switch to single-track mode.
+ *  Set currentTrackID = trackID before changing window.location.
+ * -----------------------------------------------------------------*/
 function viewTrack(trackID) {
-  currentTrackID = trackID;   // ✦ новое
+  currentTrackID = trackID;   // new
   isTrackView    = true;
 
   const bounds = map.getBounds();
@@ -1263,11 +1262,11 @@ function setBaseLayer(layerName) {
 function loadMapFromUrl() {
   const params = new URLSearchParams(window.location.search);
 
-  /* базовый слой из URL (или дефолт) */
+  /* base layer from URL or default */
   const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
   setBaseLayer(layer);
 
-  /* читаем остальные параметры */
+  /* read remaining params */
   const minLat = parseFloat(params.get('minLat'));
   const minLon = parseFloat(params.get('minLon'));
   const maxLat = parseFloat(params.get('maxLat'));
@@ -1357,7 +1356,7 @@ function centerMapToLocation() {
 }
     </script>
 
-    <!-- Скрипт загрузки файлов -->
+    <!-- File upload script -->
     <script>
       function uploadFiles() {
         const fileInput  = document.getElementById('fileInput');
@@ -1372,14 +1371,14 @@ function centerMapToLocation() {
         fileProgressContainer.innerHTML = '';
         fileOverlay.style.display  = 'flex';
 
-        /* счётчик и ссылка последнего трека */
+        /* counter and URL of last track */
         let completedUploads = 0;
         const totalFiles     = files.length;
         let lastTrackURL     = null;
 
-        /* создаём XHR для каждого файла, но redirect делаем ОДИН раз */
+        /* Create an XHR for each file but redirect only once */
         [...files].forEach(file => {
-          /* --- визуальные элементы прогресса (как было) --- */
+          /* --- visual progress elements --- */
           const fileBlock        = document.createElement('div');
           fileBlock.className    = 'file-progress';
           const fileName         = document.createElement('div');
@@ -1400,7 +1399,7 @@ function centerMapToLocation() {
           const xhr = new XMLHttpRequest();
           xhr.open('POST', '/upload', true);
 
-          /* прогресс заливки файла */
+          /* file upload progress */
           xhr.upload.onprogress = e => {
             if (e.lengthComputable) {
               const percent = (e.loaded / e.total) * 100;
@@ -1408,12 +1407,12 @@ function centerMapToLocation() {
             }
           };
 
-          /* обработка ответа сервера */
+          /* handle server response */
           xhr.onload = () => {
             if (xhr.status === 200) {
               const response = JSON.parse(xhr.responseText);
               if (response.status === 'success') {
-                lastTrackURL             = response.trackURL;   // запоминаем
+                lastTrackURL             = response.trackURL;   // remember
                 serverProcessing.innerText = translate('processing_complete');
                 serverProcessing.style.color = 'green';
               } else {
@@ -1425,22 +1424,22 @@ function centerMapToLocation() {
               serverProcessing.style.color = 'red';
             }
 
-            /* увеличиваем счётчик и, если всё готово, переходим */
+            /* increment counter and redirect when done */
               completedUploads++;
             if (completedUploads === totalFiles) {
               setTimeout(() => {
                 fileOverlay.style.display = 'none';
-                /* показываем именно последний успешно обработанный трек */
+                /* redirect to last successfully processed track */
                   if (lastTrackURL) {
                     window.location.href = lastTrackURL;
                   } else {
-                    location.reload();   // на случай, если все загрузки упали
+                    location.reload();   // if all uploads failed
                   }
               }, 700);
             }
           };
 
-          /* отправляем файл */
+          /* send file */
             const formData = new FormData();
           formData.append('files[]', file);
           xhr.send(formData);
