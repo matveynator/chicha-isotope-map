@@ -2027,6 +2027,7 @@ func main() {
 	http.HandleFunc("/", mapHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
+	http.HandleFunc("/stream_markers", streamMarkersHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
 

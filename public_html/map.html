@@ -654,7 +654,7 @@ var trackBounds;
 var currentTrackID = null;
 
 // New controller to cancel previous request
-var markerFetchController = null;
+var markerStreamSource = null;
 
 
 /**
@@ -1148,8 +1148,7 @@ function updateMarkers(){
   const loadingEl = document.getElementById('loadingOverlay');
   if (loadingEl) loadingEl.style.display='block';
 
-  if (markerFetchController) markerFetchController.abort();
-  markerFetchController = new AbortController();
+  if (markerStreamSource) markerStreamSource.close();
 
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
@@ -1162,95 +1161,62 @@ function updateMarkers(){
     maxLon: bounds.getNorthEast().lng
   };
 
-  // speed filter (global view only)
-  if (!isTrackView) {
-    const sp = loadSpeedFilterState();
-    const speeds = [];
-    if (sp.plane) speeds.push('plane');
-    if (sp.car)   speeds.push('car');
-    if (sp.ped)   speeds.push('ped');
-    if (speeds.length && speeds.length !== 3){
-      params.speeds = speeds.join(',');
+  const savedRange = loadDateRangeState();
+
+  for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+  circleMarkers = {};
+
+  const tracks = new Set();
+  let minTs = Infinity, maxTs = -Infinity;
+
+  const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
+  markerStreamSource = es;
+
+  es.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.trackID) tracks.add(m.trackID);
+    minTs = Math.min(minTs, m.date);
+    maxTs = Math.max(maxTs, m.date);
+    if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
+    if (!shouldDisplayBySpeed(m.speed)) return;
+    const cm = L.circleMarker([m.lat, m.lon], {
+      radius      : getRadius(m.doseRate, zoom),
+      fillColor   : getGradientColor(m.doseRate),
+      color       : getGradientColor(m.doseRate),
+      weight      : 1,
+      opacity     : getFillOpacity(m.speed) + 0.1,
+      fillOpacity : getFillOpacity(m.speed)
+    })
+    .addTo(map)
+    .bindTooltip(getTooltipContent(m),
+        { direction:'top', className:'custom-tooltip', offset:[0,-8] })
+    .bindPopup(getPopupContent(m));
+
+    circleMarkers[m.id || m.trackID] = cm;
+  };
+
+  es.addEventListener('done', () => {
+    const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
+                            ? monthsApart(minTs, maxTs) : 0;
+    const needSlider = !isTrackView && tracks.size > 1 && dateSpanMonths > 1;
+    if (window.__setDateSliderVisibility){
+      window.__setDateSliderVisibility(needSlider);
     }
-  }
+    if (needSlider && window.__initSliderOnce && isFinite(minTs) && isFinite(maxTs)){
+      window.__initSliderOnce(minTs, maxTs);
+      window.__initSliderOnce = null;
+    }
+    if (needSlider && window.__syncDateSliders && isFinite(minTs) && isFinite(maxTs)){
+      window.__syncDateSliders(minTs, maxTs);
+    }
+    if (loadingEl) loadingEl.style.display='none';
+    es.close();
+  });
 
-  if (isTrackView && currentTrackID){
-    params.trackID = currentTrackID;
-  }
-
-  fetch('/get_markers?' + new URLSearchParams(params),
-        { signal: markerFetchController.signal })
-    .then(r => { if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-    .then(data => {
-      if (!Array.isArray(data)) data = [];
-
-      // compute tracks count & time span for this viewport
-      const tracks = new Set();
-      let minTs = Infinity, maxTs = -Infinity;
-      data.forEach(m=>{
-        if (m.trackID) tracks.add(m.trackID);
-        minTs = Math.min(minTs, m.date);
-        maxTs = Math.max(maxTs, m.date);
-      });
-      const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
-                              ? monthsApart(minTs, maxTs) : 0;
-
-      const needSlider = !isTrackView && tracks.size > 1 && dateSpanMonths > 1;
-
-      if (window.__setDateSliderVisibility){
-        window.__setDateSliderVisibility(needSlider);
-      }
-
-      // Build sliders first time
-      if (needSlider && window.__initSliderOnce && isFinite(minTs) && isFinite(maxTs)){
-        window.__initSliderOnce(minTs, maxTs);
-        window.__initSliderOnce = null; // one-shot
-      }
-
-      // Always keep sliders’ bounds/labels in sync with viewport
-      if (needSlider && window.__syncDateSliders && isFinite(minTs) && isFinite(maxTs)){
-        window.__syncDateSliders(minTs, maxTs);
-      }
-
-      // Apply time filter ONLY when user selected a custom range
-      if (!isTrackView && needSlider){
-        const saved = loadDateRangeState();
-        // We need full-range of current viewport → ask sync to decide;
-        // __syncDateSliders saved [minTs,maxTs] as "no filter".
-        if (saved && !(saved[0] === minTs && saved[1] === maxTs)){
-          data = data.filter(m => m.date >= saved[0] && m.date <= saved[1]);
-        }
-      }
-
-      // Render markers
-      for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
-      circleMarkers = {};
-
-      data.forEach(m=>{
-        if (!shouldDisplayBySpeed(m.speed)) return;
-
-        const cm = L.circleMarker([m.lat, m.lon], {
-          radius      : getRadius(m.doseRate, zoom),
-          fillColor   : getGradientColor(m.doseRate),
-          color       : getGradientColor(m.doseRate),
-          weight      : 1,
-          opacity     : getFillOpacity(m.speed) + 0.1,
-          fillOpacity : getFillOpacity(m.speed)
-        })
-        .addTo(map)
-        .bindTooltip(getTooltipContent(m),
-            { direction:'top', className:'custom-tooltip', offset:[0,-8] })
-        .bindPopup(getPopupContent(m));
-
-        circleMarkers[m.id || m.trackID] = cm;
-      });
-    })
-    .catch(err=>{
-      if (err.name !== 'AbortError') console.error('fetch:', err);
-    })
-    .finally(()=>{
-      if (loadingEl) loadingEl.style.display='none';
-    });
+  es.onerror = () => {
+    if (loadingEl) loadingEl.style.display='none';
+    es.close();
+  };
 }
 
 
