@@ -160,6 +160,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: latest
-          name: "download latest stable release"
+          name: "download stable version"
           prerelease: false
           files: dist-raw/**/*
