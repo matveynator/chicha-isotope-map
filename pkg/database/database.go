@@ -571,6 +571,7 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 }
 
 // GetMarkersByTrackID retrieves markers filtered by trackID.
+// Results are ordered by timestamp to preserve the track direction.
 func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker, error) {
 	var query string
 
@@ -578,16 +579,18 @@ func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker
 	switch dbType {
 	case "pgx":
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = $1;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                FROM markers
+                WHERE trackID = $1
+                ORDER BY date ASC;
+                `
 	default:
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = ?;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                FROM markers
+                WHERE trackID = ?
+                ORDER BY date ASC;
+                `
 	}
 
 	// Execute the query
@@ -618,6 +621,7 @@ func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker
 }
 
 // GetMarkersByTrackIDAndBounds retrieves markers filtered by trackID and geographical bounds.
+// Markers are ordered by timestamp to render the track sequentially.
 func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
 	var query string
 
@@ -625,16 +629,18 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 	switch dbType {
 	case "pgx":
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                FROM markers
+                WHERE trackID = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5
+                ORDER BY date ASC;
+                `
 	default:
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                FROM markers
+                WHERE trackID = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+                ORDER BY date ASC;
+                `
 	}
 
 	// Execute the query
@@ -665,7 +671,8 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 	return markers, nil
 }
 
-// GetMarkersByTrackIDZoomAndBounds исправленный вариант
+// GetMarkersByTrackIDZoomAndBounds returns markers for a track within bounds at a given zoom.
+// Sorting by timestamp keeps the visual trace in chronological order.
 func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 	trackID string,
 	zoom int,
@@ -682,7 +689,8 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
         WHERE  trackID = $1
           AND  zoom     = $2
           AND  lat BETWEEN $3 AND $4
-          AND  lon BETWEEN $5 AND $6;`
+          AND  lon BETWEEN $5 AND $6
+        ORDER BY date ASC;`
 	default: // SQLite / Genji
 		query = `
         SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
@@ -690,7 +698,8 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
         WHERE  trackID = ?
           AND  zoom     = ?
           AND  lat BETWEEN ? AND ?
-          AND  lon BETWEEN ? AND ?;`
+          AND  lon BETWEEN ? AND ?
+        ORDER BY date ASC;`
 	}
 
 	rows, err := db.DB.Query(query,
