@@ -1160,6 +1160,7 @@ function updateMarkers(){
     maxLat: bounds.getNorthEast().lat,
     maxLon: bounds.getNorthEast().lng
   };
+  if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
   const savedRange = loadDateRangeState();
 
