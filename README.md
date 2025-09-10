@@ -6,6 +6,7 @@
 - [🇷🇺 Русский](/doc/README_RU.md)
 
 #  chicha‑isotope‑map is a world ☢️ radiation map.
+Example can be found at [https://pelora.org/](https://pelora.org/)
 
 ---
 
