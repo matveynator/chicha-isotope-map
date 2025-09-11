@@ -256,12 +256,55 @@ Chicha‑Isotope‑Map isn’t just software — it’s a window into a world of
 * **What does it read, and from where?**
 
   * Files in `.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx` formats (AtomFast, RadiaCode, Safecast and others).
+  * bGeigie Nano/Zen `$BNRDD` logs in `.log` / `.txt` (Safecast).
   * Everything is saved to its own database so that years later you can say, “On March 12, 2008, this spot measured 4.1 µR/h.”
 
 * **What’s our baseline?**
 
   * Natural background radiation in a “clean” area is about 0.8–4 µR/h.
   * Anything above that is anthropogenic contamination. You’ll see how isotopes were scattered by wind, traffic, and people — like footprints on fresh snow.
+
+---
+
+## ⬆️ Uploading bGeigie Nano/Zen logs
+
+Chicha‑Isotope‑Map can ingest bGeigie Nano/Zen track logs that contain `$BNRDD` sentences.
+
+### From the web UI
+
+1. Open your node (for local runs: `http://localhost:8765`).
+2. Click the “Upload” button in the top‑right corner.
+3. Select one or more `.log` / `.txt` files exported from your bGeigie Nano/Zen.
+4. Wait until processing finishes — you’ll be automatically redirected to the uploaded track view.
+
+Notes
+
+- Multiple files can be uploaded at once; the last successful track will open automatically.
+- The parser supports Zen ISO‑8601 timestamps and DMM coordinates with hemispheres, as well as a legacy compact variant.
+
+### API: upload endpoint
+
+POST `/upload` with multipart form field `files[]` for each file. Example using curl:
+
+```bash
+curl -s -F 'files[]=@/path/to/your_bgeigie.log' \
+     -F 'files[]=@/path/to/another.log' \
+     http://localhost:8765/upload
+# → {"status":"success","trackURL":"/trackid/ABC123?minLat=..."}
+```
+
+The UI does the same under the hood (see `public_html/map.html`).
+
+### API: diagnostics for bGeigie ($BNRDD)
+
+If you need quick per‑file parsing stats (records/parsed/skipped and sample reasons), use:
+
+```bash
+curl -s -F 'files[]=@/path/to/your_bgeigie.log' \
+     http://localhost:8765/upload_diag | jq .
+```
+
+This endpoint does not change the regular `/upload` behavior; it just returns JSON with bounds, detected format, and parsing statistics for each file.
 
 ---
 
