@@ -673,10 +673,11 @@ body, html {
     <strong>{{translate "legend_title"}}</strong><br>
     <div><span style="color:#000000;">■</span> >100 µR/h</div>
     <div><span style="color:#FF4500;">■</span> 30–100 µR/h</div>
-    <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
-    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
+  <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
+   <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
   </div>
 </div>
+<div id="legendTooltip" class="custom-tooltip" style="display:none; position:fixed; max-width:260px; padding:10px; font-size:12px; line-height:1.4em; z-index:1001;"></div>
 <!--
   Compact 4-bin legend (µR/h) with vertical gradient bar (green→yellow→orange→red→black).
   White labels mark safe at the bottom and danger at the top.
@@ -801,7 +802,10 @@ function getFillOpacity(speed) {
 // Decide a translation key for safety based on dose rate (µSv/h).
 // Using legend thresholds keeps UI consistent and avoids extra strings.
 function doseCategory(doseRate) {
-  return doseRate <= 0.11 ? 'legend_safe' : 'legend_danger';
+  // Map dose rate to safety words using legend thresholds
+  if (doseRate <= 0.11) return 'legend_safe';
+  if (doseRate <= 0.30) return 'legend_attention';
+  return 'legend_danger';
 }
 
 // Build tooltip content for a marker
@@ -1328,19 +1332,19 @@ function getPopupContent(marker) {
   const dateStr = new Date(marker.date * 1000).toLocaleString();
   return `
     <div class="custom-tooltip">
-    <div><strong>${translate('radiation_dose')}:</strong>
-  ${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
-    <a href="#" class="risk-link" onclick="openLegendModal(); return false;">
-      ${translate(doseCategory(marker.doseRate))}
-    </a>
-    </div>
-    <div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
-    <div style="margin-top:4px">
-    <!-- clicking the link switches to track mode -->
-    <a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
-  ${translate('track_id')}: ${marker.trackID}
-    </a>
-    </div>
+      <div><strong>${translate('radiation_dose')}:</strong><br>
+        ${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
+        (<a href="#" class="risk-link" onclick="openLegendModal(); return false;">
+          ${translate(doseCategory(marker.doseRate))}
+        </a>)
+      </div>
+      <div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
+      <div style="margin-top:4px">
+        <!-- clicking the link switches to track mode -->
+        <a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
+          ${translate('track_id')}: ${marker.trackID}
+        </a>
+      </div>
     </div>`;
 }
 
@@ -1713,6 +1717,8 @@ function centerMapToLocation() {
   // Display the full legend text in current language.
   // Exposed so marker popups reuse the same modal.
   function openLegendModal() {
+    // Hide tooltip so it doesn't overlap the modal
+    hideLegendTooltip();
     // Choose full text key dynamically for any supported language
     var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
     var key = 'legend_full_' + lang;
@@ -1735,9 +1741,35 @@ function centerMapToLocation() {
     if (modal) modal.style.display = 'flex';
   }
 
+  // Show legend explanation on hover without forcing a click
+  function showLegendTooltip() {
+    var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
+    var key = 'legend_full_' + lang;
+    var tip = document.getElementById('legendTooltip');
+    if (!tip) return;
+    tip.innerHTML = translate(key).replace(/\n/g, '<br>');
+    tip.style.display = 'block';
+    var leg = document.getElementById('legend');
+    if (leg) {
+      var rect = leg.getBoundingClientRect();
+      tip.style.left = rect.left + 'px';
+      tip.style.top = (rect.top - tip.offsetHeight - 8) + 'px';
+    }
+  }
+
+  // Hide the hover tooltip
+  function hideLegendTooltip() {
+    var tip = document.getElementById('legendTooltip');
+    if (tip) tip.style.display = 'none';
+  }
+
   (function(){
     var el = document.getElementById('legend');
-    if (el) el.addEventListener('click', openLegendModal);
+    if (el) {
+      el.addEventListener('click', openLegendModal);
+      el.addEventListener('mouseenter', showLegendTooltip);
+      el.addEventListener('mouseleave', hideLegendTooltip);
+    }
     // Close on backdrop click (UX nicety)
     var modal = document.getElementById('legendModal');
     if (modal) {
