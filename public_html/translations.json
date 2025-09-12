@@ -59,7 +59,7 @@
     "track_id": "Track ID",
     "back_to_all_tracks": "Back to the combined track map.",
     "legend_title": "Legend",
-    "legend_full_en": "This scale shows how safe a place is most likely for life, water, and food.\nRemember: measurements may be incomplete, and radiation may be higher or hidden. Use these values only as guidance.\n\nGreen (0–11 µR/h)\nBackground is close to natural.\n• Water from wells is considered safe.\n• Plants can be grown without testing.\n\nYellow (11–30 µR/h)\nElevated background; be cautious.\n• Water and soil must be checked.\n• Any vegetables, mushrooms, or other produce should be tested before eating.\n\nRed (30–100 µR/h)\nSerious contamination.\n• Water is unsafe to drink.\n• Growing or consuming produce from this area is dangerous; laboratory tests are mandatory.\n\nBlack (>100 µR/h)\nCritical zone.\n• Water and food are unusable.\n• Long-term stay is impossible; only brief visits with protection are allowed.",
+    "legend_full_en": "This scale shows how likely a spot is safe for folk, water, and food.\nMind: the readings might no' be complete, and some rays could be higher or hiding. Treat these numbers as guidance only.\n\nGreen (0–11 µR/h)\nBackground near natural.\n• Water from wells is generally safe.\n• You can grow plants without checks.\n\nYellow (11–30 µR/h)\nRaised background; take care.\n• Check water and soil.\n• Test any veg, mushrooms, or other produce before you eat.\n\nRed (30–100 µR/h)\nSerious contamination.\n• Dinna drink the water.\n• Growing or eating produce from here is risky; lab tests are a must.\n\nBlack (>100 µR/h)\nCritical zone.\n• Water and food cannae be used.\n• Staying long-term is out; only short visits with protection.\n",
     "legend_safe": "Safe",
     "legend_danger": "Danger"
   },
@@ -93,7 +93,7 @@
     "legend_title": "Leyenda",
     "legend_safe": "Seguro",
     "legend_danger": "Peligro",
-    "legend_full_es": "Esta escala orienta sobre la radiación; los datos pueden ser incompletos.\n\nVerde 0–11 µR/h: fondo normal.\nAmarillo 11–30 µR/h: revise agua y comida.\nRojo 30–100 µR/h: peligro; evite setas y pescado.\nNegro >100 µR/h: peligro extremo; sin agua, comida ni estancia prolongada."
+    "legend_full_es": "Esta escala indica cuán seguro es un lugar para vivir, beber y comer.\nRecuerda: las mediciones pueden estar incompletas; úsala solo como guía.\n\nVerde (0–11 µR/h)\nFondo natural.\n• Agua de pozo segura.\n• Se puede cultivar sin pruebas.\n\nAmarillo (11–30 µR/h)\nFondo elevado.\n• Revisa agua y suelo.\n• Analiza cualquier alimento antes de comer.\n\nRojo (30–100 µR/h)\nContaminación grave.\n• No bebas el agua.\n• Cultivar o comer de aquí es arriesgado; requiere pruebas de laboratorio.\n\nNegro (>100 µR/h)\nZona crítica.\n• Agua y comida inutilizables.\n• Sólo estancias breves con protección.\n"
   },
   "fr": {
     "title": "Carte des isotopes de Chicha — Carte radiologique de la planète Terre",
@@ -125,7 +125,7 @@
     "legend_title": "Légende",
     "legend_safe": "Sûr",
     "legend_danger": "Danger",
-    "legend_full_fr": "Cette échelle guide la radioprotection; les mesures peuvent être incomplètes.\n\nVert 0–11 µR/h : fond normal.\nJaune 11–30 µR/h : vérifier l’eau et la nourriture.\nRouge 30–100 µR/h : danger; éviter champignons et poisson.\nNoir >100 µR/h : danger extrême; pas d’eau, de nourriture ni de séjour prolongé."
+    "legend_full_fr": "Cette échelle indique à quel point un lieu est sûr pour la vie, l’eau et la nourriture.\nSouviens‑toi : les mesures peuvent être incomplètes ; n’en fais qu’un guide.\n\nVert (0–11 µR/h)\nFond naturel.\n• L’eau de puits est généralement potable.\n• On peut cultiver sans tests.\n\nJaune (11–30 µR/h)\nFond élevé.\n• Vérifie l’eau et le sol.\n• Analyse toute nourriture avant de la consommer.\n\nRouge (30–100 µR/h)\nContamination sérieuse.\n• Ne bois pas l’eau.\n• Cultiver ou manger ici est risqué ; analyses en laboratoire obligatoires.\n\nNoir (>100 µR/h)\nZone critique.\n• Eau et nourriture inutilisables.\n• Séjour prolongé impossible ; visites courtes avec protection.\n"
   },
   "de": {
     "title": "Chichas Isotopenkarte — Radiologische Karte des Planeten Erde",
@@ -157,7 +157,7 @@
     "legend_title": "Legende",
     "legend_safe": "Sicher",
     "legend_danger": "Gefahr",
-    "legend_full_de": "Diese Skala dient als Strahlungsrichtwert; Messungen können unvollständig sein.\n\nGrün 0–11 µR/h: normale Hintergrundstrahlung.\nGelb 11–30 µR/h: Wasser und Nahrung prüfen.\nRot 30–100 µR/h: gefährlich; Pilze und Fisch meiden.\nSchwarz >100 µR/h: extreme Gefahr; kein Wasser, keine Nahrung, kein langer Aufenthalt."
+    "legend_full_de": "Diese Skala zeigt, wie sicher ein Ort für Menschen, Wasser und Nahrung ist.\nDenk daran: Messungen können unvollständig sein; nutze sie nur als Richtwert.\n\nGrün (0–11 µR/h)\nNatürliche Hintergrundstrahlung.\n• Brunnenwasser meist sicher.\n• Pflanzen können ohne Tests wachsen.\n\nGelb (11–30 µR/h)\nErhöhte Werte.\n• Wasser und Boden prüfen.\n• Jede Ernte vor dem Essen testen.\n\nRot (30–100 µR/h)\nStarke Belastung.\n• Wasser nicht trinken.\n• Anbau oder Verzehr hier gefährlich; Laborprüfungen nötig.\n\nSchwarz (>100 µR/h)\nKritische Zone.\n• Wasser und Nahrung unbrauchbar.\n• Längerer Aufenthalt verboten; nur kurz mit Schutz.\n"
   },
   "zh": {
     "title": "Chicha 同位素地图——地球辐射地图",
@@ -189,7 +189,7 @@
     "legend_title": "图例",
     "legend_safe": "安全",
     "legend_danger": "危险",
-    "legend_full_zh": "此刻度用于辐射参考；读数可能不完整。\n\n绿色 0–11 µR/h：背景正常。\n黄色 11–30 µR/h：检查水和食物。\n红色 30–100 µR/h：危险；避免蘑菇和鱼。\n黑色 >100 µR/h：极度危险；勿取水、食物或久留。"
+    "legend_full_zh": "此刻度展示一个地点对生命、水和食物的安全程度。\n请记住：读数可能不完整；仅作参考。\n\n绿色 (0–11 µR/h)\n背景接近自然。\n• 井水通常安全。\n• 可放心种植。\n\n黄色 (11–30 µR/h)\n背景升高。\n• 检查水和土。\n• 食物食用前需检测。\n\n红色 (30–100 µR/h)\n严重污染。\n• 不可饮用水。\n• 种植或食用此地产品危险；需实验室检测。\n\n黑色 (>100 µR/h)\n危急区域。\n• 水和食物不可用。\n• 仅短暂停留且需防护。\n"
   },
   "ja": {
     "title": "チチャの同位体マップ — 地球の放射線マップ",
@@ -221,7 +221,7 @@
     "legend_title": "凡例",
     "legend_safe": "安全",
     "legend_danger": "危険",
-    "legend_full_ja": "この尺度は放射線の目安であり、測定は不完全な場合があります。\n\n緑 0–11 µR/h: 背景は正常。\n黄 11–30 µR/h: 水と食べ物を確認。\n赤 30–100 µR/h: 危険；きのこや魚を避ける。\n黒 >100 µR/h: 極めて危険；水・食料・長時間の滞在は禁止。"
+    "legend_full_ja": "この尺度は、場所が生活・水・食べ物にどれほど安全かを示します。\n測定値は不完全な場合があるので、参考程度に。\n\n緑 (0–11 µR/h)\nほぼ自然背景。\n• 井戸水は概ね安全。\n• 植物は検査なしで栽培可。\n\n黄 (11–30 µR/h)\n背景上昇。\n• 水と土を確認。\n• 食べ物は食前に検査を。\n\n赤 (30–100 µR/h)\n深刻な汚染。\n• 水は飲めない。\n• ここでの栽培・摂取は危険；検査が必須。\n\n黒 (>100 µR/h)\n極めて危険。\n• 水も食料も使えない。\n• 長期滞在は禁止；短時間で防護が必要。\n"
   },
   "ko": {
     "title": "치차 동위원소 지도 — 지구 방사선 지도",
@@ -253,7 +253,7 @@
     "legend_title": "범례",
     "legend_safe": "안전",
     "legend_danger": "위험",
-    "legend_full_ko": "이 척도는 방사선 안내용이며 측정값은 불완전할 수 있습니다.\n\n초록 0–11 µR/h: 정상 배경.\n노랑 11–30 µR/h: 물과 음식 확인.\n빨강 30–100 µR/h: 위험; 버섯과 생선을 피하세요.\n검정 >100 µR/h: 매우 위험; 물, 음식, 장시간 체류 금지."
+    "legend_full_ko": "이 척도는 장소가 사람, 물, 음식에 얼마나 안전한지 보여줍니다.\n측정값은 불완전할 수 있으니 참고용으로만 쓰세요.\n\n초록 (0–11 µR/h)\n자연에 가까운 배경.\n• 우물물은 대체로 안전.\n• 검사 없이 재배 가능.\n\n노랑 (11–30 µR/h)\n배경 상승.\n• 물과 토양을 확인.\n• 음식은 먹기 전 검사.\n\n빨강 (30–100 µR/h)\n심각한 오염.\n• 물을 마시지 마세요.\n• 여기서 재배·섭취는 위험; 실험실 검사 필요.\n\n검정 (>100 µR/h)\n치명적 구역.\n• 물과 음식 사용 불가.\n• 보호장비로 짧게만 머무르세요.\n"
   },
   "pt": {
     "title": "Mapa de Isótopos da Chicha — Mapa radiológico do planeta Terra",
@@ -285,7 +285,7 @@
     "legend_title": "Legenda",
     "legend_safe": "Seguro",
     "legend_danger": "Perigo",
-    "legend_full_pt": "Esta escala orienta sobre radiação; as leituras podem ser incompletas.\n\nVerde 0–11 µR/h: fundo normal.\nAmarelo 11–30 µR/h: verifique água e comida.\nVermelho 30–100 µR/h: perigoso; evite cogumelos e peixe.\nPreto >100 µR/h: perigo extremo; sem água, comida ou permanência longa."
+    "legend_full_pt": "Esta escala mostra quão seguro é um lugar para viver, beber e comer.\nLembre: as leituras podem estar incompletas; use apenas como guia.\n\nVerde (0–11 µR/h)\nFundo natural.\n• Água de poço geralmente segura.\n• Pode-se plantar sem testes.\n\nAmarelo (11–30 µR/h)\nFundo elevado.\n• Verifique água e solo.\n• Analise qualquer alimento antes de comer.\n\nVermelho (30–100 µR/h)\nContaminação séria.\n• Não beba a água.\n• Cultivar ou comer aqui é arriscado; exames laboratoriais obrigatórios.\n\nPreto (>100 µR/h)\nZona crítica.\n• Água e comida inutilizáveis.\n• Ficar muito tempo é impossível; apenas visitas breves com proteção.\n"
   },
   "it": {
     "title": "Mappa degli isotopi di Chicha — Mappa radiologica del pianeta Terra",
@@ -317,7 +317,7 @@
     "legend_title": "Legenda",
     "legend_safe": "Sicuro",
     "legend_danger": "Pericolo",
-    "legend_full_it": "Questa scala guida sulla radiazione; le misure possono essere incomplete.\n\nVerde 0–11 µR/h: fondo normale.\nGiallo 11–30 µR/h: controllare acqua e cibo.\nRosso 30–100 µR/h: pericoloso; evitare funghi e pesce.\nNero >100 µR/h: pericolo estremo; niente acqua, cibo o lunga permanenza."
+    "legend_full_it": "Questa scala indica quanto un luogo è sicuro per vita, acqua e cibo.\nRicorda: le misurazioni possono essere incomplete; usala solo come guida.\n\nVerde (0–11 µR/h)\nFondo naturale.\n• L’acqua di pozzo è generalmente sicura.\n• Si possono coltivare piante senza test.\n\nGiallo (11–30 µR/h)\nFondo elevato.\n• Controlla acqua e terreno.\n• Verifica ogni alimento prima di mangiare.\n\nRosso (30–100 µR/h)\nContaminazione seria.\n• Non bere l’acqua.\n• Coltivare o mangiare qui è rischioso; servono esami di laboratorio.\n\nNero (>100 µR/h)\nZona critica.\n• Acqua e cibo inutilizzabili.\n• Permanenza lunga vietata; solo brevi visite con protezione.\n"
   },
   "ar": {
     "title": "خريطة نظائر تشيتشا — خريطة إشعاعية لكوكب الأرض",
@@ -349,7 +349,7 @@
     "legend_title": "مفتاح",
     "legend_safe": "آمن",
     "legend_danger": "خطر",
-    "legend_full_ar": "هذه المقياس دليل للإشعاع؛ قد تكون القراءات غير كاملة.\n\nأخضر 0–11 µR/h: الخلفية طبيعية.\nأصفر 11–30 µR/h: افحص الماء والطعام.\nأحمر 30–100 µR/h: خطر؛ تجنب الفطر والسمك.\nأسود >100 µR/h: خطر شديد؛ لا ماء أو طعام أو بقاء طويل."
+    "legend_full_ar": "هذا المقياس يوضح مدى أمان المكان للحياة والماء والطعام.\nتذكّر: قد تكون القياسات ناقصة؛ استخدمها كدليل فقط.\n\nأخضر (0–11 µR/h)\nخلفية طبيعية.\n• ماء الآبار غالبًا آمن.\n• يمكن الزراعة دون فحص.\n\nأصفر (11–30 µR/h)\nخلفية مرتفعة.\n• افحص الماء والتربة.\n• اختبر أي طعام قبل تناوله.\n\nأحمر (30–100 µR/h)\nتلوث خطير.\n• لا تشرب الماء.\n• الزراعة أو الأكل هنا خطر؛ الفحوص المخبرية ضرورية.\n\nأسود (>100 µR/h)\nمنطقة حرجة.\n• الماء والطعام غير صالحين.\n• الإقامة الطويلة ممنوعة؛ الزيارة القصيرة مع حماية فقط.\n"
   },
   "hi": {
     "title": "चिचा समस्थानिक मानचित्र — पृथ्वी ग्रह का विकिरण मानचित्र",
@@ -381,7 +381,7 @@
     "legend_title": "दिशा-सूचक",
     "legend_safe": "सुरक्षित",
     "legend_danger": "खतरा",
-    "legend_full_hi": "यह पैमाना विकिरण का मार्गदर्शन है; आँकड़े अधूरे हो सकते हैं।\n\nहरा 0–11 µR/h: पृष्ठभूमि सामान्य।\nपीला 11–30 µR/h: पानी और भोजन जाँचें।\nलाल 30–100 µR/h: खतरनाक; मशरूम और मछली से बचें।\nकाला >100 µR/h: अत्यधिक खतरा; पानी, भोजन या लंबा ठहराव नहीं।"
+    "legend_full_hi": "यह पैमाना बताता है कि कोई जगह जीवन, पानी और भोजन के लिए कितनी सुरक्षित है।\nयाद रखें: माप अधूरे हो सकते हैं; इसे केवल मार्गदर्शक मानें।\n\nहरा (0–11 µR/h)\nलगभग प्राकृतिक पृष्ठभूमि।\n• कुएँ का पानी आम तौर पर सुरक्षित।\n• बिना जाँच के खेती संभव।\n\nपीला (11–30 µR/h)\nपृष्ठभूमि बढ़ी हुई।\n• पानी और मिट्टी जाँचें।\n• किसी भी खाद्य पदार्थ को खाने से पहले जाँचें।\n\nलाल (30–100 µR/h)\nगंभीर प्रदूषण।\n• पानी न पिएँ।\n• यहाँ उगाना या खाना जोखिम भरा; प्रयोगशाला जाँच आवश्यक।\n\nकाला (>100 µR/h)\nअत्यंत खतरनाक।\n• पानी और खाना उपयोगी नहीं।\n• लंबे समय तक रहना मना; सिर्फ थोड़ी देर सुरक्षा के साथ।\n"
   },
   "tr": {
     "title": "Chicha İzotop Haritası — Dünya gezegeninin radyolojik haritası",
@@ -413,7 +413,7 @@
     "legend_title": "Lejant",
     "legend_safe": "Güvenli",
     "legend_danger": "Tehlike",
-    "legend_full_tr": "Bu ölçek radyasyon rehberidir; ölçümler eksik olabilir.\n\nYeşil 0–11 µR/h: arka plan normal.\nSarı 11–30 µR/h: su ve gıdayı kontrol edin.\nKırmızı 30–100 µR/h: tehlikeli; mantar ve balıktan kaçının.\nSiyah >100 µR/h: aşırı tehlike; su, gıda ve uzun kalış yok."
+    "legend_full_tr": "Bu ölçek, bir yerin yaşam, su ve gıda için ne kadar güvenli olduğunu gösterir.\nUnutma: ölçümler eksik olabilir; yalnızca rehber olarak kullan.\n\nYeşil (0–11 µR/h)\nDoğal arka plan.\n• Kuyu suyu genelde güvenlidir.\n• Test olmadan bitki yetiştirilebilir.\n\nSarı (11–30 µR/h)\nYükselmiş arka plan.\n• Su ve toprağı kontrol et.\n• Her gıdayı yemeden önce test et.\n\nKırmızı (30–100 µR/h)\nCiddi kirlilik.\n• Suyu içme.\n• Burada yetiştirmek veya yemek riskli; lab testleri şart.\n\nSiyah (>100 µR/h)\nKritik bölge.\n• Su ve yiyecek kullanılamaz.\n• Uzun süre kalmak yasak; sadece kısa süre korumayla kal.\n"
   },
   "nl": {
     "title": "Chicha Isotopenkaart — Radiologische kaart van planeet Aarde",
@@ -445,7 +445,7 @@
     "legend_title": "Legenda",
     "legend_safe": "Veilig",
     "legend_danger": "Gevaar",
-    "legend_full_nl": "Deze schaal geeft stralingsveiligheid aan; metingen kunnen onvolledig zijn.\n\nGroen 0–11 µR/h: normale achtergrond.\nGeel 11–30 µR/h: controleer water en voedsel.\nRood 30–100 µR/h: gevaarlijk; vermijd paddenstoelen en vis.\nZwart >100 µR/h: extreem gevaar; geen water, voedsel of lang verblijf."
+    "legend_full_nl": "Deze schaal laat zien hoe veilig een plek is voor leven, water en eten.\nOnthoud: metingen kunnen onvolledig zijn; gebruik het alleen als richtlijn.\n\nGroen (0–11 µR/h)\nBijna natuurlijke achtergrond.\n• Pompwater is meestal veilig.\n• Je kunt zonder tests planten kweken.\n\nGeel (11–30 µR/h)\nVerhoogde achtergrond.\n• Controleer water en bodem.\n• Test voedsel voordat je het eet.\n\nRood (30–100 µR/h)\nErnstige besmetting.\n• Drink het water niet.\n• Telen of eten van hier is riskant; labtests nodig.\n\nZwart (>100 µR/h)\nKritieke zone.\n• Water en voedsel onbruikbaar.\n• Alleen kort verblijf met bescherming.\n"
   },
   "el": {
     "title": "Χάρτης ισοτόπων της Chicha — Ραδιολογικός χάρτης του πλανήτη Γη",
@@ -477,7 +477,7 @@
     "legend_title": "Υπόμνημα",
     "legend_safe": "Ασφαλές",
     "legend_danger": "Κίνδυνος",
-    "legend_full_el": "Η κλίμακα αυτή καθοδηγεί για την ακτινοβολία· οι μετρήσεις μπορεί να είναι ελλιπείς.\n\nΠράσινο 0–11 µR/h: φυσιολογικό υπόβαθρο.\nΚίτρινο 11–30 µR/h: ελέγξτε νερό και τροφή.\nΚόκκινο 30–100 µR/h: κίνδυνος· αποφύγετε μανιτάρια και ψάρια.\nΜαύρο >100 µR/h: ακραίος κίνδυνος· χωρίς νερό, τροφή ή παραμονή."
+    "legend_full_el": "Αυτή η κλίμακα δείχνει πόσο ασφαλής είναι μια περιοχή για ζωή, νερό και τροφή.\nΘυμήσου: οι μετρήσεις μπορεί να μην είναι πλήρεις· χρησιμοποίησέ τες μόνο ως οδηγό.\n\nΠράσινο (0–11 µR/h)\nΣχεδόν φυσικό υπόβαθρο.\n• Το νερό πηγών είναι γενικά ασφαλές.\n• Μπορείς να καλλιεργείς χωρίς έλεγχο.\n\nΚίτρινο (11–30 µR/h)\nΑυξημένο υπόβαθρο.\n• Έλεγξε νερό και έδαφος.\n• Εξέτασε κάθε τρόφιμο πριν το φας.\n\nΚόκκινο (30–100 µR/h)\nΣοβαρή ρύπανση.\n• Μην πίνεις το νερό.\n• Η καλλιέργεια ή κατανάλωση εδώ είναι επικίνδυνη· απαιτούνται εργαστηριακοί έλεγχοι.\n\nΜαύρο (>100 µR/h)\nΚρίσιμη ζώνη.\n• Νερό και τροφή ακατάλληλα.\n• Μόνο σύντομη παραμονή με προστασία.\n"
   },
   "pl": {
     "title": "Mapa izotopów Chichy — Radiologiczna mapa Ziemi",
@@ -509,7 +509,7 @@
     "legend_title": "Legenda",
     "legend_safe": "Bezpieczne",
     "legend_danger": "Zagrożenie",
-    "legend_full_pl": "Ta skala to wskazówka radiacyjna; pomiary mogą być niepełne.\n\nZielony 0–11 µR/h: tło normalne.\nŻółty 11–30 µR/h: sprawdź wodę i żywność.\nCzerwony 30–100 µR/h: niebezpieczne; unikaj grzybów i ryb.\nCzarny >100 µR/h: skrajne zagrożenie; bez wody, jedzenia i długiego pobytu."
+    "legend_full_pl": "Ta skala pokazuje, na ile miejsce jest bezpieczne dla życia, wody i jedzenia.\nPamiętaj: pomiary mogą być niepełne; traktuj je jedynie orientacyjnie.\n\nZielony (0–11 µR/h)\nTło prawie naturalne.\n• Woda ze studni zazwyczaj bezpieczna.\n• Można uprawiać bez testów.\n\nŻółty (11–30 µR/h)\nTło podwyższone.\n• Sprawdź wodę i glebę.\n• Zbadaj żywność przed spożyciem.\n\nCzerwony (30–100 µR/h)\nPoważne skażenie.\n• Wody nie pij.\n• Uprawa lub jedzenie stąd jest ryzykowne; konieczne badania lab.\n\nCzarny (>100 µR/h)\nStrefa krytyczna.\n• Woda i jedzenie bezużyteczne.\n• Tylko krótki pobyt z ochroną.\n"
   },
   "uk": {
     "title": "Карта ізотопів Чічі — Радіологічна карта планети Земля",
@@ -541,7 +541,7 @@
     "legend_title": "Легенда",
     "legend_safe": "Безпечно",
     "legend_danger": "Небезпека",
-    "legend_full_uk": "Ця шкала — орієнтир по радіації; дані можуть бути неповними.\n\nЗелений 0–11 µR/h: фон у нормі.\nЖовтий 11–30 µR/h: перевіряйте воду й їжу.\nЧервоний 30–100 µR/h: небезпечно; уникайте грибів і риби.\nЧорний >100 µR/h: вкрай небезпечно; без води, їжі чи тривалого перебування."
+    "legend_full_uk": "Ця шкала показує, наскільки місце безпечне для життя, води й їжі.\nПам’ятайте: вимірювання можуть бути неповними; користуйтеся лише як орієнтиром.\n\nЗелений (0–11 µR/h)\nМайже природний фон.\n• Кринична вода здебільшого безпечна.\n• Рослини можна вирощувати без перевірок.\n\nЖовтий (11–30 µR/h)\nПідвищений фон.\n• Перевіряйте воду й ґрунт.\n• Тестуйте будь-яку їжу перед споживанням.\n\nЧервоний (30–100 µR/h)\nСерйозне забруднення.\n• Воду пити не можна.\n• Вирощування чи вживання продуктів тут небезпечно; потрібні лабораторні дослідження.\n\nЧорний (>100 µR/h)\nКритична зона.\n• Вода й їжа непридатні.\n• Лише коротке перебування з захистом.\n"
   },
   "cs": {
     "title": "Chichina mapa izotopů — Radiologická mapa planety Země",
@@ -601,7 +601,7 @@
     "legend_title": "Selite",
     "legend_safe": "Turvallinen",
     "legend_danger": "Vaara",
-    "legend_full_fi": "Tämä asteikko ohjaa säteilyturvaa; mittaukset voivat olla puutteellisia.\n\nVihreä 0–11 µR/h: tausta normaali.\nKeltainen 11–30 µR/h: tarkista vesi ja ruoka.\nPunainen 30–100 µR/h: vaarallinen; vältä sieniä ja kalaa.\nMusta >100 µR/h: äärimmäinen vaara; ei vettä, ruokaa tai pitkää oleskelua."
+    "legend_full_fi": "Tämä asteikko kertoo, kuinka turvallinen paikka on elämälle, vedelle ja ruoalle.\nMuista: mittaukset voivat olla puutteellisia; käytä vain ohjeena.\n\nVihreä (0–11 µR/h)\nLähes luonnollinen tausta.\n• Kaivovesi yleensä turvallista.\n• Voit kasvattaa kasveja ilman testejä.\n\nKeltainen (11–30 µR/h)\nKohonnut tausta.\n• Tarkista vesi ja maa.\n• Tutki ruoka ennen syömistä.\n\nPunainen (30–100 µR/h)\nVakava saastuminen.\n• Älä juo vettä.\n• Täällä viljely tai syöminen on riskialtista; laboratoriotestit pakollisia.\n\nMusta (>100 µR/h)\nKriittinen alue.\n• Vesi ja ruoka käyttökelvottomia.\n• Pitkä oleskelu mahdoton; vain lyhyet käynnit suojassa.\n"
   },
   "sv": {
     "title": "Chichas isotopkarta — Radiologisk karta över planeten Jorden",
@@ -633,7 +633,7 @@
     "legend_title": "Förklaring",
     "legend_safe": "Säker",
     "legend_danger": "Fara",
-    "legend_full_sv": "Denna skala vägleder om strålning; mätningar kan vara ofullständiga.\n\nGrön 0–11 µR/h: normal bakgrund.\nGul 11–30 µR/h: kontrollera vatten och mat.\nRöd 30–100 µR/h: farlig; undvik svamp och fisk.\nSvart >100 µR/h: extrem fara; inget vatten, mat eller lång vistelse."
+    "legend_full_sv": "Denna skala visar hur säker en plats är för liv, vatten och mat.\nKom ihåg: mätningar kan vara ofullständiga; använd den bara som vägledning.\n\nGrön (0–11 µR/h)\nNästan naturlig bakgrund.\n• Brunnsvatten oftast säkert.\n• Växter kan odlas utan tester.\n\nGul (11–30 µR/h)\nFörhöjd bakgrund.\n• Kontrollera vatten och jord.\n• Undersök all mat innan du äter.\n\nRöd (30–100 µR/h)\nAllvarlig förorening.\n• Drick inte vattnet.\n• Odling eller konsumtion här är riskabelt; labbtester krävs.\n\nSvart (>100 µR/h)\nKritisk zon.\n• Vatten och mat oanvändbara.\n• Endast korta besök med skydd.\n"
   },
   "no": {
     "title": "Chichas isotopkart — Radiologisk kart over planeten Jorden",
@@ -665,7 +665,7 @@
     "legend_title": "Forklaring",
     "legend_safe": "Trygt",
     "legend_danger": "Fare",
-    "legend_full_no": "Denne skalaen veileder om stråling; målingene kan være ufullstendige.\n\nGrønn 0–11 µR/h: normal bakgrunn.\nGul 11–30 µR/h: sjekk vann og mat.\nRød 30–100 µR/h: farlig; unngå sopp og fisk.\nSvart >100 µR/h: ekstrem fare; ingen vann, mat eller lang oppholdstid."
+    "legend_full_no": "Denne skalaen viser hvor trygg et sted er for liv, vann og mat.\nHusk: målingene kan være ufullstendige; bruk den kun som veiledning.\n\nGrønn (0–11 µR/h)\nNær naturlig bakgrunn.\n• Brønnvann er vanligvis trygt.\n• Planter kan dyrkes uten tester.\n\nGul (11–30 µR/h)\nBakgrunn økt.\n• Sjekk vann og jord.\n• Test all mat før du spiser.\n\nRød (30–100 µR/h)\nAlvorlig forurensning.\n• Ikke drikk vannet.\n• Dyrking eller spising her er farlig; laboratorietester må til.\n\nSvart (>100 µR/h)\nKritisk sone.\n• Vann og mat ubrukelige.\n• Bare korte besøk med beskyttelse.\n"
   },
   "da": {
     "title": "Chichas isotopkort — Radiologisk kort over planeten Jorden",
@@ -697,7 +697,7 @@
     "legend_title": "Forklaring",
     "legend_safe": "Sikker",
     "legend_danger": "Fare",
-    "legend_full_da": "Denne skala guider om stråling; målinger kan være ufuldstændige.\n\nGrøn 0–11 µR/h: normal baggrund.\nGul 11–30 µR/h: tjek vand og mad.\nRød 30–100 µR/h: farlig; undgå svampe og fisk.\nSort >100 µR/h: ekstrem fare; ingen vand, mad eller langt ophold."
+    "legend_full_da": "Denne skala viser, hvor sikker et sted er for liv, vand og mad.\nHusk: målinger kan være ufuldstændige; brug den kun som vejledning.\n\nGrøn (0–11 µR/h)\nNæsten naturlig baggrund.\n• Brøndvand er som regel sikkert.\n• Planter kan dyrkes uden test.\n\nGul (11–30 µR/h)\nForhøjet baggrund.\n• Tjek vand og jord.\n• Undersøg mad før du spiser.\n\nRød (30–100 µR/h)\nAlvorlig forurening.\n• Drik ikke vandet.\n• Dyrkning eller spisning her er risikabelt; laboratorietest kræves.\n\nSort (>100 µR/h)\nKritisk område.\n• Vand og mad kan ikke bruges.\n• Kun korte ophold med beskyttelse.\n"
   },
   "hu": {
     "title": "Chicha izotóptérképe — A Föld radiológiai térképe",
@@ -729,7 +729,7 @@
     "legend_title": "Jelmagyarázat",
     "legend_safe": "Biztonságos",
     "legend_danger": "Veszély",
-    "legend_full_hu": "Ez a skála sugárzási útmutató; a mérések hiányosak lehetnek.\n\nZöld 0–11 µR/h: normál háttér.\nSárga 11–30 µR/h: ellenőrizd a vizet és ételt.\nPiros 30–100 µR/h: veszélyes; kerüld a gombát és halat.\nFekete >100 µR/h: rendkívül veszélyes; nincs víz, étel vagy hosszas tartózkodás."
+    "legend_full_hu": "Ez a skála megmutatja, mennyire biztonságos egy hely az életre, vízre és élelemre.\nNe feledd: a mérések hiányosak lehetnek; csak iránymutató.\n\nZöld (0–11 µR/h)\nSzinte természetes háttér.\n• A kútvíz többnyire biztonságos.\n• Növényeket vizsgálat nélkül lehet termeszteni.\n\nSárga (11–30 µR/h)\nEmelkedett háttér.\n• Vizsgáld meg a vizet és a talajt.\n• Teszteld az ételt evés előtt.\n\nPiros (30–100 µR/h)\nKomoly szennyezés.\n• Ne igyál a vízből.\n• Itt termelni vagy enni veszélyes; laborvizsgálat kell.\n\nFekete (>100 µR/h)\nKritikus zóna.\n• Víz és élelem használhatatlan.\n• Csak rövid tartózkodás védelemmel.\n"
   },
   "th": {
     "title": "แผนที่ไอโซโทปของ Chicha — แผนที่รังสีของโลก",
@@ -761,7 +761,7 @@
     "legend_title": "คำอธิบาย",
     "legend_safe": "ปลอดภัย",
     "legend_danger": "อันตราย",
-    "legend_full_th": "สเกลนี้ใช้เป็นแนวทางรังสี; ค่าที่วัดอาจไม่ครบถ้วน\n\nเขียว 0–11 µR/h: ฉากหลังปกติ\nเหลือง 11–30 µR/h: ตรวจสอบน้ำและอาหาร\nแดง 30–100 µR/h: อันตราย; หลีกเลี่ยงเห็ดและปลา\nดำ >100 µR/h: อันตรายมาก; ห้ามน้ำ อาหาร หรืออยู่ต่อ"
+    "legend_full_th": "สเกลนี้บอกว่าพื้นที่ปลอดภัยต่อชีวิต น้ำ และอาหารแค่ไหน\nจำไว้: การวัดอาจไม่ครบถ้วน ใช้เป็นเพียงแนวทาง\n\nเขียว (0–11 µR/h)\nฉากหลังเกือบธรรมชาติ\n• น้ำบ่อส่วนใหญ่ปลอดภัย\n• ปลูกพืชได้โดยไม่ต้องตรวจ\n\nเหลือง (11–30 µR/h)\nฉากหลังสูงขึ้น\n• ตรวจน้ำและดิน\n• ตรวจอาหารก่อนกิน\n\nแดง (30–100 µR/h)\nปนเปื้อนรุนแรง\n• ห้ามดื่มน้ำ\n• ปลูกหรือกินที่นี่เสี่ยง ต้องตรวจแลบ\n\nดำ (>100 µR/h)\nเขตวิกฤต\n• น้ำและอาหารใช้ไม่ได้\n• อยู่ได้เพียงสั้นๆ พร้อมอุปกรณ์ป้องกัน\n"
   },
   "vi": {
     "title": "Bản đồ đồng vị của Chicha — Bản đồ phóng xạ của Trái Đất",
@@ -793,7 +793,7 @@
     "legend_title": "Chú thích",
     "legend_safe": "An toàn",
     "legend_danger": "Nguy hiểm",
-    "legend_full_vi": "Thang này hướng dẫn về bức xạ; số đo có thể chưa đầy đủ.\n\nXanh 0–11 µR/h: nền tự nhiên.\nVàng 11–30 µR/h: kiểm tra nước và thực phẩm.\nĐỏ 30–100 µR/h: nguy hiểm; tránh nấm và cá.\nĐen >100 µR/h: cực kỳ nguy hiểm; không nước, thực phẩm hay ở lâu."
+    "legend_full_vi": "Thang này cho biết mức an toàn của nơi ở đối với đời sống, nước và thực phẩm.\nNhớ rằng: đo đạc có thể chưa đầy đủ; chỉ dùng để tham khảo.\n\nXanh (0–11 µR/h)\nNền gần tự nhiên.\n• Nước giếng thường an toàn.\n• Có thể trồng trọt không cần thử nghiệm.\n\nVàng (11–30 µR/h)\nNền cao.\n• Kiểm tra nước và đất.\n• Thử mọi thực phẩm trước khi ăn.\n\nĐỏ (30–100 µR/h)\nÔ nhiễm nghiêm trọng.\n• Không uống nước.\n• Trồng hoặc ăn ở đây nguy hiểm; cần xét nghiệm.\n\nĐen (>100 µR/h)\nVùng cực nguy.\n• Nước và thức ăn không dùng được.\n• Chỉ ở lại ngắn với bảo hộ.\n"
   },
   "id": {
     "title": "Peta Isotop Chicha — Peta radiologi Planet Bumi",
@@ -825,7 +825,7 @@
     "legend_title": "Legenda",
     "legend_safe": "Aman",
     "legend_danger": "Bahaya",
-    "legend_full_id": "Skala ini panduan radiasi; pembacaan bisa tidak lengkap.\n\nHijau 0–11 µR/h: latar normal.\nKuning 11–30 µR/h: periksa air dan makanan.\nMerah 30–100 µR/h: berbahaya; hindari jamur dan ikan.\nHitam >100 µR/h: sangat berbahaya; tanpa air, makanan, atau tinggal lama."
+    "legend_full_id": "Skala ini menunjukkan seberapa aman suatu tempat bagi hidup, air, dan makanan.\nIngat: pengukuran bisa tidak lengkap; pakai sebagai panduan saja.\n\nHijau (0–11 µR/h)\nLatar mendekati alami.\n• Air sumur umumnya aman.\n• Tanaman bisa ditanam tanpa tes.\n\nKuning (11–30 µR/h)\nLatar meningkat.\n• Periksa air dan tanah.\n• Uji makanan sebelum dimakan.\n\nMerah (30–100 µR/h)\nKontaminasi serius.\n• Jangan minum airnya.\n• Menanam atau makan di sini berbahaya; tes laboratorium wajib.\n\nHitam (>100 µR/h)\nZona kritis.\n• Air dan makanan tak dapat digunakan.\n• Hanya boleh singgah sebentar dengan perlindungan.\n"
   },
   "ms": {
     "title": "Peta Isotop Chicha — Peta radiologi Planet Bumi",
@@ -857,7 +857,7 @@
     "legend_title": "Legenda",
     "legend_safe": "Selamat",
     "legend_danger": "Bahaya",
-    "legend_full_ms": "Skala ini panduan radiasi; bacaan mungkin tidak lengkap.\n\nHijau 0–11 µR/h: latar normal.\nKuning 11–30 µR/h: periksa air dan makanan.\nMerah 30–100 µR/h: bahaya; elakkan cendawan dan ikan.\nHitam >100 µR/h: bahaya tinggi; tiada air, makanan atau tinggal lama."
+    "legend_full_ms": "Skala ini menunjukkan tahap keselamatan tempat untuk kehidupan, air dan makanan.\nIngat: bacaan mungkin tidak lengkap; guna sebagai panduan sahaja.\n\nHijau (0–11 µR/h)\nLatar hampir semula jadi.\n• Air perigi biasanya selamat.\n• Boleh menanam tanpa ujian.\n\nKuning (11–30 µR/h)\nLatar meningkat.\n• Periksa air dan tanah.\n• Uji makanan sebelum makan.\n\nMerah (30–100 µR/h)\nPencemaran serius.\n• Jangan minum air.\n• Menanam atau makan di sini berbahaya; perlu ujian makmal.\n\nHitam (>100 µR/h)\nZon kritikal.\n• Air dan makanan tidak boleh digunakan.\n• Hanya lawatan singkat dengan perlindungan.\n"
   },
   "fa": {
     "title": "نقشه ایزوتوپ‌های چیچا — نقشهٔ رادیولوژیِ سیارهٔ زمین",
@@ -889,7 +889,7 @@
     "legend_title": "راهنما",
     "legend_safe": "ایمن",
     "legend_danger": "خطر",
-    "legend_full_fa": "این مقیاس راهنمای تابش است؛ اندازه‌گیری‌ها ممکن است ناقص باشند.\n\nسبز 0–11 µR/h: زمینه عادی.\nزرد 11–30 µR/h: آب و غذا را بررسی کنید.\nقرمز 30–100 µR/h: خطرناک؛ از قارچ و ماهی دوری کنید.\nسیاه >100 µR/h: خطر شدید؛ بدون آب، غذا یا ماندن طولانی."
+    "legend_full_fa": "این مقیاس نشان می‌دهد یک محل برای زندگی، آب و غذا چقدر امن است.\nبه یاد داشته باشید: اندازه‌گیری‌ها ممکن است ناقص باشد؛ فقط به عنوان راهنما استفاده کنید.\n\nسبز (0–11 µR/h)\nزمینه نزدیک به طبیعی.\n• آب چاه معمولاً امن است.\n• می‌توان بدون آزمایش گیاه کاشت.\n\nزرد (11–30 µR/h)\nزمینه بالا رفته.\n• آب و خاک را بررسی کنید.\n• هر غذایی را پیش از خوردن آزمایش کنید.\n\nقرمز (30–100 µR/h)\nآلودگی شدید.\n• آب را ننوشید.\n• کاشت یا خوردن اینجا خطرناک است؛ آزمایشگاه لازم است.\n\nسیاه (>100 µR/h)\nمنطقه بحرانی.\n• آب و غذا قابل استفاده نیست.\n• فقط توقف کوتاه با حفاظت.\n"
   },
   "he": {
     "title": "מפת האיזוטופים של Chicha — מפת קרינה של כוכב הלכת הארץ",
@@ -921,6 +921,6 @@
     "legend_title": "מקרא",
     "legend_safe": "בטוח",
     "legend_danger": "סכנה",
-    "legend_full_he": "סולם זה מנחה לגבי קרינה; המדידות עשויות להיות חלקיות.\n\nירוק 0–11 µR/h: רקע רגיל.\nצהוב 11–30 µR/h: בדקו מים ומזון.\nאדום 30–100 µR/h: מסוכן; הימנעו מפטריות ודגים.\nשחור >100 µR/h: סכנה קיצונית; אין מים, מזון או שהייה ממושכת."
+    "legend_full_he": "סולם זה מראה עד כמה מקום בטוח לחיים, למים ולמזון.\nזכור: המדידות עשויות להיות חלקיות; השתמש בזה כהכוונה בלבד.\n\nירוק (0–11 µR/h)\nרקע כמעט טבעי.\n• מי באר לרוב בטוחים.\n• ניתן לגדל צמחים בלי בדיקות.\n\nצהוב (11–30 µR/h)\nרקע מוגבר.\n• בדוק מים ואדמה.\n• בדוק כל מזון לפני אכילה.\n\nאדום (30–100 µR/h)\nזיהום חמור.\n• אל תשתה את המים.\n• גידול או אכילה כאן מסוכנים; בדיקות מעבדה חובה.\n\nשחור (>100 µR/h)\nאזור קריטי.\n• מים ומזון אינם שימושיים.\n• שהייה ממושכת אסורה; רק ביקור קצר עם הגנה.\n"
   }
 }
