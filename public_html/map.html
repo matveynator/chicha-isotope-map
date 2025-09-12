@@ -554,21 +554,21 @@ body, html {
   font-family: inherit;
   display: flex;
   overflow: hidden;">
-  <div style="width:24px; display:flex; flex-direction:column; margin-right:8px; border-radius:4px 0 0 4px; overflow:hidden;">
-    <span style="flex:1; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); background:#008000; color:#000; font-size:10px;">{{translate "legend_safe"}}</span>
-    <span style="flex:1; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); background:linear-gradient(#FF4500,#000); color:#fff; font-size:10px;">{{translate "legend_danger"}}</span>
+    <div style="width:24px; margin-right:8px; border-radius:4px 0 0 4px; overflow:hidden; background:linear-gradient(to top,#008000,#FFD700,#FF8C00,#FF4500,#000); position:relative;">
+    <span style="position:absolute; bottom:2px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size:10px;">{{translate "legend_safe"}}</span>
+    <span style="position:absolute; top:2px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size:10px;">{{translate "legend_danger"}}</span>
   </div>
   <div>
     <strong>{{translate "legend_title"}}</strong><br>
-    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
-    <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
-    <div><span style="color:#FF4500;">■</span> 30–100 µR/h</div>
     <div><span style="color:#000000;">■</span> >100 µR/h</div>
+    <div><span style="color:#FF4500;">■</span> 30–100 µR/h</div>
+    <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
+    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
   </div>
 </div>
 <!--
-  Compact 4-bin legend (values in µR/h) with in-place safe→danger gradient bar:
-  Green: 0–11, Yellow: 11–30, Red: 30–100, Black: >100.
+  Compact 4-bin legend (µR/h) with vertical gradient bar (green→yellow→orange→red→black).
+  White labels mark safe at the bottom and danger at the top.
   Clicking the legend opens a modal with full, human-friendly guidance.
 -->
 <!-- Legend Modal -->
