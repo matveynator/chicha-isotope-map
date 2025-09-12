@@ -93,9 +93,23 @@ func main() {
 			outputPath := filepath.Join(outputDir, execFileName)
 
 			ldflags := fmt.Sprintf("-X 'main.CompileVersion=%s'", version)
-			buildCmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", outputPath, goSourceFile)
 
-			buildCmd.Env = append(os.Environ(), "GOOS="+osName, "GOARCH="+arch)
+			// Build with DuckDB tag and CGO when supported.
+			duckdb := supportsDuckDB(osName, arch)
+			buildArgs := []string{"build", "-ldflags", ldflags}
+			if duckdb {
+				buildArgs = append(buildArgs, "-tags", "duckdb")
+			}
+			buildArgs = append(buildArgs, "-o", outputPath, goSourceFile)
+			buildCmd := exec.Command("go", buildArgs...)
+
+			env := append(os.Environ(), "GOOS="+osName, "GOARCH="+arch)
+			if duckdb {
+				env = append(env, "CGO_ENABLED=1")
+			} else {
+				env = append(env, "CGO_ENABLED=0")
+			}
+			buildCmd.Env = env
 			if err := buildCmd.Run(); err != nil {
 				// Remove the directory if build fails
 				err = os.RemoveAll(outputDir)
@@ -158,6 +172,21 @@ func runCommand(name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// supportsDuckDB reports whether the given OS and architecture combination can build with DuckDB.
+// DuckDB driver is available on Linux/amd64, macOS/amd64, macOS/arm64, and Windows/amd64.
+func supportsDuckDB(osName, arch string) bool {
+	switch osName {
+	case "linux":
+		return arch == "amd64"
+	case "darwin":
+		return arch == "amd64" || arch == "arm64"
+	case "windows":
+		return arch == "amd64"
+	default:
+		return false
+	}
 }
 
 // Helper function to get the Git root path
