@@ -178,6 +178,12 @@ body, html {
           box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
         }
 
+        /* Link inside popups pointing to full legend */
+        .risk-link {
+          color: var(--link-color);
+          text-decoration: underline;
+        }
+
         /* Container for upload button */
         .upload-btn-container {
           position: absolute;
@@ -792,6 +798,12 @@ function getFillOpacity(speed) {
   }
 }
 
+// Decide a translation key for safety based on dose rate (µSv/h).
+// Using legend thresholds keeps UI consistent and avoids extra strings.
+function doseCategory(doseRate) {
+  return doseRate <= 0.11 ? 'legend_safe' : 'legend_danger';
+}
+
 // Build tooltip content for a marker
 function getTooltipContent(marker) {
   var date = new Date(marker.date * 1000);
@@ -1318,6 +1330,9 @@ function getPopupContent(marker) {
     <div class="custom-tooltip">
     <div><strong>${translate('radiation_dose')}:</strong>
   ${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
+    <a href="#" class="risk-link" onclick="openLegendModal(); return false;">
+      ${translate(doseCategory(marker.doseRate))}
+    </a>
     </div>
     <div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
     <div style="margin-top:4px">
@@ -1695,32 +1710,34 @@ function centerMapToLocation() {
     • Show modal; close on backdrop click for convenience.
 -->
 <script>
-  // Open the modal with full legend text in the current language.
+  // Display the full legend text in current language.
+  // Exposed so marker popups reuse the same modal.
+  function openLegendModal() {
+    // Choose full text key dynamically for any supported language
+    var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
+    var key = 'legend_full_' + lang;
+    var txt = translate(key);
+    // Build pretty paragraphs and add colored markers
+    var parts = txt.split('\n\n');
+    var html = parts.map(function(p){
+      var lines = p.split('\n').map(function(line){
+        if (line.includes('0–11')) return '<span style=\"color:#008000;\">■</span> ' + line;
+        if (line.includes('11–30')) return '<span style=\"color:#FFD700;\">■</span> ' + line;
+        if (line.includes('30–100')) return '<span style=\"color:#FF4500;\">■</span> ' + line;
+        if (line.includes('>100')) return '<span style=\"color:#000000;\">■</span> ' + line;
+        return line;
+      }).join('<br>');
+      return '<p style=\"margin:0 0 1em 0;\">' + lines + '</p>';
+    }).join('');
+    var box = document.getElementById('legendText');
+    if (box) box.innerHTML = html;
+    var modal = document.getElementById('legendModal');
+    if (modal) modal.style.display = 'flex';
+  }
+
   (function(){
     var el = document.getElementById('legend');
-    if (!el) return;
-    el.addEventListener('click', function(){
-      // Choose full text key dynamically for any supported language
-      var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
-      var key = 'legend_full_' + lang;
-      var txt = translate(key);
-      // Build pretty paragraphs and add colored markers
-      var parts = txt.split('\n\n');
-      var html = parts.map(function(p){
-        var lines = p.split('\n').map(function(line){
-          if (line.includes('0–11')) return '<span style=\"color:#008000;\">■</span> ' + line;
-          if (line.includes('11–30')) return '<span style=\"color:#FFD700;\">■</span> ' + line;
-          if (line.includes('30–100')) return '<span style=\"color:#FF4500;\">■</span> ' + line;
-          if (line.includes('>100')) return '<span style=\"color:#000000;\">■</span> ' + line;
-          return line;
-        }).join('<br>');
-        return '<p style=\"margin:0 0 1em 0;\">' + lines + '</p>';
-      }).join('');
-      var box = document.getElementById('legendText');
-      if (box) box.innerHTML = html;
-      var modal = document.getElementById('legendModal');
-      if (modal) modal.style.display = 'flex';
-    });
+    if (el) el.addEventListener('click', openLegendModal);
     // Close on backdrop click (UX nicety)
     var modal = document.getElementById('legendModal');
     if (modal) {
