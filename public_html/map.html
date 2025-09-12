@@ -29,8 +29,8 @@ body, html {
           --progress-color: #333333;
           --progress-bar-bg: #f4f4f4;
           --progress-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-          --upload-btn-bg: #7FFF00; /* Bright green keeps upload button visible */
-          --upload-btn-bg-hover: #32CD32; /* Darker green on hover for feedback */
+          --upload-btn-bg: #4caf50; /* Standard site green for consistency */
+          --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
           --control-bg: rgba(255, 255, 255, 0.25);
           --control-bg-hover: rgba(255, 255, 255, 0.35);
           --legend-border: 1px solid #ccc;
@@ -48,8 +48,8 @@ body, html {
             --progress-color: #f4f4f4;
             --progress-bar-bg: #555555;
             --progress-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
-            --upload-btn-bg: #7FFF00; /* Bright green keeps upload button visible */
-            --upload-btn-bg-hover: #32CD32; /* Darker green on hover for feedback */
+            --upload-btn-bg: #4caf50; /* Standard site green for consistency */
+            --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
             --control-bg: rgba(51, 51, 51, 0.25);
             --control-bg-hover: rgba(51, 51, 51, 0.35);
             --legend-border: 0px solid #555;
@@ -68,8 +68,8 @@ body, html {
           --progress-color: #333333;
           --progress-bar-bg: #f4f4f4;
           --progress-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-          --upload-btn-bg: #7FFF00; /* Bright green keeps upload button visible */
-          --upload-btn-bg-hover: #32CD32; /* Darker green on hover for feedback */
+          --upload-btn-bg: #4caf50; /* Standard site green for consistency */
+          --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
           --control-bg: rgba(255, 255, 255, 0.25);
           --control-bg-hover: rgba(255, 255, 255, 0.35);
           --legend-border: 1px solid #ccc;
@@ -86,8 +86,8 @@ body, html {
           --progress-color: #f4f4f4;
           --progress-bar-bg: #555555;
           --progress-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
-          --upload-btn-bg: #7FFF00; /* Bright green keeps upload button visible */
-          --upload-btn-bg-hover: #32CD32; /* Darker green on hover for feedback */
+          --upload-btn-bg: #4caf50; /* Standard site green for consistency */
+          --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
           --control-bg: rgba(51, 51, 51, 0.25);
           --control-bg-hover: rgba(51, 51, 51, 0.35);
           --legend-border: 0px solid #555;
@@ -188,13 +188,13 @@ body, html {
 
         /* Upload button styling, theme-aware */
         .upload-btn {
-          background-color: var(--upload-btn-bg); /* Use bright green for visibility */
+          background-color: var(--upload-btn-bg); /* Use site green for familiarity */
           border: var(--legend-border);
           border-radius: 4px;
           padding: 5px 10px;
           cursor: pointer;
           font-size: 14px;
-          color: var(--modal-text);
+          color: #ffffff; /* White text stays readable across themes */
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
 
