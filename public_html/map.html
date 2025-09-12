@@ -939,6 +939,13 @@ document.addEventListener('DOMContentLoaded', function () {
     collapsed: false
   }).addTo(map);
 
+  // Add data source credits so external contributors are acknowledged
+  map.attributionControl.addAttribution(
+    'Data provided by <a href="https://safecast.org" target="_blank">Safecast</a>, ' +
+    '<a href="https://atomfast.net" target="_blank">Atomcloud</a>, ' +
+    '<a href="https://radiaverse.com" target="_blank">Radiacode</a>'
+  );
+
   // Track view initialization
   var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
   if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
