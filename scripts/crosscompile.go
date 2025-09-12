@@ -19,6 +19,20 @@ import (
 	"strings"
 )
 
+// buildJob describes a single compilation task.
+// When DuckDB is true we compile with CGO and the duckdb tag.
+type buildJob struct {
+	osName string
+	arch   string
+	duckdb bool
+}
+
+// buildResult carries the outcome of a buildJob through a channel.
+type buildResult struct {
+	job buildJob
+	err error
+}
+
 func main() {
 
 	//download all modules
@@ -83,56 +97,28 @@ func main() {
 
 	for _, osName := range osList {
 		for _, arch := range archList {
-			targetOSName := osName
-			execFileName := executionFile
-
-			if osName == "windows" {
-				execFileName += ".exe"
-			} else if osName == "darwin" {
-				targetOSName = "mac"
+			// Build the vanilla binary and, when possible, the DuckDB variant in parallel.
+			jobs := []buildJob{{osName: osName, arch: arch, duckdb: false}}
+			if supportsDuckDB(osName, arch) {
+				jobs = append(jobs, buildJob{osName: osName, arch: arch, duckdb: true})
 			}
 
-			outputDir := filepath.Join(binariesPath, "no-gui", targetOSName, arch)
-			err := os.MkdirAll(outputDir, os.ModePerm)
-			if err != nil {
-				log.Printf("Error creating output directory %s: %v", outputDir, err)
-				continue
+			results := make(chan buildResult, len(jobs))
+			for _, job := range jobs {
+				go func(j buildJob) {
+					err := buildBinary(j, goSourceFile, executionFile, binariesPath, version)
+					results <- buildResult{job: j, err: err}
+				}(job)
 			}
 
-			outputPath := filepath.Join(outputDir, execFileName)
-
-			ldflags := fmt.Sprintf("-X 'main.CompileVersion=%s'", version)
-
-			// Build with DuckDB tag and CGO when supported.
-			duckdb := supportsDuckDB(osName, arch)
-			buildArgs := []string{"build", "-ldflags", ldflags}
-			if duckdb {
-				buildArgs = append(buildArgs, "-tags", "duckdb")
-			}
-			buildArgs = append(buildArgs, "-o", outputPath, goSourceFile)
-			buildCmd := exec.Command("go", buildArgs...)
-
-			env := append(os.Environ(), "GOOS="+osName, "GOARCH="+arch)
-			if duckdb {
-				env = append(env, "CGO_ENABLED=1")
-			} else {
-				env = append(env, "CGO_ENABLED=0")
-			}
-			buildCmd.Env = env
-			if err := buildCmd.Run(); err != nil {
-				// Remove the directory if build fails
-				err = os.RemoveAll(outputDir)
-				if err != nil {
-					log.Printf("Error removing output directory %s: %v", outputDir, err)
+			for completed := 0; completed < len(jobs); {
+				select {
+				case res := <-results:
+					completed++
+					if res.err != nil {
+						log.Printf("Error building %s/%s (duckdb=%v): %v", res.job.osName, res.job.arch, res.job.duckdb, res.err)
+					}
 				}
-				continue
-			} else {
-				err = os.Chmod(outputPath, 0755)
-				if err != nil {
-					log.Printf("Error setting permissions on %s: %v", outputPath, err)
-				}
-
-				fmt.Printf("Successfully built %s for %s/%s\n", execFileName, osName, arch)
 			}
 		}
 	}
@@ -181,6 +167,60 @@ func runCommand(name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// buildBinary compiles a single target and writes it into a variant-specific directory.
+// When job.duckdb is true, we enable CGO and build with the "duckdb" tag.
+func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, version string) error {
+	targetOSName := job.osName
+	execFileName := executionFile
+
+	if job.osName == "windows" {
+		execFileName += ".exe"
+	} else if job.osName == "darwin" {
+		targetOSName = "mac"
+	}
+
+	variantDir := "no-gui"
+	if job.duckdb {
+		variantDir = "no-gui-duckdb"
+	}
+
+	outputDir := filepath.Join(binariesPath, variantDir, targetOSName, job.arch)
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+		return fmt.Errorf("creating output directory %s: %w", outputDir, err)
+	}
+
+	outputPath := filepath.Join(outputDir, execFileName)
+	ldflags := fmt.Sprintf("-X 'main.CompileVersion=%s'", version)
+
+	args := []string{"build", "-ldflags", ldflags}
+	if job.duckdb {
+		args = append(args, "-tags", "duckdb")
+	}
+	args = append(args, "-o", outputPath, goSourceFile)
+	buildCmd := exec.Command("go", args...)
+
+	env := append(os.Environ(), "GOOS="+job.osName, "GOARCH="+job.arch)
+	if job.duckdb {
+		env = append(env, "CGO_ENABLED=1")
+	} else {
+		env = append(env, "CGO_ENABLED=0")
+	}
+	buildCmd.Env = env
+
+	out, err := buildCmd.CombinedOutput()
+	if err != nil {
+		_ = os.RemoveAll(outputDir)
+		return fmt.Errorf("go build failed: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	if err := os.Chmod(outputPath, 0755); err != nil {
+		return fmt.Errorf("chmod failed on %s: %w", outputPath, err)
+	}
+
+	fmt.Printf("Successfully built %s for %s/%s (duckdb=%v)\n", execFileName, job.osName, job.arch, job.duckdb)
+	return nil
 }
 
 // supportsDuckDB reports whether the given OS and architecture combination can build with DuckDB.
