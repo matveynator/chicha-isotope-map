@@ -1647,15 +1647,23 @@ function centerMapToLocation() {
 
     <!-- Theme toggle script -->
     <script>
-      // Manually switch between light and dark themes.
+      // Manually switch between light and dark themes and persist choice in the session.
       (function(){
         var sw = document.getElementById('themeSwitch');
         if (!sw) return;
+
+        // Determine initial theme: prefer stored session choice, fallback to system preference.
+        var storedTheme = sessionStorage.getItem('themePreference');
         var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.dataset.theme = prefersDark ? 'dark' : 'light';
-        sw.checked = prefersDark;
+        var initialTheme = storedTheme ? storedTheme : (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = initialTheme;
+        sw.checked = initialTheme === 'dark';
+
+        // Update theme and remember selection for this session.
         sw.addEventListener('change', function(){
-          document.documentElement.dataset.theme = this.checked ? 'dark' : 'light';
+          var newTheme = this.checked ? 'dark' : 'light';
+          document.documentElement.dataset.theme = newTheme;
+          sessionStorage.setItem('themePreference', newTheme);
         });
       })();
     </script>
