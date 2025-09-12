@@ -25,7 +25,11 @@
     "location_error": "Произошла ошибка при получении местоположения.",
     "geolocation_not_supported": "Ваш браузер не поддерживает геолокацию.",
     "track_id": "ID трека",
-    "back_to_all_tracks": "Назад к общей карте треков."
+    "back_to_all_tracks": "Назад к общей карте треков.",
+    "legend_title": "Легенда",
+    "legend_full_ru": "Эта шкала показывает, насколько место *скорее всего* безопасно для жизни, воды и пищи.\nНужно помнить: измерения могут быть неполными, а радиация выше или скрыта. Поэтому данные — лишь ориентир.\n\nЗелёная (0–11 µR/h)\nФон близок к естественному.\n• Вода из скважин и колодцев считается безопасной.\n• Выращивание растений допустимо без проверок.\n\nЖёлтая (11–30 µR/h)\nПовышенный фон, требуется внимание.\n• Воду и почву нужно проверять.\n• Любые продукты этой земли (овощи, грибы и т. д.) следует тестировать перед употреблением.\n\nКрасная (30–100 µR/h)\nСерьёзное загрязнение.\n• Воду пить нельзя.\n• Выращивать и есть продукты с этой территории опасно; обязательны лабораторные проверки.\n\nЧёрная (>100 µR/h)\nКритическая зона.\n• Вода и пища непригодны.\n• Постоянное проживание исключено; пребывание только кратковременно с защитой.",
+    "legend_safe": "Безопасно",
+    "legend_danger": "Опасно"
   },
   "en": {
     "title": "Chicha’s Isotope Map — Radiological Map of Planet Earth",
@@ -53,7 +57,11 @@
     "location_error": "An error occurred while obtaining location.",
     "geolocation_not_supported": "Your browser does not support geolocation.",
     "track_id": "Track ID",
-    "back_to_all_tracks": "Back to the combined track map."
+    "back_to_all_tracks": "Back to the combined track map.",
+    "legend_title": "Legend",
+    "legend_full_en": "This scale shows how safe a place is most likely for life, water, and food.\nRemember: measurements may be incomplete, and radiation may be higher or hidden. Use these values only as guidance.\n\nGreen (0–11 µR/h)\nBackground is close to natural.\n• Water from wells is considered safe.\n• Plants can be grown without testing.\n\nYellow (11–30 µR/h)\nElevated background; be cautious.\n• Water and soil must be checked.\n• Any vegetables, mushrooms, or other produce should be tested before eating.\n\nRed (30–100 µR/h)\nSerious contamination.\n• Water is unsafe to drink.\n• Growing or consuming produce from this area is dangerous; laboratory tests are mandatory.\n\nBlack (>100 µR/h)\nCritical zone.\n• Water and food are unusable.\n• Long-term stay is impossible; only brief visits with protection are allowed.",
+    "legend_safe": "Safe",
+    "legend_danger": "Danger"
   },
   "es": {
     "title": "Mapa de Isótopos de Chicha — Mapa radiológico del planeta Tierra",
@@ -81,7 +89,11 @@
     "location_error": "Ocurrió un error al obtener la ubicación.",
     "geolocation_not_supported": "Tu navegador no admite geolocalización.",
     "track_id": "ID de trayectoria",
-    "back_to_all_tracks": "Volver al mapa combinado de trayectorias."
+    "back_to_all_tracks": "Volver al mapa combinado de trayectorias.",
+    "legend_title": "Leyenda",
+    "legend_safe": "Seguro",
+    "legend_danger": "Peligro",
+    "legend_full_es": "Esta escala orienta sobre la radiación; los datos pueden ser incompletos.\n\nVerde 0–11 µR/h: fondo normal.\nAmarillo 11–30 µR/h: revise agua y comida.\nRojo 30–100 µR/h: peligro; evite setas y pescado.\nNegro >100 µR/h: peligro extremo; sin agua, comida ni estancia prolongada."
   },
   "fr": {
     "title": "Carte des isotopes de Chicha — Carte radiologique de la planète Terre",
@@ -109,7 +121,11 @@
     "location_error": "Une erreur est survenue lors de l’obtention de la localisation.",
     "geolocation_not_supported": "Votre navigateur ne prend pas en charge la géolocalisation.",
     "track_id": "ID de piste",
-    "back_to_all_tracks": "Retour à la carte combinée des pistes."
+    "back_to_all_tracks": "Retour à la carte combinée des pistes.",
+    "legend_title": "Légende",
+    "legend_safe": "Sûr",
+    "legend_danger": "Danger",
+    "legend_full_fr": "Cette échelle guide la radioprotection; les mesures peuvent être incomplètes.\n\nVert 0–11 µR/h : fond normal.\nJaune 11–30 µR/h : vérifier l’eau et la nourriture.\nRouge 30–100 µR/h : danger; éviter champignons et poisson.\nNoir >100 µR/h : danger extrême; pas d’eau, de nourriture ni de séjour prolongé."
   },
   "de": {
     "title": "Chichas Isotopenkarte — Radiologische Karte des Planeten Erde",
@@ -137,7 +153,11 @@
     "location_error": "Fehler beim Abrufen des Standorts.",
     "geolocation_not_supported": "Ihr Browser unterstützt keine Geolokalisierung.",
     "track_id": "Track-ID",
-    "back_to_all_tracks": "Zurück zur kombinierten Track-Karte."
+    "back_to_all_tracks": "Zurück zur kombinierten Track-Karte.",
+    "legend_title": "Legende",
+    "legend_safe": "Sicher",
+    "legend_danger": "Gefahr",
+    "legend_full_de": "Diese Skala dient als Strahlungsrichtwert; Messungen können unvollständig sein.\n\nGrün 0–11 µR/h: normale Hintergrundstrahlung.\nGelb 11–30 µR/h: Wasser und Nahrung prüfen.\nRot 30–100 µR/h: gefährlich; Pilze und Fisch meiden.\nSchwarz >100 µR/h: extreme Gefahr; kein Wasser, keine Nahrung, kein langer Aufenthalt."
   },
   "zh": {
     "title": "Chicha 同位素地图——地球辐射地图",
@@ -165,7 +185,11 @@
     "location_error": "获取位置时发生错误。",
     "geolocation_not_supported": "您的浏览器不支持地理定位。",
     "track_id": "轨迹 ID",
-    "back_to_all_tracks": "返回到合并轨迹的地图。"
+    "back_to_all_tracks": "返回到合并轨迹的地图。",
+    "legend_title": "图例",
+    "legend_safe": "安全",
+    "legend_danger": "危险",
+    "legend_full_zh": "此刻度用于辐射参考；读数可能不完整。\n\n绿色 0–11 µR/h：背景正常。\n黄色 11–30 µR/h：检查水和食物。\n红色 30–100 µR/h：危险；避免蘑菇和鱼。\n黑色 >100 µR/h：极度危险；勿取水、食物或久留。"
   },
   "ja": {
     "title": "チチャの同位体マップ — 地球の放射線マップ",
@@ -193,7 +217,11 @@
     "location_error": "位置情報の取得中にエラーが発生しました。",
     "geolocation_not_supported": "お使いのブラウザはジオロケーションをサポートしていません。",
     "track_id": "トラック ID",
-    "back_to_all_tracks": "すべてのトラックの地図に戻る。"
+    "back_to_all_tracks": "すべてのトラックの地図に戻る。",
+    "legend_title": "凡例",
+    "legend_safe": "安全",
+    "legend_danger": "危険",
+    "legend_full_ja": "この尺度は放射線の目安であり、測定は不完全な場合があります。\n\n緑 0–11 µR/h: 背景は正常。\n黄 11–30 µR/h: 水と食べ物を確認。\n赤 30–100 µR/h: 危険；きのこや魚を避ける。\n黒 >100 µR/h: 極めて危険；水・食料・長時間の滞在は禁止。"
   },
   "ko": {
     "title": "치차 동위원소 지도 — 지구 방사선 지도",
@@ -221,7 +249,11 @@
     "location_error": "위치 정보를 가져오는 중 오류가 발생했습니다.",
     "geolocation_not_supported": "브라우저에서 지리적 위치를 지원하지 않습니다.",
     "track_id": "트랙 ID",
-    "back_to_all_tracks": "모든 트랙 지도로 돌아가기."
+    "back_to_all_tracks": "모든 트랙 지도로 돌아가기.",
+    "legend_title": "범례",
+    "legend_safe": "안전",
+    "legend_danger": "위험",
+    "legend_full_ko": "이 척도는 방사선 안내용이며 측정값은 불완전할 수 있습니다.\n\n초록 0–11 µR/h: 정상 배경.\n노랑 11–30 µR/h: 물과 음식 확인.\n빨강 30–100 µR/h: 위험; 버섯과 생선을 피하세요.\n검정 >100 µR/h: 매우 위험; 물, 음식, 장시간 체류 금지."
   },
   "pt": {
     "title": "Mapa de Isótopos da Chicha — Mapa radiológico do planeta Terra",
@@ -249,7 +281,11 @@
     "location_error": "Ocorreu um erro ao obter a localização.",
     "geolocation_not_supported": "Seu navegador não suporta geolocalização.",
     "track_id": "ID da trilha",
-    "back_to_all_tracks": "Voltar ao mapa combinado de trilhas."
+    "back_to_all_tracks": "Voltar ao mapa combinado de trilhas.",
+    "legend_title": "Legenda",
+    "legend_safe": "Seguro",
+    "legend_danger": "Perigo",
+    "legend_full_pt": "Esta escala orienta sobre radiação; as leituras podem ser incompletas.\n\nVerde 0–11 µR/h: fundo normal.\nAmarelo 11–30 µR/h: verifique água e comida.\nVermelho 30–100 µR/h: perigoso; evite cogumelos e peixe.\nPreto >100 µR/h: perigo extremo; sem água, comida ou permanência longa."
   },
   "it": {
     "title": "Mappa degli isotopi di Chicha — Mappa radiologica del pianeta Terra",
@@ -277,7 +313,11 @@
     "location_error": "Si è verificato un errore durante l'ottenimento della posizione.",
     "geolocation_not_supported": "Il tuo browser non supporta la geolocalizzazione.",
     "track_id": "ID traccia",
-    "back_to_all_tracks": "Torna alla mappa combinata delle tracce."
+    "back_to_all_tracks": "Torna alla mappa combinata delle tracce.",
+    "legend_title": "Legenda",
+    "legend_safe": "Sicuro",
+    "legend_danger": "Pericolo",
+    "legend_full_it": "Questa scala guida sulla radiazione; le misure possono essere incomplete.\n\nVerde 0–11 µR/h: fondo normale.\nGiallo 11–30 µR/h: controllare acqua e cibo.\nRosso 30–100 µR/h: pericoloso; evitare funghi e pesce.\nNero >100 µR/h: pericolo estremo; niente acqua, cibo o lunga permanenza."
   },
   "ar": {
     "title": "خريطة نظائر تشيتشا — خريطة إشعاعية لكوكب الأرض",
@@ -305,7 +345,11 @@
     "location_error": "حدث خطأ أثناء الحصول على الموقع.",
     "geolocation_not_supported": "متصفحك لا يدعم تحديد الموقع الجغرافي.",
     "track_id": "معرّف المسار",
-    "back_to_all_tracks": "العودة إلى خريطة المسارات الموحّدة."
+    "back_to_all_tracks": "العودة إلى خريطة المسارات الموحّدة.",
+    "legend_title": "مفتاح",
+    "legend_safe": "آمن",
+    "legend_danger": "خطر",
+    "legend_full_ar": "هذه المقياس دليل للإشعاع؛ قد تكون القراءات غير كاملة.\n\nأخضر 0–11 µR/h: الخلفية طبيعية.\nأصفر 11–30 µR/h: افحص الماء والطعام.\nأحمر 30–100 µR/h: خطر؛ تجنب الفطر والسمك.\nأسود >100 µR/h: خطر شديد؛ لا ماء أو طعام أو بقاء طويل."
   },
   "hi": {
     "title": "चिचा समस्थानिक मानचित्र — पृथ्वी ग्रह का विकिरण मानचित्र",
@@ -333,7 +377,11 @@
     "location_error": "स्थान प्राप्त करते समय त्रुटि हुई।",
     "geolocation_not_supported": "आपका ब्राउज़र भू-स्थान का समर्थन नहीं करता है।",
     "track_id": "ट्रैक आईडी",
-    "back_to_all_tracks": "सभी ट्रैकों के संयुक्त मानचित्र पर वापस जाएँ।"
+    "back_to_all_tracks": "सभी ट्रैकों के संयुक्त मानचित्र पर वापस जाएँ।",
+    "legend_title": "दिशा-सूचक",
+    "legend_safe": "सुरक्षित",
+    "legend_danger": "खतरा",
+    "legend_full_hi": "यह पैमाना विकिरण का मार्गदर्शन है; आँकड़े अधूरे हो सकते हैं।\n\nहरा 0–11 µR/h: पृष्ठभूमि सामान्य।\nपीला 11–30 µR/h: पानी और भोजन जाँचें।\nलाल 30–100 µR/h: खतरनाक; मशरूम और मछली से बचें।\nकाला >100 µR/h: अत्यधिक खतरा; पानी, भोजन या लंबा ठहराव नहीं।"
   },
   "tr": {
     "title": "Chicha İzotop Haritası — Dünya gezegeninin radyolojik haritası",
@@ -361,7 +409,11 @@
     "location_error": "Konum alınırken bir hata oluştu.",
     "geolocation_not_supported": "Tarayıcınız jeolokasyonu desteklemiyor.",
     "track_id": "İz Kimliği",
-    "back_to_all_tracks": "Tüm izlerin birleşik haritasına geri dön."
+    "back_to_all_tracks": "Tüm izlerin birleşik haritasına geri dön.",
+    "legend_title": "Lejant",
+    "legend_safe": "Güvenli",
+    "legend_danger": "Tehlike",
+    "legend_full_tr": "Bu ölçek radyasyon rehberidir; ölçümler eksik olabilir.\n\nYeşil 0–11 µR/h: arka plan normal.\nSarı 11–30 µR/h: su ve gıdayı kontrol edin.\nKırmızı 30–100 µR/h: tehlikeli; mantar ve balıktan kaçının.\nSiyah >100 µR/h: aşırı tehlike; su, gıda ve uzun kalış yok."
   },
   "nl": {
     "title": "Chicha Isotopenkaart — Radiologische kaart van planeet Aarde",
@@ -389,7 +441,11 @@
     "location_error": "Er is een fout opgetreden bij het ophalen van de locatie.",
     "geolocation_not_supported": "Uw browser ondersteunt geen geolocatie.",
     "track_id": "Track-ID",
-    "back_to_all_tracks": "Terug naar de gecombineerde sporenkaart."
+    "back_to_all_tracks": "Terug naar de gecombineerde sporenkaart.",
+    "legend_title": "Legenda",
+    "legend_safe": "Veilig",
+    "legend_danger": "Gevaar",
+    "legend_full_nl": "Deze schaal geeft stralingsveiligheid aan; metingen kunnen onvolledig zijn.\n\nGroen 0–11 µR/h: normale achtergrond.\nGeel 11–30 µR/h: controleer water en voedsel.\nRood 30–100 µR/h: gevaarlijk; vermijd paddenstoelen en vis.\nZwart >100 µR/h: extreem gevaar; geen water, voedsel of lang verblijf."
   },
   "el": {
     "title": "Χάρτης ισοτόπων της Chicha — Ραδιολογικός χάρτης του πλανήτη Γη",
@@ -417,7 +473,11 @@
     "location_error": "Παρουσιάστηκε σφάλμα κατά την απόκτηση της τοποθεσίας.",
     "geolocation_not_supported": "Το πρόγραμμα περιήγησής σας δεν υποστηρίζει γεωεντοπισμό.",
     "track_id": "Αναγνωριστικό διαδρομής",
-    "back_to_all_tracks": "Επιστροφή στον συνδυαστικό χάρτη διαδρομών."
+    "back_to_all_tracks": "Επιστροφή στον συνδυαστικό χάρτη διαδρομών.",
+    "legend_title": "Υπόμνημα",
+    "legend_safe": "Ασφαλές",
+    "legend_danger": "Κίνδυνος",
+    "legend_full_el": "Η κλίμακα αυτή καθοδηγεί για την ακτινοβολία· οι μετρήσεις μπορεί να είναι ελλιπείς.\n\nΠράσινο 0–11 µR/h: φυσιολογικό υπόβαθρο.\nΚίτρινο 11–30 µR/h: ελέγξτε νερό και τροφή.\nΚόκκινο 30–100 µR/h: κίνδυνος· αποφύγετε μανιτάρια και ψάρια.\nΜαύρο >100 µR/h: ακραίος κίνδυνος· χωρίς νερό, τροφή ή παραμονή."
   },
   "pl": {
     "title": "Mapa izotopów Chichy — Radiologiczna mapa Ziemi",
@@ -445,7 +505,11 @@
     "location_error": "Wystąpił błąd podczas pobierania lokalizacji.",
     "geolocation_not_supported": "Twoja przeglądarka nie obsługuje geolokalizacji.",
     "track_id": "ID trasy",
-    "back_to_all_tracks": "Powrót do łączonej mapy tras."
+    "back_to_all_tracks": "Powrót do łączonej mapy tras.",
+    "legend_title": "Legenda",
+    "legend_safe": "Bezpieczne",
+    "legend_danger": "Zagrożenie",
+    "legend_full_pl": "Ta skala to wskazówka radiacyjna; pomiary mogą być niepełne.\n\nZielony 0–11 µR/h: tło normalne.\nŻółty 11–30 µR/h: sprawdź wodę i żywność.\nCzerwony 30–100 µR/h: niebezpieczne; unikaj grzybów i ryb.\nCzarny >100 µR/h: skrajne zagrożenie; bez wody, jedzenia i długiego pobytu."
   },
   "uk": {
     "title": "Карта ізотопів Чічі — Радіологічна карта планети Земля",
@@ -473,7 +537,11 @@
     "location_error": "Під час отримання розташування сталася помилка.",
     "geolocation_not_supported": "Ваш браузер не підтримує геолокацію.",
     "track_id": "ID треку",
-    "back_to_all_tracks": "Повернутися до об’єднаної карти треків."
+    "back_to_all_tracks": "Повернутися до об’єднаної карти треків.",
+    "legend_title": "Легенда",
+    "legend_safe": "Безпечно",
+    "legend_danger": "Небезпека",
+    "legend_full_uk": "Ця шкала — орієнтир по радіації; дані можуть бути неповними.\n\nЗелений 0–11 µR/h: фон у нормі.\nЖовтий 11–30 µR/h: перевіряйте воду й їжу.\nЧервоний 30–100 µR/h: небезпечно; уникайте грибів і риби.\nЧорний >100 µR/h: вкрай небезпечно; без води, їжі чи тривалого перебування."
   },
   "cs": {
     "title": "Chichina mapa izotopů — Radiologická mapa planety Země",
@@ -529,7 +597,11 @@
     "location_error": "Virhe sijaintia haettaessa.",
     "geolocation_not_supported": "Selaimesi ei tue paikkatietoja.",
     "track_id": "Reitin tunnus",
-    "back_to_all_tracks": "Takaisin yhdistettyyn reittikarttaan."
+    "back_to_all_tracks": "Takaisin yhdistettyyn reittikarttaan.",
+    "legend_title": "Selite",
+    "legend_safe": "Turvallinen",
+    "legend_danger": "Vaara",
+    "legend_full_fi": "Tämä asteikko ohjaa säteilyturvaa; mittaukset voivat olla puutteellisia.\n\nVihreä 0–11 µR/h: tausta normaali.\nKeltainen 11–30 µR/h: tarkista vesi ja ruoka.\nPunainen 30–100 µR/h: vaarallinen; vältä sieniä ja kalaa.\nMusta >100 µR/h: äärimmäinen vaara; ei vettä, ruokaa tai pitkää oleskelua."
   },
   "sv": {
     "title": "Chichas isotopkarta — Radiologisk karta över planeten Jorden",
@@ -557,7 +629,11 @@
     "location_error": "Ett fel uppstod när platsen hämtades.",
     "geolocation_not_supported": "Din webbläsare stöder inte geolokalisering.",
     "track_id": "Spår-ID",
-    "back_to_all_tracks": "Tillbaka till den kombinerade spårkartan."
+    "back_to_all_tracks": "Tillbaka till den kombinerade spårkartan.",
+    "legend_title": "Förklaring",
+    "legend_safe": "Säker",
+    "legend_danger": "Fara",
+    "legend_full_sv": "Denna skala vägleder om strålning; mätningar kan vara ofullständiga.\n\nGrön 0–11 µR/h: normal bakgrund.\nGul 11–30 µR/h: kontrollera vatten och mat.\nRöd 30–100 µR/h: farlig; undvik svamp och fisk.\nSvart >100 µR/h: extrem fara; inget vatten, mat eller lång vistelse."
   },
   "no": {
     "title": "Chichas isotopkart — Radiologisk kart over planeten Jorden",
@@ -585,7 +661,11 @@
     "location_error": "Det oppsto en feil ved henting av posisjon.",
     "geolocation_not_supported": "Nettleseren din støtter ikke geolokalisering.",
     "track_id": "Spor-ID",
-    "back_to_all_tracks": "Tilbake til det kombinerte sporkartet."
+    "back_to_all_tracks": "Tilbake til det kombinerte sporkartet.",
+    "legend_title": "Forklaring",
+    "legend_safe": "Trygt",
+    "legend_danger": "Fare",
+    "legend_full_no": "Denne skalaen veileder om stråling; målingene kan være ufullstendige.\n\nGrønn 0–11 µR/h: normal bakgrunn.\nGul 11–30 µR/h: sjekk vann og mat.\nRød 30–100 µR/h: farlig; unngå sopp og fisk.\nSvart >100 µR/h: ekstrem fare; ingen vann, mat eller lang oppholdstid."
   },
   "da": {
     "title": "Chichas isotopkort — Radiologisk kort over planeten Jorden",
@@ -613,7 +693,11 @@
     "location_error": "Der opstod en fejl under hentning af placeringen.",
     "geolocation_not_supported": "Din browser understøtter ikke geolokation.",
     "track_id": "Spor-ID",
-    "back_to_all_tracks": "Tilbage til det kombinerede sporkort."
+    "back_to_all_tracks": "Tilbage til det kombinerede sporkort.",
+    "legend_title": "Forklaring",
+    "legend_safe": "Sikker",
+    "legend_danger": "Fare",
+    "legend_full_da": "Denne skala guider om stråling; målinger kan være ufuldstændige.\n\nGrøn 0–11 µR/h: normal baggrund.\nGul 11–30 µR/h: tjek vand og mad.\nRød 30–100 µR/h: farlig; undgå svampe og fisk.\nSort >100 µR/h: ekstrem fare; ingen vand, mad eller langt ophold."
   },
   "hu": {
     "title": "Chicha izotóptérképe — A Föld radiológiai térképe",
@@ -641,7 +725,11 @@
     "location_error": "Hiba történt a hely lekérése közben.",
     "geolocation_not_supported": "A böngésződ nem támogatja a geolokációt.",
     "track_id": "Útvonalazonosító",
-    "back_to_all_tracks": "Vissza az egyesített útvonaltérképhez."
+    "back_to_all_tracks": "Vissza az egyesített útvonaltérképhez.",
+    "legend_title": "Jelmagyarázat",
+    "legend_safe": "Biztonságos",
+    "legend_danger": "Veszély",
+    "legend_full_hu": "Ez a skála sugárzási útmutató; a mérések hiányosak lehetnek.\n\nZöld 0–11 µR/h: normál háttér.\nSárga 11–30 µR/h: ellenőrizd a vizet és ételt.\nPiros 30–100 µR/h: veszélyes; kerüld a gombát és halat.\nFekete >100 µR/h: rendkívül veszélyes; nincs víz, étel vagy hosszas tartózkodás."
   },
   "th": {
     "title": "แผนที่ไอโซโทปของ Chicha — แผนที่รังสีของโลก",
@@ -669,7 +757,11 @@
     "location_error": "เกิดข้อผิดพลาดระหว่างรับตำแหน่ง",
     "geolocation_not_supported": "เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่งทางภูมิศาสตร์",
     "track_id": "รหัสเส้นทาง",
-    "back_to_all_tracks": "กลับไปยังแผนที่รวมเส้นทาง"
+    "back_to_all_tracks": "กลับไปยังแผนที่รวมเส้นทาง",
+    "legend_title": "คำอธิบาย",
+    "legend_safe": "ปลอดภัย",
+    "legend_danger": "อันตราย",
+    "legend_full_th": "สเกลนี้ใช้เป็นแนวทางรังสี; ค่าที่วัดอาจไม่ครบถ้วน\n\nเขียว 0–11 µR/h: ฉากหลังปกติ\nเหลือง 11–30 µR/h: ตรวจสอบน้ำและอาหาร\nแดง 30–100 µR/h: อันตราย; หลีกเลี่ยงเห็ดและปลา\nดำ >100 µR/h: อันตรายมาก; ห้ามน้ำ อาหาร หรืออยู่ต่อ"
   },
   "vi": {
     "title": "Bản đồ đồng vị của Chicha — Bản đồ phóng xạ của Trái Đất",
@@ -697,7 +789,11 @@
     "location_error": "Đã xảy ra lỗi khi lấy vị trí.",
     "geolocation_not_supported": "Trình duyệt của bạn không hỗ trợ định vị địa lý.",
     "track_id": "ID hành trình",
-    "back_to_all_tracks": "Quay lại bản đồ tổng hợp các hành trình."
+    "back_to_all_tracks": "Quay lại bản đồ tổng hợp các hành trình.",
+    "legend_title": "Chú thích",
+    "legend_safe": "An toàn",
+    "legend_danger": "Nguy hiểm",
+    "legend_full_vi": "Thang này hướng dẫn về bức xạ; số đo có thể chưa đầy đủ.\n\nXanh 0–11 µR/h: nền tự nhiên.\nVàng 11–30 µR/h: kiểm tra nước và thực phẩm.\nĐỏ 30–100 µR/h: nguy hiểm; tránh nấm và cá.\nĐen >100 µR/h: cực kỳ nguy hiểm; không nước, thực phẩm hay ở lâu."
   },
   "id": {
     "title": "Peta Isotop Chicha — Peta radiologi Planet Bumi",
@@ -725,7 +821,11 @@
     "location_error": "Terjadi kesalahan saat mendapatkan lokasi.",
     "geolocation_not_supported": "Peramban Anda tidak mendukung geolokasi.",
     "track_id": "ID lintasan",
-    "back_to_all_tracks": "Kembali ke peta lintasan gabungan."
+    "back_to_all_tracks": "Kembali ke peta lintasan gabungan.",
+    "legend_title": "Legenda",
+    "legend_safe": "Aman",
+    "legend_danger": "Bahaya",
+    "legend_full_id": "Skala ini panduan radiasi; pembacaan bisa tidak lengkap.\n\nHijau 0–11 µR/h: latar normal.\nKuning 11–30 µR/h: periksa air dan makanan.\nMerah 30–100 µR/h: berbahaya; hindari jamur dan ikan.\nHitam >100 µR/h: sangat berbahaya; tanpa air, makanan, atau tinggal lama."
   },
   "ms": {
     "title": "Peta Isotop Chicha — Peta radiologi Planet Bumi",
@@ -753,7 +853,11 @@
     "location_error": "Ralat berlaku semasa mendapatkan lokasi.",
     "geolocation_not_supported": "Pelayar anda tidak menyokong geolokasi.",
     "track_id": "ID jejak",
-    "back_to_all_tracks": "Kembali ke peta jejak gabungan."
+    "back_to_all_tracks": "Kembali ke peta jejak gabungan.",
+    "legend_title": "Legenda",
+    "legend_safe": "Selamat",
+    "legend_danger": "Bahaya",
+    "legend_full_ms": "Skala ini panduan radiasi; bacaan mungkin tidak lengkap.\n\nHijau 0–11 µR/h: latar normal.\nKuning 11–30 µR/h: periksa air dan makanan.\nMerah 30–100 µR/h: bahaya; elakkan cendawan dan ikan.\nHitam >100 µR/h: bahaya tinggi; tiada air, makanan atau tinggal lama."
   },
   "fa": {
     "title": "نقشه ایزوتوپ‌های چیچا — نقشهٔ رادیولوژیِ سیارهٔ زمین",
@@ -781,7 +885,11 @@
     "location_error": "هنگام دریافت موقعیت خطایی رخ داد.",
     "geolocation_not_supported": "مرورگر شما از موقعیت‌یابی جغرافیایی پشتیبانی نمی‌کند.",
     "track_id": "شناسهٔ مسیر",
-    "back_to_all_tracks": "بازگشت به نقشهٔ ترکیبی مسیرها."
+    "back_to_all_tracks": "بازگشت به نقشهٔ ترکیبی مسیرها.",
+    "legend_title": "راهنما",
+    "legend_safe": "ایمن",
+    "legend_danger": "خطر",
+    "legend_full_fa": "این مقیاس راهنمای تابش است؛ اندازه‌گیری‌ها ممکن است ناقص باشند.\n\nسبز 0–11 µR/h: زمینه عادی.\nزرد 11–30 µR/h: آب و غذا را بررسی کنید.\nقرمز 30–100 µR/h: خطرناک؛ از قارچ و ماهی دوری کنید.\nسیاه >100 µR/h: خطر شدید؛ بدون آب، غذا یا ماندن طولانی."
   },
   "he": {
     "title": "מפת האיזוטופים של Chicha — מפת קרינה של כוכב הלכת הארץ",
@@ -809,7 +917,10 @@
     "location_error": "אירעה שגיאה בעת קבלת המיקום.",
     "geolocation_not_supported": "הדפדפן שלך אינו תומך בקביעת מיקום.",
     "track_id": "מזהה מסלול",
-    "back_to_all_tracks": "חזרה למפת המסלולים המשולבת."
+    "back_to_all_tracks": "חזרה למפת המסלולים המשולבת.",
+    "legend_title": "מקרא",
+    "legend_safe": "בטוח",
+    "legend_danger": "סכנה",
+    "legend_full_he": "סולם זה מנחה לגבי קרינה; המדידות עשויות להיות חלקיות.\n\nירוק 0–11 µR/h: רקע רגיל.\nצהוב 11–30 µR/h: בדקו מים ומזון.\nאדום 30–100 µR/h: מסוכן; הימנעו מפטריות ודגים.\nשחור >100 µR/h: סכנה קיצונית; אין מים, מזון או שהייה ממושכת."
   }
 }
-

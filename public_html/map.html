@@ -29,6 +29,10 @@ body, html {
           --progress-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
           --control-bg: rgba(255, 255, 255, 0.25);
           --control-bg-hover: rgba(255, 255, 255, 0.35);
+          --legend-border: 1px solid #ccc;
+          --modal-bg: #ffffff;
+          --modal-text: #333333;
+          --modal-border: 1px solid #888;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -40,6 +44,10 @@ body, html {
             --progress-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
             --control-bg: rgba(51, 51, 51, 0.25);
             --control-bg-hover: rgba(51, 51, 51, 0.35);
+            --legend-border: 0px solid #555;
+            --modal-bg: #2b2b2b;
+            --modal-text: #eee;
+            --modal-border: 1px solid #444;
           }
         }
 
@@ -529,6 +537,78 @@ body, html {
       <div class="spinner"></div>
     </div>
 
+<!-- Compact Legend (clickable) -->
+<div id="legend" style="
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: var(--control-bg);
+  border: var(--legend-border);
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+  padding: 10px 10px 10px 0;
+  font-size: 12px;
+  line-height: 1.4em;
+  cursor: pointer;
+  z-index: 1000;
+  font-family: inherit;
+  display: flex;
+  overflow: hidden;">
+    <div style="width:24px; margin-right:8px; border-radius:4px 0 0 4px; overflow:hidden; background:linear-gradient(to top,#008000,#FFD700,#FF8C00,#FF4500,#000); position:relative;">
+    <span style="position:absolute; bottom:2px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size:10px;">{{translate "legend_safe"}}</span>
+    <span style="position:absolute; top:2px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size:10px;">{{translate "legend_danger"}}</span>
+  </div>
+  <div>
+    <strong>{{translate "legend_title"}}</strong><br>
+    <div><span style="color:#000000;">■</span> >100 µR/h</div>
+    <div><span style="color:#FF4500;">■</span> 30–100 µR/h</div>
+    <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
+    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
+  </div>
+</div>
+<!--
+  Compact 4-bin legend (µR/h) with vertical gradient bar (green→yellow→orange→red→black).
+  White labels mark safe at the bottom and danger at the top.
+  Clicking the legend opens a modal with full, human-friendly guidance.
+-->
+<!-- Legend Modal -->
+<div id="legendModal" style="
+  display:none;
+  position:fixed;
+  top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.6);
+  z-index:2000;
+  justify-content:center;
+  align-items:center;">
+  <div style="
+    background:var(--modal-bg);
+    color:var(--modal-text);
+    border:var(--modal-border);
+    max-width:720px;
+    max-height:80vh;
+    overflow-y:auto;
+    padding:20px;
+    border-radius:10px;
+    font-size:14px;
+    line-height:1.6em;
+    box-shadow:0 0 10px rgba(0,0,0,0.5);
+    font-family: inherit;">
+    <h3 style="margin-top:0;">{{translate "legend_title"}}</h3>
+    <!-- We inject the localized full text below -->
+    <div id="legendText" style="line-height:1.6em;"></div>
+    <div style="margin-top:12px; text-align:right;">
+      <button onclick="document.getElementById('legendModal').style.display='none'"
+        style="padding:6px 12px; background: var(--control-bg); border: var(--legend-border); border-radius:4px; cursor:pointer; font-family: inherit;">
+        OK
+      </button>
+    </div>
+  </div>
+</div>
+<!--
+  Modal that displays the full, localized legend text.
+  `white-space:pre-wrap` preserves paragraphs and bullets from translations.json.
+  Box scrolls when content is long.
+-->
 
     <!-- Load Leaflet JavaScript library -->
     <script src="/static/leaflet.js"></script>
@@ -1463,5 +1543,48 @@ function centerMapToLocation() {
       }
     </script>
 
+
+<!--
+  When the legend is clicked:
+    • Fetch language-specific full text.
+    • Split into paragraphs and decorate range lines with color squares.
+    • Show modal; close on backdrop click for convenience.
+-->
+<script>
+  // Open the modal with full legend text in the current language.
+  (function(){
+    var el = document.getElementById('legend');
+    if (!el) return;
+    el.addEventListener('click', function(){
+      // Choose full text key dynamically for any supported language
+      var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
+      var key = 'legend_full_' + lang;
+      var txt = translate(key);
+      // Build pretty paragraphs and add colored markers
+      var parts = txt.split('\n\n');
+      var html = parts.map(function(p){
+        var lines = p.split('\n').map(function(line){
+          if (line.includes('0–11')) return '<span style=\"color:#008000;\">■</span> ' + line;
+          if (line.includes('11–30')) return '<span style=\"color:#FFD700;\">■</span> ' + line;
+          if (line.includes('30–100')) return '<span style=\"color:#FF4500;\">■</span> ' + line;
+          if (line.includes('>100')) return '<span style=\"color:#000000;\">■</span> ' + line;
+          return line;
+        }).join('<br>');
+        return '<p style=\"margin:0 0 1em 0;\">' + lines + '</p>';
+      }).join('');
+      var box = document.getElementById('legendText');
+      if (box) box.innerHTML = html;
+      var modal = document.getElementById('legendModal');
+      if (modal) modal.style.display = 'flex';
+    });
+    // Close on backdrop click (UX nicety)
+    var modal = document.getElementById('legendModal');
+    if (modal) {
+      modal.addEventListener('click', function(e){
+        if (e.target === modal) modal.style.display = 'none';
+      });
+    }
+  })();
+</script>
   </body>
 </html>
