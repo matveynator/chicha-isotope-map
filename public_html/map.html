@@ -29,6 +29,10 @@ body, html {
           --progress-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
           --control-bg: rgba(255, 255, 255, 0.25);
           --control-bg-hover: rgba(255, 255, 255, 0.35);
+          --legend-border: 1px solid #ccc;
+          --modal-bg: #ffffff;
+          --modal-text: #333333;
+          --modal-border: 1px solid #888;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -40,6 +44,10 @@ body, html {
             --progress-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
             --control-bg: rgba(51, 51, 51, 0.25);
             --control-bg-hover: rgba(51, 51, 51, 0.35);
+            --legend-border: 0px solid #555;
+            --modal-bg: #2b2b2b;
+            --modal-text: #eee;
+            --modal-border: 1px solid #444;
           }
         }
 
@@ -534,13 +542,16 @@ body, html {
   position: absolute;
   bottom: 20px;
   right: 20px;
-  background: var(--overlay-bg);
+  background: var(--control-bg);
+  border: var(--legend-border);
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.65);
   padding: 10px;
-  border-radius: 6px;
   font-size: 12px;
   line-height: 1.4em;
   cursor: pointer;
-  z-index: 1000;">
+  z-index: 1000;
+  font-family: inherit;">
   <strong>{{translate "legend_title"}}</strong><br>
   <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
   <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
@@ -562,20 +573,22 @@ body, html {
   justify-content:center;
   align-items:center;">
   <div style="
-    background:#fff;
-    color:#333;
+    background:var(--modal-bg);
+    color:var(--modal-text);
+    border:var(--modal-border);
     max-width:720px;
     padding:20px;
     border-radius:10px;
     font-size:14px;
     line-height:1.6em;
-    box-shadow:0 0 10px rgba(0,0,0,0.5);">
+    box-shadow:0 0 10px rgba(0,0,0,0.5);
+    font-family: inherit;">
     <h3 style="margin-top:0;">{{translate "legend_title"}}</h3>
     <!-- We inject the localized full text below -->
     <div id="legendText" style="white-space:pre-wrap"></div>
     <div style="margin-top:12px; text-align:right;">
       <button onclick="document.getElementById('legendModal').style.display='none'"
-        style="padding:6px 12px; border:1px solid #888; border-radius:4px; cursor:pointer;">
+        style="padding:6px 12px; background: var(--control-bg); border: var(--legend-border); border-radius:4px; cursor:pointer; font-family: inherit;">
         OK
       </button>
     </div>
@@ -1523,7 +1536,7 @@ function centerMapToLocation() {
 <!--
   When the legend is clicked:
     • Choose RU/EN key.
-    • Inject full text from translations (safe, plain text).
+    • Decorate range headers with color markers.
     • Show modal; close on backdrop click for convenience.
 -->
 <script>
@@ -1537,8 +1550,23 @@ function centerMapToLocation() {
         ? 'legend_full_ru'
         : 'legend_full_en';
       var txt = translate(key);
+      var lines = txt.split('\n').map(function(line){
+        if (line.startsWith('Зел') || line.startsWith('Green')) {
+          return '<span style="color:#008000;">■</span> ' + line;
+        }
+        if (line.startsWith('Жёл') || line.startsWith('Yellow')) {
+          return '<span style="color:#FFD700;">■</span> ' + line;
+        }
+        if (line.startsWith('Крас') || line.startsWith('Red')) {
+          return '<span style="color:#FF4500;">■</span> ' + line;
+        }
+        if (line.startsWith('Чёр') || line.startsWith('Black')) {
+          return '<span style="color:#000000;">■</span> ' + line;
+        }
+        return line;
+      }).join('\n');
       var box = document.getElementById('legendText');
-      if (box) box.textContent = txt; // keep it safe & simple; pre-wrap handles formatting
+      if (box) box.innerHTML = lines; // pre-wrap preserves formatting
       var modal = document.getElementById('legendModal');
       if (modal) modal.style.display = 'flex';
     });
