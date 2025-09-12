@@ -905,6 +905,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const media = window.matchMedia('(prefers-color-scheme: dark)');
   const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   const osmDark  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  window.osmLight = osmLight; // expose for theme toggle
+  window.osmDark  = osmDark;  // expose for theme toggle
   // Google tiles always use satellite imagery for consistent look
   const googleSat   = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
 
@@ -917,11 +919,6 @@ document.addEventListener('DOMContentLoaded', function () {
   googleSatellite = L.tileLayer(googleSat, {
     maxZoom: 20,
     attribution: '&copy; Google'
-  });
-
-  media.addEventListener('change', e => {
-    osmLayer.setUrl(e.matches ? osmDark : osmLight);
-    // Google layer remains unchanged to keep satellite imagery
   });
 
   // right after creating osmLayer and googleSatellite
@@ -1647,25 +1644,36 @@ function centerMapToLocation() {
 
     <!-- Theme toggle script -->
     <script>
-      // Manually switch between light and dark themes and persist choice in the session.
-      (function(){
+      // Synchronize UI theme with map tiles and remember the choice for the session.
+      document.addEventListener('DOMContentLoaded', function () {
         var sw = document.getElementById('themeSwitch');
         if (!sw) return;
+        var media = window.matchMedia('(prefers-color-scheme: dark)');
 
-        // Determine initial theme: prefer stored session choice, fallback to system preference.
+        function applyTheme(theme) {
+          document.documentElement.dataset.theme = theme; // switch CSS variables
+          if (window.osmLayer) {
+            window.osmLayer.setUrl(theme === 'dark' ? window.osmDark : window.osmLight);
+          }
+          sw.checked = theme === 'dark';
+        }
+
         var storedTheme = sessionStorage.getItem('themePreference');
-        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var initialTheme = storedTheme ? storedTheme : (prefersDark ? 'dark' : 'light');
-        document.documentElement.dataset.theme = initialTheme;
-        sw.checked = initialTheme === 'dark';
+        var initialTheme = storedTheme ? storedTheme : (media.matches ? 'dark' : 'light');
+        applyTheme(initialTheme); // set initial state
 
-        // Update theme and remember selection for this session.
-        sw.addEventListener('change', function(){
+        sw.addEventListener('change', function () {
           var newTheme = this.checked ? 'dark' : 'light';
-          document.documentElement.dataset.theme = newTheme;
+          applyTheme(newTheme);
           sessionStorage.setItem('themePreference', newTheme);
         });
-      })();
+
+        media.addEventListener('change', function (e) {
+          var newTheme = e.matches ? 'dark' : 'light';
+          applyTheme(newTheme);
+          sessionStorage.setItem('themePreference', newTheme);
+        });
+      });
     </script>
 
 
