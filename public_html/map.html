@@ -35,6 +35,7 @@ body, html {
           --modal-bg: #ffffff;
           --modal-text: #333333;
           --modal-border: 1px solid #888;
+          --link-color: #007bff;
           color-scheme: light; /* Default to light scheme */
         }
 
@@ -51,6 +52,7 @@ body, html {
             --modal-bg: #2b2b2b;
             --modal-text: #eee;
             --modal-border: 1px solid #444;
+            --link-color: #90caf9;
             color-scheme: dark; /* Match system dark scheme */
           }
         }
@@ -68,6 +70,7 @@ body, html {
           --modal-bg: #ffffff;
           --modal-text: #333333;
           --modal-border: 1px solid #888;
+          --link-color: #007bff;
           color-scheme: light; /* Force light scheme when manually selected */
         }
 
@@ -83,6 +86,7 @@ body, html {
           --modal-bg: #2b2b2b;
           --modal-text: #eee;
           --modal-border: 1px solid #444;
+          --link-color: #90caf9;
           color-scheme: dark; /* Force dark scheme when manually selected */
         }
 
@@ -100,6 +104,7 @@ body, html {
           font-family: inherit;
           display: flex;
           align-items: center;
+          color: var(--modal-text);
         }
 
         .theme-switch {
@@ -157,10 +162,11 @@ body, html {
 
         /* Custom tooltip styles */
         .custom-tooltip {
-          background-color: white;
+          /* Match tooltip with current theme */
+          background-color: var(--modal-bg);
           border-radius: 5px;
           padding: 10px;
-          color: #333;
+          color: var(--modal-text);
           box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
         }
 
@@ -172,14 +178,15 @@ body, html {
           z-index: 1000;
         }
 
-        /* Upload button styling */
+        /* Upload button styling, theme-aware */
         .upload-btn {
           background-color: var(--control-bg);
-          border: 1px solid #ccc;
+          border: var(--legend-border);
           border-radius: 4px;
           padding: 5px 10px;
           cursor: pointer;
           font-size: 14px;
+          color: var(--modal-text);
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
 
@@ -255,14 +262,15 @@ body, html {
           z-index: 1000;
         }
 
-        /* Geolocation button styling */
+        /* Geolocation button styling, theme-aware */
         .locate-btn {
           background-color: var(--control-bg);
-          border: 1px solid #ccc;
+          border: var(--legend-border);
           border-radius: 4px;
           padding: 5px 10px;
           cursor: pointer;
           font-size: 16px;
+          color: var(--modal-text);
           box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
           display: flex;
           align-items: center;
@@ -292,19 +300,19 @@ body, html {
           opacity: 1;
         }
 
-        /* Program info */
+        /* Program info uses theme text and link colors */
         .program-info {
           position: absolute;
           bottom: 20px;
           left: 70px;
           z-index: 1000;
-          color: #333;
+          color: var(--modal-text);
           font-size: 14px;
           opacity: 0.6;
         }
 
         .program-info a {
-          color: #007bff;
+          color: var(--link-color);
           text-decoration: none;
         }
 
@@ -328,11 +336,12 @@ body, html {
 
         .back-to-all-btn {
           background-color: var(--control-bg);
-          border: 1px solid #ccc;
+          border: var(--legend-border);
           border-radius: 4px;
           padding: 5px 10px;
           cursor: pointer;
           font-size: 14px;
+          color: var(--modal-text);
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
 
@@ -369,13 +378,14 @@ body, html {
           background:#1e88e5;        /* pick your brand color */
         }
 
+        /* Slider handles respect theme colors */
         .noUi-vertical .noUi-handle{
           width:32px;
           height:20px;
           left:-18px;              /* center on 6px rail */
           border-radius:3px;
-          background:#f6f6f6;      /* light handle */
-          border:1px solid #ccc;   /* grey outline */
+          background: var(--control-bg);      /* follow theme */
+          border: var(--legend-border);   /* match theme border */
           box-shadow:0 1px 3px rgba(0,0,0,.25);
           cursor:grab;
         }
@@ -396,10 +406,12 @@ body, html {
           display:flex; gap:2px; margin:2px 0 4px;
           font-size:11px; line-height:1; user-select:none;
         }
+        /* Year/Month toggle buttons adapt to theme */
         .slider-toggle button{
           flex:1 1 0; padding:2px 4px;
-          border:1px solid #bbb; background: var(--control-bg);
+          border: var(--legend-border); background: var(--control-bg);
           border-radius:3px; cursor:pointer;
+          color: var(--modal-text);
         }
         .slider-toggle button.active{
           background:#1e88e5; color:#fff; border-color:#1e88e5;
@@ -419,16 +431,18 @@ body, html {
         #yearSlider .noUi-connect   {background:#bfbfbf;}
 
 
+        /* Reset button styled with theme variables */
         .slider-reset-btn{
           display:block;
           width:100%;
           margin-top:4px;
           padding:2px 4px;
           font-size:11px;
-          border:1px solid #bbb;
+          border: var(--legend-border);
           background: var(--control-bg);
           border-radius:3px;
           cursor:pointer;
+          color: var(--modal-text);
         }
         .slider-reset-btn:hover{ background: var(--control-bg-hover); }
 
@@ -449,28 +463,30 @@ body, html {
         @keyframes spin{ to{ transform:rotate(360deg); } }
 
 
-        /* Compact QR button */
+        /* Compact QR button follows theme */
         .qr-btn {
           background: var(--control-bg);
-          border: 1px solid #ccc;
+          border: var(--legend-border);
           border-radius: 4px;
           width: 42px; height: 42px;
           padding: 4px;
           display: flex; align-items: center; justify-content: center;
           cursor: pointer;
+          color: var(--modal-text);
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
         .qr-btn:hover { background: var(--control-bg-hover); }
         .qr-btn svg { width: 22px; height: 22px; display: block; }
 
-
-                /* Leaflet controls use semi-transparent backgrounds */
+        /* Leaflet controls use theme variables so colors follow the current theme */
         .leaflet-control-layers,
         .leaflet-control-layers-toggle,
         .leaflet-control-layers-list,
         .leaflet-control-layers-expanded,
         .leaflet-bar a {
           background-color: var(--control-bg);
+          border: var(--legend-border);
+          color: var(--modal-text);
         }
 
         .leaflet-control-layers-toggle:hover,
@@ -478,34 +494,8 @@ body, html {
           background-color: var(--control-bg-hover);
         }
 
-        /* Dark theme overrides */
-        @media (prefers-color-scheme: dark) {
-          body, html {
-            background-color: #000;
-            color: #ddd;
-          }
-          .custom-tooltip {
-            background-color: #333;
-            color: #ddd;
-          }
-          /* Make all controls dark in dark theme */
-          .upload-btn, .locate-btn, .back-to-all-btn, .qr-btn,
-          .slider-reset-btn, .slider-toggle button,
-          .leaflet-control-layers, .leaflet-control-layers-toggle,
-          .leaflet-control-layers-list, .leaflet-bar a {
-            background-color: var(--control-bg);
-            border: 0px solid #555;
-            color: #eee;
-          }
-          .upload-btn:hover, .locate-btn:hover, .back-to-all-btn:hover, .qr-btn:hover,
-          .slider-reset-btn:hover, .leaflet-control-layers-toggle:hover,
-          .leaflet-bar a:hover {
-            background-color: var(--control-bg-hover);
-          }
-          .leaflet-control-layers label { color: #eee; }
-          .program-info { color: #ccc; }
-          .program-info a { color: #90caf9; }
-        }
+        /* Ensure layer labels match theme text color */
+        .leaflet-control-layers label { color: var(--modal-text); }
 
         /* ===== Leaflet layer control ===== */
         /* Remove border and shadow around map type selector to blend into map */
