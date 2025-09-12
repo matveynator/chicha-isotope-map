@@ -25,7 +25,9 @@
     "location_error": "Произошла ошибка при получении местоположения.",
     "geolocation_not_supported": "Ваш браузер не поддерживает геолокацию.",
     "track_id": "ID трека",
-    "back_to_all_tracks": "Назад к общей карте треков."
+    "back_to_all_tracks": "Назад к общей карте треков.",
+    "legend_title": "Легенда",
+    "legend_full_ru": "Эта шкала показывает, насколько место *скорее всего* безопасно для жизни, воды и пищи.\nНужно помнить: измерения могут быть неполными, а радиация выше или скрыта. Поэтому данные — лишь ориентир.\n\nЗелёная (0–11 µR/h)\nЧистая природа или фон, близкий к естественному.\n• Вода из артезиана и колодцев безопасна.\n• Еду выращивать можно без ограничений.\n• Грибы и рыбу собирать допустимо.\n\nЖёлтая (11–30 µR/h)\nПовышенный фон. Здесь нужно быть очень внимательным.\n• Воду проверять обязательно.\n• Еду можно выращивать, но с обязательной проверкой на радионуклиды и с учётом справочника по растениям-абсорбентам.\n• Грибы и рыбу употреблять нежелательно.\n\nКрасная (30–100 µR/h)\nСерьёзное загрязнение.\n• Воду пить нельзя.\n• Еду выращивать крайне нежелательно, но обязательны проверки, чтобы понимать источник и состав радиации.\n• Грибы и рыба почти всегда опасны.\n• Находиться можно только кратковременно и с защитой.\n\nЧёрная (>100 µR/h)\nКритическая зона.\n• Вода, еда, грибы и рыба полностью исключены.\n• Жить и работать здесь нельзя.\n• Пребывание допустимо только кратковременно и в защите.\n• Проверки не нужны — место очевидно непригодно."
   },
   "en": {
     "title": "Chicha’s Isotope Map — Radiological Map of Planet Earth",
@@ -53,7 +55,9 @@
     "location_error": "An error occurred while obtaining location.",
     "geolocation_not_supported": "Your browser does not support geolocation.",
     "track_id": "Track ID",
-    "back_to_all_tracks": "Back to the combined track map."
+    "back_to_all_tracks": "Back to the combined track map.",
+    "legend_title": "Legend",
+    "legend_full_en": "This scale shows how safe a place *is most likely* for life, water, and food.\nRemember: measurements may be incomplete, and radiation may be higher or hidden. These values are only a guide.\n\nGreen (0–11 µR/h)\nClean nature or background close to natural.\n• Water from artesian wells is safe.\n• Food can be grown without restrictions.\n• Mushrooms and fish can be collected.\n\nYellow (11–30 µR/h)\nElevated background. Be very attentive.\n• Water must be checked.\n• Food can be grown, but with mandatory radionuclide testing and with the absorber-plants reference in mind.\n• Mushrooms and fish are not recommended.\n\nRed (30–100 µR/h)\nSerious contamination.\n• Water is unsafe.\n• Food cultivation is highly undesirable, but checks are mandatory to understand the source and composition of radiation.\n• Mushrooms and fish are almost always dangerous.\n• Stay only briefly and with protection.\n\nBlack (>100 µR/h)\nCritical zone.\n• Water, food, mushrooms, and fish are excluded.\n• Living and working here is impossible.\n• Presence is allowed only briefly and with protection.\n• No checks are needed — the place is clearly unsuitable."
   },
   "es": {
     "title": "Mapa de Isótopos de Chicha — Mapa radiológico del planeta Tierra",
@@ -812,4 +816,3 @@
     "back_to_all_tracks": "חזרה למפת המסלולים המשולבת."
   }
 }
-

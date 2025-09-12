@@ -529,6 +529,62 @@ body, html {
       <div class="spinner"></div>
     </div>
 
+<!-- Compact Legend (clickable) -->
+<div id="legend" style="
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: var(--overlay-bg);
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4em;
+  cursor: pointer;
+  z-index: 1000;">
+  <strong>{{translate "legend_title"}}</strong><br>
+  <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
+  <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
+  <div><span style="color:#FF4500;">■</span> 30–100 µR/h</div>
+  <div><span style="color:#000000;">■</span> >100 µR/h</div>
+</div>
+<!--
+  Compact 4-bin legend (values in µR/h), matching our simplified scale:
+  Green: 0–11, Yellow: 11–30, Red: 30–100, Black: >100.
+  Clicking the legend opens a modal with full, human-friendly guidance.
+-->
+<!-- Legend Modal -->
+<div id="legendModal" style="
+  display:none;
+  position:fixed;
+  top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.6);
+  z-index:2000;
+  justify-content:center;
+  align-items:center;">
+  <div style="
+    background:#fff;
+    color:#333;
+    max-width:720px;
+    padding:20px;
+    border-radius:10px;
+    font-size:14px;
+    line-height:1.6em;
+    box-shadow:0 0 10px rgba(0,0,0,0.5);">
+    <h3 style="margin-top:0;">{{translate "legend_title"}}</h3>
+    <!-- We inject the localized full text below -->
+    <div id="legendText" style="white-space:pre-wrap"></div>
+    <div style="margin-top:12px; text-align:right;">
+      <button onclick="document.getElementById('legendModal').style.display='none'"
+        style="padding:6px 12px; border:1px solid #888; border-radius:4px; cursor:pointer;">
+        OK
+      </button>
+    </div>
+  </div>
+</div>
+<!--
+  Modal that displays the full, localized legend text.
+  `white-space:pre-wrap` preserves paragraphs and bullets from translations.json.
+-->
 
     <!-- Load Leaflet JavaScript library -->
     <script src="/static/leaflet.js"></script>
@@ -1463,5 +1519,37 @@ function centerMapToLocation() {
       }
     </script>
 
+
+<!--
+  When the legend is clicked:
+    • Choose RU/EN key.
+    • Inject full text from translations (safe, plain text).
+    • Show modal; close on backdrop click for convenience.
+-->
+<script>
+  // Open the modal with full legend text in the current language.
+  (function(){
+    var el = document.getElementById('legend');
+    if (!el) return;
+    el.addEventListener('click', function(){
+      // decide which key to use based on currentLang from the page context
+      var key = (typeof currentLang !== 'undefined' && currentLang === 'ru')
+        ? 'legend_full_ru'
+        : 'legend_full_en';
+      var txt = translate(key);
+      var box = document.getElementById('legendText');
+      if (box) box.textContent = txt; // keep it safe & simple; pre-wrap handles formatting
+      var modal = document.getElementById('legendModal');
+      if (modal) modal.style.display = 'flex';
+    });
+    // Close on backdrop click (UX nicety)
+    var modal = document.getElementById('legendModal');
+    if (modal) {
+      modal.addEventListener('click', function(e){
+        if (e.target === modal) modal.style.display = 'none';
+      });
+    }
+  })();
+</script>
   </body>
 </html>
