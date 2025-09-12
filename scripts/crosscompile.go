@@ -7,8 +7,67 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+// buildTask describes a single compilation job.
+// DuckDB support and CGO usage are controlled per task to keep builds isolated.
+type buildTask struct {
+	osName string
+	arch   string
+	duckdb bool
+}
+
+// buildTarget compiles one binary for the provided task.
+// The function chooses the correct output directory and toggles CGO when DuckDB is required.
+func buildTarget(task buildTask, executionFile, goSourceFile, version, binariesPath string) error {
+	targetOS := task.osName
+	execName := executionFile
+	if task.osName == "windows" {
+		execName += ".exe"
+	} else if task.osName == "darwin" {
+		targetOS = "mac"
+	}
+
+	baseDir := "no-gui"
+	if task.duckdb {
+		baseDir = "no-gui-duckdb"
+	}
+
+	outputDir := filepath.Join(binariesPath, baseDir, targetOS, task.arch)
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	outputPath := filepath.Join(outputDir, execName)
+	ldflags := fmt.Sprintf("-X 'main.CompileVersion=%s'", version)
+
+	buildArgs := []string{"build", "-ldflags", ldflags}
+	if task.duckdb {
+		buildArgs = append(buildArgs, "-tags", "duckdb")
+	}
+	buildArgs = append(buildArgs, "-o", outputPath, goSourceFile)
+	cmd := exec.Command("go", buildArgs...)
+
+	env := append(os.Environ(), "GOOS="+task.osName, "GOARCH="+task.arch)
+	if task.duckdb {
+		env = append(env, "CGO_ENABLED=1")
+	} else {
+		env = append(env, "CGO_ENABLED=0")
+	}
+	cmd.Env = env
+
+	if err := cmd.Run(); err != nil {
+		// Remove the directory if build fails to avoid confusing leftovers.
+		_ = os.RemoveAll(outputDir)
+		return err
+	}
+	if err := os.Chmod(outputPath, 0755); err != nil {
+		return err
+	}
+	return nil
+}
 
 func main() {
 
@@ -72,45 +131,42 @@ func main() {
 		"ppc64le", "riscv64", "s390x", "wasm",
 	}
 
+	tasks := make(chan buildTask)
+	results := make(chan string)
+	workerCount := runtime.NumCPU()
+
+	// Workers build targets concurrently and report results over the channel.
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			for task := range tasks {
+				if err := buildTarget(task, executionFile, goSourceFile, version, binariesPath); err != nil {
+					results <- fmt.Sprintf("failed %s/%s duckdb=%v: %v", task.osName, task.arch, task.duckdb, err)
+				} else {
+					results <- fmt.Sprintf("built %s/%s duckdb=%v", task.osName, task.arch, task.duckdb)
+				}
+			}
+		}()
+	}
+
+	taskCount := 0
 	for _, osName := range osList {
 		for _, arch := range archList {
-			targetOSName := osName
-			execFileName := executionFile
-
-			if osName == "windows" {
-				execFileName += ".exe"
-			} else if osName == "darwin" {
-				targetOSName = "mac"
+			// Always queue vanilla build without DuckDB.
+			tasks <- buildTask{osName: osName, arch: arch, duckdb: false}
+			taskCount++
+			// Queue DuckDB build when supported.
+			if supportsDuckDB(osName, arch) {
+				tasks <- buildTask{osName: osName, arch: arch, duckdb: true}
+				taskCount++
 			}
+		}
+	}
+	close(tasks)
 
-			outputDir := filepath.Join(binariesPath, "no-gui", targetOSName, arch)
-			err := os.MkdirAll(outputDir, os.ModePerm)
-			if err != nil {
-				log.Printf("Error creating output directory %s: %v", outputDir, err)
-				continue
-			}
-
-			outputPath := filepath.Join(outputDir, execFileName)
-
-			ldflags := fmt.Sprintf("-X 'main.CompileVersion=%s'", version)
-			buildCmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", outputPath, goSourceFile)
-
-			buildCmd.Env = append(os.Environ(), "GOOS="+osName, "GOARCH="+arch)
-			if err := buildCmd.Run(); err != nil {
-				// Remove the directory if build fails
-				err = os.RemoveAll(outputDir)
-				if err != nil {
-					log.Printf("Error removing output directory %s: %v", outputDir, err)
-				}
-				continue
-			} else {
-				err = os.Chmod(outputPath, 0755)
-				if err != nil {
-					log.Printf("Error setting permissions on %s: %v", outputPath, err)
-				}
-
-				fmt.Printf("Successfully built %s for %s/%s\n", execFileName, osName, arch)
-			}
+	for i := 0; i < taskCount; i++ {
+		select {
+		case msg := <-results:
+			fmt.Println(msg)
 		}
 	}
 
@@ -158,6 +214,21 @@ func runCommand(name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// supportsDuckDB reports whether the given OS and architecture combination can build with DuckDB.
+// DuckDB driver is available on Linux/amd64, macOS/amd64, macOS/arm64, and Windows/amd64.
+func supportsDuckDB(osName, arch string) bool {
+	switch osName {
+	case "linux":
+		return arch == "amd64"
+	case "darwin":
+		return arch == "amd64" || arch == "arm64"
+	case "windows":
+		return arch == "amd64"
+	default:
+		return false
+	}
 }
 
 // Helper function to get the Git root path
