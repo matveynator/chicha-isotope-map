@@ -1,12 +1,21 @@
 package main
 
+// crosscompile.go builds binaries across platforms while aligning the
+// build number with GitHub Actions run numbers for consistency.
+// It fetches the latest run number from GitHub and handles tasks concurrently.
+// This approach follows Go proverbs by keeping the code clear and simple.
+
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -189,6 +198,7 @@ func supportsDuckDB(osName, arch string) bool {
 	}
 }
 
+// ----- Git helpers -----
 // Helper function to get the Git root path
 func getGitRootPath() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
@@ -199,29 +209,66 @@ func getGitRootPath() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// Helper function to get a cleaner Git version
+// Helper function to get the build number aligned with GitHub Actions
+// It tries environment variable, then GitHub API, and falls back to commit count.
+// The function uses goroutines and channels to check the run number and dirty state concurrently.
 func getGitVersion() (string, error) {
-	// Get a sequential commit count as a "build number"
-	cmd := exec.Command("git", "rev-list", "--count", "HEAD")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	versionNumber := strings.TrimSpace(string(output))
+	runChan := make(chan string)
+	dirtyChan := make(chan bool)
+	errChan := make(chan error, 2)
 
-	// Optionally append additional information, such as "-dirty" if there are uncommitted changes
-	cmd = exec.Command("git", "status", "--porcelain")
-	output, err = cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	if len(strings.TrimSpace(string(output))) > 0 {
-		versionNumber += "-dirty"
+	go func() {
+		if env := os.Getenv("GITHUB_RUN_NUMBER"); env != "" {
+			runChan <- env
+			return
+		}
+		n, err := fetchNextRunNumber()
+		if err != nil {
+			errChan <- err
+			return
+		}
+		runChan <- n
+	}()
+
+	go func() {
+		cmd := exec.Command("git", "status", "--porcelain")
+		output, err := cmd.Output()
+		if err != nil {
+			errChan <- err
+			return
+		}
+		dirtyChan <- len(strings.TrimSpace(string(output))) > 0
+	}()
+
+	var runNumber string
+	dirty := false
+	for i := 0; i < 2; i++ {
+		select {
+		case rn := <-runChan:
+			runNumber = rn
+		case d := <-dirtyChan:
+			dirty = d
+		case err := <-errChan:
+			return "", err
+		}
 	}
 
-	return versionNumber, nil
+	if runNumber == "" {
+		cmd := exec.Command("git", "rev-list", "--count", "HEAD")
+		output, err := cmd.Output()
+		if err != nil {
+			return "", err
+		}
+		runNumber = strings.TrimSpace(string(output))
+	}
+
+	if dirty {
+		runNumber += "-dirty"
+	}
+	return runNumber, nil
 }
 
+// ----- File helpers -----
 // Helper function to find the main Go file
 func findMainGoFile() (string, error) {
 	files, err := filepath.Glob("*.go")
@@ -239,4 +286,62 @@ func findMainGoFile() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("No main Go file found in the current directory")
+}
+
+// ----- Version helpers -----
+// fetchNextRunNumber retrieves the next GitHub Actions run number using the API.
+// This ensures local builds share numbering with CI builds.
+func fetchNextRunNumber() (string, error) {
+	cmd := exec.Command("git", "config", "--get", "remote.origin.url")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	owner, repo, err := parseGitHubRepo(strings.TrimSpace(string(output)))
+	if err != nil {
+		return "", err
+	}
+
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/workflows/release.yml/runs?per_page=1", owner, repo)
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		WorkflowRuns []struct {
+			RunNumber int `json:"run_number"`
+		} `json:"workflow_runs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	if len(result.WorkflowRuns) == 0 {
+		return "1", nil
+	}
+	return strconv.Itoa(result.WorkflowRuns[0].RunNumber + 1), nil
+}
+
+// parseGitHubRepo extracts owner and repository from remote URL.
+func parseGitHubRepo(remote string) (string, string, error) {
+	if strings.HasPrefix(remote, "git@") {
+		parts := strings.SplitN(remote, ":", 2)
+		if len(parts) != 2 {
+			return "", "", fmt.Errorf("invalid remote URL")
+		}
+		remote = parts[1]
+	} else if strings.HasPrefix(remote, "https://") || strings.HasPrefix(remote, "http://") {
+		u, err := url.Parse(remote)
+		if err != nil {
+			return "", "", err
+		}
+		remote = strings.TrimPrefix(u.Path, "/")
+	}
+	remote = strings.TrimSuffix(remote, ".git")
+	parts := strings.Split(remote, "/")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("unable to parse owner and repo")
+	}
+	return parts[0], parts[1], nil
 }
