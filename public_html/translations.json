@@ -27,7 +27,7 @@
     "track_id": "ID трека",
     "back_to_all_tracks": "Назад к общей карте треков.",
     "legend_title": "Легенда",
-    "legend_full_ru": "Эта шкала — ориентир по радиации; данные могут быть неполными.\n\nЗелёный 0–11 µR/h: фон в норме.\nЖёлтый 11–30 µR/h: проверяйте воду и еду.\nКрасный 30–100 µR/h: опасно; избегайте грибов и рыбы.\nЧёрный >100 µR/h: крайне опасно; нельзя пить, есть или долго находиться.",
+    "legend_full_ru": "Эта шкала показывает, насколько место *скорее всего* безопасно для жизни, воды и пищи.\nНужно помнить: измерения могут быть неполными, а радиация выше или скрыта. Поэтому данные — лишь ориентир.\n\nЗелёная (0–11 µR/h)\nФон близок к естественному.\n• Вода из скважин и колодцев считается безопасной.\n• Выращивание растений допустимо без проверок.\n\nЖёлтая (11–30 µR/h)\nПовышенный фон, требуется внимание.\n• Воду и почву нужно проверять.\n• Любые продукты этой земли (овощи, грибы и т. д.) следует тестировать перед употреблением.\n\nКрасная (30–100 µR/h)\nСерьёзное загрязнение.\n• Воду пить нельзя.\n• Выращивать и есть продукты с этой территории опасно; обязательны лабораторные проверки.\n\nЧёрная (>100 µR/h)\nКритическая зона.\n• Вода и пища непригодны.\n• Постоянное проживание исключено; пребывание только кратковременно с защитой.",
     "legend_safe": "Безопасно",
     "legend_danger": "Опасно"
   },
@@ -59,7 +59,7 @@
     "track_id": "Track ID",
     "back_to_all_tracks": "Back to the combined track map.",
     "legend_title": "Legend",
-    "legend_full_en": "This scale is a radiation guide; readings may be incomplete.\n\nGreen 0–11 µR/h: background is normal.\nYellow 11–30 µR/h: check water and food.\nRed 30–100 µR/h: dangerous; avoid mushrooms and fish.\nBlack >100 µR/h: extreme danger; no water, food, or long stay.",
+    "legend_full_en": "This scale shows how safe a place is most likely for life, water, and food.\nRemember: measurements may be incomplete, and radiation may be higher or hidden. Use these values only as guidance.\n\nGreen (0–11 µR/h)\nBackground is close to natural.\n• Water from wells is considered safe.\n• Plants can be grown without testing.\n\nYellow (11–30 µR/h)\nElevated background; be cautious.\n• Water and soil must be checked.\n• Any vegetables, mushrooms, or other produce should be tested before eating.\n\nRed (30–100 µR/h)\nSerious contamination.\n• Water is unsafe to drink.\n• Growing or consuming produce from this area is dangerous; laboratory tests are mandatory.\n\nBlack (>100 µR/h)\nCritical zone.\n• Water and food are unusable.\n• Long-term stay is impossible; only brief visits with protection are allowed.",
     "legend_safe": "Safe",
     "legend_danger": "Danger"
   },

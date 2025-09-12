@@ -546,24 +546,28 @@ body, html {
   border: var(--legend-border);
   border-radius: 4px;
   box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-  padding: 10px;
+  padding: 10px 10px 10px 0;
   font-size: 12px;
   line-height: 1.4em;
   cursor: pointer;
   z-index: 1000;
-  font-family: inherit;">
-  <div style="position:absolute; left:-20px; top:0; bottom:0; display:flex; flex-direction:column; justify-content:space-between; font-size:10px; text-align:center;">
-    <span style="transform:rotate(-90deg); display:block;">{{translate "legend_safe"}}</span>
-    <span style="transform:rotate(-90deg); display:block;">{{translate "legend_danger"}}</span>
+  font-family: inherit;
+  display: flex;
+  overflow: hidden;">
+  <div style="width:24px; display:flex; flex-direction:column; margin-right:8px; border-radius:4px 0 0 4px; overflow:hidden;">
+    <span style="flex:1; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); background:#008000; color:#000; font-size:10px;">{{translate "legend_safe"}}</span>
+    <span style="flex:1; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); background:linear-gradient(#FF4500,#000); color:#fff; font-size:10px;">{{translate "legend_danger"}}</span>
   </div>
-  <strong>{{translate "legend_title"}}</strong><br>
-  <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
-  <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
-  <div><span style="color:#FF4500;">■</span> 30–100 µR/h</div>
-  <div><span style="color:#000000;">■</span> >100 µR/h</div>
+  <div>
+    <strong>{{translate "legend_title"}}</strong><br>
+    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
+    <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
+    <div><span style="color:#FF4500;">■</span> 30–100 µR/h</div>
+    <div><span style="color:#000000;">■</span> >100 µR/h</div>
+  </div>
 </div>
 <!--
-  Compact 4-bin legend (values in µR/h) with vertical safety marker:
+  Compact 4-bin legend (values in µR/h) with in-place safe→danger gradient bar:
   Green: 0–11, Yellow: 11–30, Red: 30–100, Black: >100.
   Clicking the legend opens a modal with full, human-friendly guidance.
 -->
@@ -591,7 +595,7 @@ body, html {
     font-family: inherit;">
     <h3 style="margin-top:0;">{{translate "legend_title"}}</h3>
     <!-- We inject the localized full text below -->
-    <div id="legendText" style="white-space:pre-wrap"></div>
+    <div id="legendText" style="line-height:1.6em;"></div>
     <div style="margin-top:12px; text-align:right;">
       <button onclick="document.getElementById('legendModal').style.display='none'"
         style="padding:6px 12px; background: var(--control-bg); border: var(--legend-border); border-radius:4px; cursor:pointer; font-family: inherit;">
@@ -1543,7 +1547,7 @@ function centerMapToLocation() {
 <!--
   When the legend is clicked:
     • Fetch language-specific full text.
-    • Decorate lines with color squares based on ranges.
+    • Split into paragraphs and decorate range lines with color squares.
     • Show modal; close on backdrop click for convenience.
 -->
 <script>
@@ -1556,24 +1560,20 @@ function centerMapToLocation() {
       var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
       var key = 'legend_full_' + lang;
       var txt = translate(key);
-      // Decorate lines with colored markers based on range numbers
-      var lines = txt.split('\n').map(function(line){
-        if (line.includes('0–11')) {
-          return '<span style="color:#008000;">■</span> ' + line;
-        }
-        if (line.includes('11–30')) {
-          return '<span style="color:#FFD700;">■</span> ' + line;
-        }
-        if (line.includes('30–100')) {
-          return '<span style="color:#FF4500;">■</span> ' + line;
-        }
-        if (line.includes('>100')) {
-          return '<span style="color:#000000;">■</span> ' + line;
-        }
-        return line;
-      }).join('\n');
+      // Build pretty paragraphs and add colored markers
+      var parts = txt.split('\n\n');
+      var html = parts.map(function(p){
+        var lines = p.split('\n').map(function(line){
+          if (line.includes('0–11')) return '<span style=\"color:#008000;\">■</span> ' + line;
+          if (line.includes('11–30')) return '<span style=\"color:#FFD700;\">■</span> ' + line;
+          if (line.includes('30–100')) return '<span style=\"color:#FF4500;\">■</span> ' + line;
+          if (line.includes('>100')) return '<span style=\"color:#000000;\">■</span> ' + line;
+          return line;
+        }).join('<br>');
+        return '<p style=\"margin:0 0 1em 0;\">' + lines + '</p>';
+      }).join('');
       var box = document.getElementById('legendText');
-      if (box) box.innerHTML = lines; // pre-wrap preserves formatting
+      if (box) box.innerHTML = html;
       var modal = document.getElementById('legendModal');
       if (modal) modal.style.display = 'flex';
     });
