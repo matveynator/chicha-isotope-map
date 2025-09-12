@@ -113,11 +113,11 @@ func main() {
 
 			for completed := 0; completed < len(jobs); {
 				select {
-				case res := <-results:
+				case _ = <-results:
 					completed++
-					if res.err != nil {
-						log.Printf("Error building %s/%s (duckdb=%v): %v", res.job.osName, res.job.arch, res.job.duckdb, res.err)
-					}
+					//if res.err != nil {
+					//	log.Printf("Error building %s/%s (duckdb=%v): %v", res.job.osName, res.job.arch, res.job.duckdb, res.err)
+					//}
 				}
 			}
 		}
