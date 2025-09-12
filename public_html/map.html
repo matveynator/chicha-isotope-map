@@ -552,6 +552,10 @@ body, html {
   cursor: pointer;
   z-index: 1000;
   font-family: inherit;">
+  <div style="position:absolute; left:-20px; top:0; bottom:0; display:flex; flex-direction:column; justify-content:space-between; font-size:10px; text-align:center;">
+    <span style="transform:rotate(-90deg); display:block;">{{translate "legend_safe"}}</span>
+    <span style="transform:rotate(-90deg); display:block;">{{translate "legend_danger"}}</span>
+  </div>
   <strong>{{translate "legend_title"}}</strong><br>
   <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
   <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
@@ -559,7 +563,7 @@ body, html {
   <div><span style="color:#000000;">■</span> >100 µR/h</div>
 </div>
 <!--
-  Compact 4-bin legend (values in µR/h), matching our simplified scale:
+  Compact 4-bin legend (values in µR/h) with vertical safety marker:
   Green: 0–11, Yellow: 11–30, Red: 30–100, Black: >100.
   Clicking the legend opens a modal with full, human-friendly guidance.
 -->
@@ -577,6 +581,8 @@ body, html {
     color:var(--modal-text);
     border:var(--modal-border);
     max-width:720px;
+    max-height:80vh;
+    overflow-y:auto;
     padding:20px;
     border-radius:10px;
     font-size:14px;
@@ -597,6 +603,7 @@ body, html {
 <!--
   Modal that displays the full, localized legend text.
   `white-space:pre-wrap` preserves paragraphs and bullets from translations.json.
+  Box scrolls when content is long.
 -->
 
     <!-- Load Leaflet JavaScript library -->
@@ -1535,8 +1542,8 @@ function centerMapToLocation() {
 
 <!--
   When the legend is clicked:
-    • Choose RU/EN key.
-    • Decorate range headers with color markers.
+    • Fetch language-specific full text.
+    • Decorate lines with color squares based on ranges.
     • Show modal; close on backdrop click for convenience.
 -->
 <script>
@@ -1545,22 +1552,22 @@ function centerMapToLocation() {
     var el = document.getElementById('legend');
     if (!el) return;
     el.addEventListener('click', function(){
-      // decide which key to use based on currentLang from the page context
-      var key = (typeof currentLang !== 'undefined' && currentLang === 'ru')
-        ? 'legend_full_ru'
-        : 'legend_full_en';
+      // Choose full text key dynamically for any supported language
+      var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
+      var key = 'legend_full_' + lang;
       var txt = translate(key);
+      // Decorate lines with colored markers based on range numbers
       var lines = txt.split('\n').map(function(line){
-        if (line.startsWith('Зел') || line.startsWith('Green')) {
+        if (line.includes('0–11')) {
           return '<span style="color:#008000;">■</span> ' + line;
         }
-        if (line.startsWith('Жёл') || line.startsWith('Yellow')) {
+        if (line.includes('11–30')) {
           return '<span style="color:#FFD700;">■</span> ' + line;
         }
-        if (line.startsWith('Крас') || line.startsWith('Red')) {
+        if (line.includes('30–100')) {
           return '<span style="color:#FF4500;">■</span> ' + line;
         }
-        if (line.startsWith('Чёр') || line.startsWith('Black')) {
+        if (line.includes('>100')) {
           return '<span style="color:#000000;">■</span> ' + line;
         }
         return line;
