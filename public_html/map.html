@@ -184,6 +184,16 @@ body, html {
           text-decoration: underline;
         }
 
+        /* Larger color squares for legend items */
+        .legend-square {
+          display: inline-block;
+          width: 12px;
+          height: 12px;
+          margin-right: 6px;
+          border: var(--legend-border);
+          border-radius: 2px;
+        }
+
         /* Container for upload button */
         .upload-btn-container {
           position: absolute;
@@ -1708,15 +1718,21 @@ function centerMapToLocation() {
     var key = 'legend_full_' + lang;
     var txt = translate(key);
     var parts = txt.split('\n\n');
+    function stripBullet(line) {
+      return line.replace(/^■\s*/, '');
+    }
+    function square(color) {
+      return '<span class="legend-square" style="background:' + color + ';"></span>';
+    }
     return parts.map(function(p){
       var lines = p.split('\n').map(function(line){
-        if (line.includes('0–11')) return '<span style=\"color:#008000;\">■</span> ' + line;
-        if (line.includes('11–30')) return '<span style=\"color:#FFD700;\">■</span> ' + line;
-        if (line.includes('30–100')) return '<span style=\"color:#FF4500;\">■</span> ' + line;
-        if (line.includes('>100')) return '<span style=\"color:#000000;\">■</span> ' + line;
+        if (line.includes('0–11')) return square('#008000') + stripBullet(line);
+        if (line.includes('11–30')) return square('#FFD700') + stripBullet(line);
+        if (line.includes('30–100')) return square('#FF4500') + stripBullet(line);
+        if (line.includes('>100')) return square('#000000') + stripBullet(line);
         return line;
       }).join('<br>');
-      return '<p style=\"margin:0 0 1em 0;\">' + lines + '</p>';
+      return '<p style="margin:0 0 1em 0;">' + lines + '</p>';
     }).join('');
   }
 
