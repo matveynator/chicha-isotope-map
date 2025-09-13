@@ -735,6 +735,39 @@ body, html {
   Box scrolls when content is long.
 -->
 
+<!-- Generic Info Modal for legal notes, data sources, and license -->
+<div id="infoModal" style="
+  display:none;
+  position:fixed;
+  top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.6);
+  z-index:2000;
+  justify-content:center;
+  align-items:center;">
+  <div style="
+    background:var(--modal-bg);
+    color:var(--modal-text);
+    border:var(--modal-border);
+    max-width:720px;
+    max-height:80vh;
+    overflow-y:auto;
+    padding:20px;
+    border-radius:10px;
+    font-size:14px;
+    line-height:1.6em;
+    box-shadow:0 0 10px rgba(0,0,0,0.5);
+    font-family: inherit;">
+    <h3 id="infoTitle" style="margin-top:0;"></h3>
+    <div id="infoText" style="line-height:1.6em;"></div>
+    <div style="margin-top:12px; text-align:right;">
+      <button onclick="document.getElementById('infoModal').style.display='none'"
+        style="padding:6px 12px; background: var(--control-bg); border: var(--legend-border); border-radius:4px; cursor:pointer; font-family: inherit;">
+        OK
+      </button>
+    </div>
+  </div>
+</div>
+
     <!-- Load Leaflet JavaScript library -->
     <script src="/static/leaflet.js"></script>
 
@@ -955,11 +988,11 @@ document.addEventListener('DOMContentLoaded', function () {
     collapsed: false
   }).addTo(map);
 
-  // Add data source credits so external contributors are acknowledged
+  // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
-    '<a href="https://safecast.org" target="_blank">Safecast</a>, ' +
-    '<a href="https://atomfast.net" target="_blank">Atomcloud</a>, ' +
-    '<a href="https://radiaverse.com" target="_blank">Radiacode</a>'
+    '<a href="#" class="attr-link" data-info="legal">' + translate('attr_legal') + '</a> | ' +
+    '<a href="#" class="attr-link" data-info="sources">' + translate('attr_sources') + '</a> | ' +
+    '<a href="#" class="attr-link" data-info="license">' + translate('attr_license') + '</a>'
   );
 
   // Track view initialization
@@ -1841,6 +1874,24 @@ function centerMapToLocation() {
     if (tip) tip.style.display = 'none';
   }
 
+  // Build HTML for info modal from translation text
+  function buildInfoHTML(txt) {
+    return txt.split('\n\n').map(function(p){
+      return '<p style="margin:0 0 1em 0;">' + p.split('\n').join('<br>') + '</p>';
+    }).join('');
+  }
+
+  // Open modal with legal, source or license text
+  function openInfoModal(topic) {
+    hideLegendTooltip(); // avoid overlap with legend tooltip
+    var box = document.getElementById('infoText');
+    if (box) box.innerHTML = buildInfoHTML(translate(topic + '_full'));
+    var head = document.getElementById('infoTitle');
+    if (head) head.textContent = translate(topic + '_title');
+    var modal = document.getElementById('infoModal');
+    if (modal) modal.style.display = 'flex';
+  }
+
   // Use event delegation because popups are created dynamically.
   document.addEventListener('click', function(ev) {
     // open legend modal when risk link clicked
@@ -1852,6 +1903,11 @@ function centerMapToLocation() {
     if (ev.target.classList.contains('track-link')) {
       ev.preventDefault();
       viewTrack(ev.target.dataset.track);
+    }
+    // open info modal for attribution links
+    if (ev.target.classList.contains('attr-link')) {
+      ev.preventDefault();
+      openInfoModal(ev.target.dataset.info);
     }
   });
 
@@ -1867,6 +1923,12 @@ function centerMapToLocation() {
     if (modal) {
       modal.addEventListener('click', function(e){
         if (e.target === modal) modal.style.display = 'none';
+      });
+    }
+    var infoModal = document.getElementById('infoModal');
+    if (infoModal) {
+      infoModal.addEventListener('click', function(e){
+        if (e.target === infoModal) infoModal.style.display = 'none';
       });
     }
   })();
