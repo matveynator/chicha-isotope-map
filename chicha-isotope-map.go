@@ -41,6 +41,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"chicha-isotope-map/pkg/database"
@@ -330,6 +331,20 @@ func rxFind(s, pattern string) string {
 		return strings.TrimSpace(html.UnescapeString(m[1]))
 	}
 	return ""
+}
+
+// isClientDisconnect returns true for network errors indicating that the client
+// has gone away (e.g., browser navigated away or closed the tab) while we were
+// writing the response. These are normal and should not be logged as errors.
+func isClientDisconnect(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "broken pipe") || strings.Contains(msg, "connection reset by peer")
 }
 
 // GenerateSerialNumber генерирует TrackID
@@ -1457,46 +1472,6 @@ func processAtomSwiftCSVFile(
 	return bbox, trackID, nil
 }
 
-// parseBGeigieCoord parses coordinates that may have hemisphere suffix.
-func parseBGeigieCoord(s string) float64 {
-	s = strings.TrimSpace(s)
-	if s == "" { return 0 }
-	r := s[len(s)-1]
-	if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
-		base := s[:len(s)-1]
-		v, _ := strconv.ParseFloat(base, 64)
-		switch strings.ToUpper(string(r)) {
-		case "S", "W":
-			return -v
-		default:
-			return v
-		}
-	}
-	v, _ := strconv.ParseFloat(s, 64)
-	return v
-}
-
-// parseDMM parses degrees+minutes (DDMM.MMMM or DDDMM.MMMM) with hemisphere.
-func parseDMM(val, hemi string, degDigits int) float64 {
-	val = strings.TrimSpace(val)
-	hemi = strings.TrimSpace(hemi)
-	if val == "" { return 0 }
-	f, err := strconv.ParseFloat(val, 64)
-	if err != nil { return 0 }
-	deg := int(f / 100.0)
-	minutes := f - float64(deg*100)
-	d := float64(deg) + minutes/60.0
-	switch strings.ToUpper(hemi) {
-	case "S", "W": d = -d
-	}
-	if degDigits == 2 {
-		if d < -90 || d > 90 { return 0 }
-	} else {
-		if d < -180 || d > 180 { return 0 }
-	}
-	return d
-}
-
 // processGPXFile handles plain *.gpx uploads in streaming mode.
 func processGPXFile(
 	file multipart.File,
@@ -1709,6 +1684,46 @@ func processAtomFastFile(
 	return processAndStoreMarkers(markers, trackID, db, dbType)
 }
 
+// parseBGeigieCoord parses coordinates that may have hemisphere suffix.
+func parseBGeigieCoord(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" { return 0 }
+	r := s[len(s)-1]
+	if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+		base := s[:len(s)-1]
+		v, _ := strconv.ParseFloat(base, 64)
+		switch strings.ToUpper(string(r)) {
+		case "S", "W":
+			return -v
+		default:
+			return v
+		}
+	}
+	v, _ := strconv.ParseFloat(s, 64)
+	return v
+}
+
+// parseDMM parses degrees+minutes (DDMM.MMMM or DDDMM.MMMM) with hemisphere.
+func parseDMM(val, hemi string, degDigits int) float64 {
+	val = strings.TrimSpace(val)
+	hemi = strings.TrimSpace(hemi)
+	if val == "" { return 0 }
+	f, err := strconv.ParseFloat(val, 64)
+	if err != nil { return 0 }
+	deg := int(f / 100.0)
+	minutes := f - float64(deg*100)
+	d := float64(deg) + minutes/60.0
+	switch strings.ToUpper(hemi) {
+	case "S", "W": d = -d
+	}
+	if degDigits == 2 {
+		if d < -90 || d > 90 { return 0 }
+	} else {
+		if d < -180 || d > 180 { return 0 }
+	}
+	return d
+}
+
 // processAndStoreMarkers is the common pipeline:
 // 0. bbox calculation             • O(N)
 // 1. fast duplicate-track probe   • O(K·q), K ≪ N (early-exit)
@@ -1892,10 +1907,16 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	logT(trackID, "Upload", "redirecting browser to: %s", trackURL)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"status":   "success",
 		"trackURL": trackURL,
-	})
+	}); err != nil {
+		if isClientDisconnect(err) {
+			log.Printf("client disconnected while writing upload response")
+		} else {
+			log.Printf("upload response write error: %v", err)
+		}
+	}
 }
 
 // =====================
@@ -1956,7 +1977,11 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := buf.WriteTo(w); err != nil {
-		log.Printf("Error writing response: %v", err)
+		if isClientDisconnect(err) {
+			log.Printf("client disconnected while writing response")
+		} else {
+			log.Printf("Error writing response: %v", err)
+		}
 	}
 }
 
@@ -2020,7 +2045,11 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := buf.WriteTo(w); err != nil {
-		log.Printf("write resp: %v", err)
+		if isClientDisconnect(err) {
+			log.Printf("client disconnected while writing response")
+		} else {
+			log.Printf("write resp: %v", err)
+		}
 	}
 
 	// Ради отладки: показываем, что HTML отдали без тяжёлых данных
