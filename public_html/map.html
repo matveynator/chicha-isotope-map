@@ -961,8 +961,12 @@ document.addEventListener('DOMContentLoaded', function () {
     '<a href="https://radiaverse.com" target="_blank">Radiacode</a>'
   );
 
-  // Close any fixed tooltip when clicking on empty map space
-  map.on('click', function() {
+  // Close fixed tooltip only when clicking outside its content
+  map.on('click', function(e) {
+    // If the click originates inside an active tooltip, keep it open
+    if (e.originalEvent && e.originalEvent.target.closest('.custom-tooltip')) {
+      return;
+    }
     closeActiveTooltip();
   });
 
@@ -1367,8 +1371,9 @@ function createDateRangeSlider(){
     activeTooltipMarker = this;
     this.openTooltip();
     this.off('mouseout', this.closeTooltip);
-    L.DomEvent.disableClickPropagation(this.getTooltip().getElement());
-    L.DomEvent.stop(e); // prevent map from also handling this event
+    // Allow tooltip links to bubble to document handlers while
+    // preventing the map from treating this as an outside click
+    L.DomEvent.stop(e);
   }
 
 
@@ -1422,10 +1427,9 @@ function updateMarkers(){
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
         { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    // Activate tooltip on each touch event so a single tap fixes it
+    // Fix tooltip on mobile tap or desktop click
     .on('click', activateTooltip)
-    .on('touchstart', activateTooltip)
-    .on('touchend', activateTooltip);
+    .on('touchstart', activateTooltip);
 
     circleMarkers[m.id || m.trackID] = cm;
   };
