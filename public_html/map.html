@@ -1318,23 +1318,24 @@ function createDateRangeSlider(){
 
 // ---------- Marker popups and tooltips ----------
 // Build HTML once so popups and tooltips share identical content.
-function buildMarkerContent(marker) {
-  return `
-    <div class="custom-tooltip">
-      <div><strong>${translate('radiation_dose')}:</strong><br>
-        ${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
-        (<a href="#" class="risk-link" onclick="openLegendModal(); return false;">
-          ${translate(doseCategory(marker.doseRate))}
-        </a>)
-      </div>
-      <div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
-      <div style="margin-top:4px">
-        <!-- clicking the link switches to track mode -->
-        <a href="javascript:viewTrack('${marker.trackID}')" style="font-weight:bold;">
-          ${translate('track_id')}: ${marker.trackID}
-        </a>
-      </div>
-    </div>`;
+  function buildMarkerContent(marker) {
+    // Return markup with hooks; events handled globally via delegation.
+    return `
+      <div class="custom-tooltip">
+        <div><strong>${translate('radiation_dose')}:</strong><br>
+          ${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
+          (<a href="#" class="risk-link">
+            ${translate(doseCategory(marker.doseRate))}
+          </a>)
+        </div>
+        <div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
+        <div style="margin-top:4px">
+          <!-- clicking the link switches to track mode -->
+          <a href="#" class="track-link" data-track="${marker.trackID}" style="font-weight:bold;">
+            ${translate('track_id')}: ${marker.trackID}
+          </a>
+        </div>
+      </div>`;
 }
 
 // Popup reuses shared builder to stay in sync with tooltips.
@@ -1768,6 +1769,20 @@ function centerMapToLocation() {
     var tip = document.getElementById('legendTooltip');
     if (tip) tip.style.display = 'none';
   }
+
+  // Use event delegation because popups are created dynamically.
+  document.addEventListener('click', function(ev) {
+    // open legend modal when risk link clicked
+    if (ev.target.classList.contains('risk-link')) {
+      ev.preventDefault();
+      openLegendModal();
+    }
+    // switch to track view when track link clicked
+    if (ev.target.classList.contains('track-link')) {
+      ev.preventDefault();
+      viewTrack(ev.target.dataset.track);
+    }
+  });
 
   (function(){
     var el = document.getElementById('legend');
