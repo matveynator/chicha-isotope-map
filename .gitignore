@@ -2,6 +2,7 @@
 *.sqlite
 *.sqlite-journal
 *.duckdb
+*.duckdb.wal
 binaries
 chicha-isotope-map
 certs
