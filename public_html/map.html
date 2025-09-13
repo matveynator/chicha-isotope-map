@@ -643,6 +643,8 @@ body, html {
 
     <!-- Map container -->
     <div id="map"></div>
+    <!-- Hidden legal text container for localized popup -->
+    <div id="legalPopupContent" style="display:none;">{{translate "legal_text"}}</div>
 
     <div id="loadingOverlay" class="loading-overlay" style="display:none;">
       <div class="spinner"></div>
@@ -952,12 +954,16 @@ document.addEventListener('DOMContentLoaded', function () {
     collapsed: false
   }).addTo(map);
 
-  // Add data source credits so external contributors are acknowledged
-  map.attributionControl.addAttribution(
-    '<a href="https://safecast.org" target="_blank">Safecast</a>, ' +
-    '<a href="https://atomfast.net" target="_blank">Atomcloud</a>, ' +
-    '<a href="https://radiaverse.com" target="_blank">Radiacode</a>'
-  );
+  // Add legal/disclaimer button that opens a localized popup
+  map.attributionControl.addAttribution('<a href="#" id="legalBtn">{{translate "legal_button"}}</a>');
+  var legalContent = document.getElementById('legalPopupContent').innerHTML;
+  document.getElementById('legalBtn').addEventListener('click', function (e) {
+    e.preventDefault();
+    L.popup()
+      .setLatLng(map.getCenter())
+      .setContent(legalContent)
+      .openOn(map);
+  });
 
   // Track view initialization
   var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');

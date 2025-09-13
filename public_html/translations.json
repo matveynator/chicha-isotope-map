@@ -30,7 +30,9 @@
     "legend_full_ru": "Эта шкала показывает, насколько место безопасно для людей, воды и еды.\nПомните: измерения могут быть неполными, радиация может быть выше или скрыта. Относитесь к числам как к ориентиру.\n\nЗеленая (0–11 µR/h)\nФон близок к естественному.\n• Вода из скважин обычно безопасна.\n• Можно выращивать растения без проверок.\n\nЖелтая (11–30 µR/h)\nФон повышен; будьте осторожны.\n• Проверяйте воду и почву.\n• Тестируйте овощи, грибы и другие продукты перед употреблением.\n\nКрасная (30–100 µR/h)\nСерьёзное загрязнение.\n• Воду пить нельзя.\n• Выращивать или есть продукты отсюда рискованно; нужны анализы.\n\nЧёрная (>100 µR/h)\nКритическая зона.\n• Воду и пищу использовать нельзя.\n• Долгое пребывание исключено; только короткие визиты с защитой.",
     "legend_safe": "Безопасно",
     "legend_attention": "Внимание",
-    "legend_danger": "Опасно"
+    "legend_danger": "Опасно",
+    "legal_button": "Правовая информация",
+    "legal_text": "<p><strong>Источники данных</strong>: анонимные загрузки, <a href=\"https://safecast.org\" target=\"_blank\">Safecast</a>, <a href=\"https://atomfast.net\" target=\"_blank\">Atomfast</a>, <a href=\"https://radiaverse.com\" target=\"_blank\">Radioverse</a>.</p><p>Проект распространяется по лицензии <a href=\"/LICENSE\" target=\"_blank\">GPLv3</a>.</p><p>Данные предоставляются \"как есть\", без гарантий; они могут быть ложными или неполными. Не полагайтесь только на зелёные участки — всегда перепроверяйте, чтобы избежать облучения.</p><p>Используются технические cookies для сессий.</p>"
   },
   "en": {
     "title": "Chicha’s Isotope Map — Radiological Map of Planet Earth",
@@ -63,7 +65,9 @@
     "legend_full_en": "This scale shows how likely a spot is safe for folk, water, and food.\nMind: the readings might not be complete, and some rays could be higher or hiding. Treat these numbers as guidance only.\n\nGreen (0–11 µR/h)\nBackground near natural.\n• Water from wells is generally safe.\n• You can grow plants without checks.\n\nYellow (11–30 µR/h)\nRaised background; take care.\n• Check water and soil.\n• Test any veg, mushrooms, or other produce before you eat.\n\nRed (30–100 µR/h)\nSerious contamination.\n• Don't drink the water.\n• Growing or eating produce from here is risky; lab tests are a must.\n\nBlack (>100 µR/h)\nCritical zone.\n• Water and food cannot be used.\n• Staying long-term is out; only short visits with protection.\n",
     "legend_safe": "Safe",
     "legend_attention": "Attention",
-    "legend_danger": "Danger"
+    "legend_danger": "Danger",
+    "legal_button": "Legal & Disclaimer",
+    "legal_text": "<p><strong>Data sources</strong>: anonymous uploads, <a href=\"https://safecast.org\" target=\"_blank\">Safecast</a>, <a href=\"https://atomfast.net\" target=\"_blank\">Atomfast</a>, <a href=\"https://radiaverse.com\" target=\"_blank\">Radioverse</a>.</p><p>This project is licensed under <a href=\"/LICENSE\" target=\"_blank\">GPLv3</a>.</p><p>Data is provided as-is without warranties; it may be false or incomplete. Do not rely solely on green areas; always double-check to avoid radiation exposure.</p><p>Technical session cookies are used.</p>"
   },
   "es": {
     "title": "Mapa de Isótopos de Chicha — Mapa radiológico del planeta Tierra",
