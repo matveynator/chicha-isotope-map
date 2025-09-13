@@ -1422,9 +1422,10 @@ function updateMarkers(){
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
         { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    // Activate tooltip on both click and touch for mobile usability
+    // Activate tooltip on each touch event so a single tap fixes it
     .on('click', activateTooltip)
-    .on('touchstart', activateTooltip);
+    .on('touchstart', activateTooltip)
+    .on('touchend', activateTooltip);
 
     circleMarkers[m.id || m.trackID] = cm;
   };
