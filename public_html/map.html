@@ -961,11 +961,22 @@ document.addEventListener('DOMContentLoaded', function () {
     '<a href="https://radiaverse.com" target="_blank">Radiacode</a>'
   );
 
-  // Close fixed tooltip only when clicking outside its content
+  // Close fixed tooltip when interaction is outside markers or tooltips
   map.on('click', function(e) {
-    // If the click originates inside an active tooltip, keep it open
-    if (e.originalEvent && e.originalEvent.target.closest('.custom-tooltip')) {
-      return;
+    if (e.originalEvent &&
+        (e.originalEvent.target.closest('.custom-tooltip') ||
+         e.originalEvent.target.closest('.leaflet-interactive'))){
+      return; // keep open if click was on marker or its tooltip
+    }
+    closeActiveTooltip();
+  });
+
+  // Hide tooltip once the cursor leaves markers and tooltips
+  map.on('mousemove', function(e) {
+    if (e.originalEvent &&
+        (e.originalEvent.target.closest('.custom-tooltip') ||
+         e.originalEvent.target.closest('.leaflet-interactive'))){
+      return; // pointer still over marker or tooltip
     }
     closeActiveTooltip();
   });
@@ -1363,7 +1374,7 @@ function createDateRangeSlider(){
     }
   }
 
-  // Fix tooltip on tap/click and keep links usable
+  // Activate tooltip on hover or click and keep links usable
   function activateTooltip(e) {
     if (activeTooltipMarker && activeTooltipMarker !== this) {
       closeActiveTooltip();
@@ -1427,9 +1438,9 @@ function updateMarkers(){
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
         { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    // Fix tooltip on mobile tap or desktop click
-    .on('click', activateTooltip)
-    .on('touchstart', activateTooltip);
+    // Activate tooltip on hover or click so links are usable
+    .on('mouseover', activateTooltip)
+    .on('click', activateTooltip);
 
     circleMarkers[m.id || m.trackID] = cm;
   };
