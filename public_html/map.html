@@ -1085,79 +1085,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 
-  // Build a floating, collapsible legend that explains the radiation color scale.
-  // Colors correspond to getGradientColor() thresholds.
-  function createLegendControl() {
-    const Legend = L.Control.extend({
-      onAdd() {
-        const box = L.DomUtil.create('div', 'legend-control');
-
-        const collapsed = (sessionStorage.getItem('legendCollapsed') === '1');
-
-        box.innerHTML = `
-          <div class="legend-header" role="button" aria-expanded="${!collapsed}">
-            <div class="legend-title">${translate ? translate('legend_radiation_levels') : 'Radiation levels (µSv/h)'}</div>
-            <div class="legend-toggle">${collapsed ? '+' : '–'}</div>
-          </div>
-          <div class="legend-body" style="display:${collapsed ? 'none' : 'block'}">
-            <div class="legend-row">
-              <span class="legend-swatch" style="background:#000000"></span>
-              <span class="legend-label">≥ 0.30</span>
-            </div>
-            <div class="legend-row">
-              <span class="legend-swatch" style="background:#FF0000"></span>
-              <span class="legend-label">0.20 – 0.30</span>
-            </div>
-            <div class="legend-row">
-              <span class="legend-swatch" style="background:#FFA500"></span>
-              <span class="legend-label">0.11 – 0.20</span>
-            </div>
-            <div class="legend-row">
-              <span class="legend-swatch" style="background:#FFFF00"></span>
-              <span class="legend-label">0.08 – 0.11</span>
-            </div>
-            <div class="legend-row">
-              <span class="legend-swatch" style="background:#ADFF2F"></span>
-              <span class="legend-label">0.04 – 0.08</span>
-            </div>
-            <div class="legend-row">
-              <span class="legend-swatch" style="background:#006400"></span>
-              <span class="legend-label">≤ 0.04</span>
-            </div>
-          </div>
-        `;
-
-        const header = box.querySelector('.legend-header');
-        const body   = box.querySelector('.legend-body');
-        const toggle = box.querySelector('.legend-toggle');
-
-        // prevent map interactions when using the legend
-        L.DomEvent.disableClickPropagation(box);
-
-        header.addEventListener('click', () => {
-          const isHidden = body.style.display === 'none';
-          body.style.display = isHidden ? 'block' : 'none';
-          toggle.textContent = isHidden ? '–' : '+';
-          sessionStorage.setItem('legendCollapsed', isHidden ? '0' : '1');
-          header.setAttribute('aria-expanded', String(isHidden));
-        });
-
-        return box;
-      }
-    });
-
-    // Put legend at bottom-right to avoid crowding top-right controls
-    new Legend({ position: 'bottomright' }).addTo(map);
-  }
-
-
-
-
-
   // Call it
   createSpeedFilterControls();   
   createDateRangeSlider();
-  createLegendControl();
 
 
 
