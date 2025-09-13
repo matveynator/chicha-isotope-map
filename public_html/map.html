@@ -808,28 +808,7 @@ function doseCategory(doseRate) {
   return 'legend_danger';
 }
 
-// Build tooltip content for a marker
-function getTooltipContent(marker) {
-  var date = new Date(marker.date * 1000);
-  var formattedDate = date.toLocaleString();
 
-  return `
-    <div class="custom-tooltip">
-    <div class="tooltip-row">
-    <strong>${translate('radiation_dose')}:</strong>
-    <span>${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)</span>
-    </div>
-    <div class="tooltip-row">
-    <strong>${translate('speed')}:</strong>
-    <span>${(marker.speed * 3.6).toFixed(1)} km/h</span>
-    </div>
-    <div class="tooltip-row">
-    <strong>${translate('track_id')}:</strong>
-    <span>${marker.trackID}</span>
-    </div>
-    </div>
-    `;
-}
 
 // Get current URL params from map state
 function getCurrentUrlParams() {
@@ -1327,9 +1306,9 @@ function createDateRangeSlider(){
 
 // Function definitions
 
-// ---------- Popup linking to track ----------
-function getPopupContent(marker) {
-  const dateStr = new Date(marker.date * 1000).toLocaleString();
+// ---------- Marker popups and tooltips ----------
+// Build HTML once so popups and tooltips share identical content.
+function buildMarkerContent(marker) {
   return `
     <div class="custom-tooltip">
       <div><strong>${translate('radiation_dose')}:</strong><br>
@@ -1346,6 +1325,16 @@ function getPopupContent(marker) {
         </a>
       </div>
     </div>`;
+}
+
+// Popup reuses shared builder to stay in sync with tooltips.
+function getPopupContent(marker) {
+  return buildMarkerContent(marker);
+}
+
+// Tooltip uses the same builder for hover previews.
+function getTooltipContent(marker) {
+  return buildMarkerContent(marker);
 }
 
 
@@ -1398,7 +1387,7 @@ function updateMarkers(){
     })
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
-        { direction:'top', className:'custom-tooltip', offset:[0,-8] })
+        { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
     .bindPopup(getPopupContent(m));
 
     circleMarkers[m.id || m.trackID] = cm;
@@ -1714,18 +1703,12 @@ function centerMapToLocation() {
     • Show modal; close on backdrop click for convenience.
 -->
 <script>
-  // Display the full legend text in current language.
-  // Exposed so marker popups reuse the same modal.
-  function openLegendModal() {
-    // Hide tooltip so it doesn't overlap the modal
-    hideLegendTooltip();
-    // Choose full text key dynamically for any supported language
-    var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
+  // Build legend HTML with color squares for tooltip and modal.
+  function buildLegendHTML(lang) {
     var key = 'legend_full_' + lang;
     var txt = translate(key);
-    // Build pretty paragraphs and add colored markers
     var parts = txt.split('\n\n');
-    var html = parts.map(function(p){
+    return parts.map(function(p){
       var lines = p.split('\n').map(function(line){
         if (line.includes('0–11')) return '<span style=\"color:#008000;\">■</span> ' + line;
         if (line.includes('11–30')) return '<span style=\"color:#FFD700;\">■</span> ' + line;
@@ -1735,19 +1718,26 @@ function centerMapToLocation() {
       }).join('<br>');
       return '<p style=\"margin:0 0 1em 0;\">' + lines + '</p>';
     }).join('');
+  }
+
+  // Display the full legend text in current language.
+  // Exposed so marker popups reuse the same modal.
+  function openLegendModal() {
+    hideLegendTooltip(); // avoid overlap
+    var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
+    var html = buildLegendHTML(lang);
     var box = document.getElementById('legendText');
     if (box) box.innerHTML = html;
     var modal = document.getElementById('legendModal');
     if (modal) modal.style.display = 'flex';
   }
 
-  // Show legend explanation on hover without forcing a click
+  // Show legend explanation on hover using same HTML as modal
   function showLegendTooltip() {
     var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
-    var key = 'legend_full_' + lang;
     var tip = document.getElementById('legendTooltip');
     if (!tip) return;
-    tip.innerHTML = translate(key).replace(/\n/g, '<br>');
+    tip.innerHTML = buildLegendHTML(lang);
     tip.style.display = 'block';
     var leg = document.getElementById('legend');
     if (leg) {
