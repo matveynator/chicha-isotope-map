@@ -1348,6 +1348,12 @@ function getTooltipContent(marker) {
   return buildMarkerContent(marker);
 }
 
+// Activate tooltip on click or tap and prevent map click handling
+function activateTooltip(e) {
+  e.target.openTooltip();
+  L.DomEvent.stop(e); // avoid map closing the tooltip immediately
+}
+
 
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
@@ -1388,6 +1394,7 @@ function updateMarkers(){
     maxTs = Math.max(maxTs, m.date);
     if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
+    // Create marker; clicking opens tooltip on both desktop and mobile
     const cm = L.circleMarker([m.lat, m.lon], {
       radius      : getRadius(m.doseRate, zoom),
       fillColor   : getGradientColor(m.doseRate),
@@ -1399,7 +1406,8 @@ function updateMarkers(){
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
         { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    .bindPopup(getPopupContent(m));
+    .bindPopup(getPopupContent(m))
+    .on('click', activateTooltip);
 
     circleMarkers[m.id || m.trackID] = cm;
   };
