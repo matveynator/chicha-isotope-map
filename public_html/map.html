@@ -845,6 +845,8 @@ var currentTrackID = null;
 
 // New controller to cancel previous request
 var markerStreamSource = null;
+// Track currently opened tooltip so we can close it when needed
+var activeTooltipMarker = null;
 
 
 /**
@@ -958,6 +960,14 @@ document.addEventListener('DOMContentLoaded', function () {
     '<a href="https://atomfast.net" target="_blank">Atomcloud</a>, ' +
     '<a href="https://radiaverse.com" target="_blank">Radiacode</a>'
   );
+
+  // Close any fixed tooltip when clicking on empty map space
+  map.on('click', function(e) {
+    if (e.originalEvent && e.originalEvent.target.closest('.custom-tooltip')) {
+      return; // keep tooltip open if click was inside it
+    }
+    closeActiveTooltip();
+  });
 
   // Track view initialization
   var initialMarkers = JSON.parse('{{ .Markers | toJSON }}');
@@ -1343,6 +1353,15 @@ function createDateRangeSlider(){
     return buildMarkerContent(marker);
   }
 
+  // Ensure only one tooltip remains open and restore hover behavior on close
+  function closeActiveTooltip() {
+    if (activeTooltipMarker) {
+      activeTooltipMarker.on('mouseout', activeTooltipMarker.closeTooltip);
+      activeTooltipMarker.closeTooltip();
+      activeTooltipMarker = null;
+    }
+  }
+
 
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
@@ -1394,10 +1413,15 @@ function updateMarkers(){
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
         { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    // Open tooltip on click so mobile users see the same UI without double tapping.
+    // Fix tooltip on click and ensure only one stays open across the map
     .on('click', function (e) {
+      if (activeTooltipMarker && activeTooltipMarker !== this) {
+        closeActiveTooltip();
+      }
+      activeTooltipMarker = this;
       this.openTooltip();
-      L.DomEvent.stop(e); // Stop propagation to preserve inner link clicks.
+      this.off('mouseout', this.closeTooltip);
+      L.DomEvent.stop(e); // Prevent map click which would close the tooltip immediately
     });
 
     circleMarkers[m.id || m.trackID] = cm;
