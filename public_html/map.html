@@ -838,6 +838,8 @@ function getCurrentUrlParams() {
     <script>
       var map;
 var circleMarkers = {};
+var activeTooltipMarker = null; // Track active tooltip to ensure single visibility
+var isTouchDevice = ("ontouchstart" in window) || navigator.maxTouchPoints > 0; // Detect touch devices
 var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
@@ -1316,8 +1318,8 @@ function createDateRangeSlider(){
 
 // Function definitions
 
-// ---------- Marker popups and tooltips ----------
-// Build HTML once so popups and tooltips share identical content.
+// ---------- Marker tooltips ----------
+// Build HTML once so tooltips stay in sync across interactions.
   function buildMarkerContent(marker) {
     // Return markup with hooks; events handled globally via delegation.
     return `
@@ -1337,15 +1339,48 @@ function createDateRangeSlider(){
         </div>
       </div>`;
 }
-
-// Popup reuses shared builder to stay in sync with tooltips.
-function getPopupContent(marker) {
-  return buildMarkerContent(marker);
-}
-
 // Tooltip uses the same builder for hover previews.
 function getTooltipContent(marker) {
   return buildMarkerContent(marker);
+}
+
+/* -------------------------------------------------------------
+ * setupTooltipInteractions() — unify hover/click behavior.
+ * Keeps a single tooltip active; uses clicks on touch devices.
+ * -----------------------------------------------------------*/
+function setupTooltipInteractions(marker) {
+  marker._isTooltipFixed = false;
+
+  marker.on("mouseover", function() {
+    if (isTouchDevice) return;
+    if (activeTooltipMarker && activeTooltipMarker !== marker) {
+      if (!activeTooltipMarker._isTooltipFixed) {
+        activeTooltipMarker.closeTooltip();
+      } else {
+        return;
+      }
+    }
+    marker.openTooltip();
+    activeTooltipMarker = marker;
+  });
+
+  marker.on("mouseout", function() {
+    if (isTouchDevice) return;
+    if (!marker._isTooltipFixed) {
+      marker.closeTooltip();
+      if (activeTooltipMarker === marker) activeTooltipMarker = null;
+    }
+  });
+
+  marker.on("click", function() {
+    if (activeTooltipMarker && activeTooltipMarker !== marker) {
+      activeTooltipMarker.closeTooltip();
+      activeTooltipMarker._isTooltipFixed = false;
+    }
+    marker.openTooltip();
+    marker._isTooltipFixed = true;
+    activeTooltipMarker = marker;
+  });
 }
 
 
@@ -1374,6 +1409,7 @@ function updateMarkers(){
 
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
+    activeTooltipMarker = null; // Reset active tooltip when markers refresh
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
@@ -1398,8 +1434,8 @@ function updateMarkers(){
     })
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
-        { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    .bindPopup(getPopupContent(m));
+        { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true });
+      setupTooltipInteractions(cm); // Ensure hover/tap follow single-active rule
 
     circleMarkers[m.id || m.trackID] = cm;
   };
@@ -1782,6 +1818,14 @@ function centerMapToLocation() {
       ev.preventDefault();
       viewTrack(ev.target.dataset.track);
     }
+      // close active tooltip when clicking outside marker or tooltip
+      if (activeTooltipMarker &&
+          !ev.target.closest('.leaflet-tooltip') &&
+          !ev.target.closest('.leaflet-interactive')) {
+        activeTooltipMarker.closeTooltip();
+        activeTooltipMarker._isTooltipFixed = false;
+        activeTooltipMarker = null;
+      }
   });
 
   (function(){
