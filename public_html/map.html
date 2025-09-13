@@ -1316,9 +1316,9 @@ function createDateRangeSlider(){
 
 // Function definitions
 
-// ---------- Marker popups and tooltips ----------
-// Build HTML once so popups and tooltips share identical content.
-  function buildMarkerContent(marker) {
+  // ---------- Marker tooltip builder ----------
+  // Build HTML once so all markers share identical tooltip content.
+    function buildMarkerContent(marker) {
     // Return markup with hooks; events handled globally via delegation.
     return `
       <div class="custom-tooltip">
@@ -1338,15 +1338,10 @@ function createDateRangeSlider(){
       </div>`;
 }
 
-// Popup reuses shared builder to stay in sync with tooltips.
-function getPopupContent(marker) {
-  return buildMarkerContent(marker);
-}
-
-// Tooltip uses the same builder for hover previews.
-function getTooltipContent(marker) {
-  return buildMarkerContent(marker);
-}
+  // Tooltip uses the shared builder for hover/tap previews.
+  function getTooltipContent(marker) {
+    return buildMarkerContent(marker);
+  }
 
 
 /* Request markers for current bounds/zoom, render them,
@@ -1399,7 +1394,11 @@ function updateMarkers(){
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
         { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    .bindPopup(getPopupContent(m));
+    // Open tooltip on click so mobile users see the same UI without double tapping.
+    .on('click', function (e) {
+      this.openTooltip();
+      L.DomEvent.stop(e); // Stop propagation to preserve inner link clicks.
+    });
 
     circleMarkers[m.id || m.trackID] = cm;
   };
