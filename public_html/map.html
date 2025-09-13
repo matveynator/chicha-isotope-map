@@ -992,6 +992,12 @@ document.addEventListener('DOMContentLoaded', function () {
   map.on('moveend', updateUrl);
   map.on('zoomend', updateUrl);
 
+  // Ignore map clicks coming from tooltip content so the map
+  // does not react when users interact with links inside tooltips.
+  map.on('click', function(e) {
+    if (e.originalEvent.target.closest('.custom-tooltip')) return;
+  });
+
   // Initialize UI elements
   initializeUIElements();
 
@@ -1348,6 +1354,17 @@ function getTooltipContent(marker) {
   return buildMarkerContent(marker);
 }
 
+/* ---------------------------------------------------------------
+ * activateTooltip() — open marker tooltip on click.
+ * Allow events to bubble so document-level handlers (e.g. track links)
+ * can react while map click logic filters out tooltip origins.
+ * ---------------------------------------------------------------*/
+function activateTooltip() {
+  if (this.getTooltip()) {
+    this.openTooltip();
+  }
+}
+
 
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
@@ -1399,7 +1416,8 @@ function updateMarkers(){
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
         { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    .bindPopup(getPopupContent(m));
+    .bindPopup(getPopupContent(m))
+    .on('click', activateTooltip); // keep links inside tooltip interactive
 
     circleMarkers[m.id || m.trackID] = cm;
   };
