@@ -962,10 +962,7 @@ document.addEventListener('DOMContentLoaded', function () {
   );
 
   // Close any fixed tooltip when clicking on empty map space
-  map.on('click', function(e) {
-    if (e.originalEvent && e.originalEvent.target.closest('.custom-tooltip')) {
-      return; // keep tooltip open if click was inside it
-    }
+  map.on('click', function() {
     closeActiveTooltip();
   });
 
@@ -1362,6 +1359,18 @@ function createDateRangeSlider(){
     }
   }
 
+  // Fix tooltip on tap/click and keep links usable
+  function activateTooltip(e) {
+    if (activeTooltipMarker && activeTooltipMarker !== this) {
+      closeActiveTooltip();
+    }
+    activeTooltipMarker = this;
+    this.openTooltip();
+    this.off('mouseout', this.closeTooltip);
+    L.DomEvent.disableClickPropagation(this.getTooltip().getElement());
+    L.DomEvent.stop(e); // prevent map from also handling this event
+  }
+
 
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
@@ -1413,16 +1422,9 @@ function updateMarkers(){
     .addTo(map)
     .bindTooltip(getTooltipContent(m),
         { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    // Fix tooltip on click and ensure only one stays open across the map
-    .on('click', function (e) {
-      if (activeTooltipMarker && activeTooltipMarker !== this) {
-        closeActiveTooltip();
-      }
-      activeTooltipMarker = this;
-      this.openTooltip();
-      this.off('mouseout', this.closeTooltip);
-      L.DomEvent.stop(e); // Prevent map click which would close the tooltip immediately
-    });
+    // Activate tooltip on both click and touch for mobile usability
+    .on('click', activateTooltip)
+    .on('touchstart', activateTooltip);
 
     circleMarkers[m.id || m.trackID] = cm;
   };
