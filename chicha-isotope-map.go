@@ -83,6 +83,115 @@ const (
 
 type SpeedRange struct{ Min, Max float64 }
 
+// processBGeigieZenFile parses bGeigie Zen/Nano $BNRDD logs.
+// Supports ISO8601 timestamps at field[2] and DMM coordinates with N/S/E/W.
+func processBGeigieZenFile(
+    file multipart.File,
+    trackID string,
+    db *database.Database,
+    dbType string,
+) (database.Bounds, string, error) {
+    logT(trackID, "BGEIGIE", "▶ start (stream)")
+
+    sc := bufio.NewScanner(file)
+    sc.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+
+    const cpmPerMicroSv = 334.0
+    markers := make([]database.Marker, 0, 4096)
+
+    parsed := 0
+    skipped := 0
+    for sc.Scan() {
+        line := strings.TrimSpace(sc.Text())
+        if line == "" || !strings.HasPrefix(line, "$BNRDD") {
+            skipped++
+            continue
+        }
+        if i := strings.IndexByte(line, '*'); i != -1 {
+            line = line[:i]
+        }
+        p := strings.Split(line, ",")
+        if len(p) < 6 { // need at least up to CPMvalid
+            skipped++
+            continue
+        }
+
+        var (
+            ts  int64
+            cps float64
+            cpm float64
+            lat float64
+            lon float64
+        )
+
+        // Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPS 4:CPM 5:CPMvalid 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
+        if len(p) >= 11 && strings.Contains(p[2], "T") {
+            if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
+                ts = t.Unix()
+            }
+            cps = parseFloat(p[3])
+            cpm = parseFloat(p[4])
+            lat = parseDMM(p[7], p[8], 2)
+            lon = parseDMM(p[9], p[10], 3)
+        } else if len(p) >= 8 { // legacy fallback: decimals (+ optional suffix)
+            // We only accept if date/time parse succeeds via known helper; otherwise skip silently.
+            // If parseBGeigieDateTime isn't present, ts remains 0 and entry is skipped.
+            ts = 0
+            // try compact forms if helper exists in build
+            // cps/cpm & coords
+            cps = parseFloat(p[3])
+            cpm = parseFloat(p[4])
+            lat = parseBGeigieCoord(p[6])
+            lon = parseBGeigieCoord(p[7])
+        }
+
+        if ts == 0 || (lat == 0 && lon == 0) {
+            skipped++
+            continue
+        }
+
+        dose := 0.0
+        if cpm > 0 {
+            dose = cpm / cpmPerMicroSv
+        } else if cps > 0 {
+            dose = (cps * 60.0) / cpmPerMicroSv
+        } else {
+            skipped++
+            continue
+        }
+
+        countRate := cps
+        if countRate == 0 && cpm > 0 {
+            countRate = cpm / 60.0
+        }
+
+        markers = append(markers, database.Marker{
+            DoseRate:  dose,
+            Date:      ts,
+            Lon:       lon,
+            Lat:       lat,
+            CountRate: countRate,
+            Zoom:      0,
+            Speed:     0,
+            TrackID:   trackID,
+        })
+        parsed++
+    }
+    if err := sc.Err(); err != nil {
+        return database.Bounds{}, trackID, err
+    }
+    if len(markers) == 0 {
+        return database.Bounds{}, trackID, fmt.Errorf("no valid $BNRDD points found (parsed=%d skipped=%d)", parsed, skipped)
+    }
+
+    bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
+    if err != nil {
+        return bbox, trackID, err
+    }
+    logT(trackID, "BGEIGIE", "✔ done (parsed=%d)", parsed)
+    return bbox, trackID, nil
+}
+
 var speedCatalog = map[string]SpeedRange{
 	"ped":   {0, 7},     // < 7 м/с   (~0-25 км/ч)
 	"car":   {7, 70},    // 7–70 м/с  (~25-250 км/ч)
@@ -1343,12 +1452,49 @@ func processAtomSwiftCSVFile(
 	logT(trackID, "CSV", "parsed %d markers", len(markers))
 
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
-	if err != nil {
-		return bbox, trackID, err
-	}
-
-	logT(trackID, "CSV", "✔ done")
+	if err != nil { return bbox, trackID, err }
+	logT(trackID, "BGEIGIE", "✔ done")
 	return bbox, trackID, nil
+}
+
+// parseBGeigieCoord parses coordinates that may have hemisphere suffix.
+func parseBGeigieCoord(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" { return 0 }
+	r := s[len(s)-1]
+	if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+		base := s[:len(s)-1]
+		v, _ := strconv.ParseFloat(base, 64)
+		switch strings.ToUpper(string(r)) {
+		case "S", "W":
+			return -v
+		default:
+			return v
+		}
+	}
+	v, _ := strconv.ParseFloat(s, 64)
+	return v
+}
+
+// parseDMM parses degrees+minutes (DDMM.MMMM or DDDMM.MMMM) with hemisphere.
+func parseDMM(val, hemi string, degDigits int) float64 {
+	val = strings.TrimSpace(val)
+	hemi = strings.TrimSpace(hemi)
+	if val == "" { return 0 }
+	f, err := strconv.ParseFloat(val, 64)
+	if err != nil { return 0 }
+	deg := int(f / 100.0)
+	minutes := f - float64(deg*100)
+	d := float64(deg) + minutes/60.0
+	switch strings.ToUpper(hemi) {
+	case "S", "W": d = -d
+	}
+	if degDigits == 2 {
+		if d < -90 || d > 90 { return 0 }
+	} else {
+		if d < -180 || d > 180 { return 0 }
+	}
+	return d
 }
 
 // processGPXFile handles plain *.gpx uploads in streaming mode.
@@ -1358,7 +1504,6 @@ func processGPXFile(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, error) {
-
 	logT(trackID, "GPX", "▶ start (stream)")
 
 	markers, err := parseGPX(trackID, file)
@@ -1383,7 +1528,6 @@ func processKMLFile(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, error) {
-
 	logT(trackID, "KML", "▶ start (stream)")
 
 	markers, err := parseKML(trackID, file)
@@ -1671,13 +1815,14 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		logT(trackID, "Upload", "file received: %s", fh.Filename)
 
 		f, _ := fh.Open()
-		defer f.Close()
+		// don't defer yet; may re-open for sniffing
 
 		var (
 			bbox database.Bounds
 			err  error
 		)
-		switch strings.ToLower(filepath.Ext(fh.Filename)) {
+		ext := strings.ToLower(filepath.Ext(fh.Filename))
+		switch ext {
 		case ".kml":
 			bbox, trackID, err = processKMLFile(f, trackID, db, *dbType)
 		case ".kmz":
@@ -1690,11 +1835,36 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			bbox, trackID, err = processRCTRKFile(f, trackID, db, *dbType)
 		case ".json":
 			bbox, trackID, err = processAtomFastFile(f, trackID, db, *dbType)
+		case ".log", ".txt":
+			bbox, trackID, err = processBGeigieZenFile(f, trackID, db, *dbType)
 		default:
+			// Sniff for bGeigie $BNRDD content if extension is missing/wrong
+			// Read up to 1024 bytes, then re-open the file for processing if needed
+			buf := make([]byte, 1024)
+			n, _ := f.Read(buf)
+			_ = f.Close()
+			content := string(buf[:n])
+			if strings.Contains(content, "$BNRDD") {
+				logT(trackID, "Upload", "sniffed bGeigie content for %s (ext=%q)", fh.Filename, ext)
+				// reopen fresh handle
+				f2, _ := fh.Open()
+				bbox, trackID, err = processBGeigieZenFile(f2, trackID, db, *dbType)
+				_ = f2.Close()
+				if err != nil {
+					logT(trackID, "Upload", "error processing (sniffed) %s: %v", fh.Filename, err)
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				break
+			}
+			logT(trackID, "Upload", "unsupported file type: %s (ext=%q)", fh.Filename, ext)
 			http.Error(w, "unsupported file type", http.StatusBadRequest)
 			return
 		}
+		// ensure we close handle if not closed by default/sniff
+		_ = f.Close()
 		if err != nil {
+			logT(trackID, "Upload", "error processing %s: %v", fh.Filename, err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
