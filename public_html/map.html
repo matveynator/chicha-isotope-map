@@ -770,6 +770,10 @@ body, html {
 
     <!-- Load Leaflet JavaScript library -->
     <script src="/static/leaflet.js"></script>
+    <script>
+      // Remove flag from Leaflet attribution to keep map neutral
+      L.Control.Attribution.prototype.options.prefix = '<a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a>';
+    </script>
 
     <!-- Slider -->
     <script src="/static/nouislider.min.js"></script>
