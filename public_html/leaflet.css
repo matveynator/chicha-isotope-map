@@ -428,12 +428,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 .leaflet-control-attribution a:focus {
 	text-decoration: underline;
 	}
-.leaflet-attribution-flag {
-	display: inline !important;
-	vertical-align: baseline !important;
-	width: 1em;
-	height: 0.6669em;
-	}
+/* Attribution flag styles removed to keep map neutral */
 .leaflet-left .leaflet-control-scale {
 	margin-left: 5px;
 	}
