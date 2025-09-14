@@ -7,6 +7,8 @@
 
 # chicha-isotope-map ― 世界の放射線マップ ☢️
 
+ライブデモ <a href="https://pelora.org" target="_blank">https://pelora.org</a>
+
 ---
 
 ### 📸 **ライブデモ**

@@ -7,6 +7,8 @@
 
 # chicha-isotope-map est une carte mondiale ☢️ de la radioactivité.
 
+Démo en direct: <a href="https://pelora.org" target="_blank">https://pelora.org</a>
+
 ---
 
 ### 📸 **Démo en direct**
