@@ -951,7 +951,7 @@ var safecastLayer = L.layerGroup();
 /**
  * Load previously saved speed-filter state from sessionStorage.
  * If nothing is stored yet, return default state
- *   ✈️ off, 🚗 on, 🚶 on  (as requested).
+ *   ✈️ off, 🚗 on, 🚶 on, 📡 on (as requested).
  */
 function loadSpeedFilterState() {
   // default state keeps realtime layer visible
@@ -1003,6 +1003,9 @@ function saveSpeedFilterState(state) {
 
 document.addEventListener('DOMContentLoaded', function () {
 
+  // Remember user's last speed choices; default keeps car, pedestrian, and live on
+  const speedState = loadSpeedFilterState();
+
   // Initialize trackID from path
   var match = window.location.pathname.match(/^\/trackid\/([a-zA-Z0-9]+)/);
   if (match) {
@@ -1053,7 +1056,7 @@ document.addEventListener('DOMContentLoaded', function () {
     position: 'topleft',
     collapsed: false
   }).addTo(map);
-  if (state.live) safecastLayer.addTo(map);
+  if (speedState.live) safecastLayer.addTo(map);
 
   // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
@@ -1103,16 +1106,16 @@ document.addEventListener('DOMContentLoaded', function () {
   initializeUIElements();
 
   /**
-   * Build a Leaflet control with three check-boxes that filter markers
-   * by recorded speed. Labels now show speed in km/h instead of m/s.
-   * Default state: ✈️ off, 🚗 on, 🚶 on.
+   * Build a Leaflet control with four check-boxes that filter markers
+   * by recorded speed and toggle the realtime layer.
+   * Default state: ✈️ off, 🚗 on, 🚶 on, 📡 on.
    */
   function createSpeedFilterControls() {
 
     if (isTrackView) return;   // hidden in track view
 
-    // load previously saved state (or defaults)
-    const state = loadSpeedFilterState();
+    // reuse previously loaded state (or defaults)
+    const state = speedState;
 
     // custom Leaflet control
     const SpeedCtrl = L.Control.extend({
@@ -1127,7 +1130,7 @@ document.addEventListener('DOMContentLoaded', function () {
           ${emoji}
             </label>`;
 
-        // order: ✈️, 🚗, 🚶  (top → bottom)
+        // order: ✈️, 🚗, 🚶, 📡  (top → bottom)
         div.innerHTML =
           row('sfPlane', '✈️',  state.plane) +
           row('sfCar',   '🚗', state.car)   +
