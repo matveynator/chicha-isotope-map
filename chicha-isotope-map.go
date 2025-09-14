@@ -87,110 +87,110 @@ type SpeedRange struct{ Min, Max float64 }
 // processBGeigieZenFile parses bGeigie Zen/Nano $BNRDD logs.
 // Supports ISO8601 timestamps at field[2] and DMM coordinates with N/S/E/W.
 func processBGeigieZenFile(
-    file multipart.File,
-    trackID string,
-    db *database.Database,
-    dbType string,
+	file multipart.File,
+	trackID string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, string, error) {
-    logT(trackID, "BGEIGIE", "▶ start (stream)")
+	logT(trackID, "BGEIGIE", "▶ start (stream)")
 
-    sc := bufio.NewScanner(file)
-    sc.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+	sc := bufio.NewScanner(file)
+	sc.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
 
-    const cpmPerMicroSv = 334.0
-    markers := make([]database.Marker, 0, 4096)
+	const cpmPerMicroSv = 334.0
+	markers := make([]database.Marker, 0, 4096)
 
-    parsed := 0
-    skipped := 0
-    for sc.Scan() {
-        line := strings.TrimSpace(sc.Text())
-        if line == "" || !strings.HasPrefix(line, "$BNRDD") {
-            skipped++
-            continue
-        }
-        if i := strings.IndexByte(line, '*'); i != -1 {
-            line = line[:i]
-        }
-        p := strings.Split(line, ",")
-        if len(p) < 6 { // need at least up to CPMvalid
-            skipped++
-            continue
-        }
+	parsed := 0
+	skipped := 0
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || !strings.HasPrefix(line, "$BNRDD") {
+			skipped++
+			continue
+		}
+		if i := strings.IndexByte(line, '*'); i != -1 {
+			line = line[:i]
+		}
+		p := strings.Split(line, ",")
+		if len(p) < 6 { // need at least up to CPMvalid
+			skipped++
+			continue
+		}
 
-        var (
-            ts  int64
-            cps float64
-            cpm float64
-            lat float64
-            lon float64
-        )
+		var (
+			ts  int64
+			cps float64
+			cpm float64
+			lat float64
+			lon float64
+		)
 
-        // Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPS 4:CPM 5:CPMvalid 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
-        if len(p) >= 11 && strings.Contains(p[2], "T") {
-            if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
-                ts = t.Unix()
-            }
-            cps = parseFloat(p[3])
-            cpm = parseFloat(p[4])
-            lat = parseDMM(p[7], p[8], 2)
-            lon = parseDMM(p[9], p[10], 3)
-        } else if len(p) >= 8 { // legacy fallback: decimals (+ optional suffix)
-            // We only accept if date/time parse succeeds via known helper; otherwise skip silently.
-            // If parseBGeigieDateTime isn't present, ts remains 0 and entry is skipped.
-            ts = 0
-            // try compact forms if helper exists in build
-            // cps/cpm & coords
-            cps = parseFloat(p[3])
-            cpm = parseFloat(p[4])
-            lat = parseBGeigieCoord(p[6])
-            lon = parseBGeigieCoord(p[7])
-        }
+		// Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPS 4:CPM 5:CPMvalid 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
+		if len(p) >= 11 && strings.Contains(p[2], "T") {
+			if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
+				ts = t.Unix()
+			}
+			cps = parseFloat(p[3])
+			cpm = parseFloat(p[4])
+			lat = parseDMM(p[7], p[8], 2)
+			lon = parseDMM(p[9], p[10], 3)
+		} else if len(p) >= 8 { // legacy fallback: decimals (+ optional suffix)
+			// We only accept if date/time parse succeeds via known helper; otherwise skip silently.
+			// If parseBGeigieDateTime isn't present, ts remains 0 and entry is skipped.
+			ts = 0
+			// try compact forms if helper exists in build
+			// cps/cpm & coords
+			cps = parseFloat(p[3])
+			cpm = parseFloat(p[4])
+			lat = parseBGeigieCoord(p[6])
+			lon = parseBGeigieCoord(p[7])
+		}
 
-        if ts == 0 || (lat == 0 && lon == 0) {
-            skipped++
-            continue
-        }
+		if ts == 0 || (lat == 0 && lon == 0) {
+			skipped++
+			continue
+		}
 
-        dose := 0.0
-        if cpm > 0 {
-            dose = cpm / cpmPerMicroSv
-        } else if cps > 0 {
-            dose = (cps * 60.0) / cpmPerMicroSv
-        } else {
-            skipped++
-            continue
-        }
+		dose := 0.0
+		if cpm > 0 {
+			dose = cpm / cpmPerMicroSv
+		} else if cps > 0 {
+			dose = (cps * 60.0) / cpmPerMicroSv
+		} else {
+			skipped++
+			continue
+		}
 
-        countRate := cps
-        if countRate == 0 && cpm > 0 {
-            countRate = cpm / 60.0
-        }
+		countRate := cps
+		if countRate == 0 && cpm > 0 {
+			countRate = cpm / 60.0
+		}
 
-        markers = append(markers, database.Marker{
-            DoseRate:  dose,
-            Date:      ts,
-            Lon:       lon,
-            Lat:       lat,
-            CountRate: countRate,
-            Zoom:      0,
-            Speed:     0,
-            TrackID:   trackID,
-        })
-        parsed++
-    }
-    if err := sc.Err(); err != nil {
-        return database.Bounds{}, trackID, err
-    }
-    if len(markers) == 0 {
-        return database.Bounds{}, trackID, fmt.Errorf("no valid $BNRDD points found (parsed=%d skipped=%d)", parsed, skipped)
-    }
+		markers = append(markers, database.Marker{
+			DoseRate:  dose,
+			Date:      ts,
+			Lon:       lon,
+			Lat:       lat,
+			CountRate: countRate,
+			Zoom:      0,
+			Speed:     0,
+			TrackID:   trackID,
+		})
+		parsed++
+	}
+	if err := sc.Err(); err != nil {
+		return database.Bounds{}, trackID, err
+	}
+	if len(markers) == 0 {
+		return database.Bounds{}, trackID, fmt.Errorf("no valid $BNRDD points found (parsed=%d skipped=%d)", parsed, skipped)
+	}
 
-    bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
-    if err != nil {
-        return bbox, trackID, err
-    }
-    logT(trackID, "BGEIGIE", "✔ done (parsed=%d)", parsed)
-    return bbox, trackID, nil
+	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
+	if err != nil {
+		return bbox, trackID, err
+	}
+	logT(trackID, "BGEIGIE", "✔ done (parsed=%d)", parsed)
+	return bbox, trackID, nil
 }
 
 var speedCatalog = map[string]SpeedRange{
@@ -1467,7 +1467,9 @@ func processAtomSwiftCSVFile(
 	logT(trackID, "CSV", "parsed %d markers", len(markers))
 
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
-	if err != nil { return bbox, trackID, err }
+	if err != nil {
+		return bbox, trackID, err
+	}
 	logT(trackID, "BGEIGIE", "✔ done")
 	return bbox, trackID, nil
 }
@@ -1687,7 +1689,9 @@ func processAtomFastFile(
 // parseBGeigieCoord parses coordinates that may have hemisphere suffix.
 func parseBGeigieCoord(s string) float64 {
 	s = strings.TrimSpace(s)
-	if s == "" { return 0 }
+	if s == "" {
+		return 0
+	}
 	r := s[len(s)-1]
 	if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
 		base := s[:len(s)-1]
@@ -1707,19 +1711,28 @@ func parseBGeigieCoord(s string) float64 {
 func parseDMM(val, hemi string, degDigits int) float64 {
 	val = strings.TrimSpace(val)
 	hemi = strings.TrimSpace(hemi)
-	if val == "" { return 0 }
+	if val == "" {
+		return 0
+	}
 	f, err := strconv.ParseFloat(val, 64)
-	if err != nil { return 0 }
+	if err != nil {
+		return 0
+	}
 	deg := int(f / 100.0)
 	minutes := f - float64(deg*100)
 	d := float64(deg) + minutes/60.0
 	switch strings.ToUpper(hemi) {
-	case "S", "W": d = -d
+	case "S", "W":
+		d = -d
 	}
 	if degDigits == 2 {
-		if d < -90 || d > 90 { return 0 }
+		if d < -90 || d > 90 {
+			return 0
+		}
 	} else {
-		if d < -180 || d > 180 { return 0 }
+		if d < -180 || d > 180 {
+			return 0
+		}
 	}
 	return d
 }
@@ -2250,6 +2263,93 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ---------------------------------------------------------------
+// Safecast realtime cache and HTTP endpoint
+// ---------------------------------------------------------------
+
+// safecastReq wraps a reply channel so handlers can request cached data.
+// We prefer channels to locks: "Don't communicate by sharing memory; share memory by communicating."
+type safecastReq struct{ resp chan []byte }
+
+// Channels for data requests and updates.
+var (
+	safecastGet    = make(chan safecastReq)
+	safecastUpdate = make(chan []byte)
+)
+
+// safecastDataManager stores the latest JSON blob and serves it on demand.
+// A dedicated goroutine serialises access without mutexes.
+func safecastDataManager(ctx context.Context) {
+	var data []byte
+	for {
+		select {
+		case req := <-safecastGet:
+			req.resp <- data
+		case data = <-safecastUpdate:
+			// new data received
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// safecastFetcher polls the upstream Safecast URL every fifteen minutes.
+// Running in its own goroutine keeps network delays off the request path.
+func safecastFetcher(ctx context.Context, url string) {
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+
+	fetch := func() {
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Printf("Safecast fetch: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Safecast fetch status: %s", resp.Status)
+			return
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("Safecast read: %v", err)
+			return
+		}
+		safecastUpdate <- b
+	}
+
+	fetch() // initial pull so clients get data quickly
+
+	for {
+		select {
+		case <-ticker.C:
+			fetch()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// safecastDevicesHandler returns cached JSON to the browser.
+func safecastDevicesHandler(w http.ResponseWriter, r *http.Request) {
+	req := safecastReq{resp: make(chan []byte)}
+	safecastGet <- req
+	data := <-req.resp
+	if len(data) == 0 {
+		http.Error(w, "no data", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
+}
+
+// initSafecast launches cache manager and periodic fetcher.
+// The context lets callers stop the goroutines when shutting down.
+func initSafecast(ctx context.Context) {
+	go safecastDataManager(ctx)
+	go safecastFetcher(ctx, "https://tt.safecast.org/devices")
+}
+
 // =====================
 // MAIN
 // =====================
@@ -2318,8 +2418,14 @@ func main() {
 	http.HandleFunc("/stream_markers", streamMarkersHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
+	http.HandleFunc("/safecast_devices", safecastDevicesHandler)
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
+
+	// Safecast realtime cache lives in its own goroutines.
+	scCtx, scCancel := context.WithCancel(context.Background())
+	defer scCancel()
+	initSafecast(scCtx)
 
 	// 5. HTTP/HTTPS-серверы
 	if *domain != "" {

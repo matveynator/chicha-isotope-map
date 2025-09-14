@@ -532,6 +532,60 @@ body, html {
         /* Removed old collapsible legend styles (legend-control, legend-header, legend-title, legend-toggle, legend-body, legend-row, legend-swatch, legend-label)
            to avoid duplicate legends. Only the compact legend + modal remain. */
 
+        /* Safecast realtime marker styling */
+        .safecast-icon {
+          position: relative;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          color: #000;
+          font-size: 10px;
+          font-weight: bold;
+        }
+        .safecast-icon .pulse {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          animation: safecastPulse 2s infinite;
+          opacity: 0.6;
+        }
+        @keyframes safecastPulse {
+          0% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.6); opacity: 0; }
+          100% { transform: scale(1); opacity: 0; }
+        }
+
+        /* Modal for Safecast history charts */
+        #safecastHistory {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0,0,0,0.5);
+          display: none;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+        }
+        #safecastHistory .content {
+          background: var(--modal-bg);
+          color: var(--modal-text);
+          padding: 10px;
+          border-radius: 4px;
+          max-height: 90vh;
+          overflow-y: auto;
+        }
+        #safecastHistory canvas {
+          display: block;
+          margin: 10px 0;
+          background: var(--modal-bg);
+        }
+
     </style>
 
     <!-- Translation script -->
@@ -644,12 +698,21 @@ body, html {
       <a href="https://github.com/matveynator/chicha-isotope-map/releases/tag/latest" target="_blank"><strong>{{translate "description"}}</strong> (version: {{ .Version }})</a>
     </div>
 
-    <!-- Map container -->
-    <div id="map"></div>
+      <!-- Map container -->
+      <div id="map"></div>
+      <div id="safecastHistory">
+        <div class="content">
+          <button onclick="hideSafecastHistory()">✖</button>
+          <canvas id="scDay" width="300" height="100"></canvas>
+          <canvas id="scWeek" width="300" height="100"></canvas>
+          <canvas id="scMonth" width="300" height="100"></canvas>
+          <canvas id="scYear" width="300" height="100"></canvas>
+        </div>
+      </div>
 
-    <div id="loadingOverlay" class="loading-overlay" style="display:none;">
-      <div class="spinner"></div>
-    </div>
+      <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+        <div class="spinner"></div>
+      </div>
 
     <!-- Theme toggle -->
     <div id="themeToggle">
@@ -881,6 +944,8 @@ var currentTrackID = null;
 
 // New controller to cancel previous request
 var markerStreamSource = null;
+// Layer for Safecast realtime devices
+var safecastLayer = L.layerGroup();
 
 
 /**
@@ -889,12 +954,13 @@ var markerStreamSource = null;
  *   ✈️ off, 🚗 on, 🚶 on  (as requested).
  */
 function loadSpeedFilterState() {
-  const def = { plane: false, car: true, ped: true };
+  // default state keeps realtime layer visible
+  const def = { plane: false, car: true, ped: true, live: true };
   try {
     const raw = sessionStorage.getItem('speedFilterState');
     return raw ? JSON.parse(raw) : def;
   } catch (e) {
-    return def;
+    return def; // fallback to defaults on JSON parse error
   }
 }
 
@@ -987,6 +1053,7 @@ document.addEventListener('DOMContentLoaded', function () {
     position: 'topleft',
     collapsed: false
   }).addTo(map);
+  if (state.live) safecastLayer.addTo(map);
 
   // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
@@ -1028,6 +1095,10 @@ document.addEventListener('DOMContentLoaded', function () {
   map.on('moveend', updateUrl);
   map.on('zoomend', updateUrl);
 
+  // initial load of realtime data and periodic refresh
+  updateSafecastMarkers();
+  setInterval(updateSafecastMarkers, 15 * 60 * 1000);
+
   // Initialize UI elements
   initializeUIElements();
 
@@ -1060,7 +1131,8 @@ document.addEventListener('DOMContentLoaded', function () {
         div.innerHTML =
           row('sfPlane', '✈️',  state.plane) +
           row('sfCar',   '🚗', state.car)   +
-          row('sfPed',   '🚶', state.ped);
+          row('sfPed',   '🚶', state.ped)  +
+          row('sfLive',  '📡', state.live);
 
         // prevent map drag/zoom while clicking inside the control
         L.DomEvent.disableClickPropagation(div);
@@ -1071,8 +1143,10 @@ document.addEventListener('DOMContentLoaded', function () {
             state.plane = div.querySelector('#sfPlane').checked;
             state.car   = div.querySelector('#sfCar').checked;
             state.ped   = div.querySelector('#sfPed').checked;
+            state.live  = div.querySelector('#sfLive').checked;
             saveSpeedFilterState(state);   // remember choice
             debounceUpdateMarkers();       // redraw with new filter
+            updateSafecastMarkers();       // refresh realtime devices
           });
         });
 
@@ -1461,6 +1535,88 @@ function updateMarkers(){
     es.close();
   };
 }
+
+// ---------------------------------------------------------------
+// Safecast realtime layer
+// ---------------------------------------------------------------
+function updateSafecastMarkers() {
+  const st = loadSpeedFilterState();
+  if (!st.live) {
+    safecastLayer.clearLayers();
+    if (map.hasLayer(safecastLayer)) map.removeLayer(safecastLayer);
+    return;
+  }
+  if (!map.hasLayer(safecastLayer)) safecastLayer.addTo(map);
+  fetch('/safecast_devices')
+    .then(resp => resp.json())
+    .then(devs => {
+      safecastLayer.clearLayers();
+      if (!Array.isArray(devs)) return;
+      devs.forEach(d => {
+        const lat = d.lat || d.latitude || (d.location && d.location.lat);
+        const lon = d.lon || d.longitude || (d.location && d.location.lon);
+        if (lat == null || lon == null) return;
+        const dose = d.value || d.usvh || d.usv || 0;
+        const color = getGradientColor(dose);
+        const html = `<div class="safecast-icon" style="background-color:${color};">
+            <div class="pulse" style="background-color:${color};"></div>
+            <span>${dose.toFixed(2)}</span>
+          </div>`;
+        L.marker([lat, lon], {
+          icon: L.divIcon({className: '', html: html, iconSize: [24,24]})
+        })
+        .on('click', () => showSafecastHistory(d))
+        .addTo(safecastLayer);
+      });
+    })
+    .catch(() => {});
+}
+function showSafecastHistory(dev) {
+  const modal = document.getElementById('safecastHistory');
+  modal.style.display = 'flex';
+  ['day','week','month','year'].forEach(range => {
+    fetchSafecastHistory(dev, range).then(pts => {
+      const canvas = document.getElementById('sc' + capitalize(range));
+      drawLineChart(canvas, pts);
+    });
+  });
+}
+
+function hideSafecastHistory() {
+  document.getElementById('safecastHistory').style.display = 'none';
+}
+
+function fetchSafecastHistory(dev, range) {
+  const now = Date.now();
+  const hours = {day:24, week:24*7, month:24*30, year:24*365}[range];
+  const from = new Date(now - hours*3600*1000).toISOString();
+  const id = dev.id || dev.device_id;
+  const url = `https://api.safecast.org/devices/${id}/measurements.json?from=${from}`;
+  return fetch(url)
+    .then(r => r.json())
+    .then(arr => arr.map(m => ({ts: new Date(m.captured_at || m.timestamp).getTime(), v: m.value || m.usv || m.usvh || 0})))
+    .catch(() => []);
+}
+
+function drawLineChart(canvas, pts) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if (pts.length === 0) { ctx.fillText('no data', 10, 50); return; }
+  const min = Math.min(...pts.map(p=>p.v));
+  const max = Math.max(...pts.map(p=>p.v));
+  const span = Math.max(max-min, 1e-6);
+  ctx.beginPath();
+  pts.forEach((p,i) => {
+    const x = i/(pts.length-1)*canvas.width;
+    const y = canvas.height - ((p.v - min)/span)*canvas.height;
+    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = '#f00';
+  ctx.stroke();
+}
+
+function capitalize(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
 
 
 
