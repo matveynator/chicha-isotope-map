@@ -2173,6 +2173,12 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if rt, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType); err == nil {
+		markers = append(markers, rt...)
+	} else {
+		log.Printf("realtime query: %v", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(markers)
 }
@@ -2221,15 +2227,50 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
 	var (
-		src   <-chan database.Marker
-		errCh <-chan error
+		baseSrc <-chan database.Marker
+		errCh   <-chan error
 	)
 	if trackID != "" {
-		src, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+		baseSrc, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
 	} else {
-		src, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+		baseSrc, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
 	}
-	agg := aggregateMarkers(ctx, src, zoom)
+
+	// Fetch current realtime points once so the map reflects network devices.
+	rtMarks, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType)
+	if err != nil {
+		log.Printf("realtime query: %v", err)
+	}
+
+	// merge realtime slice with streaming channel using a goroutine.
+	merged := make(chan database.Marker)
+	go func() {
+		defer close(merged)
+		for _, m := range rtMarks {
+			select {
+			case merged <- m:
+			case <-ctx.Done():
+				return
+			}
+		}
+		for {
+			select {
+			case m, ok := <-baseSrc:
+				if !ok {
+					return
+				}
+				select {
+				case merged <- m:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	agg := aggregateMarkers(ctx, merged, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

@@ -104,21 +104,18 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 		}
 	}()
 
-	// Fetcher goroutine.
+	// Fetcher goroutine runs once immediately and then every pollInterval.
+	// Running the first fetch before waiting on the ticker gives operators
+	// instant feedback after startup, embodying "Make interfaces easy to
+	// use correctly".
 	go func() {
 		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
 		for {
-			select {
-			case <-ctx.Done():
-				close(measurements)
-				return
-			case <-ticker.C:
-				data, err := fetch(ctx, url)
-				if err != nil {
-					logf("realtime fetch error: %v", err)
-					continue
-				}
+			data, err := fetch(ctx, url)
+			if err != nil {
+				logf("realtime fetch error: %v", err)
+			} else {
 				// Log how many devices were returned to understand coverage.
 				logf("realtime fetch: devices %d", len(data))
 				for _, m := range data {
@@ -130,6 +127,12 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					}
 				}
 				reports <- len(data)
+			}
+			select {
+			case <-ctx.Done():
+				close(measurements)
+				return
+			case <-ticker.C:
 			}
 		}
 	}()

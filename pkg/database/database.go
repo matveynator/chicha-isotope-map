@@ -586,6 +586,65 @@ ON CONFLICT(device_id,measured_at) DO NOTHING`,
 	}
 }
 
+// GetLatestRealtimeByBounds returns the newest reading per device within bounds.
+// We keep SQL portable and filter duplicates in Go, following "Clear is better than clever".
+func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
+	var query string
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		query = `
+SELECT device_id,value,unit,lat,lon,measured_at
+FROM realtime_measurements
+WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
+ORDER BY device_id,fetched_at DESC;`
+	default:
+		query = `
+SELECT device_id,value,unit,lat,lon,measured_at
+FROM realtime_measurements
+WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+ORDER BY device_id,fetched_at DESC;`
+	}
+
+	rows, err := db.DB.Query(query, minLat, maxLat, minLon, maxLon)
+	if err != nil {
+		return nil, fmt.Errorf("query realtime: %w", err)
+	}
+	defer rows.Close()
+
+	seen := make(map[string]bool)
+	var out []Marker
+	for rows.Next() {
+		var (
+			id       string
+			val      float64
+			unit     string
+			lat, lon float64
+			measured int64
+		)
+		if err := rows.Scan(&id, &val, &unit, &lat, &lon, &measured); err != nil {
+			return nil, fmt.Errorf("scan realtime: %w", err)
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, Marker{
+			DoseRate:  val,
+			Date:      measured,
+			Lon:       lon,
+			Lat:       lat,
+			CountRate: 0,
+			Zoom:      0,
+			Speed:     -1, // negative speed marks realtime in UI
+			TrackID:   id,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate realtime: %w", err)
+	}
+	return out, nil
+}
+
 // sqlExecutor is satisfied by both *sql.Tx and *sql.DB.
 type sqlExecutor interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
