@@ -336,6 +336,18 @@ CREATE TABLE IF NOT EXISTS markers (
   speed      DOUBLE PRECISION,
   trackID    TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
+);
+
+CREATE TABLE IF NOT EXISTS realtime_measurements (
+  id          BIGSERIAL PRIMARY KEY,
+  device_id   TEXT,
+  value       DOUBLE PRECISION,
+  unit        TEXT,
+  lat         DOUBLE PRECISION,
+  lon         DOUBLE PRECISION,
+  measured_at BIGINT,
+  fetched_at  BIGINT,
+  CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
 );`
 
 	case "sqlite", "genji":
@@ -353,7 +365,20 @@ CREATE TABLE IF NOT EXISTS markers (
   trackID    TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
-  ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);`
+  ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
+
+CREATE TABLE IF NOT EXISTS realtime_measurements (
+  id          INTEGER PRIMARY KEY,
+  device_id   TEXT,
+  value       REAL,
+  unit        TEXT,
+  lat         REAL,
+  lon         REAL,
+  measured_at BIGINT,
+  fetched_at  BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_realtime_unique
+  ON realtime_measurements (device_id,measured_at);`
 
 	case "duckdb":
 		// DuckDB — no SERIAL/AUTOINCREMENT; use a sequence + DEFAULT nextval(...).
@@ -373,6 +398,19 @@ CREATE TABLE IF NOT EXISTS markers (
   speed      DOUBLE,
   trackID    TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
+);
+
+CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
+CREATE TABLE IF NOT EXISTS realtime_measurements (
+  id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
+  device_id   TEXT,
+  value       DOUBLE,
+  unit        TEXT,
+  lat         DOUBLE,
+  lon         DOUBLE,
+  measured_at BIGINT,
+  fetched_at  BIGINT,
+  CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
 );`
 
 	default:
@@ -514,6 +552,33 @@ VALUES (?,?,?,?,?,?,?,?,?)
 ON CONFLICT DO NOTHING`,
 			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID)
+		return err
+	}
+}
+
+// InsertRealtimeMeasurement stores live device data and skips duplicates.
+// A little copying is better than a little dependency, so we build SQL by hand.
+func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		_, err := db.DB.Exec(`
+INSERT INTO realtime_measurements
+      (device_id,value,unit,lat,lon,measured_at,fetched_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7)
+ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
+			m.DeviceID, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+		return err
+
+	default:
+		if m.ID == 0 {
+			m.ID = <-db.idGenerator
+		}
+		_, err := db.DB.Exec(`
+INSERT INTO realtime_measurements
+      (id,device_id,value,unit,lat,lon,measured_at,fetched_at)
+VALUES (?,?,?,?,?,?,?,?)
+ON CONFLICT(device_id,measured_at) DO NOTHING`,
+			m.ID, m.DeviceID, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
 		return err
 	}
 }
