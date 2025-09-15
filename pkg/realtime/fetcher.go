@@ -14,17 +14,64 @@ import (
 	"chicha-isotope-map/pkg/database"
 )
 
-// devicePayload maps only fields we care about from the Safecast JSON.
-// Keeping it small avoids coupling to the full upstream schema.
+// devicePayload maps the minimal fields we need from the Safecast JSON.
+// A custom UnmarshalJSON keeps the struct small while flexibly handling
+// different upstream field names like "lat" vs "latitude". This follows
+// the Go Proverb "Clear is better than clever" by keeping decoding logic
+// explicit and easy to inspect.
 type devicePayload struct {
-	ID      string  `json:"id"`
-	Type    string  `json:"type"` // may describe transport (car, walk)
-	Value   float64 `json:"value"`
-	Unit    string  `json:"unit"`
-	Lat     float64 `json:"lat"`
-	Lon     float64 `json:"lon"`
-	Time    int64   `json:"time"`
-	Country string  `json:"country"` // optional; fall back to bbox lookup
+	ID      string
+	Type    string  // transport tag such as car or walk
+	Value   float64 // dose rate
+	Unit    string  // unit of Value
+	Lat     float64 // latitude in degrees
+	Lon     float64 // longitude in degrees
+	Time    int64   // measurement timestamp
+	Country string  // optional country hint
+}
+
+// UnmarshalJSON decodes a devicePayload from a generic map so we can
+// tolerate field name variations in the upstream feed. Numbers arrive as
+// float64 and are converted explicitly.
+func (d *devicePayload) UnmarshalJSON(b []byte) error {
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	if v, ok := m["id"].(string); ok {
+		d.ID = v
+	}
+	if v, ok := m["type"].(string); ok {
+		d.Type = v
+	}
+	if v, ok := m["value"].(float64); ok {
+		d.Value = v
+	}
+	if v, ok := m["unit"].(string); ok {
+		d.Unit = v
+	}
+	if v, ok := m["lat"].(float64); ok {
+		d.Lat = v
+	}
+	if v, ok := m["lon"].(float64); ok {
+		d.Lon = v
+	}
+	if v, ok := m["latitude"].(float64); ok {
+		d.Lat = v
+	}
+	if v, ok := m["longitude"].(float64); ok {
+		d.Lon = v
+	}
+	if v, ok := m["time"].(float64); ok {
+		d.Time = int64(v)
+	}
+	if v, ok := m["timestamp"].(float64); ok {
+		d.Time = int64(v)
+	}
+	if v, ok := m["country"].(string); ok {
+		d.Country = v
+	}
+	return nil
 }
 
 // fetch pulls device data once.
@@ -141,6 +188,12 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				// Log how many devices were returned to understand coverage.
 				logf("realtime fetch: devices %d", len(data))
 
+				// Show the first payload for debugging when the map looks empty.
+				if len(data) > 0 {
+					d0 := data[0]
+					logf("realtime sample: id=%s lat=%f lon=%f val=%f", d0.ID, d0.Lat, d0.Lon, d0.Value)
+				}
+
 				// Summaries are computed while forwarding measurements to DB.
 				stats := make(map[string]struct {
 					sum   float64
@@ -201,14 +254,8 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				}
 				sort.Strings(parts)
 
-				// Prepare example map link using the first device.
-				example := ""
-				if len(data) > 0 {
-					e := data[0]
-					example = fmt.Sprintf("https://www.openstreetmap.org/?mlat=%f&mlon=%f&zoom=12", e.Lat, e.Lon)
-				}
-
-				logf("realtime summary: %s added=%d removed=%d example=%s", strings.Join(parts, " "), added, removed, example)
+				// Log per-country averages and churn without extra links.
+				logf("realtime summary: %s added=%d removed=%d", strings.Join(parts, " "), added, removed)
 
 				// Promote stale device histories to normal tracks once a day.
 				go db.PromoteStaleRealtime(time.Now().Add(-24*time.Hour).Unix(), dbType)

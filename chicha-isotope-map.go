@@ -2241,7 +2241,8 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("realtime query: %v", err)
 	}
-	log.Printf("realtime markers: %d", len(rtMarks)) // help diagnose missing live points
+	// Log bounds alongside count to help diagnose empty map tiles.
+	log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 
 	// merge realtime slice with streaming channel using a goroutine.
 	merged := make(chan database.Marker)
