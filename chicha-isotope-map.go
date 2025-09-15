@@ -1962,23 +1962,25 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Данные для шаблона
 	data := struct {
-		Markers      []database.Marker
-		Version      string
-		Translations map[string]map[string]string
-		Lang         string
-		DefaultLat   float64
-		DefaultLon   float64
-		DefaultZoom  int
-		DefaultLayer string
+		Markers           []database.Marker
+		Version           string
+		Translations      map[string]map[string]string
+		Lang              string
+		DefaultLat        float64
+		DefaultLon        float64
+		DefaultZoom       int
+		DefaultLayer      string
+		RealtimeAvailable bool
 	}{
-		Markers:      doseData.Markers,
-		Version:      CompileVersion,
-		Translations: translations,
-		Lang:         lang,
-		DefaultLat:   *defaultLat,
-		DefaultLon:   *defaultLon,
-		DefaultZoom:  *defaultZoom,
-		DefaultLayer: *defaultLayer,
+		Markers:           doseData.Markers,
+		Version:           CompileVersion,
+		Translations:      translations,
+		Lang:              lang,
+		DefaultLat:        *defaultLat,
+		DefaultLon:        *defaultLon,
+		DefaultZoom:       *defaultZoom,
+		DefaultLayer:      *defaultLayer,
+		RealtimeAvailable: *safecastRealtimeEnabled,
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader
@@ -2031,23 +2033,25 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 
 	// отдаём пустой срез маркеров
 	data := struct {
-		Markers      []database.Marker
-		Version      string
-		Translations map[string]map[string]string
-		Lang         string
-		DefaultLat   float64
-		DefaultLon   float64
-		DefaultZoom  int
-		DefaultLayer string
+		Markers           []database.Marker
+		Version           string
+		Translations      map[string]map[string]string
+		Lang              string
+		DefaultLat        float64
+		DefaultLon        float64
+		DefaultZoom       int
+		DefaultLayer      string
+		RealtimeAvailable bool
 	}{
-		Markers:      nil, // ← ключевое изменение
-		Version:      CompileVersion,
-		Translations: translations,
-		Lang:         lang,
-		DefaultLat:   *defaultLat,
-		DefaultLon:   *defaultLon,
-		DefaultZoom:  *defaultZoom,
-		DefaultLayer: *defaultLayer,
+		Markers:           nil, // ← ключевое изменение
+		Version:           CompileVersion,
+		Translations:      translations,
+		Lang:              lang,
+		DefaultLat:        *defaultLat,
+		DefaultLon:        *defaultLon,
+		DefaultZoom:       *defaultZoom,
+		DefaultLayer:      *defaultLayer,
+		RealtimeAvailable: *safecastRealtimeEnabled,
 	}
 
 	var buf bytes.Buffer
@@ -2173,10 +2177,13 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rt, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType); err == nil {
-		markers = append(markers, rt...)
-	} else {
-		log.Printf("realtime query: %v", err)
+	if *safecastRealtimeEnabled {
+		// We only touch realtime tables when the operator explicitly enables the feature.
+		if rt, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType); err == nil {
+			markers = append(markers, rt...)
+		} else {
+			log.Printf("realtime query: %v", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -2346,14 +2353,14 @@ func main() {
 		log.Fatalf("DB schema: %v", err)
 	}
 
-        if *safecastRealtimeEnabled {
-                // Launch realtime Safecast polling under the dedicated flag so the
-                // feature stays opt-in.
-                database.SetRealtimeConverter(safecastrealtime.FromRealtime)
-                ctxRT, cancelRT := context.WithCancel(context.Background())
-                defer cancelRT()
-                safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
-        }
+	if *safecastRealtimeEnabled {
+		// Launch realtime Safecast polling under the dedicated flag so the
+		// feature stays opt-in.
+		database.SetRealtimeConverter(safecastrealtime.FromRealtime)
+		ctxRT, cancelRT := context.WithCancel(context.Background())
+		defer cancelRT()
+		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
+	}
 
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")

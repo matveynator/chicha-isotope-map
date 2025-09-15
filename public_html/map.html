@@ -575,6 +575,10 @@ body, html {
         layer: {{ .DefaultLayer | toJSON }}
       };
     </script>
+    <script>
+      // Expose the realtime flag so the UI can hide controls when the backend keeps the feature off.
+      window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
+    </script>
 
   </head>
 
@@ -833,7 +837,13 @@ function shouldDisplayBySpeed(speed) {
   if (isTrackView) return true;        // filter disabled in track view
 
   const st = loadSpeedFilterState();   // global mode
-  if (speed < 0) return st.live;       // 📡 realtime markers use negative speed
+  if (speed < 0) {                     // 📡 realtime markers use negative speed
+    if (!window.safecastRealtimeEnabled) {
+      // Safety net: when realtime is disabled we never show synthetic negative speeds.
+      return false;
+    }
+    return st.live;
+  }
   if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
   if (speed >= 7  && speed <  70)  return st.car;    // 🚗
   /* speed < 7 m/s  → pedestrian */
@@ -898,18 +908,26 @@ var markerStreamSource = null;
 
 /**
  * Load previously saved speed-filter state from sessionStorage.
- * If nothing is stored yet, return default state
- *   📡 on, ✈️ off, 🚗 on, 🚶 on  (as requested).
+ * If nothing is stored yet, return defaults that reflect backend capabilities.
+ *   Realtime on:  📡 on, ✈️ off, 🚗 on, 🚶 on  (as requested).
+ *   Realtime off: ✈️ off, 🚗 on, 🚶 on  (📡 absent).
  */
 function loadSpeedFilterState() {
-  // Defaults: live on, plane off, car on, pedestrian on.
-  const def = { live: true, plane: false, car: true, ped: true };
+  // We derive defaults from the realtime flag so the UI matches backend capabilities.
+  const base = { plane: false, car: true, ped: true };
+  if (window.safecastRealtimeEnabled) {
+    base.live = true;
+  }
   try {
     const raw = sessionStorage.getItem('speedFilterState');
     const st = raw ? JSON.parse(raw) : {};
-    return Object.assign({}, def, st);
+    const merged = Object.assign({}, base, st);
+    if (!window.safecastRealtimeEnabled) {
+      delete merged.live;
+    }
+    return merged;
   } catch (e) {
-    return def;
+    return base;
   }
 }
 
@@ -946,7 +964,12 @@ function monthsApart(ts0, ts1){
  * so the user’s choice is remembered for the whole session.
  */
 function saveSpeedFilterState(state) {
-  sessionStorage.setItem('speedFilterState', JSON.stringify(state));
+  // Persist only supported options so stale realtime toggles do not leak between sessions.
+  const toSave = Object.assign({}, state);
+  if (!window.safecastRealtimeEnabled) {
+    delete toSave.live;
+  }
+  sessionStorage.setItem('speedFilterState', JSON.stringify(toSave));
 }
 
 
@@ -1049,7 +1072,7 @@ document.addEventListener('DOMContentLoaded', function () {
   /**
    * Build a Leaflet control with three check-boxes that filter markers
    * by recorded speed. Labels now show speed in km/h instead of m/s.
-   * Default state: 📡 on, ✈️ off, 🚗 on, 🚶 on.
+   * Default state (when realtime exists): 📡 on, ✈️ off, 🚗 on, 🚶 on.
    */
   function createSpeedFilterControls() {
 
@@ -1071,13 +1094,18 @@ document.addEventListener('DOMContentLoaded', function () {
           ${emoji}
             </label>`;
 
-        // order: 📡, ✈️, 🚗, 🚶  (top → bottom)
-        div.innerHTML =
-          row('sfLive',  '📡', state.live)  +
-          '<div class="leaflet-control-layers-separator"></div>' +
-          row('sfPlane', '✈️', state.plane) +
-          row('sfCar',   '🚗', state.car)   +
-          row('sfPed',   '🚶', state.ped);
+        // Build rows dynamically so the realtime checkbox only appears when supported server-side.
+        const pieces = [];
+        if (window.safecastRealtimeEnabled) {
+          pieces.push(row('sfLive', '📡', state.live));
+          pieces.push('<div class="leaflet-control-layers-separator"></div>');
+        }
+        pieces.push(
+          row('sfPlane', '✈️', state.plane),
+          row('sfCar',   '🚗', state.car),
+          row('sfPed',   '🚶', state.ped)
+        );
+        div.innerHTML = pieces.join('');
 
         // prevent map drag/zoom while clicking inside the control
         L.DomEvent.disableClickPropagation(div);
@@ -1085,7 +1113,11 @@ document.addEventListener('DOMContentLoaded', function () {
         // attach change-handlers
         div.querySelectorAll('input[type=checkbox]').forEach(cb => {
           cb.addEventListener('change', () => {
-            state.live  = div.querySelector('#sfLive').checked;
+            if (window.safecastRealtimeEnabled) {
+              state.live = div.querySelector('#sfLive').checked;
+            } else {
+              delete state.live;
+            }
             state.plane = div.querySelector('#sfPlane').checked;
             state.car   = div.querySelector('#sfCar').checked;
             state.ped   = div.querySelector('#sfPed').checked;
