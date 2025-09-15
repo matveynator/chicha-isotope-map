@@ -821,6 +821,7 @@ function shouldDisplayBySpeed(speed) {
   if (isTrackView) return true;        // filter disabled in track view
 
   const st = loadSpeedFilterState();   // global mode
+  if (speed < 0) return st.live;       // 📡 realtime markers use negative speed
   if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
   if (speed >= 7  && speed <  70)  return st.car;    // 🚗
   /* speed < 7 m/s  → pedestrian */
@@ -886,13 +887,15 @@ var markerStreamSource = null;
 /**
  * Load previously saved speed-filter state from sessionStorage.
  * If nothing is stored yet, return default state
- *   ✈️ off, 🚗 on, 🚶 on  (as requested).
+ *   📡 on, ✈️ off, 🚗 on, 🚶 on  (as requested).
  */
 function loadSpeedFilterState() {
-  const def = { plane: false, car: true, ped: true };
+  // Defaults: live on, plane off, car on, pedestrian on.
+  const def = { live: true, plane: false, car: true, ped: true };
   try {
     const raw = sessionStorage.getItem('speedFilterState');
-    return raw ? JSON.parse(raw) : def;
+    const st = raw ? JSON.parse(raw) : {};
+    return Object.assign({}, def, st);
   } catch (e) {
     return def;
   }
@@ -1034,7 +1037,7 @@ document.addEventListener('DOMContentLoaded', function () {
   /**
    * Build a Leaflet control with three check-boxes that filter markers
    * by recorded speed. Labels now show speed in km/h instead of m/s.
-   * Default state: ✈️ off, 🚗 on, 🚶 on.
+   * Default state: 📡 on, ✈️ off, 🚗 on, 🚶 on.
    */
   function createSpeedFilterControls() {
 
@@ -1056,9 +1059,10 @@ document.addEventListener('DOMContentLoaded', function () {
           ${emoji}
             </label>`;
 
-        // order: ✈️, 🚗, 🚶  (top → bottom)
+        // order: 📡, ✈️, 🚗, 🚶  (top → bottom)
         div.innerHTML =
-          row('sfPlane', '✈️',  state.plane) +
+          row('sfLive',  '📡', state.live)  +
+          row('sfPlane', '✈️', state.plane) +
           row('sfCar',   '🚗', state.car)   +
           row('sfPed',   '🚶', state.ped);
 
@@ -1068,6 +1072,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // attach change-handlers
         div.querySelectorAll('input[type=checkbox]').forEach(cb => {
           cb.addEventListener('change', () => {
+            state.live  = div.querySelector('#sfLive').checked;
             state.plane = div.querySelector('#sfPlane').checked;
             state.car   = div.querySelector('#sfCar').checked;
             state.ped   = div.querySelector('#sfPed').checked;

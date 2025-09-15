@@ -69,6 +69,7 @@ var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
+var realtimeEnabled = flag.Bool("realtime", true, "Enable polling of Safecast realtime devices")
 
 var CompileVersion = "dev"
 
@@ -2317,10 +2318,12 @@ func main() {
 		log.Fatalf("DB schema: %v", err)
 	}
 
-	// Launch realtime Safecast polling.
-	ctxRT, cancelRT := context.WithCancel(context.Background())
-	defer cancelRT()
-	realtime.Start(ctxRT, db, *dbType)
+	if *realtimeEnabled {
+		// Launch realtime Safecast polling.
+		ctxRT, cancelRT := context.WithCancel(context.Background())
+		defer cancelRT()
+		realtime.Start(ctxRT, db, *dbType)
+	}
 
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")
