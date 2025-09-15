@@ -31,43 +31,73 @@ type devicePayload struct {
 }
 
 // UnmarshalJSON decodes a devicePayload from a generic map so we can
-// tolerate field name variations in the upstream feed. Numbers arrive as
-// float64 and are converted explicitly.
+// tolerate field name variations in the upstream feed. Safecast's
+// /devices endpoint uses verbose names like "loc_lat" and embeds the
+// last reading in fields such as "lnd_7318u". Parsing into a map keeps
+// the code straightforward and mirrors the Go Proverb "Clear is better
+// than clever".
 func (d *devicePayload) UnmarshalJSON(b []byte) error {
 	var m map[string]any
 	if err := json.Unmarshal(b, &m); err != nil {
 		return err
 	}
-	if v, ok := m["id"].(string); ok {
+
+	// Device identifier
+	if v, ok := m["device_urn"].(string); ok {
 		d.ID = v
+	} else if v, ok := m["id"].(string); ok {
+		d.ID = v
+	} else if v, ok := m["device"].(float64); ok {
+		d.ID = fmt.Sprintf("%d", int64(v))
 	}
-	if v, ok := m["type"].(string); ok {
+
+	// Transport or class info
+	if v, ok := m["device_class"].(string); ok {
 		d.Type = v
 	}
-	if v, ok := m["value"].(float64); ok {
-		d.Value = v
+	if v, ok := m["service_transport"].(string); ok {
+		d.Type = strings.SplitN(v, ":", 2)[0]
 	}
-	if v, ok := m["unit"].(string); ok {
-		d.Unit = v
-	}
-	if v, ok := m["lat"].(float64); ok {
+
+	// Coordinates arrive under loc_lat/loc_lon.
+	if v, ok := m["loc_lat"].(float64); ok {
+		d.Lat = v
+	} else if v, ok := m["lat"].(float64); ok {
+		d.Lat = v
+	} else if v, ok := m["latitude"].(float64); ok {
 		d.Lat = v
 	}
-	if v, ok := m["lon"].(float64); ok {
+	if v, ok := m["loc_lon"].(float64); ok {
+		d.Lon = v
+	} else if v, ok := m["lon"].(float64); ok {
+		d.Lon = v
+	} else if v, ok := m["longitude"].(float64); ok {
 		d.Lon = v
 	}
-	if v, ok := m["latitude"].(float64); ok {
-		d.Lat = v
+
+	// Measurement value: pick the first numeric field with "lnd_" prefix.
+	for k, v := range m {
+		if strings.HasPrefix(k, "lnd_") {
+			if fv, ok := v.(float64); ok {
+				d.Value = fv
+				d.Unit = k
+				break
+			}
+		}
 	}
-	if v, ok := m["longitude"].(float64); ok {
-		d.Lon = v
-	}
-	if v, ok := m["time"].(float64); ok {
+
+	// Timestamp is provided as RFC3339 string.
+	if v, ok := m["when_captured"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			d.Time = t.Unix()
+		}
+	} else if v, ok := m["timestamp"].(float64); ok {
+		d.Time = int64(v)
+	} else if v, ok := m["time"].(float64); ok {
 		d.Time = int64(v)
 	}
-	if v, ok := m["timestamp"].(float64); ok {
-		d.Time = int64(v)
-	}
+
+	// Optional country hint if provided.
 	if v, ok := m["country"].(string); ok {
 		d.Country = v
 	}
