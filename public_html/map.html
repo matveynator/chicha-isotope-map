@@ -1372,6 +1372,10 @@ function createDateRangeSlider(){
 // Build HTML once so popups and tooltips share identical content.
   function buildMarkerContent(marker) {
     // Return markup with hooks; events handled globally via delegation.
+    const speedText = marker.speed < 0
+      ? '—' // negative speed marks realtime points; no motion available
+      : `${(marker.speed * 3.6).toFixed(1)} km/h`;
+
     return `
       <div class="custom-tooltip">
         <div><strong>${translate('radiation_dose')}:</strong><br>
@@ -1380,7 +1384,7 @@ function createDateRangeSlider(){
             ${translate(doseCategory(marker.doseRate))}
           </a>)
         </div>
-        <div><strong>${translate('speed')}:</strong> ${(marker.speed * 3.6).toFixed(1)} km/h</div>
+        <div><strong>${translate('speed')}:</strong> ${speedText}</div>
         <div style="margin-top:4px">
           <!-- clicking the link switches to track mode -->
           <a href="#" class="track-link" data-track="${marker.trackID}" style="font-weight:bold;">

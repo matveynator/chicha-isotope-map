@@ -75,16 +75,24 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 		d.Lon = v
 	}
 
-	// Measurement value: pick the first numeric field with "lnd_" prefix.
-	for k, v := range m {
-		if strings.HasPrefix(k, "lnd_") {
-			if fv, ok := v.(float64); ok {
-				d.Value = fv
-				d.Unit = k
-				break
-			}
-		}
-	}
+       // Measurement value: pick the first numeric field with "lnd_" prefix.
+       // The Safecast feed encodes micro Sieverts per hour as integer centi-units
+       // when the key ends with "u" (e.g. "lnd_7318u" = 53 → 0.53 µSv/h). We
+       // convert to standard µSv/h so downstream code stays consistent.
+       for k, v := range m {
+               if strings.HasPrefix(k, "lnd_") {
+                       if fv, ok := v.(float64); ok {
+                               if strings.HasSuffix(k, "u") {
+                                       d.Value = fv / 100.0
+                                       d.Unit = "µSv/h"
+                               } else {
+                                       d.Value = fv
+                                       d.Unit = k
+                               }
+                               break
+                       }
+               }
+       }
 
 	// Timestamp is provided as RFC3339 string.
 	if v, ok := m["when_captured"].(string); ok {

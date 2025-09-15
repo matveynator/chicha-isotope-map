@@ -94,14 +94,24 @@ func NewDatabase(config Config) (*Database, error) {
 
 	log.Printf("Using database driver: %s with DSN: %s", strings.ToLower(config.DBType), dsn)
 
-	// Bootstrap ID generator from current MAX(id); ignore error if table not created yet
-	var maxID sql.NullInt64
-	_ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxID)
-	initialID := int64(1)
-	if maxID.Valid {
-		initialID = maxID.Int64 + 1
-	}
-	idChannel := startIDGenerator(initialID)
+       // Bootstrap ID generator from the highest ID across tables so each row
+       // receives a unique primary key. We query both markers and realtime data
+       // because the generator is shared. Errors are ignored to keep startup
+       // robust even when tables are missing.
+       var (
+               maxMarkers  sql.NullInt64
+               maxRealtime sql.NullInt64
+       )
+       _ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxMarkers)
+       _ = db.QueryRow(`SELECT MAX(id) FROM realtime_measurements`).Scan(&maxRealtime)
+       initialID := int64(1)
+       if maxMarkers.Valid && maxMarkers.Int64 >= initialID {
+               initialID = maxMarkers.Int64 + 1
+       }
+       if maxRealtime.Valid && maxRealtime.Int64 >= initialID {
+               initialID = maxRealtime.Int64 + 1
+       }
+       idChannel := startIDGenerator(initialID)
 
 	return &Database{
 		DB:          db,
