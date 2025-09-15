@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -93,14 +94,24 @@ func NewDatabase(config Config) (*Database, error) {
 
 	log.Printf("Using database driver: %s with DSN: %s", strings.ToLower(config.DBType), dsn)
 
-	// Bootstrap ID generator from current MAX(id); ignore error if table not created yet
-	var maxID sql.NullInt64
-	_ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxID)
-	initialID := int64(1)
-	if maxID.Valid {
-		initialID = maxID.Int64 + 1
-	}
-	idChannel := startIDGenerator(initialID)
+       // Bootstrap ID generator from the highest ID across tables so each row
+       // receives a unique primary key. We query both markers and realtime data
+       // because the generator is shared. Errors are ignored to keep startup
+       // robust even when tables are missing.
+       var (
+               maxMarkers  sql.NullInt64
+               maxRealtime sql.NullInt64
+       )
+       _ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxMarkers)
+       _ = db.QueryRow(`SELECT MAX(id) FROM realtime_measurements`).Scan(&maxRealtime)
+       initialID := int64(1)
+       if maxMarkers.Valid && maxMarkers.Int64 >= initialID {
+               initialID = maxMarkers.Int64 + 1
+       }
+       if maxRealtime.Valid && maxRealtime.Int64 >= initialID {
+               initialID = maxRealtime.Int64 + 1
+       }
+       idChannel := startIDGenerator(initialID)
 
 	return &Database{
 		DB:          db,
@@ -336,6 +347,19 @@ CREATE TABLE IF NOT EXISTS markers (
   speed      DOUBLE PRECISION,
   trackID    TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
+);
+
+CREATE TABLE IF NOT EXISTS realtime_measurements (
+  id          BIGSERIAL PRIMARY KEY,
+  device_id   TEXT,
+  transport   TEXT,
+  value       DOUBLE PRECISION,
+  unit        TEXT,
+  lat         DOUBLE PRECISION,
+  lon         DOUBLE PRECISION,
+  measured_at BIGINT,
+  fetched_at  BIGINT,
+  CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
 );`
 
 	case "sqlite", "genji":
@@ -353,7 +377,21 @@ CREATE TABLE IF NOT EXISTS markers (
   trackID    TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
-  ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);`
+  ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
+
+CREATE TABLE IF NOT EXISTS realtime_measurements (
+  id          INTEGER PRIMARY KEY,
+  device_id   TEXT,
+  transport   TEXT,
+  value       REAL,
+  unit        TEXT,
+  lat         REAL,
+  lon         REAL,
+  measured_at BIGINT,
+  fetched_at  BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_realtime_unique
+  ON realtime_measurements (device_id,measured_at);`
 
 	case "duckdb":
 		// DuckDB — no SERIAL/AUTOINCREMENT; use a sequence + DEFAULT nextval(...).
@@ -373,6 +411,20 @@ CREATE TABLE IF NOT EXISTS markers (
   speed      DOUBLE,
   trackID    TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
+);
+
+CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
+CREATE TABLE IF NOT EXISTS realtime_measurements (
+  id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
+  device_id   TEXT,
+  transport   TEXT,
+  value       DOUBLE,
+  unit        TEXT,
+  lat         DOUBLE,
+  lon         DOUBLE,
+  measured_at BIGINT,
+  fetched_at  BIGINT,
+  CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
 );`
 
 	default:
@@ -382,7 +434,54 @@ CREATE TABLE IF NOT EXISTS markers (
 	if _, err := db.DB.Exec(schema); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}
+
+	// Ensure optional columns exist even for older databases.
+	if err := db.ensureRealtimeTransportColumn(cfg.DBType); err != nil {
+		return fmt.Errorf("add transport column: %w", err)
+	}
+
 	return nil
+}
+
+// ensureRealtimeTransportColumn adds the transport column to realtime_measurements when missing.
+// We keep SQL portable by using vendor-specific IF NOT EXISTS only where supported.
+// Older SQLite/Genji databases are inspected via PRAGMA before issuing ALTER TABLE.
+func (db *Database) ensureRealtimeTransportColumn(dbType string) error {
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		// These engines support IF NOT EXISTS and will ignore duplicates.
+		_, err := db.DB.Exec(`ALTER TABLE realtime_measurements ADD COLUMN IF NOT EXISTS transport TEXT`)
+		return err
+
+	default:
+		// SQLite and friends: introspect the table first to avoid an error.
+		rows, err := db.DB.Query(`PRAGMA table_info(realtime_measurements);`)
+		if err != nil {
+			return fmt.Errorf("describe realtime_measurements: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				cid     int
+				name    string
+				ctype   string
+				notnull int
+				dflt    sql.NullString
+				pk      int
+			)
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+				return fmt.Errorf("scan pragma: %w", err)
+			}
+			if name == "transport" {
+				return nil // column already present
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate pragma: %w", err)
+		}
+		_, err = db.DB.Exec(`ALTER TABLE realtime_measurements ADD COLUMN transport TEXT`)
+		return err
+	}
 }
 
 // InsertMarkersBulk inserts markers in batches using multi-row VALUES.
@@ -516,6 +615,229 @@ ON CONFLICT DO NOTHING`,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID)
 		return err
 	}
+}
+
+// InsertRealtimeMeasurement stores live device data and skips duplicates.
+// A little copying is better than a little dependency, so we build SQL by hand.
+func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		_, err := db.DB.Exec(`
+INSERT INTO realtime_measurements
+      (device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
+			m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+		return err
+
+	default:
+		if m.ID == 0 {
+			m.ID = <-db.idGenerator
+		}
+		_, err := db.DB.Exec(`
+INSERT INTO realtime_measurements
+      (id,device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
+VALUES (?,?,?,?,?,?,?,?,?)
+ON CONFLICT(device_id,measured_at) DO NOTHING`,
+			m.ID, m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+		return err
+	}
+}
+
+// GetLatestRealtimeByBounds returns the newest reading per device within bounds.
+// We keep SQL portable and filter duplicates in Go, following "Clear is better than clever".
+func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
+	var query string
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		query = `
+SELECT device_id,value,unit,lat,lon,measured_at
+FROM realtime_measurements
+WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
+ORDER BY device_id,fetched_at DESC;`
+	default:
+		query = `
+SELECT device_id,value,unit,lat,lon,measured_at
+FROM realtime_measurements
+WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+ORDER BY device_id,fetched_at DESC;`
+	}
+
+	rows, err := db.DB.Query(query, minLat, maxLat, minLon, maxLon)
+	if err != nil {
+		return nil, fmt.Errorf("query realtime: %w", err)
+	}
+	defer rows.Close()
+
+	seen := make(map[string]bool)
+	var out []Marker
+	for rows.Next() {
+		var (
+			id       string
+			val      float64
+			unit     string
+			lat, lon float64
+			measured int64
+		)
+		if err := rows.Scan(&id, &val, &unit, &lat, &lon, &measured); err != nil {
+			return nil, fmt.Errorf("scan realtime: %w", err)
+		}
+		if lat == 0 && lon == 0 {
+			continue // skip bogus locations at the equator
+		}
+		if val <= 0 {
+			continue // ignore non-positive readings
+		}
+		if seen[id] {
+			continue // keep the newest reading only once per device
+		}
+		seen[id] = true
+		out = append(out, Marker{
+			DoseRate:  val,
+			Date:      measured,
+			Lon:       lon,
+			Lat:       lat,
+			CountRate: 0,
+			Zoom:      0,
+			Speed:     -1,           // negative speed marks realtime in UI
+			TrackID:   "live:" + id, // prefix avoids clashing with stored tracks
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate realtime: %w", err)
+	}
+	return out, nil
+}
+
+// PromoteStaleRealtime moves device histories from the realtime table into the
+// regular markers table when a device has been offline for more than a day and
+// changed its position.  This keeps long tracks for mobile devices while
+// leaving stationary sensors in place.  The cutoff value is a Unix timestamp
+// (seconds) – any device whose newest fetched_at is older is eligible.
+func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
+	// gather candidate device IDs over a channel to avoid blocking callers
+	ids := make(chan string)
+	errc := make(chan error, 1)
+
+	go func() {
+		defer close(ids)
+		var q string
+		switch strings.ToLower(dbType) {
+		case "pgx", "duckdb":
+			q = `SELECT device_id FROM realtime_measurements GROUP BY device_id HAVING max(fetched_at) <= $1`
+		default:
+			q = `SELECT device_id FROM realtime_measurements GROUP BY device_id HAVING max(fetched_at) <= ?`
+		}
+		rows, err := db.DB.Query(q, cutoff)
+		if err != nil {
+			errc <- fmt.Errorf("stale list: %w", err)
+			return
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				errc <- fmt.Errorf("scan stale: %w", err)
+				rows.Close()
+				return
+			}
+			ids <- id
+		}
+		errc <- rows.Err()
+	}()
+
+	// process each device sequentially; no mutex is needed
+	for id := range ids {
+		ms, err := db.fetchRealtimeByDevice(id, dbType)
+		if err != nil {
+			return err
+		}
+		if !moved(ms) {
+			continue // stationary sensors stay in realtime table
+		}
+
+		tx, err := db.DB.Begin()
+		if err != nil {
+			return err
+		}
+		for _, m := range ms {
+			marker := Marker{
+				DoseRate:  m.Value,
+				Date:      m.MeasuredAt,
+				Lon:       m.Lon,
+				Lat:       m.Lat,
+				CountRate: 0,
+				Zoom:      0,
+				Speed:     0,
+				TrackID:   id,
+			}
+			if err := db.SaveMarkerAtomic(tx, marker, dbType); err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+		if err := db.deleteRealtimeDevice(tx, id, dbType); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return <-errc
+}
+
+// fetchRealtimeByDevice returns all realtime rows for a given device.
+func (db *Database) fetchRealtimeByDevice(id, dbType string) ([]RealtimeMeasurement, error) {
+	var q string
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=$1`
+	default:
+		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=?`
+	}
+	rows, err := db.DB.Query(q, id)
+	if err != nil {
+		return nil, fmt.Errorf("fetch realtime: %w", err)
+	}
+	defer rows.Close()
+	var out []RealtimeMeasurement
+	for rows.Next() {
+		var m RealtimeMeasurement
+		if err := rows.Scan(&m.DeviceID, &m.Transport, &m.Value, &m.Unit, &m.Lat, &m.Lon, &m.MeasuredAt, &m.FetchedAt); err != nil {
+			return nil, fmt.Errorf("scan realtime row: %w", err)
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// deleteRealtimeDevice removes all realtime rows for the given device.
+func (db *Database) deleteRealtimeDevice(exec sqlExecutor, id, dbType string) error {
+	var q string
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		q = `DELETE FROM realtime_measurements WHERE device_id=$1`
+	default:
+		q = `DELETE FROM realtime_measurements WHERE device_id=?`
+	}
+	_, err := exec.Exec(q, id)
+	return err
+}
+
+// moved reports whether a set of realtime measurements changed location.
+// A tiny epsilon avoids floating‑point noise.
+func moved(ms []RealtimeMeasurement) bool {
+	if len(ms) == 0 {
+		return false
+	}
+	const eps = 0.0001
+	baseLat, baseLon := ms[0].Lat, ms[0].Lon
+	for _, m := range ms[1:] {
+		if math.Abs(m.Lat-baseLat) > eps || math.Abs(m.Lon-baseLon) > eps {
+			return true
+		}
+	}
+	return false
 }
 
 // sqlExecutor is satisfied by both *sql.Tx and *sql.DB.

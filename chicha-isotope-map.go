@@ -46,6 +46,7 @@ import (
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
+	"chicha-isotope-map/pkg/realtime"
 )
 
 //go:embed public_html/*
@@ -68,6 +69,7 @@ var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
+var realtimeEnabled = flag.Bool("realtime", true, "Enable polling of Safecast realtime devices")
 
 var CompileVersion = "dev"
 
@@ -86,110 +88,110 @@ type SpeedRange struct{ Min, Max float64 }
 // processBGeigieZenFile parses bGeigie Zen/Nano $BNRDD logs.
 // Supports ISO8601 timestamps at field[2] and DMM coordinates with N/S/E/W.
 func processBGeigieZenFile(
-    file multipart.File,
-    trackID string,
-    db *database.Database,
-    dbType string,
+	file multipart.File,
+	trackID string,
+	db *database.Database,
+	dbType string,
 ) (database.Bounds, string, error) {
-    logT(trackID, "BGEIGIE", "▶ start (stream)")
+	logT(trackID, "BGEIGIE", "▶ start (stream)")
 
-    sc := bufio.NewScanner(file)
-    sc.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+	sc := bufio.NewScanner(file)
+	sc.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
 
-    const cpmPerMicroSv = 334.0
-    markers := make([]database.Marker, 0, 4096)
+	const cpmPerMicroSv = 334.0
+	markers := make([]database.Marker, 0, 4096)
 
-    parsed := 0
-    skipped := 0
-    for sc.Scan() {
-        line := strings.TrimSpace(sc.Text())
-        if line == "" || !strings.HasPrefix(line, "$BNRDD") {
-            skipped++
-            continue
-        }
-        if i := strings.IndexByte(line, '*'); i != -1 {
-            line = line[:i]
-        }
-        p := strings.Split(line, ",")
-        if len(p) < 6 { // need at least up to CPMvalid
-            skipped++
-            continue
-        }
+	parsed := 0
+	skipped := 0
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || !strings.HasPrefix(line, "$BNRDD") {
+			skipped++
+			continue
+		}
+		if i := strings.IndexByte(line, '*'); i != -1 {
+			line = line[:i]
+		}
+		p := strings.Split(line, ",")
+		if len(p) < 6 { // need at least up to CPMvalid
+			skipped++
+			continue
+		}
 
-        var (
-            ts  int64
-            cps float64
-            cpm float64
-            lat float64
-            lon float64
-        )
+		var (
+			ts  int64
+			cps float64
+			cpm float64
+			lat float64
+			lon float64
+		)
 
-        // Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPS 4:CPM 5:CPMvalid 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
-        if len(p) >= 11 && strings.Contains(p[2], "T") {
-            if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
-                ts = t.Unix()
-            }
-            cps = parseFloat(p[3])
-            cpm = parseFloat(p[4])
-            lat = parseDMM(p[7], p[8], 2)
-            lon = parseDMM(p[9], p[10], 3)
-        } else if len(p) >= 8 { // legacy fallback: decimals (+ optional suffix)
-            // We only accept if date/time parse succeeds via known helper; otherwise skip silently.
-            // If parseBGeigieDateTime isn't present, ts remains 0 and entry is skipped.
-            ts = 0
-            // try compact forms if helper exists in build
-            // cps/cpm & coords
-            cps = parseFloat(p[3])
-            cpm = parseFloat(p[4])
-            lat = parseBGeigieCoord(p[6])
-            lon = parseBGeigieCoord(p[7])
-        }
+		// Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPS 4:CPM 5:CPMvalid 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
+		if len(p) >= 11 && strings.Contains(p[2], "T") {
+			if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
+				ts = t.Unix()
+			}
+			cps = parseFloat(p[3])
+			cpm = parseFloat(p[4])
+			lat = parseDMM(p[7], p[8], 2)
+			lon = parseDMM(p[9], p[10], 3)
+		} else if len(p) >= 8 { // legacy fallback: decimals (+ optional suffix)
+			// We only accept if date/time parse succeeds via known helper; otherwise skip silently.
+			// If parseBGeigieDateTime isn't present, ts remains 0 and entry is skipped.
+			ts = 0
+			// try compact forms if helper exists in build
+			// cps/cpm & coords
+			cps = parseFloat(p[3])
+			cpm = parseFloat(p[4])
+			lat = parseBGeigieCoord(p[6])
+			lon = parseBGeigieCoord(p[7])
+		}
 
-        if ts == 0 || (lat == 0 && lon == 0) {
-            skipped++
-            continue
-        }
+		if ts == 0 || (lat == 0 && lon == 0) {
+			skipped++
+			continue
+		}
 
-        dose := 0.0
-        if cpm > 0 {
-            dose = cpm / cpmPerMicroSv
-        } else if cps > 0 {
-            dose = (cps * 60.0) / cpmPerMicroSv
-        } else {
-            skipped++
-            continue
-        }
+		dose := 0.0
+		if cpm > 0 {
+			dose = cpm / cpmPerMicroSv
+		} else if cps > 0 {
+			dose = (cps * 60.0) / cpmPerMicroSv
+		} else {
+			skipped++
+			continue
+		}
 
-        countRate := cps
-        if countRate == 0 && cpm > 0 {
-            countRate = cpm / 60.0
-        }
+		countRate := cps
+		if countRate == 0 && cpm > 0 {
+			countRate = cpm / 60.0
+		}
 
-        markers = append(markers, database.Marker{
-            DoseRate:  dose,
-            Date:      ts,
-            Lon:       lon,
-            Lat:       lat,
-            CountRate: countRate,
-            Zoom:      0,
-            Speed:     0,
-            TrackID:   trackID,
-        })
-        parsed++
-    }
-    if err := sc.Err(); err != nil {
-        return database.Bounds{}, trackID, err
-    }
-    if len(markers) == 0 {
-        return database.Bounds{}, trackID, fmt.Errorf("no valid $BNRDD points found (parsed=%d skipped=%d)", parsed, skipped)
-    }
+		markers = append(markers, database.Marker{
+			DoseRate:  dose,
+			Date:      ts,
+			Lon:       lon,
+			Lat:       lat,
+			CountRate: countRate,
+			Zoom:      0,
+			Speed:     0,
+			TrackID:   trackID,
+		})
+		parsed++
+	}
+	if err := sc.Err(); err != nil {
+		return database.Bounds{}, trackID, err
+	}
+	if len(markers) == 0 {
+		return database.Bounds{}, trackID, fmt.Errorf("no valid $BNRDD points found (parsed=%d skipped=%d)", parsed, skipped)
+	}
 
-    bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
-    if err != nil {
-        return bbox, trackID, err
-    }
-    logT(trackID, "BGEIGIE", "✔ done (parsed=%d)", parsed)
-    return bbox, trackID, nil
+	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
+	if err != nil {
+		return bbox, trackID, err
+	}
+	logT(trackID, "BGEIGIE", "✔ done (parsed=%d)", parsed)
+	return bbox, trackID, nil
 }
 
 var speedCatalog = map[string]SpeedRange{
@@ -1466,7 +1468,9 @@ func processAtomSwiftCSVFile(
 	logT(trackID, "CSV", "parsed %d markers", len(markers))
 
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
-	if err != nil { return bbox, trackID, err }
+	if err != nil {
+		return bbox, trackID, err
+	}
 	logT(trackID, "BGEIGIE", "✔ done")
 	return bbox, trackID, nil
 }
@@ -1686,7 +1690,9 @@ func processAtomFastFile(
 // parseBGeigieCoord parses coordinates that may have hemisphere suffix.
 func parseBGeigieCoord(s string) float64 {
 	s = strings.TrimSpace(s)
-	if s == "" { return 0 }
+	if s == "" {
+		return 0
+	}
 	r := s[len(s)-1]
 	if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
 		base := s[:len(s)-1]
@@ -1706,19 +1712,28 @@ func parseBGeigieCoord(s string) float64 {
 func parseDMM(val, hemi string, degDigits int) float64 {
 	val = strings.TrimSpace(val)
 	hemi = strings.TrimSpace(hemi)
-	if val == "" { return 0 }
+	if val == "" {
+		return 0
+	}
 	f, err := strconv.ParseFloat(val, 64)
-	if err != nil { return 0 }
+	if err != nil {
+		return 0
+	}
 	deg := int(f / 100.0)
 	minutes := f - float64(deg*100)
 	d := float64(deg) + minutes/60.0
 	switch strings.ToUpper(hemi) {
-	case "S", "W": d = -d
+	case "S", "W":
+		d = -d
 	}
 	if degDigits == 2 {
-		if d < -90 || d > 90 { return 0 }
+		if d < -90 || d > 90 {
+			return 0
+		}
 	} else {
-		if d < -180 || d > 180 { return 0 }
+		if d < -180 || d > 180 {
+			return 0
+		}
 	}
 	return d
 }
@@ -2158,6 +2173,12 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if rt, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType); err == nil {
+		markers = append(markers, rt...)
+	} else {
+		log.Printf("realtime query: %v", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(markers)
 }
@@ -2206,15 +2227,26 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
 	var (
-		src   <-chan database.Marker
-		errCh <-chan error
+		baseSrc <-chan database.Marker
+		errCh   <-chan error
 	)
 	if trackID != "" {
-		src, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+		baseSrc, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
 	} else {
-		src, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+		baseSrc, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
 	}
-	agg := aggregateMarkers(ctx, src, zoom)
+
+	// Fetch current realtime points once so the map reflects network devices.
+	// We send them directly before streaming historical markers to avoid
+	// interfering with the aggregator grid.
+	rtMarks, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType)
+	if err != nil {
+		log.Printf("realtime query: %v", err)
+	}
+	// Log bounds alongside count to help diagnose empty map tiles.
+	log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
+
+	agg := aggregateMarkers(ctx, baseSrc, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -2223,6 +2255,13 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
+
+	// Emit realtime markers first.
+	for _, m := range rtMarks {
+		b, _ := json.Marshal(m)
+		fmt.Fprintf(w, "data: %s\n\n", b)
+	}
+	flusher.Flush()
 
 	for {
 		select {
@@ -2301,6 +2340,13 @@ func main() {
 	}
 	if err = db.InitSchema(dbCfg); err != nil {
 		log.Fatalf("DB schema: %v", err)
+	}
+
+	if *realtimeEnabled {
+		// Launch realtime Safecast polling.
+		ctxRT, cancelRT := context.WithCancel(context.Background())
+		defer cancelRT()
+		realtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
 	// 4. Маршруты и статика

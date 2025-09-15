@@ -27,3 +27,17 @@ type Bounds struct {
 	MinLat, MinLon float64
 	MaxLat, MaxLon float64
 }
+
+// RealtimeMeasurement keeps the latest network readings.
+// We store raw numbers so the history can be rendered later.
+type RealtimeMeasurement struct {
+	ID         int64   `json:"id"`         // Primary key for database storage
+	DeviceID   string  `json:"deviceID"`   // Remote device identifier
+	Transport  string  `json:"transport"`  // How the device moves (car, walk), kept for future use
+	Value      float64 `json:"value"`      // Reported radiation value
+	Unit       string  `json:"unit"`       // Measurement unit from the device
+	Lat        float64 `json:"lat"`        // Device latitude
+	Lon        float64 `json:"lon"`        // Device longitude
+	MeasuredAt int64   `json:"measuredAt"` // Timestamp supplied by the device
+	FetchedAt  int64   `json:"fetchedAt"`  // When we pulled it, aids freshness checks
+}
