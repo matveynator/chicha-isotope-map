@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -690,6 +691,137 @@ ORDER BY device_id,fetched_at DESC;`
 		return nil, fmt.Errorf("iterate realtime: %w", err)
 	}
 	return out, nil
+}
+
+// PromoteStaleRealtime moves device histories from the realtime table into the
+// regular markers table when a device has been offline for more than a day and
+// changed its position.  This keeps long tracks for mobile devices while
+// leaving stationary sensors in place.  The cutoff value is a Unix timestamp
+// (seconds) – any device whose newest fetched_at is older is eligible.
+func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
+	// gather candidate device IDs over a channel to avoid blocking callers
+	ids := make(chan string)
+	errc := make(chan error, 1)
+
+	go func() {
+		defer close(ids)
+		var q string
+		switch strings.ToLower(dbType) {
+		case "pgx", "duckdb":
+			q = `SELECT device_id FROM realtime_measurements GROUP BY device_id HAVING max(fetched_at) <= $1`
+		default:
+			q = `SELECT device_id FROM realtime_measurements GROUP BY device_id HAVING max(fetched_at) <= ?`
+		}
+		rows, err := db.DB.Query(q, cutoff)
+		if err != nil {
+			errc <- fmt.Errorf("stale list: %w", err)
+			return
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				errc <- fmt.Errorf("scan stale: %w", err)
+				rows.Close()
+				return
+			}
+			ids <- id
+		}
+		errc <- rows.Err()
+	}()
+
+	// process each device sequentially; no mutex is needed
+	for id := range ids {
+		ms, err := db.fetchRealtimeByDevice(id, dbType)
+		if err != nil {
+			return err
+		}
+		if !moved(ms) {
+			continue // stationary sensors stay in realtime table
+		}
+
+		tx, err := db.DB.Begin()
+		if err != nil {
+			return err
+		}
+		for _, m := range ms {
+			marker := Marker{
+				DoseRate:  m.Value,
+				Date:      m.MeasuredAt,
+				Lon:       m.Lon,
+				Lat:       m.Lat,
+				CountRate: 0,
+				Zoom:      0,
+				Speed:     0,
+				TrackID:   id,
+			}
+			if err := db.SaveMarkerAtomic(tx, marker, dbType); err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+		if err := db.deleteRealtimeDevice(tx, id, dbType); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return <-errc
+}
+
+// fetchRealtimeByDevice returns all realtime rows for a given device.
+func (db *Database) fetchRealtimeByDevice(id, dbType string) ([]RealtimeMeasurement, error) {
+	var q string
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=$1`
+	default:
+		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=?`
+	}
+	rows, err := db.DB.Query(q, id)
+	if err != nil {
+		return nil, fmt.Errorf("fetch realtime: %w", err)
+	}
+	defer rows.Close()
+	var out []RealtimeMeasurement
+	for rows.Next() {
+		var m RealtimeMeasurement
+		if err := rows.Scan(&m.DeviceID, &m.Transport, &m.Value, &m.Unit, &m.Lat, &m.Lon, &m.MeasuredAt, &m.FetchedAt); err != nil {
+			return nil, fmt.Errorf("scan realtime row: %w", err)
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// deleteRealtimeDevice removes all realtime rows for the given device.
+func (db *Database) deleteRealtimeDevice(exec sqlExecutor, id, dbType string) error {
+	var q string
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		q = `DELETE FROM realtime_measurements WHERE device_id=$1`
+	default:
+		q = `DELETE FROM realtime_measurements WHERE device_id=?`
+	}
+	_, err := exec.Exec(q, id)
+	return err
+}
+
+// moved reports whether a set of realtime measurements changed location.
+// A tiny epsilon avoids floating‑point noise.
+func moved(ms []RealtimeMeasurement) bool {
+	if len(ms) == 0 {
+		return false
+	}
+	const eps = 0.0001
+	baseLat, baseLon := ms[0].Lat, ms[0].Lon
+	for _, m := range ms[1:] {
+		if math.Abs(m.Lat-baseLat) > eps || math.Abs(m.Lon-baseLon) > eps {
+			return true
+		}
+	}
+	return false
 }
 
 // sqlExecutor is satisfied by both *sql.Tx and *sql.DB.

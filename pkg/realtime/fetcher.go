@@ -127,6 +127,8 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					}
 				}
 				reports <- len(data)
+				// Promote stale device histories to normal tracks once a day.
+				go db.PromoteStaleRealtime(time.Now().Add(-24*time.Hour).Unix(), dbType)
 			}
 			select {
 			case <-ctx.Done():
