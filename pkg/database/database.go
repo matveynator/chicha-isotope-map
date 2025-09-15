@@ -672,8 +672,14 @@ ORDER BY device_id,fetched_at DESC;`
 		if err := rows.Scan(&id, &val, &unit, &lat, &lon, &measured); err != nil {
 			return nil, fmt.Errorf("scan realtime: %w", err)
 		}
+		if lat == 0 && lon == 0 {
+			continue // skip bogus locations at the equator
+		}
+		if val <= 0 {
+			continue // ignore non-positive readings
+		}
 		if seen[id] {
-			continue
+			continue // keep the newest reading only once per device
 		}
 		seen[id] = true
 		out = append(out, Marker{
@@ -683,8 +689,8 @@ ORDER BY device_id,fetched_at DESC;`
 			Lat:       lat,
 			CountRate: 0,
 			Zoom:      0,
-			Speed:     -1, // negative speed marks realtime in UI
-			TrackID:   id,
+			Speed:     -1,           // negative speed marks realtime in UI
+			TrackID:   "live:" + id, // prefix avoids clashing with stored tracks
 		})
 	}
 	if err := rows.Err(); err != nil {

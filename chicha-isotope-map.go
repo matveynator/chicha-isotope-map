@@ -2237,6 +2237,8 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch current realtime points once so the map reflects network devices.
+	// We send them directly before streaming historical markers to avoid
+	// interfering with the aggregator grid.
 	rtMarks, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType)
 	if err != nil {
 		log.Printf("realtime query: %v", err)
@@ -2244,35 +2246,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	// Log bounds alongside count to help diagnose empty map tiles.
 	log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 
-	// merge realtime slice with streaming channel using a goroutine.
-	merged := make(chan database.Marker)
-	go func() {
-		defer close(merged)
-		for _, m := range rtMarks {
-			select {
-			case merged <- m:
-			case <-ctx.Done():
-				return
-			}
-		}
-		for {
-			select {
-			case m, ok := <-baseSrc:
-				if !ok {
-					return
-				}
-				select {
-				case merged <- m:
-				case <-ctx.Done():
-					return
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	agg := aggregateMarkers(ctx, merged, zoom)
+	agg := aggregateMarkers(ctx, baseSrc, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -2281,6 +2255,13 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
+
+	// Emit realtime markers first.
+	for _, m := range rtMarks {
+		b, _ := json.Marshal(m)
+		fmt.Fprintf(w, "data: %s\n\n", b)
+	}
+	flusher.Flush()
 
 	for {
 		select {

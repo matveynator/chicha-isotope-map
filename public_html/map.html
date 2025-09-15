@@ -1435,21 +1435,21 @@ function updateMarkers(){
 
   es.onmessage = e => {
     let m; try { m = JSON.parse(e.data); } catch { return; }
-    if (m.trackID) tracks.add(m.trackID);
+    const isLive = m.speed < 0; // negative speed denotes realtime marker
+    if (!isLive && m.trackID) tracks.add(m.trackID);
     minTs = Math.min(minTs, m.date);
     maxTs = Math.max(maxTs, m.date);
     if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
 
     let marker;
-    const isLive = m.speed < 0; // negative speed denotes realtime marker
     if (isLive) { // realtime marker with value inside the circle
       const ageSec = Date.now()/1000 - m.date;
       const fresh = ageSec < 20*60; // stale after 20 minutes
       const baseColor = getGradientColor(m.doseRate);
       const border = fresh ? '#fff' : '#888';
       const opacity = fresh ? 1 : 0.3;
-      const r = getRadius(m.doseRate, zoom) * 1.5;
+      const r = getRadius(m.doseRate, zoom) * 3; // larger circle for realtime visibility
       const size = r * 2;
       const html = `<div class="live-marker" style="background:${baseColor};border:1px solid ${border};opacity:${opacity};width:${size}px;height:${size}px;line-height:${size}px;">${m.doseRate.toFixed(2)}</div>`;
       marker = L.marker([m.lat, m.lon], {
