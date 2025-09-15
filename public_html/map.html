@@ -1062,6 +1062,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // order: 📡, ✈️, 🚗, 🚶  (top → bottom)
         div.innerHTML =
           row('sfLive',  '📡', state.live)  +
+          '<br/>' +
           row('sfPlane', '✈️', state.plane) +
           row('sfCar',   '🚗', state.car)   +
           row('sfPed',   '🚶', state.ped);

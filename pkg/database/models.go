@@ -33,6 +33,7 @@ type Bounds struct {
 type RealtimeMeasurement struct {
 	ID         int64   `json:"id"`         // Primary key for database storage
 	DeviceID   string  `json:"deviceID"`   // Remote device identifier
+	Transport  string  `json:"transport"`  // How the device moves (car, walk), kept for future use
 	Value      float64 `json:"value"`      // Reported radiation value
 	Unit       string  `json:"unit"`       // Measurement unit from the device
 	Lat        float64 `json:"lat"`        // Device latitude

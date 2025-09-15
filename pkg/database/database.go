@@ -341,6 +341,7 @@ CREATE TABLE IF NOT EXISTS markers (
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGSERIAL PRIMARY KEY,
   device_id   TEXT,
+  transport   TEXT,
   value       DOUBLE PRECISION,
   unit        TEXT,
   lat         DOUBLE PRECISION,
@@ -370,6 +371,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          INTEGER PRIMARY KEY,
   device_id   TEXT,
+  transport   TEXT,
   value       REAL,
   unit        TEXT,
   lat         REAL,
@@ -404,6 +406,7 @@ CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
   device_id   TEXT,
+  transport   TEXT,
   value       DOUBLE,
   unit        TEXT,
   lat         DOUBLE,
@@ -563,10 +566,10 @@ func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType stri
 	case "pgx", "duckdb":
 		_, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
-      (device_id,value,unit,lat,lon,measured_at,fetched_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7)
+      (device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
-			m.DeviceID, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+			m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
 		return err
 
 	default:
@@ -575,10 +578,10 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 		}
 		_, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
-      (id,device_id,value,unit,lat,lon,measured_at,fetched_at)
-VALUES (?,?,?,?,?,?,?,?)
+      (id,device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
+VALUES (?,?,?,?,?,?,?,?,?)
 ON CONFLICT(device_id,measured_at) DO NOTHING`,
-			m.ID, m.DeviceID, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+			m.ID, m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
 		return err
 	}
 }

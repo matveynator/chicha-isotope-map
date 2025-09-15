@@ -15,6 +15,7 @@ import (
 // Keeping it small avoids coupling to the full upstream schema.
 type devicePayload struct {
 	ID    string  `json:"id"`
+	Type  string  `json:"type"` // may describe transport (car, walk)
 	Value float64 `json:"value"`
 	Unit  string  `json:"unit"`
 	Lat   float64 `json:"lat"`
@@ -46,6 +47,7 @@ func fetch(ctx context.Context, url string) ([]database.RealtimeMeasurement, err
 	for _, d := range raw {
 		out = append(out, database.RealtimeMeasurement{
 			DeviceID:   d.ID,
+			Transport:  d.Type,
 			Value:      d.Value,
 			Unit:       d.Unit,
 			Lat:        d.Lat,
@@ -65,17 +67,31 @@ func Start(ctx context.Context, db *database.Database, dbType string) {
 	const pollInterval = 15 * time.Minute
 
 	measurements := make(chan database.RealtimeMeasurement)
+	reports := make(chan int)
 
 	// DB writer goroutine.
+	// It counts successes and errors per batch and logs once per report.
 	go func() {
+		var stored, errs int
+		var lastErr error
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case m := <-measurements:
 				if err := db.InsertRealtimeMeasurement(m, dbType); err != nil {
-					log.Printf("realtime store: %v", err)
+					errs++
+					lastErr = err
+				} else {
+					stored++
 				}
+			case n := <-reports:
+				if errs > 0 {
+					log.Printf("realtime poll: devices %d, stored %d, errors %d (last: %v)", n, stored, errs, lastErr)
+				} else {
+					log.Printf("realtime poll: devices %d, stored %d", n, stored)
+				}
+				stored, errs, lastErr = 0, 0, nil
 			}
 		}
 	}()
@@ -103,6 +119,7 @@ func Start(ctx context.Context, db *database.Database, dbType string) {
 					case measurements <- m:
 					}
 				}
+				reports <- len(data)
 			}
 		}
 	}()
