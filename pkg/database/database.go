@@ -605,33 +605,44 @@ ON CONFLICT DO NOTHING`,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID)
 		return err
 	}
+
 }
 
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
-	switch strings.ToLower(dbType) {
-	case "pgx", "duckdb":
-		_, err := db.DB.Exec(`
+    switch strings.ToLower(dbType) {
+    case "pgx":
+        _, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
       (device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
-			m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
-		return err
+            m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+        return err
 
-	default:
-		if m.ID == 0 {
-			m.ID = <-db.idGenerator
-		}
-		_, err := db.DB.Exec(`
+    case "duckdb":
+        // DuckDB supports ON CONFLICT with column list, but not ON CONSTRAINT.
+        _, err := db.DB.Exec(`
+INSERT INTO realtime_measurements
+      (device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
+VALUES (?,?,?,?,?,?,?,?)
+ON CONFLICT(device_id,measured_at) DO NOTHING`,
+            m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+        return err
+
+    default:
+        if m.ID == 0 {
+            m.ID = <-db.idGenerator
+        }
+        _, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
       (id,device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
 VALUES (?,?,?,?,?,?,?,?,?)
 ON CONFLICT(device_id,measured_at) DO NOTHING`,
-			m.ID, m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
-		return err
-	}
+            m.ID, m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+        return err
+    }
 }
 
 // GetLatestRealtimeByBounds returns the newest reading per device within bounds.
@@ -827,6 +838,69 @@ func moved(ms []RealtimeMeasurement) bool {
 // sqlExecutor is satisfied by both *sql.Tx and *sql.DB.
 type sqlExecutor interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
+}
+
+// GetRealtimeByBounds returns recent realtime measurements inside given bounds
+// captured at or after 'since' (unix seconds). If since<=0, no time filter.
+// Limit caps the number of rows returned (use a sane default at call site).
+func (db *Database) GetRealtimeByBounds(minLat, minLon, maxLat, maxLon float64, since int64, limit int, dbType string) ([]RealtimeMeasurement, error) {
+    if limit <= 0 {
+        limit = 500
+    }
+    var (
+        query string
+        args  []interface{}
+    )
+    switch strings.ToLower(dbType) {
+    case "pgx":
+        if since > 0 {
+            query = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at
+                     FROM realtime_measurements
+                     WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4 AND measured_at >= $5
+                     ORDER BY measured_at DESC
+                     LIMIT $6`
+            args = []interface{}{minLat, maxLat, minLon, maxLon, since, limit}
+        } else {
+            query = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at
+                     FROM realtime_measurements
+                     WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
+                     ORDER BY measured_at DESC
+                     LIMIT $5`
+            args = []interface{}{minLat, maxLat, minLon, maxLon, limit}
+        }
+    default:
+        if since > 0 {
+            query = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at
+                     FROM realtime_measurements
+                     WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ? AND measured_at >= ?
+                     ORDER BY measured_at DESC
+                     LIMIT ?`
+            args = []interface{}{minLat, maxLat, minLon, maxLon, since, limit}
+        } else {
+            query = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at
+                     FROM realtime_measurements
+                     WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+                     ORDER BY measured_at DESC
+                     LIMIT ?`
+            args = []interface{}{minLat, maxLat, minLon, maxLon, limit}
+        }
+    }
+
+    rows, err := db.DB.Query(query, args...)
+    if err != nil {
+        return nil, fmt.Errorf("realtime query: %w", err)
+    }
+    defer rows.Close()
+
+    var out []RealtimeMeasurement
+    for rows.Next() {
+        var m RealtimeMeasurement
+        if err := rows.Scan(&m.DeviceID, &m.Transport, &m.Value, &m.Unit, &m.Lat, &m.Lon, &m.MeasuredAt, &m.FetchedAt); err != nil {
+            return nil, fmt.Errorf("realtime scan: %w", err)
+        }
+        out = append(out, m)
+    }
+    return out, rows.Err()
 }
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.

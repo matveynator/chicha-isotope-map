@@ -2173,11 +2173,47 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+<<<<<<< HEAD
 	if rt, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType); err == nil {
 		markers = append(markers, rt...)
 	} else {
 		log.Printf("realtime query: %v", err)
 	}
+=======
+    // === Append realtime devices inside the same bounds ===
+    // We fetch a short recent window to avoid clutter; UI will filter by speed<0 for live.
+    // Convert CPM → µSv/h using the same factor as Zen parsing (334 cpm = 1 µSv/h).
+    const cpmPerMicroSv = 334.0
+    since := time.Now().Add(-6 * time.Hour).Unix()
+    live, errRT := db.GetRealtimeByBounds(minLat, minLon, maxLat, maxLon, since, 500, *dbType)
+    regCount := len(markers)
+    liveCount := 0
+    if errRT == nil {
+        for _, m := range live {
+            dose := 0.0
+            if strings.EqualFold(m.Unit, "cpm") {
+                dose = m.Value / cpmPerMicroSv
+            }
+            markers = append(markers, database.Marker{
+                DoseRate:  dose,
+                Date:      m.MeasuredAt,
+                Lon:       m.Lon,
+                Lat:       m.Lat,
+                CountRate: 0,
+                Zoom:      zoom,
+                Speed:     -1,          // negative speed marks LIVE points for client-side filter
+                TrackID:   "LIVE",
+            })
+            liveCount++
+        }
+    } else {
+        log.Printf("realtime append failed: %v", errRT)
+    }
+
+    // Debug: log how many live points were appended for this request
+    log.Printf("get_markers: appended %d live (since=%d), regular=%d, total=%d, zoom=%d, bounds=[%.5f,%.5f]-[%.5f,%.5f]",
+        liveCount, since, regCount, len(markers), zoom, minLat, minLon, maxLat, maxLon)
+>>>>>>> 8d31653 (feat: add realtime device data to map markers with CPM to µSv/h conversion)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(markers)
