@@ -17,6 +17,19 @@ type Database struct {
 	idGenerator chan int64 // Channel for generating unique IDs
 }
 
+// realtimeConverter is configured by the safecastrealtime package to translate
+// raw Safecast units into µSv/h.  Keeping the dependency injected avoids an
+// import cycle and mirrors the Go Proverb "The bigger the interface, the
+// weaker the abstraction" by exposing only the function we need.
+var realtimeConverter func(float64, string) (float64, bool)
+
+// SetRealtimeConverter stores the helper used to convert Safecast realtime
+// units.  We call it from main when the realtime feature is enabled so other
+// database code can stay agnostic of specific detector logic.
+func SetRealtimeConverter(fn func(float64, string) (float64, bool)) {
+	realtimeConverter = fn
+}
+
 // startIDGenerator launches a goroutine for generating unique IDs.
 func startIDGenerator(initialID int64) chan int64 {
 	idChannel := make(chan int64)
@@ -94,24 +107,24 @@ func NewDatabase(config Config) (*Database, error) {
 
 	log.Printf("Using database driver: %s with DSN: %s", strings.ToLower(config.DBType), dsn)
 
-       // Bootstrap ID generator from the highest ID across tables so each row
-       // receives a unique primary key. We query both markers and realtime data
-       // because the generator is shared. Errors are ignored to keep startup
-       // robust even when tables are missing.
-       var (
-               maxMarkers  sql.NullInt64
-               maxRealtime sql.NullInt64
-       )
-       _ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxMarkers)
-       _ = db.QueryRow(`SELECT MAX(id) FROM realtime_measurements`).Scan(&maxRealtime)
-       initialID := int64(1)
-       if maxMarkers.Valid && maxMarkers.Int64 >= initialID {
-               initialID = maxMarkers.Int64 + 1
-       }
-       if maxRealtime.Valid && maxRealtime.Int64 >= initialID {
-               initialID = maxRealtime.Int64 + 1
-       }
-       idChannel := startIDGenerator(initialID)
+	// Bootstrap ID generator from the highest ID across tables so each row
+	// receives a unique primary key. We query both markers and realtime data
+	// because the generator is shared. Errors are ignored to keep startup
+	// robust even when tables are missing.
+	var (
+		maxMarkers  sql.NullInt64
+		maxRealtime sql.NullInt64
+	)
+	_ = db.QueryRow(`SELECT MAX(id) FROM markers`).Scan(&maxMarkers)
+	_ = db.QueryRow(`SELECT MAX(id) FROM realtime_measurements`).Scan(&maxRealtime)
+	initialID := int64(1)
+	if maxMarkers.Valid && maxMarkers.Int64 >= initialID {
+		initialID = maxMarkers.Int64 + 1
+	}
+	if maxRealtime.Valid && maxRealtime.Int64 >= initialID {
+		initialID = maxRealtime.Int64 + 1
+	}
+	idChannel := startIDGenerator(initialID)
 
 	return &Database{
 		DB:          db,
@@ -691,9 +704,23 @@ ORDER BY device_id,fetched_at DESC;`
 		if seen[id] {
 			continue // keep the newest reading only once per device
 		}
+
+		// Convert raw CPM into µSv/h; unsupported units stay hidden to
+		// avoid misreporting dose rates on the map.
+		var (
+			doseRate float64
+			ok       bool
+		)
+		if realtimeConverter != nil {
+			doseRate, ok = realtimeConverter(val, unit)
+		}
+		if !ok {
+			continue
+		}
+
 		seen[id] = true
 		out = append(out, Marker{
-			DoseRate:  val,
+			DoseRate:  doseRate,
 			Date:      measured,
 			Lon:       lon,
 			Lat:       lat,
@@ -760,8 +787,19 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 			return err
 		}
 		for _, m := range ms {
+			// Normalise CPM before storing in the historical markers table.
+			var (
+				doseRate float64
+				ok       bool
+			)
+			if realtimeConverter != nil {
+				doseRate, ok = realtimeConverter(m.Value, m.Unit)
+			}
+			if !ok {
+				continue
+			}
 			marker := Marker{
-				DoseRate:  m.Value,
+				DoseRate:  doseRate,
 				Date:      m.MeasuredAt,
 				Lon:       m.Lon,
 				Lat:       m.Lat,

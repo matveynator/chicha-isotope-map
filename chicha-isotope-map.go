@@ -46,7 +46,7 @@ import (
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
-	"chicha-isotope-map/pkg/realtime"
+	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
 )
 
 //go:embed public_html/*
@@ -69,7 +69,7 @@ var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
-var realtimeEnabled = flag.Bool("realtime", true, "Enable polling of Safecast realtime devices")
+var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
 
 var CompileVersion = "dev"
 
@@ -2237,14 +2237,18 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch current realtime points once so the map reflects network devices.
-	// We send them directly before streaming historical markers to avoid
-	// interfering with the aggregator grid.
-	rtMarks, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType)
-	if err != nil {
-		log.Printf("realtime query: %v", err)
+	// We only touch the realtime table when the dedicated flag enables it so
+	// operators control the feature explicitly.
+	var rtMarks []database.Marker
+	if *safecastRealtimeEnabled {
+		var err error
+		rtMarks, err = db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType)
+		if err != nil {
+			log.Printf("realtime query: %v", err)
+		}
+		// Log bounds alongside count to help diagnose empty map tiles.
+		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
-	// Log bounds alongside count to help diagnose empty map tiles.
-	log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 
 	agg := aggregateMarkers(ctx, baseSrc, zoom)
 
@@ -2256,7 +2260,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Emit realtime markers first.
+	// Emit realtime markers first when enabled.
 	for _, m := range rtMarks {
 		b, _ := json.Marshal(m)
 		fmt.Fprintf(w, "data: %s\n\n", b)
@@ -2342,12 +2346,14 @@ func main() {
 		log.Fatalf("DB schema: %v", err)
 	}
 
-	if *realtimeEnabled {
-		// Launch realtime Safecast polling.
-		ctxRT, cancelRT := context.WithCancel(context.Background())
-		defer cancelRT()
-		realtime.Start(ctxRT, db, *dbType, log.Printf)
-	}
+        if *safecastRealtimeEnabled {
+                // Launch realtime Safecast polling under the dedicated flag so the
+                // feature stays opt-in.
+                database.SetRealtimeConverter(safecastrealtime.FromRealtime)
+                ctxRT, cancelRT := context.WithCancel(context.Background())
+                defer cancelRT()
+                safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
+        }
 
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")

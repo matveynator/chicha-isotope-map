@@ -1,4 +1,4 @@
-package realtime
+package safecastrealtime
 
 import (
 	"context"
@@ -255,10 +255,15 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					if c == "" {
 						c = countryFor(d.Lat, d.Lon)
 					}
-					s := stats[c]
-					s.sum += d.Value
-					s.count++
-					stats[c] = s
+					// Convert CPM into µSv/h for country summaries so we log
+					// realistic averages.  Unknown units stay out of the
+					// statistics to avoid inflating the numbers.
+					if doseRate, ok := FromRealtime(d.Value, d.Unit); ok {
+						s := stats[c]
+						s.sum += doseRate
+						s.count++
+						stats[c] = s
+					}
 
 					m := database.RealtimeMeasurement{
 						DeviceID:   d.ID,
