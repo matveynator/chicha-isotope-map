@@ -423,7 +423,54 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
 	if _, err := db.DB.Exec(schema); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}
+
+	// Ensure optional columns exist even for older databases.
+	if err := db.ensureRealtimeTransportColumn(cfg.DBType); err != nil {
+		return fmt.Errorf("add transport column: %w", err)
+	}
+
 	return nil
+}
+
+// ensureRealtimeTransportColumn adds the transport column to realtime_measurements when missing.
+// We keep SQL portable by using vendor-specific IF NOT EXISTS only where supported.
+// Older SQLite/Genji databases are inspected via PRAGMA before issuing ALTER TABLE.
+func (db *Database) ensureRealtimeTransportColumn(dbType string) error {
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		// These engines support IF NOT EXISTS and will ignore duplicates.
+		_, err := db.DB.Exec(`ALTER TABLE realtime_measurements ADD COLUMN IF NOT EXISTS transport TEXT`)
+		return err
+
+	default:
+		// SQLite and friends: introspect the table first to avoid an error.
+		rows, err := db.DB.Query(`PRAGMA table_info(realtime_measurements);`)
+		if err != nil {
+			return fmt.Errorf("describe realtime_measurements: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				cid     int
+				name    string
+				ctype   string
+				notnull int
+				dflt    sql.NullString
+				pk      int
+			)
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+				return fmt.Errorf("scan pragma: %w", err)
+			}
+			if name == "transport" {
+				return nil // column already present
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate pragma: %w", err)
+		}
+		_, err = db.DB.Exec(`ALTER TABLE realtime_measurements ADD COLUMN transport TEXT`)
+		return err
+	}
 }
 
 // InsertMarkersBulk inserts markers in batches using multi-row VALUES.
