@@ -532,6 +532,18 @@ body, html {
         /* Removed old collapsible legend styles (legend-control, legend-header, legend-title, legend-toggle, legend-body, legend-row, legend-swatch, legend-label)
            to avoid duplicate legends. Only the compact legend + modal remain. */
 
+        /* Live marker icon: a circle with centered value text */
+        .live-marker {
+          border-radius: 50%;
+          width: 24px;
+          height: 24px;
+          line-height: 24px;
+          text-align: center;
+          font-size: 10px;
+          font-weight: bold;
+          color: #000;
+        }
+
     </style>
 
     <!-- Translation script -->
@@ -821,6 +833,7 @@ function shouldDisplayBySpeed(speed) {
   if (isTrackView) return true;        // filter disabled in track view
 
   const st = loadSpeedFilterState();   // global mode
+  if (speed < 0) return st.live;       // 📡 realtime markers use negative speed
   if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
   if (speed >= 7  && speed <  70)  return st.car;    // 🚗
   /* speed < 7 m/s  → pedestrian */
@@ -886,13 +899,15 @@ var markerStreamSource = null;
 /**
  * Load previously saved speed-filter state from sessionStorage.
  * If nothing is stored yet, return default state
- *   ✈️ off, 🚗 on, 🚶 on  (as requested).
+ *   📡 on, ✈️ off, 🚗 on, 🚶 on  (as requested).
  */
 function loadSpeedFilterState() {
-  const def = { plane: false, car: true, ped: true };
+  // Defaults: live on, plane off, car on, pedestrian on.
+  const def = { live: true, plane: false, car: true, ped: true };
   try {
     const raw = sessionStorage.getItem('speedFilterState');
-    return raw ? JSON.parse(raw) : def;
+    const st = raw ? JSON.parse(raw) : {};
+    return Object.assign({}, def, st);
   } catch (e) {
     return def;
   }
@@ -1034,7 +1049,7 @@ document.addEventListener('DOMContentLoaded', function () {
   /**
    * Build a Leaflet control with three check-boxes that filter markers
    * by recorded speed. Labels now show speed in km/h instead of m/s.
-   * Default state: ✈️ off, 🚗 on, 🚶 on.
+   * Default state: 📡 on, ✈️ off, 🚗 on, 🚶 on.
    */
   function createSpeedFilterControls() {
 
@@ -1056,9 +1071,11 @@ document.addEventListener('DOMContentLoaded', function () {
           ${emoji}
             </label>`;
 
-        // order: ✈️, 🚗, 🚶  (top → bottom)
+        // order: 📡, ✈️, 🚗, 🚶  (top → bottom)
         div.innerHTML =
-          row('sfPlane', '✈️',  state.plane) +
+          row('sfLive',  '📡', state.live)  +
+          '<div class="leaflet-control-layers-separator"></div>' +
+          row('sfPlane', '✈️', state.plane) +
           row('sfCar',   '🚗', state.car)   +
           row('sfPed',   '🚶', state.ped);
 
@@ -1068,6 +1085,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // attach change-handlers
         div.querySelectorAll('input[type=checkbox]').forEach(cb => {
           cb.addEventListener('change', () => {
+            state.live  = div.querySelector('#sfLive').checked;
             state.plane = div.querySelector('#sfPlane').checked;
             state.car   = div.querySelector('#sfCar').checked;
             state.ped   = div.querySelector('#sfPed').checked;
@@ -1422,20 +1440,43 @@ function updateMarkers(){
     maxTs = Math.max(maxTs, m.date);
     if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
-    const cm = L.circleMarker([m.lat, m.lon], {
-      radius      : getRadius(m.doseRate, zoom),
-      fillColor   : getGradientColor(m.doseRate),
-      color       : getGradientColor(m.doseRate),
-      weight      : 1,
-      opacity     : getFillOpacity(m.speed) + 0.1,
-      fillOpacity : getFillOpacity(m.speed)
-    })
-    .addTo(map)
-    .bindTooltip(getTooltipContent(m),
-        { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    .bindPopup(getPopupContent(m));
 
-    circleMarkers[m.id || m.trackID] = cm;
+    let marker;
+    const isLive = m.speed < 0; // negative speed denotes realtime marker
+    if (isLive) { // realtime marker with value inside the circle
+      const ageSec = Date.now()/1000 - m.date;
+      const fresh = ageSec < 20*60; // stale after 20 minutes
+      const baseColor = getGradientColor(m.doseRate);
+      const border = fresh ? '#fff' : '#888';
+      const opacity = fresh ? 1 : 0.3;
+      const r = getRadius(m.doseRate, zoom) * 1.5;
+      const size = r * 2;
+      const html = `<div class="live-marker" style="background:${baseColor};border:1px solid ${border};opacity:${opacity};width:${size}px;height:${size}px;line-height:${size}px;">${m.doseRate.toFixed(2)}</div>`;
+      marker = L.marker([m.lat, m.lon], {
+        icon: L.divIcon({className:'', html: html, iconSize:[size, size], iconAnchor:[r, r]})
+      })
+      .addTo(map)
+      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+      .bindPopup(getPopupContent(m));
+    } else {
+      marker = L.circleMarker([m.lat, m.lon], {
+        radius      : getRadius(m.doseRate, zoom),
+        fillColor   : getGradientColor(m.doseRate),
+        color       : getGradientColor(m.doseRate),
+        weight      : 1,
+        opacity     : getFillOpacity(m.speed) + 0.1,
+        fillOpacity : getFillOpacity(m.speed)
+      })
+      .addTo(map)
+      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+      .bindPopup(getPopupContent(m));
+    }
+
+    // Store dose rate and timestamp on marker for later size updates
+    marker.doseRate  = m.doseRate;
+    marker.date      = m.date;
+    marker.isRealtime = isLive;
+    circleMarkers[m.id || m.trackID] = marker;
   };
 
   es.addEventListener('done', () => {
@@ -1476,8 +1517,22 @@ function adjustMarkerRadius() {
   var zoomLevel = map.getZoom();
   for (let key in circleMarkers) {
     let marker = circleMarkers[key];
-    let newRadius = getRadius(marker.doseRate, zoomLevel);
-    marker.setRadius(newRadius);
+    if (marker.isRealtime) {
+      // Rebuild div icon to scale realtime markers with zoom
+      const r = getRadius(marker.doseRate, zoomLevel) * 1.5;
+      const size = r * 2;
+      const ageSec = Date.now()/1000 - marker.date;
+      const fresh = ageSec < 20*60; // 20 minutes freshness window
+      const baseColor = getGradientColor(marker.doseRate);
+      const border = fresh ? '#fff' : '#888';
+      const opacity = fresh ? 1 : 0.3;
+      const html = `<div class="live-marker" style="background:${baseColor};border:1px solid ${border};opacity:${opacity};width:${size}px;height:${size}px;line-height:${size}px;">${marker.doseRate.toFixed(2)}</div>`;
+      marker.setIcon(L.divIcon({className:'', html: html, iconSize:[size, size], iconAnchor:[r, r]}));
+    } else if (typeof marker.setRadius === 'function') {
+      // Circle markers scale by adjusting radius directly
+      let newRadius = getRadius(marker.doseRate, zoomLevel);
+      marker.setRadius(newRadius);
+    }
   }
 }
 
