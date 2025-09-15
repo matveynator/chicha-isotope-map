@@ -2322,7 +2322,7 @@ func main() {
 		// Launch realtime Safecast polling.
 		ctxRT, cancelRT := context.WithCancel(context.Background())
 		defer cancelRT()
-		realtime.Start(ctxRT, db, *dbType)
+		realtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
 	// 4. Маршруты и статика

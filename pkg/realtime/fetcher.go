@@ -62,9 +62,17 @@ func fetch(ctx context.Context, url string) ([]database.RealtimeMeasurement, err
 // Start launches background workers that keep the live table updated.
 // We poll every 15 minutes as requested by Safecast to avoid flooding.
 // Two goroutines communicate over a channel; no mutex is needed.
-func Start(ctx context.Context, db *database.Database, dbType string) {
+// logf defines where progress messages are written.
+func Start(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
 	const url = "https://tt.safecast.org/devices"
 	const pollInterval = 15 * time.Minute
+
+	if logf == nil {
+		logf = log.Printf
+	}
+
+	// Announce poller start once so operators know interval and source.
+	logf("realtime poller start: url=%s interval=%s", url, pollInterval)
 
 	measurements := make(chan database.RealtimeMeasurement)
 	reports := make(chan int)
@@ -87,9 +95,9 @@ func Start(ctx context.Context, db *database.Database, dbType string) {
 				}
 			case n := <-reports:
 				if errs > 0 {
-					log.Printf("realtime poll: devices %d, stored %d, errors %d (last: %v)", n, stored, errs, lastErr)
+					logf("realtime poll: devices %d stored %d errors %d last=%v next=%s", n, stored, errs, lastErr, pollInterval)
 				} else {
-					log.Printf("realtime poll: devices %d, stored %d", n, stored)
+					logf("realtime poll: devices %d stored %d next=%s", n, stored, pollInterval)
 				}
 				stored, errs, lastErr = 0, 0, nil
 			}
@@ -108,9 +116,11 @@ func Start(ctx context.Context, db *database.Database, dbType string) {
 			case <-ticker.C:
 				data, err := fetch(ctx, url)
 				if err != nil {
-					log.Printf("realtime fetch: %v", err)
+					logf("realtime fetch error: %v", err)
 					continue
 				}
+				// Log how many devices were returned to understand coverage.
+				logf("realtime fetch: devices %d", len(data))
 				for _, m := range data {
 					select {
 					case <-ctx.Done():
