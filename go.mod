@@ -2,6 +2,8 @@ module chicha-isotope-map
 
 go 1.24
 
+toolchain go1.24.7
+
 require (
 	github.com/genjidb/genji v0.15.0
 	github.com/jackc/pgx/v5 v5.7.1
@@ -59,3 +61,5 @@ require (
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 )
+
+replace github.com/apache/arrow-go/v18 => github.com/apache/arrow-go/v18 v18.0.0
