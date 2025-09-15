@@ -1442,7 +1442,8 @@ function updateMarkers(){
     if (!shouldDisplayBySpeed(m.speed)) return;
 
     let marker;
-    if (m.speed < 0) { // realtime marker with value inside the circle
+    const isLive = m.speed < 0; // negative speed denotes realtime marker
+    if (isLive) { // realtime marker with value inside the circle
       const ageSec = Date.now()/1000 - m.date;
       const fresh = ageSec < 20*60; // stale after 20 minutes
       const baseColor = getGradientColor(m.doseRate);
@@ -1471,6 +1472,10 @@ function updateMarkers(){
       .bindPopup(getPopupContent(m));
     }
 
+    // Store dose rate and timestamp on marker for later size updates
+    marker.doseRate  = m.doseRate;
+    marker.date      = m.date;
+    marker.isRealtime = isLive;
     circleMarkers[m.id || m.trackID] = marker;
   };
 
@@ -1512,8 +1517,22 @@ function adjustMarkerRadius() {
   var zoomLevel = map.getZoom();
   for (let key in circleMarkers) {
     let marker = circleMarkers[key];
-    let newRadius = getRadius(marker.doseRate, zoomLevel);
-    marker.setRadius(newRadius);
+    if (marker.isRealtime) {
+      // Rebuild div icon to scale realtime markers with zoom
+      const r = getRadius(marker.doseRate, zoomLevel) * 1.5;
+      const size = r * 2;
+      const ageSec = Date.now()/1000 - marker.date;
+      const fresh = ageSec < 20*60; // 20 minutes freshness window
+      const baseColor = getGradientColor(marker.doseRate);
+      const border = fresh ? '#fff' : '#888';
+      const opacity = fresh ? 1 : 0.3;
+      const html = `<div class="live-marker" style="background:${baseColor};border:1px solid ${border};opacity:${opacity};width:${size}px;height:${size}px;line-height:${size}px;">${marker.doseRate.toFixed(2)}</div>`;
+      marker.setIcon(L.divIcon({className:'', html: html, iconSize:[size, size], iconAnchor:[r, r]}));
+    } else if (typeof marker.setRadius === 'function') {
+      // Circle markers scale by adjusting radius directly
+      let newRadius = getRadius(marker.doseRate, zoomLevel);
+      marker.setRadius(newRadius);
+    }
   }
 }
 
