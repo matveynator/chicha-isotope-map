@@ -77,6 +77,14 @@ func FromRealtime(value float64, unit string) (float64, bool) {
 	return 0, false
 }
 
+// ToMicroRoentgen converts µSv/h into µR/h.  Keeping the helper alongside the
+// other conversion logic avoids scattering the 100× factor across the codebase
+// and follows "Clear is better than clever" by expressing the unit change
+// explicitly where it happens.
+func ToMicroRoentgen(microSievert float64) float64 {
+	return microSievert * 100.0
+}
+
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
 // normalizeUnit prepares a string for downstream checks by trimming spaces,

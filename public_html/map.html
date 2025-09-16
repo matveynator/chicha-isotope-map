@@ -975,17 +975,17 @@ body, html {
     <div id="liveModalExtra" class="live-modal-meta"></div>
     <div class="live-chart-stack">
       <div class="live-chart-block" data-range="day">
-        <h4 class="live-chart-title"><span id="liveChartTitleDay"></span><span>µSv/h</span></h4>
+        <h4 class="live-chart-title"><span id="liveChartTitleDay"></span><span>µR/h</span></h4>
         <canvas class="live-chart-canvas" data-range="day"></canvas>
         <p class="live-chart-empty" data-range="day"></p>
       </div>
       <div class="live-chart-block" data-range="month">
-        <h4 class="live-chart-title"><span id="liveChartTitleMonth"></span><span>µSv/h</span></h4>
+        <h4 class="live-chart-title"><span id="liveChartTitleMonth"></span><span>µR/h</span></h4>
         <canvas class="live-chart-canvas" data-range="month"></canvas>
         <p class="live-chart-empty" data-range="month"></p>
       </div>
       <div class="live-chart-block" data-range="year">
-        <h4 class="live-chart-title"><span id="liveChartTitleYear"></span><span>µSv/h</span></h4>
+        <h4 class="live-chart-title"><span id="liveChartTitleYear"></span><span>µR/h</span></h4>
         <canvas class="live-chart-canvas" data-range="year"></canvas>
         <p class="live-chart-empty" data-range="year"></p>
       </div>
@@ -1106,6 +1106,17 @@ function formatMicroRoentgen(doseRate) {
   return micro.toFixed(3);
 }
 
+// formatMicroRoentgenValue keeps axis labels tidy when the charts already work
+// with µR/h values.  Sharing the logic here avoids sprinkling the rounding
+// heuristics through the drawing code.
+function formatMicroRoentgenValue(value) {
+  const abs = Math.abs(value);
+  if (abs >= 100) return value.toFixed(0);
+  if (abs >= 10) return value.toFixed(1);
+  if (abs >= 1) return value.toFixed(2);
+  return value.toFixed(3);
+}
+
 // escapeHtml protects popups against user-supplied strings like device names.
 function escapeHtml(value) {
   if (value === null || value === undefined) return '';
@@ -1188,8 +1199,9 @@ function describeLiveSensor(marker) {
     ? translate('live_marker_desc_location').replace('[[place]]', escapeHtml(placeName))
     : translate('live_marker_desc_location_unknown');
   const transport = transportSentence(marker.transport);
-  const tube = marker.tube
-    ? translate('live_marker_desc_tube').replace('[[tube]]', escapeHtml(marker.tube))
+  const sensorName = marker.tube || marker.deviceName || '';
+  const tube = sensorName
+    ? translate('live_marker_desc_tube').replace('[[tube]]', escapeHtml(sensorName))
     : translate('live_marker_desc_no_tube');
   return [subject, place, transport, tube].join(' ');
 }
@@ -1218,6 +1230,50 @@ function formatExtraValue(key, value) {
   return value.toFixed(2);
 }
 
+const EXTRA_SERIES_ORDER = ['temperature_c', 'temperature_f', 'humidity_percent'];
+
+function extraUnitSuffix(key) {
+  if (key === 'temperature_c') return '°C';
+  if (key === 'temperature_f') return '°F';
+  if (key === 'humidity_percent') return '%';
+  return '';
+}
+
+function formatExtraAxisValue(key, value) {
+  if (typeof value !== 'number' || !isFinite(value)) return '';
+  if (key === 'temperature_c' || key === 'temperature_f') {
+    return value.toFixed(1);
+  }
+  if (key === 'humidity_percent') {
+    return value.toFixed(0);
+  }
+  return value.toFixed(2);
+}
+
+function colorForExtraKey(key) {
+  if (key === 'temperature_c' || key === 'temperature_f') return '#ff7043';
+  if (key === 'humidity_percent') return '#26a69a';
+  return '#ab47bc';
+}
+
+function sortExtraKeys(keys) {
+  return keys.sort(function(a, b) {
+    const ai = EXTRA_SERIES_ORDER.indexOf(a);
+    const bi = EXTRA_SERIES_ORDER.indexOf(b);
+    const av = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
+    const bv = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
+    if (av === bv) return a.localeCompare(b);
+    return av - bv;
+  });
+}
+
+function hasExtraSeries(series) {
+  if (!series || typeof series !== 'object') return false;
+  return Object.keys(series).some(function(key){
+    return Array.isArray(series[key]) && series[key].length;
+  });
+}
+
 function renderLiveExtras(extra) {
   if (!extra || typeof extra !== 'object') return '';
   const items = [];
@@ -1235,6 +1291,9 @@ function buildDeviceMeta(marker) {
   const rows = [];
   if (marker.deviceName) {
     rows.push('<div><strong>' + translate('live_marker_device_label') + ':</strong> ' + escapeHtml(marker.deviceName) + '</div>');
+  }
+  if (marker.deviceID) {
+    rows.push('<div><strong>' + translate('live_marker_device_id') + ':</strong> ' + escapeHtml(marker.deviceID) + '</div>');
   }
   if (marker.transport) {
     rows.push('<div><strong>' + translate('live_marker_transport') + ':</strong> ' + transportLabel(marker.transport) + '</div>');
@@ -2066,7 +2125,7 @@ function chartColors() {
   return { grid: 'rgba(0,0,0,0.2)', line: '#1e88e5', text: '#333333', background: 'rgba(0,0,0,0.05)' };
 }
 
-function drawLiveChart(canvas, points) {
+function drawLiveChart(canvas, radiationPoints, extrasByKey) {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -2081,61 +2140,173 @@ function drawLiveChart(canvas, points) {
   const colors = chartColors();
   canvas.style.background = colors.background;
 
-  if (!points || !points.length) {
+  const hasRadiation = Array.isArray(radiationPoints) && radiationPoints.length > 0;
+
+  const extras = {};
+  if (extrasByKey && typeof extrasByKey === 'object') {
+    Object.keys(extrasByKey).forEach(function(key){
+      const series = extrasByKey[key];
+      if (Array.isArray(series) && series.length) {
+        extras[key] = series;
+      }
+    });
+  }
+  const extraKeys = sortExtraKeys(Object.keys(extras));
+
+  if (!hasRadiation && extraKeys.length === 0) {
     return;
   }
 
-  const minX = points[0].timestamp;
-  const maxX = points[points.length - 1].timestamp || (minX + 1);
-  let minY = points[0].value;
-  let maxY = points[0].value;
-  for (const p of points) {
-    if (p.value < minY) minY = p.value;
-    if (p.value > maxY) maxY = p.value;
-  }
-  if (minY === maxY) {
-    const delta = minY === 0 ? 0.1 : Math.abs(minY) * 0.1;
-    minY -= delta;
-    maxY += delta;
+  const baseSeries = hasRadiation ? radiationPoints : extras[extraKeys[0]];
+  const minX = baseSeries[0].timestamp;
+  const maxX = baseSeries[baseSeries.length - 1].timestamp || (minX + 1);
+
+  let minY = hasRadiation ? radiationPoints[0].value : 0;
+  let maxY = hasRadiation ? radiationPoints[0].value : 1;
+
+  if (hasRadiation) {
+    radiationPoints.forEach(function(p){
+      if (p.value < minY) minY = p.value;
+      if (p.value > maxY) maxY = p.value;
+    });
+    if (minY === maxY) {
+      const delta = minY === 0 ? 0.5 : Math.abs(minY) * 0.1;
+      minY -= delta;
+      maxY += delta;
+    }
+  } else {
+    minY = 0;
+    maxY = 1;
   }
 
-  const pad = 30;
-  const bottomPad = 28;
-  const plotW = Math.max(width - pad - 12, 10);
-  const plotH = Math.max(height - pad - bottomPad, 10);
+  const extraRanges = {};
+  extraKeys.forEach(function(key){
+    const series = extras[key];
+    let minVal = series[0].value;
+    let maxVal = series[0].value;
+    series.forEach(function(p){
+      if (p.value < minVal) minVal = p.value;
+      if (p.value > maxVal) maxVal = p.value;
+    });
+    if (minVal === maxVal) {
+      const delta = minVal === 0 ? 0.5 : Math.abs(minVal) * 0.1;
+      minVal -= delta;
+      maxVal += delta;
+    }
+    extraRanges[key] = { min: minVal, max: maxVal };
+  });
+
+  const extraColumnWidth = 64;
+  const rightPad = extraKeys.length ? extraColumnWidth * extraKeys.length + 16 : 16;
+  const leftPad = hasRadiation ? 52 : 24;
+  const topPad = 42;
+  const bottomPad = 32;
+
+  const plotLeft = leftPad;
+  const plotRight = width - rightPad;
+  const plotTop = topPad;
+  const plotBottom = height - bottomPad;
+  const plotW = Math.max(plotRight - plotLeft, 10);
+  const plotH = Math.max(plotBottom - plotTop, 10);
 
   ctx.strokeStyle = colors.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(pad, pad);
-  ctx.lineTo(pad, height - bottomPad);
-  ctx.lineTo(width - 10, height - bottomPad);
+  ctx.moveTo(plotLeft, plotTop);
+  ctx.lineTo(plotLeft, plotBottom);
+  ctx.lineTo(plotRight, plotBottom);
+  if (extraKeys.length) {
+    ctx.moveTo(plotRight, plotTop);
+    ctx.lineTo(plotRight, plotBottom);
+  }
   ctx.stroke();
 
-  ctx.strokeStyle = colors.line;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
   const rangeX = (maxX - minX) || 1;
-  const rangeY = (maxY - minY) || 1;
-  points.forEach(function(p, idx){
-    const x = pad + ((p.timestamp - minX) / rangeX) * plotW;
-    const y = (height - bottomPad) - ((p.value - minY) / rangeY) * plotH;
-    if (idx === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+  const rangeY = hasRadiation ? ((maxY - minY) || 1) : 1;
+
+  if (hasRadiation) {
+    ctx.strokeStyle = colors.line;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    radiationPoints.forEach(function(p, idx){
+      const x = plotLeft + ((p.timestamp - minX) / rangeX) * plotW;
+      const y = plotBottom - ((p.value - minY) / rangeY) * plotH;
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  extraKeys.forEach(function(key, idx){
+    const series = extras[key];
+    const range = extraRanges[key];
+    const denom = (range.max - range.min) || 1;
+    const color = colorForExtraKey(key);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath();
+    series.forEach(function(p, j){
+      const x = plotLeft + ((p.timestamp - minX) / rangeX) * plotW;
+      const y = plotBottom - ((p.value - range.min) / denom) * plotH;
+      if (j === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const xBase = plotRight + 8 + idx * extraColumnWidth;
+    const suffix = extraUnitSuffix(key);
+    const maxLabel = formatExtraAxisValue(key, range.max);
+    const minLabel = formatExtraAxisValue(key, range.min);
+    ctx.fillStyle = color;
+    ctx.font = '11px sans-serif';
+    if (maxLabel) {
+      ctx.fillText(maxLabel + (suffix ? ' ' + suffix : ''), xBase, plotTop + 12);
+    }
+    if (minLabel) {
+      ctx.fillText(minLabel + (suffix ? ' ' + suffix : ''), xBase, plotBottom - 4);
+    }
   });
-  ctx.stroke();
 
   ctx.fillStyle = colors.text;
   ctx.font = '12px sans-serif';
-  ctx.fillText(maxY.toFixed(3), pad + 4, pad + 12);
-  ctx.fillText(minY.toFixed(3), pad + 4, height - bottomPad - 4);
+  if (hasRadiation) {
+    ctx.fillText(formatMicroRoentgenValue(maxY), plotLeft + 4, plotTop + 12);
+    ctx.fillText(formatMicroRoentgenValue(minY), plotLeft + 4, plotBottom - 4);
+  }
 
   const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
   const startLabel = new Date(minX * 1000).toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   const endLabel = new Date(maxX * 1000).toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-  ctx.fillText(startLabel, pad, height - 6);
+  ctx.fillText(startLabel, plotLeft, height - 8);
   const endWidth = ctx.measureText(endLabel).width;
-  ctx.fillText(endLabel, Math.max(pad + 4, width - endWidth - 12), height - 6);
+  ctx.fillText(endLabel, Math.max(plotLeft + 4, plotRight - endWidth), height - 8);
+
+  ctx.font = '11px sans-serif';
+  let legendX = plotLeft;
+  const legendY = topPad - 14;
+  const legendEntries = [];
+  if (hasRadiation) {
+    legendEntries.push({ label: translate('radiation_dose') + ' (µR/h)', color: colors.line });
+  }
+  extraKeys.forEach(function(key){
+    const suffix = extraUnitSuffix(key);
+    const label = labelForExtraKey(key) + (suffix ? ' (' + suffix + ')' : '');
+    legendEntries.push({ label: label, color: colorForExtraKey(key) });
+  });
+  legendEntries.forEach(function(entry){
+    ctx.strokeStyle = entry.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(legendX, legendY);
+    ctx.lineTo(legendX + 14, legendY);
+    ctx.stroke();
+    ctx.fillStyle = colors.text;
+    ctx.fillText(entry.label, legendX + 18, legendY + 4);
+    legendX += ctx.measureText(entry.label).width + 40;
+  });
 }
 
 function hideLiveModal() {
@@ -2164,6 +2335,7 @@ async function openLiveModal(deviceID, fallback) {
   if (closeBtn) closeBtn.textContent = translate('live_chart_close');
 
   const fallbackMarker = {
+    deviceID: fallback && fallback.device ? String(fallback.device) : (fallback && fallback.id ? String(fallback.id) : ''),
     deviceName: fallback && fallback.name ? fallback.name : '',
     transport: fallback && fallback.transport ? fallback.transport : '',
     country: fallback && fallback.country ? fallback.country : '',
@@ -2196,6 +2368,7 @@ async function openLiveModal(deviceID, fallback) {
   try {
     const data = await fetchLiveHistory(deviceID);
     const merged = {
+      deviceID: data.deviceID || fallbackMarker.deviceID,
       deviceName: data.deviceName || fallbackMarker.deviceName,
       transport: data.transport || fallbackMarker.transport,
       tube: data.tube || fallbackMarker.tube,
@@ -2229,9 +2402,11 @@ async function openLiveModal(deviceID, fallback) {
       const canvas = document.querySelector(`.live-chart-canvas[data-range="${range}"]`);
       const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
       const series = data.series && data.series[range] ? data.series[range] : [];
-      if (series && series.length && canvas) {
+      const extras = data.extraSeries && data.extraSeries[range] ? data.extraSeries[range] : null;
+      const hasSeries = (series && series.length) || hasExtraSeries(extras);
+      if (canvas && hasSeries) {
         if (empty) empty.style.display = 'none';
-        drawLiveChart(canvas, series);
+        drawLiveChart(canvas, series, extras);
       } else if (empty) {
         empty.textContent = translate('live_marker_no_data');
         empty.style.display = 'block';
@@ -2636,6 +2811,7 @@ function centerMapToLocation() {
       const dataset = ev.target.dataset;
       if (!dataset.device) return;
       const fallback = {
+        device: dataset.device,
         name: dataset.name || '',
         transport: dataset.transport || '',
         tube: dataset.tube || '',
