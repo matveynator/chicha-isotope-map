@@ -11,38 +11,6 @@ import (
 	"strings"
 )
 
-// regionBox stores a coarse rectangular approximation for a country.
-// We intentionally keep only a handful of rectangles per country to
-// avoid heavy geo libraries while still classifying realtime sensors
-// accurately.
-type regionBox struct {
-	code           string
-	name           string
-	minLat, maxLat float64
-	minLon, maxLon float64
-	priority       int
-	area           float64
-}
-
-// contains reports whether the rectangle includes the provided point.
-func (b regionBox) contains(lat, lon float64) bool {
-	if lat < b.minLat || lat > b.maxLat {
-		return false
-	}
-	if lon < b.minLon || lon > b.maxLon {
-		return false
-	}
-	return true
-}
-
-// boxes is populated via buildBoxes in data.go.  We keep the slice as a
-// package-level variable so Resolve can stay allocation free.
-var boxes = buildBoxes()
-
-// nameByCode keeps a quick lookup for English country names.  It is
-// derived once from the prepared slice to keep Resolve simple.
-var nameByCode = buildNameIndex(boxes)
-
 // query represents a single Resolve request forwarded to background
 // workers.  The reply channel is buffered to avoid blocking when callers
 // abandon a lookup early.
@@ -87,8 +55,8 @@ func resolverWorker(in <-chan query) {
 }
 
 // Resolve finds an ISO 3166-1 alpha-2 code and English name for the
-// provided coordinate.  When no rectangle matches we return empty
-// strings so callers may fall back to "unknown" labels.
+// provided coordinate.  When no polygon matches we return empty strings so
+// callers may fall back to "unknown" labels.
 func Resolve(lat, lon float64) (string, string) {
 	// lat or lon outside plausible bounds are treated as unknown.
 	if math.IsNaN(lat) || math.IsNaN(lon) {
@@ -117,43 +85,47 @@ func Resolve(lat, lon float64) (string, string) {
 	}
 }
 
-// resolvePoint walks the prepared regions using a producer goroutine to
-// keep the iteration cancellable.  Closing the done channel stops the
-// producer once the first match is found.
+// resolvePoint walks the packed R-tree and keeps the smallest containing
+// polygon.  Preferring the tiniest area means enclaves and islands win over
+// their host countries without manual priority lists.
 func resolvePoint(lat, lon float64) (string, string) {
-	candidateCh := make(chan regionBox)
+	candidateCh := make(chan candidate)
 	done := make(chan struct{})
 
 	go func() {
 		defer close(candidateCh)
-		for _, box := range boxes {
-			if !box.contains(lat, lon) {
-				continue
-			}
-			select {
-			case candidateCh <- box:
-			case <-done:
-				return
-			}
-		}
+		streamCandidates(lat, lon, candidateCh, done)
 	}()
 
 	defer close(done)
 
+	bestArea := math.MaxFloat64
+	bestCode := ""
+	bestName := ""
+
 	for {
 		select {
-		case box, ok := <-candidateCh:
+		case cand, ok := <-candidateCh:
 			if !ok {
-				return "", ""
+				return bestCode, bestName
 			}
-			return box.code, box.name
+			country := countries[cand.countryIndex]
+			poly := country.polygons[cand.polygonIndex]
+			if !poly.contains(lat, lon) {
+				continue
+			}
+			if poly.area < bestArea {
+				bestArea = poly.area
+				bestCode = country.code
+				bestName = country.name
+			}
 		}
 	}
 }
 
-// NameFor returns the stored English country name for a code.  The
-// lookup is forgiving with input case so external callers can pass
-// arbitrary user data.
+// NameFor returns the stored English country name for a code.  The lookup
+// is forgiving with input case so external callers can pass arbitrary user
+// data.
 func NameFor(code string) string {
 	if code == "" {
 		return ""
@@ -165,14 +137,17 @@ func NameFor(code string) string {
 	return ""
 }
 
-// buildNameIndex constructs a map from ISO code to English name once
-// during package initialisation.  Doing this eagerly avoids locking at
-// runtime, keeping Resolve cheap for every caller.
-func buildNameIndex(list []regionBox) map[string]string {
+// buildNameIndex constructs a map from ISO code to English name once during
+// package initialisation.  Doing this eagerly avoids locking at runtime,
+// keeping Resolve cheap for every caller.
+func buildNameIndex(list []country) map[string]string {
 	out := make(map[string]string, len(list))
-	for _, b := range list {
-		if _, ok := out[b.code]; !ok {
-			out[b.code] = b.name
+	for _, c := range list {
+		if c.code == "" || c.name == "" {
+			continue
+		}
+		if _, ok := out[c.code]; !ok {
+			out[c.code] = c.name
 		}
 	}
 	return out

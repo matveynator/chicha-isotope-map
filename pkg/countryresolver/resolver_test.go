@@ -11,17 +11,20 @@ func TestResolveSampleLocations(t *testing.T) {
 		want     string
 	}{
 		{50.4501, 30.5234, "UA"},   // Kyiv, Ukraine
+		{45.4642, 9.1900, "IT"},    // Milan, Italy
+		{47.3769, 8.5417, "CH"},    // Zürich, Switzerland
+		{59.9139, 10.7522, "NO"},   // Oslo, Norway
 		{41.7151, 44.8271, "GE"},   // Tbilisi, Georgia
 		{40.4093, 49.8671, "AZ"},   // Baku, Azerbaijan
 		{40.1792, 44.4991, "AM"},   // Yerevan, Armenia
 		{35.4759, 139.5716, "JP"},  // Tokyo area, Japan
 		{37.4428, -122.1281, "US"}, // California, USA
 		{-43.5322, 172.6089, "NZ"}, // Christchurch, New Zealand
-		{1.5100, 103.7172, "SG"},   // Singapore
+		{1.3521, 103.8198, "SG"},   // Singapore city centre
 		{5.6016, -0.1029, "GH"},    // Accra, Ghana
 		{37.5446, 126.9264, "KR"},  // Seoul, South Korea
 		{25.0439, 121.5290, "TW"},  // Taipei, Taiwan
-		{22.3181, 114.1577, "HK"},  // Hong Kong
+		{22.3193, 114.1694, "HK"},  // Hong Kong Central
 		{-16.5101, -68.1986, "BO"}, // La Paz, Bolivia
 	}
 	for _, tc := range tests {
