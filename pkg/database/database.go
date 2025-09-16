@@ -682,6 +682,9 @@ ORDER BY device_id,fetched_at DESC;`
 	}
 	defer rows.Close()
 
+	now := time.Now().Unix()
+	const daySeconds = int64((24 * time.Hour) / time.Second)
+
 	seen := make(map[string]bool)
 	var out []Marker
 	for rows.Next() {
@@ -700,6 +703,9 @@ ORDER BY device_id,fetched_at DESC;`
 		}
 		if val <= 0 {
 			continue // ignore non-positive readings
+		}
+		if now-measured > daySeconds {
+			continue // drop devices that have been silent for more than a day
 		}
 		if seen[id] {
 			continue // keep the newest reading only once per device

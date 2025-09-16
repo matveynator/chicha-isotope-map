@@ -22,6 +22,8 @@ import (
 type devicePayload struct {
 	ID      string
 	Type    string  // transport tag such as car or walk
+	Name    string  // human friendly device title from the feed
+	Tube    string  // detector type as advertised by the feed
 	Value   float64 // dose rate
 	Unit    string  // unit of Value
 	Lat     float64 // latitude in degrees
@@ -56,7 +58,36 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 		d.Type = v
 	}
 	if v, ok := m["service_transport"].(string); ok {
-		d.Type = strings.SplitN(v, ":", 2)[0]
+		parts := strings.Split(v, ":")
+		if len(parts) > 0 {
+			d.Type = strings.TrimSpace(parts[0])
+		}
+		for _, p := range parts[1:] {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				d.Tube = p
+				break
+			}
+		}
+	}
+
+	// Capture the descriptive title so downstream logic can recognise
+	// Safecast Air units by name.  We accept several field variants
+	// because the upstream feed does not always use the same keys.
+	if v, ok := m["device_title"].(string); ok {
+		d.Name = v
+	} else if v, ok := m["device_name"].(string); ok {
+		d.Name = v
+	} else if v, ok := m["title"].(string); ok {
+		d.Name = v
+	}
+
+	if d.Tube == "" {
+		if v, ok := m["tube_type"].(string); ok {
+			d.Tube = v
+		} else if v, ok := m["tube"].(string); ok {
+			d.Tube = v
+		}
 	}
 
 	// Coordinates arrive under loc_lat/loc_lon.
@@ -105,6 +136,14 @@ gotValue:
 
 	// Timestamp is provided as RFC3339 string.
 	if v, ok := m["when_captured"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			d.Time = t.Unix()
+		}
+	} else if v, ok := m["value_time"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			d.Time = t.Unix()
+		}
+	} else if v, ok := m["captured_at"].(string); ok {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
 			d.Time = t.Unix()
 		}
@@ -171,13 +210,34 @@ func countryFor(lat, lon float64) string {
 	return "??"
 }
 
+// containsAir reports whether the descriptor hints at Safecast Air hardware.
+// Air units do not produce radiation readings, so we filter them eagerly.
+func containsAir(s string) bool {
+	if s == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(s), "air")
+}
+
+// convertIfRadiation filters Safecast Air units and returns the converted
+// radiation value when the reading looks usable.  Returning the µSv/h value
+// here keeps the calling loop simple and lets us reuse the same conversion
+// for summaries without reprocessing the payload.
+func convertIfRadiation(d devicePayload) (float64, bool) {
+	if containsAir(d.ID) || containsAir(d.Type) || containsAir(d.Tube) || containsAir(d.Name) {
+		return 0, false
+	}
+	return FromRealtime(d.Value, d.Unit)
+}
+
 // Start launches background workers that keep the live table updated.
-// We poll every 15 minutes as requested by Safecast to avoid flooding.
+// We poll every five minutes so active counters stay fresh while still being
+// polite to the upstream service.
 // Two goroutines communicate over a channel; no mutex is needed.
 // logf defines where progress messages are written.
 func Start(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
 	const url = "https://tt.safecast.org/devices"
-	const pollInterval = 15 * time.Minute
+	const pollInterval = 5 * time.Minute
 
 	if logf == nil {
 		logf = log.Printf
@@ -228,6 +288,10 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 		prevIDs := make(map[string]struct{})
 
 		for {
+			now := time.Now()
+			nowUnix := now.Unix()
+			cutoff := now.Add(-24 * time.Hour).Unix()
+
 			data, err := fetch(ctx, url)
 			if err != nil {
 				logf("realtime fetch error: %v", err)
@@ -238,7 +302,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				// Show the first payload for debugging when the map looks empty.
 				if len(data) > 0 {
 					d0 := data[0]
-					logf("realtime sample: id=%s lat=%f lon=%f val=%f", d0.ID, d0.Lat, d0.Lon, d0.Value)
+					logf("realtime sample: id=%s name=%q lat=%f lon=%f val=%f unit=%s", d0.ID, d0.Name, d0.Lat, d0.Lon, d0.Value, d0.Unit)
 				}
 
 				// Summaries are computed while forwarding measurements to DB.
@@ -247,22 +311,20 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					count int
 				})
 				curr := make(map[string]struct{})
-				now := time.Now().Unix()
 
 				for _, d := range data {
-					curr[d.ID] = struct{}{}
-					c := d.Country
-					if c == "" {
-						c = countryFor(d.Lat, d.Lon)
+					if d.ID == "" {
+						continue
 					}
-					// Convert CPM into µSv/h for country summaries so we log
-					// realistic averages.  Unknown units stay out of the
-					// statistics to avoid inflating the numbers.
-					if doseRate, ok := FromRealtime(d.Value, d.Unit); ok {
-						s := stats[c]
-						s.sum += doseRate
-						s.count++
-						stats[c] = s
+					converted, ok := convertIfRadiation(d)
+					if !ok {
+						continue
+					}
+					if d.Lat == 0 && d.Lon == 0 {
+						continue
+					}
+					if d.Time == 0 {
+						continue
 					}
 
 					m := database.RealtimeMeasurement{
@@ -273,7 +335,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						Lat:        d.Lat,
 						Lon:        d.Lon,
 						MeasuredAt: d.Time,
-						FetchedAt:  now,
+						FetchedAt:  nowUnix,
 					}
 					select {
 					case <-ctx.Done():
@@ -281,8 +343,27 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						return
 					case measurements <- m:
 					}
+
+					if d.Time < cutoff {
+						// Store the sample for history but skip it in live summaries once
+						// the reading is older than a day. This keeps the map clean while
+						// preserving data for future charts.
+						continue
+					}
+
+					curr[d.ID] = struct{}{}
+					c := d.Country
+					if c == "" {
+						c = countryFor(d.Lat, d.Lon)
+					}
+					// We already converted the value once; reuse it for
+					// summaries so statistics reflect what we display.
+					s := stats[c]
+					s.sum += converted
+					s.count++
+					stats[c] = s
 				}
-				reports <- len(data)
+				reports <- len(curr)
 
 				// Calculate device churn since last poll.
 				added, removed := 0, 0
@@ -310,7 +391,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				logf("realtime summary: %s added=%d removed=%d", strings.Join(parts, " "), added, removed)
 
 				// Promote stale device histories to normal tracks once a day.
-				go db.PromoteStaleRealtime(time.Now().Add(-24*time.Hour).Unix(), dbType)
+				go db.PromoteStaleRealtime(cutoff, dbType)
 			}
 			select {
 			case <-ctx.Done():
