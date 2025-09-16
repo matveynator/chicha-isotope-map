@@ -172,10 +172,18 @@ func processAndStoreMarkers(
 ) (database.Bounds, string, error) {
 	bbox := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
 	for _, m := range markers {
-		if m.Lat < bbox.MinLat { bbox.MinLat = m.Lat }
-		if m.Lat > bbox.MaxLat { bbox.MaxLat = m.Lat }
-		if m.Lon < bbox.MinLon { bbox.MinLon = m.Lon }
-		if m.Lon > bbox.MaxLon { bbox.MaxLon = m.Lon }
+		if m.Lat < bbox.MinLat {
+			bbox.MinLat = m.Lat
+		}
+		if m.Lat > bbox.MaxLat {
+			bbox.MaxLat = m.Lat
+		}
+		if m.Lon < bbox.MinLon {
+			bbox.MinLon = m.Lon
+		}
+		if m.Lon > bbox.MaxLon {
+			bbox.MaxLon = m.Lon
+		}
 	}
 
 	trackID := initTrackID
@@ -189,7 +197,9 @@ func processAndStoreMarkers(
 		logT(trackID, "Store", "unique track, creating")
 	}
 
-	for i := range markers { markers[i].TrackID = trackID }
+	for i := range markers {
+		markers[i].TrackID = trackID
+	}
 
 	markers = filterZeroMarkers(markers)
 	markers = filterInvalidDateMarkers(markers)
@@ -202,35 +212,64 @@ func processAndStoreMarkers(
 	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoom))
 
 	tx, err := db.DB.Begin()
-	if err != nil { return bbox, trackID, err }
-	if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
-		_ = tx.Rollback(); return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
+	if err != nil {
+		return bbox, trackID, err
 	}
-	if err := tx.Commit(); err != nil { return bbox, trackID, err }
+	if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
+		_ = tx.Rollback()
+		return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return bbox, trackID, err
+	}
 	logT(trackID, "Store", "stored %d markers", len(allZoom))
 	return bbox, trackID, nil
 }
 
 func pickIdentityProbe(src []database.Marker, limit int) []database.Marker {
-	if limit <= 0 || len(src) == 0 { return nil }
+	if limit <= 0 || len(src) == 0 {
+		return nil
+	}
 	tmp := make([]database.Marker, 0, min(len(src), limit*2))
 	for _, m := range src {
-		if m.DoseRate != 0 || m.CountRate != 0 { tmp = append(tmp, m) }
+		if m.DoseRate != 0 || m.CountRate != 0 {
+			tmp = append(tmp, m)
+		}
 	}
-	if len(tmp) == 0 { tmp = src }
+	if len(tmp) == 0 {
+		tmp = src
+	}
 	n := len(tmp)
-	if n <= limit { out := make([]database.Marker, n); copy(out, tmp); return out }
+	if n <= limit {
+		out := make([]database.Marker, n)
+		copy(out, tmp)
+		return out
+	}
 	out := make([]database.Marker, 0, limit)
-	stride := n / limit; if stride <= 0 { stride = 1 }
-	for i := 0; i < n && len(out) < limit; i += stride { out = append(out, tmp[i]) }
+	stride := n / limit
+	if stride <= 0 {
+		stride = 1
+	}
+	for i := 0; i < n && len(out) < limit; i += stride {
+		out = append(out, tmp[i])
+	}
 	return out
 }
 
-func min(a, b int) int { if a < b { return a }; return b }
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 func filterZeroMarkers(markers []database.Marker) []database.Marker {
 	out := markers[:0]
-	for _, m := range markers { if m.DoseRate != 0 { out = append(out, m) } }
+	for _, m := range markers {
+		if m.DoseRate != 0 {
+			out = append(out, m)
+		}
+	}
 	return out
 }
 
@@ -243,36 +282,63 @@ func isValidDate(ts int64) bool {
 
 func filterInvalidDateMarkers(markers []database.Marker) []database.Marker {
 	out := markers[:0]
-	for _, m := range markers { if isValidDate(m.Date) { out = append(out, m) } }
+	for _, m := range markers {
+		if isValidDate(m.Date) {
+			out = append(out, m)
+		}
+	}
 	return out
 }
 
 func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
-	if len(markers) == 0 { return markers }
+	if len(markers) == 0 {
+		return markers
+	}
 	// sort by time
 	sortByDate(markers)
 	scale := 1.0
 	if markers[0].Date > 1_000_000_000_000 || markers[len(markers)-1].Date > 1_000_000_000_000 {
 		scale = 1000.0
 	}
-	dtSec := func(prev, curr int64) float64 { if curr <= prev { return 0 }; return float64(curr-prev) / scale }
+	dtSec := func(prev, curr int64) float64 {
+		if curr <= prev {
+			return 0
+		}
+		return float64(curr-prev) / scale
+	}
 	const maxSpeed = 1000.0
 	for i := 1; i < len(markers); i++ {
 		dt := dtSec(markers[i-1].Date, markers[i].Date)
-		if dt <= 0 { continue }
+		if dt <= 0 {
+			continue
+		}
 		dist := haversineDistance(markers[i-1].Lat, markers[i-1].Lon, markers[i].Lat, markers[i].Lon)
 		v := dist / dt
-		if v >= 0 && v <= maxSpeed { markers[i].Speed = v } else { markers[i].Speed = 0 }
+		if v >= 0 && v <= maxSpeed {
+			markers[i].Speed = v
+		} else {
+			markers[i].Speed = 0
+		}
 	}
-	if len(markers) > 1 && markers[0].Speed == 0 { markers[0].Speed = markers[1].Speed }
+	if len(markers) > 1 && markers[0].Speed == 0 {
+		markers[0].Speed = markers[1].Speed
+	}
 	lastWith := -1
 	for i := 0; i < len(markers); {
-		if markers[i].Speed > 0 { lastWith = i; i++; continue }
+		if markers[i].Speed > 0 {
+			lastWith = i
+			i++
+			continue
+		}
 		start := i
-		for i < len(markers) && markers[i].Speed == 0 { i++ }
+		for i < len(markers) && markers[i].Speed == 0 {
+			i++
+		}
 		end := i - 1
 		nextWith := -1
-		if i < len(markers) && markers[i].Speed > 0 { nextWith = i }
+		if i < len(markers) && markers[i].Speed > 0 {
+			nextWith = i
+		}
 		var fill float64
 		switch {
 		case lastWith != -1 && nextWith != -1:
@@ -286,16 +352,31 @@ func calculateSpeedForMarkers(markers []database.Marker) []database.Marker {
 		case nextWith != -1:
 			fill = markers[nextWith].Speed
 		}
-		if fill > 0 && fill <= maxSpeed { for j := start; j <= end; j++ { markers[j].Speed = fill } }
+		if fill > 0 && fill <= maxSpeed {
+			for j := start; j <= end; j++ {
+				markers[j].Speed = fill
+			}
+		}
 	}
 	needFallback := false
-	for _, m := range markers { if m.Speed == 0 { needFallback = true; break } }
+	for _, m := range markers {
+		if m.Speed == 0 {
+			needFallback = true
+			break
+		}
+	}
 	if needFallback && len(markers) >= 2 {
 		totalDt := dtSec(markers[0].Date, markers[len(markers)-1].Date)
 		if totalDt > 0 {
 			dist := haversineDistance(markers[0].Lat, markers[0].Lon, markers[len(markers)-1].Lat, markers[len(markers)-1].Lon)
 			v := dist / totalDt
-			if v >= 0 && v <= 1000.0 { for k := range markers { if markers[k].Speed == 0 { markers[k].Speed = v } } }
+			if v >= 0 && v <= 1000.0 {
+				for k := range markers {
+					if markers[k].Speed == 0 {
+						markers[k].Speed = v
+					}
+				}
+			}
 		}
 	}
 	return markers
@@ -343,7 +424,11 @@ func latLonToPixel(lat, lon float64, zoom int) (px, py float64) {
 func radiusForZoom(zoom int) float64 { return 10.0 * float64(zoom) / 20.0 }
 
 func precomputeMarkersForAllZoomLevels(src []database.Marker) []database.Marker {
-	type acc struct{ sumLat, sumLon, sumDose, sumCnt, sumSp float64; latest int64; n int }
+	type acc struct {
+		sumLat, sumLon, sumDose, sumCnt, sumSp float64
+		latest                                 int64
+		n                                      int
+	}
 	cellFor := func(z int) float64 { return 2*radiusForZoom(z) + 1 }
 	var res []database.Marker
 	for z := 1; z <= 20; z++ {
@@ -353,9 +438,18 @@ func precomputeMarkersForAllZoomLevels(src []database.Marker) []database.Marker 
 			px, py := latLonToPixel(m.Lat, m.Lon, z)
 			key := int64(int(px/cell))<<32 | int64(int32(py/cell))
 			a := cl[key]
-			if a == nil { a = &acc{}; cl[key] = a }
-			a.sumLat += m.Lat; a.sumLon += m.Lon; a.sumDose += m.DoseRate; a.sumCnt += m.CountRate; a.sumSp += m.Speed
-			if m.Date > a.latest { a.latest = m.Date }
+			if a == nil {
+				a = &acc{}
+				cl[key] = a
+			}
+			a.sumLat += m.Lat
+			a.sumLon += m.Lon
+			a.sumDose += m.DoseRate
+			a.sumCnt += m.CountRate
+			a.sumSp += m.Speed
+			if m.Date > a.latest {
+				a.latest = m.Date
+			}
 			a.n++
 		}
 		for _, c := range cl {
@@ -455,53 +549,92 @@ func handleBGeigieDiag(filename string, file multipart.File) (database.Bounds, s
 			lon float64
 		)
 
-		// Zen ISO8601 + DMM variant
+		// Zen ISO8601 + DMM variant: 3:CPM 4:CPS 5:TotalCounts.
+		// We favour CPM for stability so the derived µSv/h values do not spike when CPS fluctuates.
 		if len(parts) >= 11 && strings.Contains(parts[2], "T") {
 			if t, err := time.Parse(time.RFC3339, strings.TrimSpace(parts[2])); err == nil {
 				ts = t.Unix()
 			}
-			if ts == 0 { incReason(stats, "invalid_timestamp", line); continue }
-			cps = bgnParseFloat(parts[3])
-			cpm = bgnParseFloat(parts[4])
+			if ts == 0 {
+				incReason(stats, "invalid_timestamp", line)
+				continue
+			}
+			cpm = bgnParseFloat(parts[3])
+			cps = bgnParseFloat(parts[4])
 			lat = bgnParseDMM(parts[7], parts[8], 2)
 			lon = bgnParseDMM(parts[9], parts[10], 3)
-			if lat == 0 && lon == 0 { incReason(stats, "invalid_coords", line); continue }
+			if lat == 0 && lon == 0 {
+				incReason(stats, "invalid_coords", line)
+				continue
+			}
 		} else {
 			// Legacy: decimals or suffixed
-			if len(parts) < 8 { incReason(stats, "too_few_fields", line); continue }
+			if len(parts) < 8 {
+				incReason(stats, "too_few_fields", line)
+				continue
+			}
 			utcDate := parts[1]
 			utcTime := parts[2]
 			ts = bgnParseDateTime(utcDate, utcTime)
-			if ts == 0 { incReason(stats, "invalid_timestamp", line); continue }
-			cps = bgnParseFloat(parts[3])
-			cpm = bgnParseFloat(parts[4])
+			if ts == 0 {
+				incReason(stats, "invalid_timestamp", line)
+				continue
+			}
+			cpm = bgnParseFloat(parts[3])
+			cps = bgnParseFloat(parts[4])
 			lat = bgnParseCoord(parts[6])
 			lon = bgnParseCoord(parts[7])
-			if lat == 0 && lon == 0 { incReason(stats, "invalid_coords", line); continue }
+			if lat == 0 && lon == 0 {
+				incReason(stats, "invalid_coords", line)
+				continue
+			}
 		}
 
 		const cpmPerMicroSv = 334.0
 		dose := 0.0
-		if cpm > 0 { dose = cpm / cpmPerMicroSv } else if cps > 0 { dose = (cps * 60.0) / cpmPerMicroSv } else { incReason(stats, "missing_cpm_cps", line); continue }
+		if cpm > 0 {
+			dose = cpm / cpmPerMicroSv
+		} else if cps > 0 {
+			dose = (cps * 60.0) / cpmPerMicroSv
+		} else {
+			incReason(stats, "missing_cpm_cps", line)
+			continue
+		}
 
 		countRate := cps
-		if countRate == 0 && cpm > 0 { countRate = cpm / 60.0 }
+		if countRate == 0 && cpm > 0 {
+			countRate = cpm / 60.0
+		}
 
 		m := database.Marker{DoseRate: dose, Date: ts, Lon: lon, Lat: lat, CountRate: countRate, Zoom: 0, Speed: 0, TrackID: trackID}
 		markers = append(markers, m)
 		stats.Parsed++
 
-		if m.Lat < bbox.MinLat { bbox.MinLat = m.Lat }
-		if m.Lat > bbox.MaxLat { bbox.MaxLat = m.Lat }
-		if m.Lon < bbox.MinLon { bbox.MinLon = m.Lon }
-		if m.Lon > bbox.MaxLon { bbox.MaxLon = m.Lon }
+		if m.Lat < bbox.MinLat {
+			bbox.MinLat = m.Lat
+		}
+		if m.Lat > bbox.MaxLat {
+			bbox.MaxLat = m.Lat
+		}
+		if m.Lon < bbox.MinLon {
+			bbox.MinLon = m.Lon
+		}
+		if m.Lon > bbox.MaxLon {
+			bbox.MaxLon = m.Lon
+		}
 	}
-	if err := sc.Err(); err != nil { return bbox, "", stats, err }
+	if err := sc.Err(); err != nil {
+		return bbox, "", stats, err
+	}
 
-	if len(markers) == 0 { return bbox, "", stats, fmt.Errorf("no valid $BNRDD points in %s", filename) }
+	if len(markers) == 0 {
+		return bbox, "", stats, fmt.Errorf("no valid $BNRDD points in %s", filename)
+	}
 
 	storedBBox, tid, err := processAndStoreMarkers(markers, trackID, db, *dbType)
-	if err != nil { return bbox, "", stats, err }
+	if err != nil {
+		return bbox, "", stats, err
+	}
 	bbox = storedBBox
 
 	trackURL := fmt.Sprintf("/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s", tid, bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon, "OpenStreetMap")
@@ -515,7 +648,9 @@ func incReason(st *diagStats, reason, line string) {
 	st.Reasons[reason]++
 	lst := st.Samples[reason]
 	if len(lst) < 3 {
-		if len(line) > 180 { line = line[:180] }
+		if len(line) > 180 {
+			line = line[:180]
+		}
 		st.Samples[reason] = append(lst, line)
 	}
 }

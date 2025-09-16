@@ -126,13 +126,14 @@ func processBGeigieZenFile(
 			lon float64
 		)
 
-		// Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPS 4:CPM 5:CPMvalid 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
+		// Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPM 4:CPS 5:TotalCounts 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
+		// We rely on CPM for the µSv/h conversion because CPS is instantaneous and noisy.
 		if len(p) >= 11 && strings.Contains(p[2], "T") {
 			if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
 				ts = t.Unix()
 			}
-			cps = parseFloat(p[3])
-			cpm = parseFloat(p[4])
+			cpm = parseFloat(p[3])
+			cps = parseFloat(p[4])
 			lat = parseDMM(p[7], p[8], 2)
 			lon = parseDMM(p[9], p[10], 3)
 		} else if len(p) >= 8 { // legacy fallback: decimals (+ optional suffix)
@@ -141,8 +142,8 @@ func processBGeigieZenFile(
 			ts = 0
 			// try compact forms if helper exists in build
 			// cps/cpm & coords
-			cps = parseFloat(p[3])
-			cpm = parseFloat(p[4])
+			cpm = parseFloat(p[3])
+			cps = parseFloat(p[4])
 			lat = parseBGeigieCoord(p[6])
 			lon = parseBGeigieCoord(p[7])
 		}
