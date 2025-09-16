@@ -544,6 +544,25 @@ body, html {
           color: #000;
         }
 
+        /* Keep the icons in the speed filter aligned regardless of emoji vs. SVG source. */
+        .speed-filter-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 1.5em;
+          height: 1.5em;
+          margin-left: 6px;
+          font-size: 1.2em;
+          line-height: 1;
+        }
+
+        /* Ensure the SVG heart scales with the surrounding emoji-based icons. */
+        .speed-filter-icon img {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
+
     </style>
 
     <!-- Translation script -->
@@ -934,7 +953,7 @@ function shouldDisplayBySpeed(speed) {
   if (isTrackView) return true;        // filter disabled in track view
 
   const st = loadSpeedFilterState();   // global mode
-  if (speed < 0) {                     // 📡 realtime markers use negative speed
+  if (speed < 0) {                     // Safecast heart markers use negative speed to signal realtime data
     if (!window.safecastRealtimeEnabled) {
       // Safety net: when realtime is disabled we never show synthetic negative speeds.
       return false;
@@ -1006,8 +1025,8 @@ var markerStreamSource = null;
 /**
  * Load previously saved speed-filter state from sessionStorage.
  * If nothing is stored yet, return defaults that reflect backend capabilities.
- *   Realtime on:  📡 on, ✈️ off, 🚗 on, 🚶 on  (as requested).
- *   Realtime off: ✈️ off, 🚗 on, 🚶 on  (📡 absent).
+ *   Realtime on:  Safecast heart on, ✈️ off, 🚗 on, 🚶 on  (as requested).
+ *   Realtime off: ✈️ off, 🚗 on, 🚶 on  (heart absent).
  */
 function loadSpeedFilterState() {
   // We derive defaults from the realtime flag so the UI matches backend capabilities.
@@ -1172,7 +1191,7 @@ document.addEventListener('DOMContentLoaded', function () {
   /**
    * Build a Leaflet control with three check-boxes that filter markers
    * by recorded speed. Labels now show speed in km/h instead of m/s.
-   * Default state (when realtime exists): 📡 on, ✈️ off, 🚗 on, 🚶 on.
+   * Default state (when realtime exists): Safecast heart on, ✈️ off, 🚗 on, 🚶 on.
    */
   function createSpeedFilterControls() {
 
@@ -1188,16 +1207,18 @@ document.addEventListener('DOMContentLoaded', function () {
         div.style.padding = '6px 10px';
 
         // helper that returns one <label> line
-        const row = (id, emoji, checked) => `
+        const row = (id, iconMarkup, checked) => `
             <label style="white-space:nowrap;display:block;cursor:pointer;">
             <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
-          ${emoji}
+            <span class="speed-filter-icon">${iconMarkup}</span>
             </label>`;
 
         // Build rows dynamically so the realtime checkbox only appears when supported server-side.
         const pieces = [];
         if (window.safecastRealtimeEnabled) {
-          pieces.push(row('sfLive', '📡', state.live));
+          // Use the Safecast heart artwork so the live toggle reflects the new branding.
+          const liveIconMarkup = '<img src="safecast-heart.svg" alt="Realtime measurements"/>';
+          pieces.push(row('sfLive', liveIconMarkup, state.live));
           pieces.push('<div class="leaflet-control-layers-separator"></div>');
         }
         pieces.push(

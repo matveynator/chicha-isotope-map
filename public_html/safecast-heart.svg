@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="120" height="110" viewBox="0 0 120 110" xmlns="http://www.w3.org/2000/svg">
+  <!-- We store the icon as vector graphics so it scales crisply on high-DPI displays. -->
+  <path d="M60 106L15 61C4 50 0 34 11 22C22 11 40 11 51 22L60 31L69 22C80 11 98 11 109 22C120 34 116 50 105 61Z" fill="#000000"/>
+  <!-- The white path approximates the Safecast glyph to keep brand recognition inside the heart. -->
+  <path d="M78 27C69 20 56 20 47 26L43 29H61C70 29 77 32 83 37L86 40L55 48C44 51 37 58 33 66L32 69L50 63C59 60 66 63 73 68L78 72L52 80C43 82 36 87 32 94L31 96L37 95C50 93 62 87 71 78L89 61L72 50L89 39Z" fill="#FFFFFF"/>
+  <!-- The blue circle mirrors the accent dot from the provided logo. -->
+  <circle cx="44" cy="84" r="7" fill="#4FA3C8"/>
+</svg>
