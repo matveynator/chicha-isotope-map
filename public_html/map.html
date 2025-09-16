@@ -1217,7 +1217,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const pieces = [];
         if (window.safecastRealtimeEnabled) {
           // Use the Safecast heart artwork so the live toggle reflects the new branding.
-          const liveIconMarkup = '<img src="safecast-heart.svg" alt="Realtime measurements"/>';
+          const liveIconMarkup = '<img src="/static/images/safecast-heart-logo.png" alt="Realtime measurements from safecast.org" style="width:1em; height:1em; vertical-align:middle;"/>';
           pieces.push(row('sfLive', liveIconMarkup, state.live));
           pieces.push('<div class="leaflet-control-layers-separator"></div>');
         }
