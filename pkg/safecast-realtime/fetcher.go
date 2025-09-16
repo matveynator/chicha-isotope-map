@@ -22,6 +22,7 @@ import (
 type devicePayload struct {
 	ID      string
 	Type    string  // transport tag such as car or walk
+	Tube    string  // detector type as advertised by the feed
 	Value   float64 // dose rate
 	Unit    string  // unit of Value
 	Lat     float64 // latitude in degrees
@@ -56,7 +57,25 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 		d.Type = v
 	}
 	if v, ok := m["service_transport"].(string); ok {
-		d.Type = strings.SplitN(v, ":", 2)[0]
+		parts := strings.Split(v, ":")
+		if len(parts) > 0 {
+			d.Type = strings.TrimSpace(parts[0])
+		}
+		for _, p := range parts[1:] {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				d.Tube = p
+				break
+			}
+		}
+	}
+
+	if d.Tube == "" {
+		if v, ok := m["tube_type"].(string); ok {
+			d.Tube = v
+		} else if v, ok := m["tube"].(string); ok {
+			d.Tube = v
+		}
 	}
 
 	// Coordinates arrive under loc_lat/loc_lon.
@@ -171,6 +190,75 @@ func countryFor(lat, lon float64) string {
 	return "??"
 }
 
+// allowedTubePrefixes keeps the detector models we can calibrate confidently.
+// Keeping the list local avoids spreading knowledge about hardware quirks
+// across the code base, which echoes "Clear is better than clever".
+var allowedTubePrefixes = []string{
+	"lnd7317",
+	"lnd7318",
+	"lnd712",
+	"lnd7128",
+}
+
+// containsAir reports whether the descriptor hints at Safecast Air hardware.
+// Air units do not produce radiation readings, so we filter them eagerly.
+func containsAir(s string) bool {
+	if s == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(s), "air")
+}
+
+// matchesAllowedTube reports whether the cleaned descriptor references one of
+// the supported Geiger-Müller tubes.  We look for substrings instead of exact
+// matches so payloads like "lnd_7318c_compensated" pass without another table.
+func matchesAllowedTube(clean string) bool {
+	if clean == "" {
+		return false
+	}
+	for _, prefix := range allowedTubePrefixes {
+		if strings.Contains(clean, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// isRadiationReading decides whether a payload likely contains a meaningful
+// radiation reading.  We exclude Safecast Air devices and tubes outside our
+// calibration table so the map never shows bogus zeroes or inflated numbers.
+// This keeps the conversion rules in one place and follows "A little copying
+// is better than a little dependency" by avoiding shared globals.
+func isRadiationReading(d devicePayload) bool {
+	if containsAir(d.Type) || containsAir(d.Tube) {
+		return false
+	}
+
+	tubeClean := keepAlphaNumeric(strings.ToLower(d.Tube))
+	if tubeClean != "" && !matchesAllowedTube(tubeClean) {
+		return false
+	}
+
+	unitNormalized := normalizeUnit(d.Unit)
+	if unitNormalized == "" {
+		return false
+	}
+	if strings.Contains(unitNormalized, "usv") {
+		return true
+	}
+
+	unitClean := keepAlphaNumeric(unitNormalized)
+	if matchesAllowedTube(unitClean) {
+		return true
+	}
+
+	if tubeClean != "" && matchesAllowedTube(tubeClean) {
+		return true
+	}
+
+	return false
+}
+
 // Start launches background workers that keep the live table updated.
 // We poll every 15 minutes as requested by Safecast to avoid flooding.
 // Two goroutines communicate over a channel; no mutex is needed.
@@ -250,20 +338,35 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				now := time.Now().Unix()
 
 				for _, d := range data {
+					if d.ID == "" {
+						continue
+					}
+					if !isRadiationReading(d) {
+						continue
+					}
+					if d.Lat == 0 && d.Lon == 0 {
+						continue
+					}
+					if d.Time == 0 {
+						continue
+					}
+
+					doseRate, ok := FromRealtime(d.Value, d.Unit)
+					if !ok {
+						continue
+					}
+
 					curr[d.ID] = struct{}{}
 					c := d.Country
 					if c == "" {
 						c = countryFor(d.Lat, d.Lon)
 					}
-					// Convert CPM into µSv/h for country summaries so we log
-					// realistic averages.  Unknown units stay out of the
-					// statistics to avoid inflating the numbers.
-					if doseRate, ok := FromRealtime(d.Value, d.Unit); ok {
-						s := stats[c]
-						s.sum += doseRate
-						s.count++
-						stats[c] = s
-					}
+					// We already converted the value once; reuse it for
+					// summaries so statistics reflect what we display.
+					s := stats[c]
+					s.sum += doseRate
+					s.count++
+					stats[c] = s
 
 					m := database.RealtimeMeasurement{
 						DeviceID:   d.ID,
@@ -282,7 +385,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					case measurements <- m:
 					}
 				}
-				reports <- len(data)
+				reports <- len(curr)
 
 				// Calculate device churn since last poll.
 				added, removed := 0, 0
