@@ -22,6 +22,7 @@ import (
 type devicePayload struct {
 	ID      string
 	Type    string  // transport tag such as car or walk
+	Name    string  // human friendly device title from the feed
 	Tube    string  // detector type as advertised by the feed
 	Value   float64 // dose rate
 	Unit    string  // unit of Value
@@ -68,6 +69,17 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 				break
 			}
 		}
+	}
+
+	// Capture the descriptive title so downstream logic can recognise
+	// Safecast Air units by name.  We accept several field variants
+	// because the upstream feed does not always use the same keys.
+	if v, ok := m["device_title"].(string); ok {
+		d.Name = v
+	} else if v, ok := m["device_name"].(string); ok {
+		d.Name = v
+	} else if v, ok := m["title"].(string); ok {
+		d.Name = v
 	}
 
 	if d.Tube == "" {
@@ -124,6 +136,14 @@ gotValue:
 
 	// Timestamp is provided as RFC3339 string.
 	if v, ok := m["when_captured"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			d.Time = t.Unix()
+		}
+	} else if v, ok := m["value_time"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			d.Time = t.Unix()
+		}
+	} else if v, ok := m["captured_at"].(string); ok {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
 			d.Time = t.Unix()
 		}
@@ -190,16 +210,6 @@ func countryFor(lat, lon float64) string {
 	return "??"
 }
 
-// allowedTubePrefixes keeps the detector models we can calibrate confidently.
-// Keeping the list local avoids spreading knowledge about hardware quirks
-// across the code base, which echoes "Clear is better than clever".
-var allowedTubePrefixes = []string{
-	"lnd7317",
-	"lnd7318",
-	"lnd712",
-	"lnd7128",
-}
-
 // containsAir reports whether the descriptor hints at Safecast Air hardware.
 // Air units do not produce radiation readings, so we filter them eagerly.
 func containsAir(s string) bool {
@@ -209,54 +219,15 @@ func containsAir(s string) bool {
 	return strings.Contains(strings.ToLower(s), "air")
 }
 
-// matchesAllowedTube reports whether the cleaned descriptor references one of
-// the supported Geiger-Müller tubes.  We look for substrings instead of exact
-// matches so payloads like "lnd_7318c_compensated" pass without another table.
-func matchesAllowedTube(clean string) bool {
-	if clean == "" {
-		return false
+// convertIfRadiation filters Safecast Air units and returns the converted
+// radiation value when the reading looks usable.  Returning the µSv/h value
+// here keeps the calling loop simple and lets us reuse the same conversion
+// for summaries without reprocessing the payload.
+func convertIfRadiation(d devicePayload) (float64, bool) {
+	if containsAir(d.ID) || containsAir(d.Type) || containsAir(d.Tube) || containsAir(d.Name) {
+		return 0, false
 	}
-	for _, prefix := range allowedTubePrefixes {
-		if strings.Contains(clean, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-// isRadiationReading decides whether a payload likely contains a meaningful
-// radiation reading.  We exclude Safecast Air devices and tubes outside our
-// calibration table so the map never shows bogus zeroes or inflated numbers.
-// This keeps the conversion rules in one place and follows "A little copying
-// is better than a little dependency" by avoiding shared globals.
-func isRadiationReading(d devicePayload) bool {
-	if containsAir(d.Type) || containsAir(d.Tube) {
-		return false
-	}
-
-	tubeClean := keepAlphaNumeric(strings.ToLower(d.Tube))
-	if tubeClean != "" && !matchesAllowedTube(tubeClean) {
-		return false
-	}
-
-	unitNormalized := normalizeUnit(d.Unit)
-	if unitNormalized == "" {
-		return false
-	}
-	if strings.Contains(unitNormalized, "usv") {
-		return true
-	}
-
-	unitClean := keepAlphaNumeric(unitNormalized)
-	if matchesAllowedTube(unitClean) {
-		return true
-	}
-
-	if tubeClean != "" && matchesAllowedTube(tubeClean) {
-		return true
-	}
-
-	return false
+	return FromRealtime(d.Value, d.Unit)
 }
 
 // Start launches background workers that keep the live table updated.
@@ -326,7 +297,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				// Show the first payload for debugging when the map looks empty.
 				if len(data) > 0 {
 					d0 := data[0]
-					logf("realtime sample: id=%s lat=%f lon=%f val=%f", d0.ID, d0.Lat, d0.Lon, d0.Value)
+					logf("realtime sample: id=%s name=%q lat=%f lon=%f val=%f unit=%s", d0.ID, d0.Name, d0.Lat, d0.Lon, d0.Value, d0.Unit)
 				}
 
 				// Summaries are computed while forwarding measurements to DB.
@@ -341,18 +312,14 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					if d.ID == "" {
 						continue
 					}
-					if !isRadiationReading(d) {
+					converted, ok := convertIfRadiation(d)
+					if !ok {
 						continue
 					}
 					if d.Lat == 0 && d.Lon == 0 {
 						continue
 					}
 					if d.Time == 0 {
-						continue
-					}
-
-					doseRate, ok := FromRealtime(d.Value, d.Unit)
-					if !ok {
 						continue
 					}
 
@@ -364,7 +331,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					// We already converted the value once; reuse it for
 					// summaries so statistics reflect what we display.
 					s := stats[c]
-					s.sum += doseRate
+					s.sum += converted
 					s.count++
 					stats[c] = s
 
