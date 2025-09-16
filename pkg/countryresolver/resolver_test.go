@@ -2,12 +2,18 @@ package countryresolver
 
 import "testing"
 
+// TestResolveSampleLocations verifies that representative cities resolve
+// to the expected ISO codes.  Covering border regions ensures the
+// priority ordering in buildBoxes remains correct.
 func TestResolveSampleLocations(t *testing.T) {
 	tests := []struct {
 		lat, lon float64
 		want     string
 	}{
 		{50.4501, 30.5234, "UA"},   // Kyiv, Ukraine
+		{41.7151, 44.8271, "GE"},   // Tbilisi, Georgia
+		{40.4093, 49.8671, "AZ"},   // Baku, Azerbaijan
+		{40.1792, 44.4991, "AM"},   // Yerevan, Armenia
 		{35.4759, 139.5716, "JP"},  // Tokyo area, Japan
 		{37.4428, -122.1281, "US"}, // California, USA
 		{-43.5322, 172.6089, "NZ"}, // Christchurch, New Zealand
@@ -23,6 +29,17 @@ func TestResolveSampleLocations(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("Resolve(%f,%f) = %q, want %q", tc.lat, tc.lon, got, tc.want)
 		}
+	}
+}
+
+// TestResolveInvalid ensures invalid coordinates return an empty code so
+// callers can treat them as unknown.
+func TestResolveInvalid(t *testing.T) {
+	if got, _ := Resolve(91, 0); got != "" {
+		t.Fatalf("Resolve(91,0) = %q, want empty", got)
+	}
+	if got, _ := Resolve(0, 181); got != "" {
+		t.Fatalf("Resolve(0,181) = %q, want empty", got)
 	}
 }
 

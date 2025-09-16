@@ -424,11 +424,12 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						continue
 					}
 
-					country := strings.ToUpper(strings.TrimSpace(d.Country))
+					resolvedCode, _ := countryresolver.Resolve(d.Lat, d.Lon)
+					// Prefer the resolver result so map legends remain consistent even
+					// when upstream payloads provide stale or incorrect hints.
+					country := resolvedCode
 					if country == "" {
-						if code, _ := countryresolver.Resolve(d.Lat, d.Lon); code != "" {
-							country = code
-						}
+						country = strings.ToUpper(strings.TrimSpace(d.Country))
 					}
 					detector := DetectorLabel(d.Tube, d.Type, d.Name)
 
