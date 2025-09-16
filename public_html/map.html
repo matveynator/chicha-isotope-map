@@ -826,6 +826,103 @@ function getRadius(doseRate, zoomLevel) {
   return Math.max(r, 2);                       // prevent tiny circles
 }
 
+// Thresholds for realtime freshness expressed in seconds so both the
+// rendering loop and periodic refresh share the same rules.
+const LIVE_ACTIVE_WINDOW = 5 * 60;         // 5 minutes keeps "working" sensors bright
+const LIVE_RECENT_WINDOW = 24 * 60 * 60;   // 24 hours before removal
+
+// parseColor extracts RGB components from either hex (#rrggbb) or rgb(r,g,b)
+// strings.  Keeping this helper local avoids pulling external libraries while
+// letting us reuse the logic for alpha blending and contrast checks.
+function parseColor(color) {
+  if (!color) return null;
+  if (color.startsWith('#')) {
+    const hex = color.slice(1);
+    if (hex.length === 6) {
+      return {
+        r: parseInt(hex.slice(0, 2), 16),
+        g: parseInt(hex.slice(2, 4), 16),
+        b: parseInt(hex.slice(4, 6), 16),
+      };
+    }
+    if (hex.length === 3) {
+      return {
+        r: parseInt(hex[0] + hex[0], 16),
+        g: parseInt(hex[1] + hex[1], 16),
+        b: parseInt(hex[2] + hex[2], 16),
+      };
+    }
+  }
+  if (color.startsWith('rgb')) {
+    const parts = color.match(/\d+/g);
+    if (parts && parts.length >= 3) {
+      return {
+        r: parseInt(parts[0], 10),
+        g: parseInt(parts[1], 10),
+        b: parseInt(parts[2], 10),
+      };
+    }
+  }
+  return null;
+}
+
+// colorWithAlpha returns an rgba() string using the provided alpha.  We reuse
+// parseColor so realtime markers can reuse the same gradient palette while
+// dimming stale sensors without affecting the text opacity.
+function colorWithAlpha(color, alpha) {
+  const rgb = parseColor(color);
+  if (!rgb) return color;
+  const a = Math.min(Math.max(alpha, 0), 1);
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`;
+}
+
+// isDarkColor estimates perceived brightness to choose a contrasting text
+// color.  A simple luminance formula keeps the implementation lightweight.
+function isDarkColor(color) {
+  const rgb = parseColor(color);
+  if (!rgb) return false;
+  const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+  return luminance < 140;
+}
+
+// formatMicroRoentgen converts µSv/h into µR/h text while avoiding excessive
+// decimals.  Smaller values keep two decimals; larger ones are rounded to the
+// nearest whole number for quick scanning on the map.
+function formatMicroRoentgen(doseRate) {
+  const micro = doseRate * 100;
+  if (micro >= 100) return micro.toFixed(0);
+  if (micro >= 10) return micro.toFixed(1);
+  if (micro >= 1) return micro.toFixed(2);
+  return micro.toFixed(3);
+}
+
+// buildRealtimeIcon returns the HTML markup and sizing data for a realtime
+// marker.  It handles the three freshness buckets: active (white ring, opaque),
+// recent (grey ring, half opacity), and stale (>24h, hidden).
+function buildRealtimeIcon(marker, zoomLevel, nowSec) {
+  const lastSeen = marker.date || 0;
+  if (!lastSeen) return null;
+
+  const ageSec = nowSec - lastSeen;
+  if (ageSec > LIVE_RECENT_WINDOW) {
+    return null; // drop sensors that have been silent longer than a day
+  }
+
+  const active = ageSec <= LIVE_ACTIVE_WINDOW;
+  const baseColor = getGradientColor(marker.doseRate);
+  const fill = active ? baseColor : colorWithAlpha(baseColor, 0.5);
+  const border = active ? '#ffffff' : '#888888';
+  const textColor = isDarkColor(active ? baseColor : fill) ? '#ffffff' : '#000000';
+
+  const radius = getRadius(marker.doseRate, zoomLevel) * 3;
+  const size = radius * 2;
+  const value = formatMicroRoentgen(marker.doseRate);
+
+  const html = `<div class="live-marker" style="background:${fill};border:2px solid ${border};color:${textColor};width:${size}px;height:${size}px;line-height:${size}px;">${value}</div>`;
+
+  return { html, size, radius };
+}
+
 
 /**
  * Decide whether the marker with given speed (m/s)
@@ -1068,6 +1165,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Initialize UI elements
   initializeUIElements();
+
+  // Periodically refresh realtime styling so markers fade without map motion.
+  setInterval(adjustMarkerRadius, 60 * 1000);
 
   /**
    * Build a Leaflet control with three check-boxes that filter markers
@@ -1480,16 +1580,11 @@ function updateMarkers(){
 
     let marker;
     if (isLive) { // realtime marker with value inside the circle
-      const ageSec = Date.now()/1000 - m.date;
-      const fresh = ageSec < 20*60; // stale after 20 minutes
-      const baseColor = getGradientColor(m.doseRate);
-      const border = fresh ? '#fff' : '#888';
-      const opacity = fresh ? 1 : 0.3;
-      const r = getRadius(m.doseRate, zoom) * 3; // larger circle for realtime visibility
-      const size = r * 2;
-      const html = `<div class="live-marker" style="background:${baseColor};border:1px solid ${border};opacity:${opacity};width:${size}px;height:${size}px;line-height:${size}px;">${m.doseRate.toFixed(2)}</div>`;
+      const nowSec = Date.now() / 1000;
+      const icon = buildRealtimeIcon(m, zoom, nowSec);
+      if (!icon) return; // device is older than 24 hours
       marker = L.marker([m.lat, m.lon], {
-        icon: L.divIcon({className:'', html: html, iconSize:[size, size], iconAnchor:[r, r]})
+        icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
       })
       .addTo(map)
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
@@ -1551,19 +1646,18 @@ function debounceUpdateMarkers() {
 
 function adjustMarkerRadius() {
   var zoomLevel = map.getZoom();
+  const nowSec = Date.now() / 1000;
   for (let key in circleMarkers) {
     let marker = circleMarkers[key];
     if (marker.isRealtime) {
-      // Rebuild div icon to scale realtime markers with zoom
-      const r = getRadius(marker.doseRate, zoomLevel) * 1.5;
-      const size = r * 2;
-      const ageSec = Date.now()/1000 - marker.date;
-      const fresh = ageSec < 20*60; // 20 minutes freshness window
-      const baseColor = getGradientColor(marker.doseRate);
-      const border = fresh ? '#fff' : '#888';
-      const opacity = fresh ? 1 : 0.3;
-      const html = `<div class="live-marker" style="background:${baseColor};border:1px solid ${border};opacity:${opacity};width:${size}px;height:${size}px;line-height:${size}px;">${marker.doseRate.toFixed(2)}</div>`;
-      marker.setIcon(L.divIcon({className:'', html: html, iconSize:[size, size], iconAnchor:[r, r]}));
+      // Recompute icon style so stale sensors fade without user interaction.
+      const icon = buildRealtimeIcon(marker, zoomLevel, nowSec);
+      if (!icon) {
+        map.removeLayer(marker);
+        delete circleMarkers[key];
+        continue;
+      }
+      marker.setIcon(L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]}));
     } else if (typeof marker.setRadius === 'function') {
       // Circle markers scale by adjusting radius directly
       let newRadius = getRadius(marker.doseRate, zoomLevel);

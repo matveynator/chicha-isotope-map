@@ -231,12 +231,13 @@ func convertIfRadiation(d devicePayload) (float64, bool) {
 }
 
 // Start launches background workers that keep the live table updated.
-// We poll every 15 minutes as requested by Safecast to avoid flooding.
+// We poll every five minutes so active counters stay fresh while still being
+// polite to the upstream service.
 // Two goroutines communicate over a channel; no mutex is needed.
 // logf defines where progress messages are written.
 func Start(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
 	const url = "https://tt.safecast.org/devices"
-	const pollInterval = 15 * time.Minute
+	const pollInterval = 5 * time.Minute
 
 	if logf == nil {
 		logf = log.Printf
@@ -287,6 +288,10 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 		prevIDs := make(map[string]struct{})
 
 		for {
+			now := time.Now()
+			nowUnix := now.Unix()
+			cutoff := now.Add(-24 * time.Hour).Unix()
+
 			data, err := fetch(ctx, url)
 			if err != nil {
 				logf("realtime fetch error: %v", err)
@@ -306,7 +311,6 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					count int
 				})
 				curr := make(map[string]struct{})
-				now := time.Now().Unix()
 
 				for _, d := range data {
 					if d.ID == "" {
@@ -323,6 +327,30 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						continue
 					}
 
+					m := database.RealtimeMeasurement{
+						DeviceID:   d.ID,
+						Transport:  d.Type,
+						Value:      d.Value,
+						Unit:       d.Unit,
+						Lat:        d.Lat,
+						Lon:        d.Lon,
+						MeasuredAt: d.Time,
+						FetchedAt:  nowUnix,
+					}
+					select {
+					case <-ctx.Done():
+						close(measurements)
+						return
+					case measurements <- m:
+					}
+
+					if d.Time < cutoff {
+						// Store the sample for history but skip it in live summaries once
+						// the reading is older than a day. This keeps the map clean while
+						// preserving data for future charts.
+						continue
+					}
+
 					curr[d.ID] = struct{}{}
 					c := d.Country
 					if c == "" {
@@ -334,23 +362,6 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					s.sum += converted
 					s.count++
 					stats[c] = s
-
-					m := database.RealtimeMeasurement{
-						DeviceID:   d.ID,
-						Transport:  d.Type,
-						Value:      d.Value,
-						Unit:       d.Unit,
-						Lat:        d.Lat,
-						Lon:        d.Lon,
-						MeasuredAt: d.Time,
-						FetchedAt:  now,
-					}
-					select {
-					case <-ctx.Done():
-						close(measurements)
-						return
-					case measurements <- m:
-					}
 				}
 				reports <- len(curr)
 
@@ -380,7 +391,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				logf("realtime summary: %s added=%d removed=%d", strings.Join(parts, " "), added, removed)
 
 				// Promote stale device histories to normal tracks once a day.
-				go db.PromoteStaleRealtime(time.Now().Add(-24*time.Hour).Unix(), dbType)
+				go db.PromoteStaleRealtime(cutoff, dbType)
 			}
 			select {
 			case <-ctx.Done():
