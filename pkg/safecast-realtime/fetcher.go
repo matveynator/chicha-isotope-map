@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,71 @@ type devicePayload struct {
 	Lon     float64 // longitude in degrees
 	Time    int64   // measurement timestamp
 	Country string  // optional country hint
+	Metrics map[string]float64
+}
+
+// numericValue converts different JSON value representations into float64.
+// Safecast occasionally serialises environmental metrics as strings; normalising
+// them here keeps the rest of the pipeline simple and mirrors "Clear is better
+// than clever" by exposing plain numbers downstream.
+func numericValue(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case string:
+		s := strings.TrimSpace(t)
+		if s == "" {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
+}
+
+// metricKeyFor recognises temperature and humidity hints from the payload map.
+// Returning a normalised key allows us to keep the stored JSON compact and easy
+// to translate in the UI later.
+func metricKeyFor(raw string) (string, bool) {
+	if strings.Contains(raw, "lnd") {
+		return "", false // measurement fields are handled separately
+	}
+	if strings.Contains(raw, "temperature") || strings.HasPrefix(raw, "temp") || strings.Contains(raw, "_temp") {
+		if strings.Contains(raw, "_f") || strings.Contains(raw, "tempf") {
+			return "temperature_f", true
+		}
+		return "temperature_c", true
+	}
+	if strings.Contains(raw, "humidity") || strings.HasPrefix(raw, "humid") {
+		return "humidity_percent", true
+	}
+	return "", false
+}
+
+// addMetric records a derived environmental metric when present.
+func (d *devicePayload) addMetric(key string, value float64) {
+	if d.Metrics == nil {
+		d.Metrics = make(map[string]float64)
+	}
+	d.Metrics[key] = value
+}
+
+// encodeMetrics serialises optional metrics so they can be stored alongside realtime rows.
+// Returning an empty string keeps SQL inserts simple when no additional data is present.
+func encodeMetrics(metrics map[string]float64) string {
+	if len(metrics) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(metrics)
+	if err != nil {
+		log.Printf("encode metrics: %v", err)
+		return ""
+	}
+	return string(b)
 }
 
 // UnmarshalJSON decodes a devicePayload from a generic map so we can
@@ -156,6 +222,18 @@ gotValue:
 	// Optional country hint if provided.
 	if v, ok := m["country"].(string); ok {
 		d.Country = v
+	}
+
+	for k, v := range m {
+		key, ok := metricKeyFor(strings.ToLower(k))
+		if !ok {
+			continue
+		}
+		val, ok := numericValue(v)
+		if !ok {
+			continue
+		}
+		d.addMetric(key, val)
 	}
 	return nil
 }
@@ -327,15 +405,24 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						continue
 					}
 
+					country := d.Country
+					if country == "" {
+						country = countryFor(d.Lat, d.Lon)
+					}
+
 					m := database.RealtimeMeasurement{
 						DeviceID:   d.ID,
 						Transport:  d.Type,
+						DeviceName: d.Name,
+						Tube:       d.Tube,
+						Country:    country,
 						Value:      d.Value,
 						Unit:       d.Unit,
 						Lat:        d.Lat,
 						Lon:        d.Lon,
 						MeasuredAt: d.Time,
 						FetchedAt:  nowUnix,
+						Extra:      encodeMetrics(d.Metrics),
 					}
 					select {
 					case <-ctx.Done():
@@ -352,10 +439,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					}
 
 					curr[d.ID] = struct{}{}
-					c := d.Country
-					if c == "" {
-						c = countryFor(d.Lat, d.Lon)
-					}
+					c := country
 					// We already converted the value once; reuse it for
 					// summaries so statistics reflect what we display.
 					s := stats[c]

@@ -2299,6 +2299,110 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// realtimeHistoryHandler returns one year of realtime measurements for a device.
+// The handler keeps the response lightweight so the frontend can draw Grafana-style
+// charts without shipping a dedicated dashboard backend.
+func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	if !*safecastRealtimeEnabled {
+		http.NotFound(w, r)
+		return
+	}
+
+	device := strings.TrimSpace(r.URL.Query().Get("device"))
+	if device == "" {
+		http.Error(w, "missing device", http.StatusBadRequest)
+		return
+	}
+	if strings.HasPrefix(device, "live:") {
+		device = strings.TrimPrefix(device, "live:")
+	}
+
+	now := time.Now()
+	since := now.Add(-365 * 24 * time.Hour).Unix()
+	dayCutoff := now.Add(-24 * time.Hour).Unix()
+	monthCutoff := now.Add(-30 * 24 * time.Hour).Unix()
+
+	rows, err := db.GetRealtimeHistory(device, since, *dbType)
+	if err != nil {
+		http.Error(w, "history error", http.StatusInternalServerError)
+		return
+	}
+
+	type point struct {
+		Timestamp int64   `json:"timestamp"`
+		Value     float64 `json:"value"`
+	}
+
+	series := map[string][]point{
+		"day":   {},
+		"month": {},
+		"year":  {},
+	}
+
+	var (
+		metaName, metaTransport, metaTube, metaCountry string
+		extra                                          map[string]float64
+	)
+
+	for _, m := range rows {
+		val, ok := safecastrealtime.FromRealtime(m.Value, m.Unit)
+		if !ok {
+			continue
+		}
+
+		pt := point{Timestamp: m.MeasuredAt, Value: val}
+		series["year"] = append(series["year"], pt)
+		if m.MeasuredAt >= monthCutoff {
+			series["month"] = append(series["month"], pt)
+		}
+		if m.MeasuredAt >= dayCutoff {
+			series["day"] = append(series["day"], pt)
+		}
+
+		if metaName == "" && m.DeviceName != "" {
+			metaName = m.DeviceName
+		}
+		if metaTransport == "" && m.Transport != "" {
+			metaTransport = m.Transport
+		}
+		if metaTube == "" && m.Tube != "" {
+			metaTube = m.Tube
+		}
+		if metaCountry == "" && m.Country != "" {
+			metaCountry = m.Country
+		}
+
+		trimmed := strings.TrimSpace(m.Extra)
+		if trimmed != "" {
+			var parsed map[string]float64
+			if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+				extra = parsed
+			}
+		}
+	}
+
+	resp := struct {
+		DeviceID   string             `json:"deviceID"`
+		DeviceName string             `json:"deviceName,omitempty"`
+		Transport  string             `json:"transport,omitempty"`
+		Tube       string             `json:"tube,omitempty"`
+		Country    string             `json:"country,omitempty"`
+		Series     map[string][]point `json:"series"`
+		Extra      map[string]float64 `json:"extra,omitempty"`
+	}{
+		DeviceID:   device,
+		DeviceName: metaName,
+		Transport:  metaTransport,
+		Tube:       metaTube,
+		Country:    metaCountry,
+		Series:     series,
+		Extra:      extra,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 // =====================
 // MAIN
 // =====================
@@ -2374,6 +2478,7 @@ func main() {
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)
+	http.HandleFunc("/realtime_history", realtimeHistoryHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
 
