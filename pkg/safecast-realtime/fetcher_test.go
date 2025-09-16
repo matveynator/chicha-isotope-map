@@ -111,3 +111,31 @@ func TestDevicePayloadUnmarshalTube(t *testing.T) {
 		t.Fatalf("Time=%d want %d", dAlt.Time, wantTime.Unix())
 	}
 }
+
+// TestDevicePayloadMetrics ensures we pick up optional environmental metrics.
+func TestDevicePayloadMetrics(t *testing.T) {
+	t.Parallel()
+
+	js := `{
+                "device_urn": "device:42",
+                "loc_lat": 35.0,
+                "loc_lon": 139.0,
+                "temperature_c": 21.5,
+                "humidity": "48",
+                "when_captured": "2024-05-01T12:00:00Z"
+        }`
+
+	var d devicePayload
+	if err := json.Unmarshal([]byte(js), &d); err != nil {
+		t.Fatalf("unmarshal metrics: %v", err)
+	}
+	if d.Metrics == nil {
+		t.Fatalf("expected metrics map")
+	}
+	if v, ok := d.Metrics["temperature_c"]; !ok || v != 21.5 {
+		t.Fatalf("temperature_c=%v ok=%v", v, ok)
+	}
+	if v, ok := d.Metrics["humidity_percent"]; !ok || v != 48 {
+		t.Fatalf("humidity_percent=%v ok=%v", v, ok)
+	}
+}

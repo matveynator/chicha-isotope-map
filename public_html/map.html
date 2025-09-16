@@ -532,16 +532,68 @@ body, html {
         /* Removed old collapsible legend styles (legend-control, legend-header, legend-title, legend-toggle, legend-body, legend-row, legend-swatch, legend-label)
            to avoid duplicate legends. Only the compact legend + modal remain. */
 
-        /* Live marker icon: a circle with centered value text */
+        /* Live marker icon now combines the heart logo with the dose value. */
         .live-marker {
           border-radius: 50%;
-          width: 24px;
-          height: 24px;
-          line-height: 24px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 2px;
           text-align: center;
-          font-size: 10px;
-          font-weight: bold;
+          font-weight: 600;
+          box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
           color: #000;
+          overflow: hidden;
+        }
+
+        .live-marker-heart {
+          display: block;
+          width: 60%;
+          height: auto;
+          pointer-events: none;
+        }
+
+        .live-marker-value {
+          line-height: 1;
+          font-size: 0.55em;
+          letter-spacing: -0.02em;
+        }
+
+        .live-tooltip {
+          max-width: 260px;
+        }
+
+        .live-tooltip-header {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          margin-bottom: 6px;
+        }
+
+        .live-tooltip-heart {
+          width: 28px;
+          height: 28px;
+        }
+
+        .live-tooltip-title {
+          font-weight: 700;
+          margin: 0;
+        }
+
+        .live-tooltip-desc {
+          margin: 0;
+          font-size: 12px;
+          line-height: 1.4;
+        }
+
+        .live-extra-list {
+          margin: 4px 0 0 0;
+          padding-left: 18px;
+        }
+
+        .live-extra-list li {
+          margin: 2px 0;
         }
 
         /* Keep the icons in the speed filter aligned regardless of emoji vs. SVG source. */
@@ -561,6 +613,112 @@ body, html {
           display: block;
           width: 100%;
           height: 100%;
+        }
+
+        #liveModal {
+          display: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.6);
+          z-index: 2100;
+          justify-content: center;
+          align-items: center;
+        }
+
+        .live-modal-content {
+          background: var(--modal-bg);
+          color: var(--modal-text);
+          border: var(--modal-border);
+          width: min(720px, 92%);
+          max-height: 85vh;
+          overflow-y: auto;
+          padding: 20px;
+          border-radius: 12px;
+          box-shadow: 0 0 12px rgba(0, 0, 0, 0.45);
+          font-family: inherit;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .live-modal-header {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .live-modal-heart {
+          width: 40px;
+          height: 40px;
+        }
+
+        .live-modal-title {
+          margin: 0;
+          font-size: 20px;
+        }
+
+        .live-modal-description {
+          margin: 4px 0 0 0;
+          line-height: 1.6;
+        }
+
+        .live-modal-meta {
+          display: grid;
+          gap: 6px;
+          font-size: 14px;
+        }
+
+        .live-chart-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .live-chart-block {
+          background: var(--control-bg);
+          border: var(--legend-border);
+          border-radius: 10px;
+          padding: 12px;
+        }
+
+        .live-chart-title {
+          margin: 0 0 8px 0;
+          font-weight: 600;
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+        }
+
+        .live-chart-title span {
+          font-size: 12px;
+        }
+
+        .live-chart-canvas {
+          display: block;
+          width: 100%;
+          height: 180px;
+          border-radius: 6px;
+          background: rgba(0,0,0,0.05);
+        }
+
+        .live-chart-empty {
+          margin: 0;
+          font-size: 12px;
+          color: var(--modal-text);
+        }
+
+        .live-modal-close {
+          align-self: flex-end;
+          padding: 6px 14px;
+          background: var(--control-bg);
+          border: var(--legend-border);
+          border-radius: 6px;
+          cursor: pointer;
+          font-family: inherit;
+          color: var(--modal-text);
         }
 
     </style>
@@ -803,6 +961,39 @@ body, html {
   </div>
 </div>
 
+<!-- Modal with Grafana-style stacked charts for Safecast realtime sensors -->
+<div id="liveModal">
+  <div class="live-modal-content">
+    <div class="live-modal-header">
+      <img src="/static/images/safecast-heart-logo.png" alt="Safecast realtime sensor" class="live-modal-heart">
+      <div>
+        <h3 id="liveModalTitle" class="live-modal-title"></h3>
+        <p id="liveModalDescription" class="live-modal-description"></p>
+      </div>
+    </div>
+    <div id="liveModalMeta" class="live-modal-meta"></div>
+    <div id="liveModalExtra" class="live-modal-meta"></div>
+    <div class="live-chart-stack">
+      <div class="live-chart-block" data-range="day">
+        <h4 class="live-chart-title"><span id="liveChartTitleDay"></span><span>µSv/h</span></h4>
+        <canvas class="live-chart-canvas" data-range="day"></canvas>
+        <p class="live-chart-empty" data-range="day"></p>
+      </div>
+      <div class="live-chart-block" data-range="month">
+        <h4 class="live-chart-title"><span id="liveChartTitleMonth"></span><span>µSv/h</span></h4>
+        <canvas class="live-chart-canvas" data-range="month"></canvas>
+        <p class="live-chart-empty" data-range="month"></p>
+      </div>
+      <div class="live-chart-block" data-range="year">
+        <h4 class="live-chart-title"><span id="liveChartTitleYear"></span><span>µSv/h</span></h4>
+        <canvas class="live-chart-canvas" data-range="year"></canvas>
+        <p class="live-chart-empty" data-range="year"></p>
+      </div>
+    </div>
+    <button type="button" class="live-modal-close" id="liveModalClose"></button>
+  </div>
+</div>
+
     <!-- Load Leaflet JavaScript library -->
     <script src="/static/leaflet.js"></script>
 
@@ -915,6 +1106,126 @@ function formatMicroRoentgen(doseRate) {
   return micro.toFixed(3);
 }
 
+// escapeHtml protects popups against user-supplied strings like device names.
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).replace(/[&<>"']/g, function(ch) {
+    switch (ch) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#39;';
+      default: return ch;
+    }
+  });
+}
+
+function formatDateTime(ts) {
+  if (!ts) return '—';
+  const date = new Date(ts * 1000);
+  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  return date.toLocaleString(lang, { hour12: false });
+}
+
+function approximateLocalTime(lat, lon) {
+  if (typeof lon !== 'number' || !isFinite(lon)) return null;
+  const offsetHours = Math.round(lon / 15);
+  const offsetMs = offsetHours * 60 * 60 * 1000;
+  const remote = new Date(Date.now() + offsetMs);
+  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  const label = offsetHours === 0 ? 'UTC' : (offsetHours > 0 ? `UTC+${offsetHours}` : `UTC${offsetHours}`);
+  return { text: remote.toLocaleString(lang, { hour12: false }), zone: label };
+}
+
+function transportLabel(transport) {
+  const key = (transport || '').toLowerCase();
+  if (key.includes('walk')) return translate('live_marker_transport_walk');
+  if (key.includes('car') || key.includes('van')) return translate('live_marker_transport_car');
+  if (key.includes('bike')) return translate('live_marker_transport_bike');
+  if (key.includes('air') || key.includes('plane')) return translate('live_marker_transport_air');
+  return translate('live_marker_transport_unknown');
+}
+
+function transportSentence(transport) {
+  const key = (transport || '').toLowerCase();
+  if (key.includes('walk')) return translate('live_marker_desc_transport_walk');
+  if (key.includes('car') || key.includes('van')) return translate('live_marker_desc_transport_car');
+  if (key.includes('bike')) return translate('live_marker_desc_transport_bike');
+  if (key.includes('air') || key.includes('plane')) return translate('live_marker_desc_transport_air');
+  return translate('live_marker_desc_transport_unknown');
+}
+
+function describeLiveSensor(marker) {
+  // We use bracket placeholders (e.g. [[name]]) so the Go template parser leaves
+  // them untouched while still allowing readable replacement in the browser.
+  const subject = marker.deviceName
+    ? translate('live_marker_desc_named').replace('[[name]]', escapeHtml(marker.deviceName))
+    : translate('live_marker_desc_generic');
+  const place = marker.country
+    ? translate('live_marker_desc_location').replace('[[place]]', escapeHtml(marker.country))
+    : translate('live_marker_desc_location_unknown');
+  const transport = transportSentence(marker.transport);
+  const tube = marker.tube
+    ? translate('live_marker_desc_tube').replace('[[tube]]', escapeHtml(marker.tube))
+    : translate('live_marker_desc_no_tube');
+  return [subject, place, transport, tube].join(' ');
+}
+
+function labelForExtraKey(key) {
+  switch (key) {
+    case 'temperature_c':
+      return translate('live_marker_temperature');
+    case 'temperature_f':
+      return translate('live_marker_temperature_f');
+    case 'humidity_percent':
+      return translate('live_marker_humidity');
+    default:
+      return key.replace(/_/g, ' ').replace(/\b\w/g, function(m){ return m.toUpperCase(); });
+  }
+}
+
+function formatExtraValue(key, value) {
+  if (typeof value !== 'number' || !isFinite(value)) return null;
+  if (key === 'temperature_c' || key === 'temperature_f') {
+    return value.toFixed(1) + (key.endsWith('_f') ? ' °F' : ' °C');
+  }
+  if (key === 'humidity_percent') {
+    return value.toFixed(0) + ' %';
+  }
+  return value.toFixed(2);
+}
+
+function renderLiveExtras(extra) {
+  if (!extra || typeof extra !== 'object') return '';
+  const items = [];
+  Object.keys(extra).sort().forEach(function(key){
+    const label = labelForExtraKey(key);
+    const val = formatExtraValue(key, extra[key]);
+    if (!label || !val) return;
+    items.push('<li>' + label + ': ' + val + '</li>');
+  });
+  if (!items.length) return '';
+  return '<div><strong>' + translate('live_marker_extra_intro') + ':</strong><ul class="live-extra-list">' + items.join('') + '</ul></div>';
+}
+
+function buildDeviceMeta(marker) {
+  const rows = [];
+  if (marker.deviceName) {
+    rows.push('<div><strong>' + translate('live_marker_device_label') + ':</strong> ' + escapeHtml(marker.deviceName) + '</div>');
+  }
+  if (marker.transport) {
+    rows.push('<div><strong>' + translate('live_marker_transport') + ':</strong> ' + transportLabel(marker.transport) + '</div>');
+  }
+  if (marker.tube) {
+    rows.push('<div><strong>' + translate('live_marker_detector') + ':</strong> ' + escapeHtml(marker.tube) + '</div>');
+  }
+  if (marker.country) {
+    rows.push('<div><strong>' + translate('live_marker_country') + ':</strong> ' + escapeHtml(marker.country) + '</div>');
+  }
+  return rows.join('');
+}
+
 // buildRealtimeIcon returns the HTML markup and sizing data for a realtime
 // marker.  It handles the three freshness buckets: active (white ring, opaque),
 // recent (grey ring, half opacity), and stale (>24h, hidden).
@@ -936,8 +1247,14 @@ function buildRealtimeIcon(marker, zoomLevel, nowSec) {
   const radius = getRadius(marker.doseRate, zoomLevel) * 3;
   const size = radius * 2;
   const value = formatMicroRoentgen(marker.doseRate);
+  const fontSize = Math.max(Math.round(size * 0.32), 11);
+  const heartSize = Math.max(Math.round(size * 0.5), 14);
 
-  const html = `<div class="live-marker" style="background:${fill};border:2px solid ${border};color:${textColor};width:${size}px;height:${size}px;line-height:${size}px;">${value}</div>`;
+  const html = `
+    <div class="live-marker" style="background:${fill};border:2px solid ${border};color:${textColor};width:${size}px;height:${size}px;font-size:${fontSize}px;">
+      <img class="live-marker-heart" src="/static/images/safecast-heart-logo.png" alt="Safecast" style="width:${heartSize}px;"/>
+      <div class="live-marker-value">${value}</div>
+    </div>`;
 
   return { html, size, radius };
 }
@@ -1020,6 +1337,8 @@ var currentTrackID = null;
 
 // New controller to cancel previous request
 var markerStreamSource = null;
+
+var liveHistoryCache = new Map();
 
 
 /**
@@ -1523,11 +1842,55 @@ function createDateRangeSlider(){
 
 // ---------- Marker popups and tooltips ----------
 // Build HTML once so popups and tooltips share identical content.
+  function buildLiveMarkerPopup(marker) {
+    const doseRate = marker.doseRate || 0;
+    const doseLine = `${(doseRate * 100).toFixed(2)} µR/h (${doseRate.toFixed(3)} µSv/h)`;
+    const lastSeen = formatDateTime(marker.date);
+    const local = approximateLocalTime(marker.lat, marker.lon);
+    const localBlock = local ? `<div><strong>${translate('live_marker_local_time')}:</strong> ${escapeHtml(local.text)} (${escapeHtml(local.zone)})</div>` : '';
+    const metaHtml = buildDeviceMeta(marker);
+    const metaBlock = metaHtml ? `<div>${metaHtml}</div>` : '';
+    const extrasBlock = renderLiveExtras(marker.liveExtra);
+    const deviceID = marker.deviceID || (marker.trackID ? marker.trackID.replace(/^live:/, '') : '');
+    const attrs = [];
+    if (deviceID) attrs.push(`data-device="${escapeHtml(deviceID)}"`);
+    if (marker.deviceName) attrs.push(`data-name="${escapeHtml(marker.deviceName)}"`);
+    if (marker.transport) attrs.push(`data-transport="${escapeHtml(marker.transport)}"`);
+    if (marker.tube) attrs.push(`data-tube="${escapeHtml(marker.tube)}"`);
+    if (marker.country) attrs.push(`data-country="${escapeHtml(marker.country)}"`);
+    if (typeof marker.lat === 'number') attrs.push(`data-lat="${marker.lat}"`);
+    if (typeof marker.lon === 'number') attrs.push(`data-lon="${marker.lon}"`);
+    const chartLink = deviceID ? `<div style="margin-top:6px;"><a href="#" class="live-chart-link" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</a></div>` : '';
+
+    return `
+      <div class="custom-tooltip live-tooltip">
+        <div class="live-tooltip-header">
+          <img src="/static/images/safecast-heart-logo.png" alt="Safecast realtime" class="live-tooltip-heart">
+          <div>
+            <div class="live-tooltip-title">${translate('live_marker_title')}</div>
+            <p class="live-tooltip-desc">${describeLiveSensor(marker)}</p>
+          </div>
+        </div>
+        <div><strong>${translate('radiation_dose')}:</strong><br>
+          ${doseLine}
+          (<a href="#" class="risk-link">${translate(doseCategory(doseRate))}</a>)
+        </div>
+        <div><strong>${translate('live_marker_last_seen')}:</strong> ${escapeHtml(lastSeen)}</div>
+        ${localBlock}
+        ${metaBlock}
+        ${extrasBlock}
+        ${chartLink}
+      </div>`;
+  }
+
   function buildMarkerContent(marker) {
-    // Return markup with hooks; events handled globally via delegation.
-    const speedText = marker.speed < 0
-      ? '—' // negative speed marks realtime points; no motion available
-      : `${(marker.speed * 3.6).toFixed(1)} km/h`;
+    if (marker.speed < 0) {
+      return buildLiveMarkerPopup(marker);
+    }
+
+    const speedText = (typeof marker.speed === 'number' && isFinite(marker.speed))
+      ? `${(marker.speed * 3.6).toFixed(1)} km/h`
+      : '—';
 
     return `
       <div class="custom-tooltip">
@@ -1545,7 +1908,7 @@ function createDateRangeSlider(){
           </a>
         </div>
       </div>`;
-}
+  }
 
 // Popup reuses shared builder to stay in sync with tooltips.
 function getPopupContent(marker) {
@@ -1653,6 +2016,215 @@ function updateMarkers(){
     if (loadingEl) loadingEl.style.display='none';
     es.close();
   };
+}
+
+async function fetchLiveHistory(deviceID) {
+  if (!deviceID) throw new Error('device');
+  if (liveHistoryCache.has(deviceID)) {
+    return liveHistoryCache.get(deviceID);
+  }
+  const resp = await fetch('/realtime_history?device=' + encodeURIComponent(deviceID));
+  if (!resp.ok) {
+    throw new Error('history');
+  }
+  const data = await resp.json();
+  liveHistoryCache.set(deviceID, data);
+  return data;
+}
+
+function chartColors() {
+  const theme = document.documentElement.dataset.theme;
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const dark = theme === 'dark' || (!theme && prefersDark);
+  if (dark) {
+    return { grid: 'rgba(255,255,255,0.2)', line: '#90caf9', text: '#e0e0e0', background: 'rgba(255,255,255,0.08)' };
+  }
+  return { grid: 'rgba(0,0,0,0.2)', line: '#1e88e5', text: '#333333', background: 'rgba(0,0,0,0.05)' };
+}
+
+function drawLiveChart(canvas, points) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (width === 0 || height === 0) return;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const colors = chartColors();
+  canvas.style.background = colors.background;
+
+  if (!points || !points.length) {
+    return;
+  }
+
+  const minX = points[0].timestamp;
+  const maxX = points[points.length - 1].timestamp || (minX + 1);
+  let minY = points[0].value;
+  let maxY = points[0].value;
+  for (const p of points) {
+    if (p.value < minY) minY = p.value;
+    if (p.value > maxY) maxY = p.value;
+  }
+  if (minY === maxY) {
+    const delta = minY === 0 ? 0.1 : Math.abs(minY) * 0.1;
+    minY -= delta;
+    maxY += delta;
+  }
+
+  const pad = 30;
+  const bottomPad = 28;
+  const plotW = Math.max(width - pad - 12, 10);
+  const plotH = Math.max(height - pad - bottomPad, 10);
+
+  ctx.strokeStyle = colors.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad);
+  ctx.lineTo(pad, height - bottomPad);
+  ctx.lineTo(width - 10, height - bottomPad);
+  ctx.stroke();
+
+  ctx.strokeStyle = colors.line;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const rangeX = (maxX - minX) || 1;
+  const rangeY = (maxY - minY) || 1;
+  points.forEach(function(p, idx){
+    const x = pad + ((p.timestamp - minX) / rangeX) * plotW;
+    const y = (height - bottomPad) - ((p.value - minY) / rangeY) * plotH;
+    if (idx === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = colors.text;
+  ctx.font = '12px sans-serif';
+  ctx.fillText(maxY.toFixed(3), pad + 4, pad + 12);
+  ctx.fillText(minY.toFixed(3), pad + 4, height - bottomPad - 4);
+
+  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  const startLabel = new Date(minX * 1000).toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  const endLabel = new Date(maxX * 1000).toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  ctx.fillText(startLabel, pad, height - 6);
+  const endWidth = ctx.measureText(endLabel).width;
+  ctx.fillText(endLabel, Math.max(pad + 4, width - endWidth - 12), height - 6);
+}
+
+function hideLiveModal() {
+  const modal = document.getElementById('liveModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function openLiveModal(deviceID, fallback) {
+  const modal = document.getElementById('liveModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+
+  const titleEl = document.getElementById('liveModalTitle');
+  const descEl = document.getElementById('liveModalDescription');
+  const metaEl = document.getElementById('liveModalMeta');
+  const extraEl = document.getElementById('liveModalExtra');
+
+  const dayTitle = document.getElementById('liveChartTitleDay');
+  const monthTitle = document.getElementById('liveChartTitleMonth');
+  const yearTitle = document.getElementById('liveChartTitleYear');
+  if (dayTitle) dayTitle.textContent = translate('live_chart_day');
+  if (monthTitle) monthTitle.textContent = translate('live_chart_month');
+  if (yearTitle) yearTitle.textContent = translate('live_chart_year');
+
+  const closeBtn = document.getElementById('liveModalClose');
+  if (closeBtn) closeBtn.textContent = translate('live_chart_close');
+
+  const fallbackMarker = {
+    deviceName: fallback && fallback.name ? fallback.name : '',
+    transport: fallback && fallback.transport ? fallback.transport : '',
+    country: fallback && fallback.country ? fallback.country : '',
+    tube: fallback && fallback.tube ? fallback.tube : '',
+  };
+
+  if (titleEl) {
+    titleEl.textContent = fallbackMarker.deviceName || translate('live_marker_title');
+  }
+  if (descEl) {
+    descEl.textContent = describeLiveSensor(fallbackMarker);
+  }
+  if (metaEl) {
+    metaEl.innerHTML = buildDeviceMeta(fallbackMarker);
+  }
+  if (extraEl) {
+    extraEl.innerHTML = '';
+  }
+
+  ['day','month','year'].forEach(function(range){
+    const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
+    if (empty) { empty.textContent = ''; empty.style.display = 'none'; }
+    const canvas = document.querySelector(`.live-chart-canvas[data-range="${range}"]`);
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0,0,canvas.width,canvas.height);
+    }
+  });
+
+  try {
+    const data = await fetchLiveHistory(deviceID);
+    const merged = {
+      deviceName: data.deviceName || fallbackMarker.deviceName,
+      transport: data.transport || fallbackMarker.transport,
+      tube: data.tube || fallbackMarker.tube,
+      country: data.country || fallbackMarker.country,
+      lat: fallback && fallback.lat ? parseFloat(fallback.lat) : undefined,
+      lon: fallback && fallback.lon ? parseFloat(fallback.lon) : undefined,
+      liveExtra: data.extra || null,
+    };
+
+    if (titleEl) {
+      titleEl.textContent = merged.deviceName || translate('live_marker_title');
+    }
+    if (descEl) {
+      descEl.textContent = describeLiveSensor(merged);
+    }
+    if (metaEl) {
+      const metaParts = [];
+      const metaBlock = buildDeviceMeta(merged);
+      if (metaBlock) metaParts.push(metaBlock);
+      const local = approximateLocalTime(merged.lat, merged.lon);
+      if (local) {
+        metaParts.push('<div><strong>' + translate('live_marker_local_time') + ':</strong> ' + escapeHtml(local.text) + ' (' + escapeHtml(local.zone) + ')</div>');
+      }
+      metaEl.innerHTML = metaParts.join('');
+    }
+    if (extraEl) {
+      extraEl.innerHTML = renderLiveExtras(merged.liveExtra);
+    }
+
+    ['day','month','year'].forEach(function(range){
+      const canvas = document.querySelector(`.live-chart-canvas[data-range="${range}"]`);
+      const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
+      const series = data.series && data.series[range] ? data.series[range] : [];
+      if (series && series.length && canvas) {
+        if (empty) empty.style.display = 'none';
+        drawLiveChart(canvas, series);
+      } else if (empty) {
+        empty.textContent = translate('live_marker_no_data');
+        empty.style.display = 'block';
+      }
+    });
+  } catch (err) {
+    if (descEl) {
+      descEl.textContent = translate('live_marker_history_error');
+    }
+    ['day','month','year'].forEach(function(range){
+      const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
+      if (empty) {
+        empty.textContent = translate('live_marker_no_data');
+        empty.style.display = 'block';
+      }
+    });
+  }
 }
 
 
@@ -2035,6 +2607,20 @@ function centerMapToLocation() {
       ev.preventDefault();
       openLegendModal();
     }
+    if (ev.target.classList.contains('live-chart-link')) {
+      ev.preventDefault();
+      const dataset = ev.target.dataset;
+      if (!dataset.device) return;
+      const fallback = {
+        name: dataset.name || '',
+        transport: dataset.transport || '',
+        tube: dataset.tube || '',
+        country: dataset.country || '',
+        lat: dataset.lat || '',
+        lon: dataset.lon || '',
+      };
+      openLiveModal(dataset.device, fallback);
+    }
     // switch to track view when track link clicked
     if (ev.target.classList.contains('track-link')) {
       ev.preventDefault();
@@ -2066,6 +2652,16 @@ function centerMapToLocation() {
       infoModal.addEventListener('click', function(e){
         if (e.target === infoModal) infoModal.style.display = 'none';
       });
+    }
+    var liveModal = document.getElementById('liveModal');
+    if (liveModal) {
+      liveModal.addEventListener('click', function(e){
+        if (e.target === liveModal) hideLiveModal();
+      });
+    }
+    var liveClose = document.getElementById('liveModalClose');
+    if (liveClose) {
+      liveClose.addEventListener('click', function(){ hideLiveModal(); });
     }
   })();
 </script>

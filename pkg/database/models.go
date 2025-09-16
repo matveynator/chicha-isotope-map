@@ -11,6 +11,13 @@ type Marker struct {
 	Zoom      int     `json:"zoom"`      // Zoom level
 	Speed     float64 `json:"speed"`     // Speed of the measurement point
 	TrackID   string  `json:"trackID"`   // Identifier of the track
+	// Live metadata is kept optional so historical markers remain lightweight.
+	DeviceID   string             `json:"deviceID,omitempty"`   // Safecast device identifier for realtime markers
+	DeviceName string             `json:"deviceName,omitempty"` // Human readable device title when provided
+	Transport  string             `json:"transport,omitempty"`  // Transport hint such as walk, car or bike
+	Tube       string             `json:"tube,omitempty"`       // Detector tube description advertised by the feed
+	Country    string             `json:"country,omitempty"`    // Coarse country hint derived from Safecast payload
+	LiveExtra  map[string]float64 `json:"liveExtra,omitempty"`  // Additional numeric metrics (temperature, humidity, ...)
 }
 
 type Data struct {
@@ -40,4 +47,8 @@ type RealtimeMeasurement struct {
 	Lon        float64 `json:"lon"`        // Device longitude
 	MeasuredAt int64   `json:"measuredAt"` // Timestamp supplied by the device
 	FetchedAt  int64   `json:"fetchedAt"`  // When we pulled it, aids freshness checks
+	DeviceName string  `json:"deviceName"` // Human friendly name, stored to describe the sensor in popups
+	Tube       string  `json:"tube"`       // Detector tube advertised by the device feed
+	Country    string  `json:"country"`    // Country hint reported or inferred from coordinates
+	Extra      string  `json:"extra"`      // JSON encoded bag with optional metrics (temperature, humidity)
 }

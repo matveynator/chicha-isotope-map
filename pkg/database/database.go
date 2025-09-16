@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -366,12 +367,16 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGSERIAL PRIMARY KEY,
   device_id   TEXT,
   transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT,
   value       DOUBLE PRECISION,
   unit        TEXT,
   lat         DOUBLE PRECISION,
   lon         DOUBLE PRECISION,
   measured_at BIGINT,
   fetched_at  BIGINT,
+  extra       TEXT,
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
 );`
 
@@ -396,12 +401,16 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          INTEGER PRIMARY KEY,
   device_id   TEXT,
   transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT,
   value       REAL,
   unit        TEXT,
   lat         REAL,
   lon         REAL,
   measured_at BIGINT,
-  fetched_at  BIGINT
+  fetched_at  BIGINT,
+  extra       TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_realtime_unique
   ON realtime_measurements (device_id,measured_at);`
@@ -431,12 +440,16 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
   device_id   TEXT,
   transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT,
   value       DOUBLE,
   unit        TEXT,
   lat         DOUBLE,
   lon         DOUBLE,
   measured_at BIGINT,
   fetched_at  BIGINT,
+  extra       TEXT,
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
 );`
 
@@ -449,30 +462,48 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
 	}
 
 	// Ensure optional columns exist even for older databases.
-	if err := db.ensureRealtimeTransportColumn(cfg.DBType); err != nil {
-		return fmt.Errorf("add transport column: %w", err)
+	if err := db.ensureRealtimeMetadataColumns(cfg.DBType); err != nil {
+		return fmt.Errorf("add realtime metadata column: %w", err)
 	}
 
 	return nil
 }
 
-// ensureRealtimeTransportColumn adds the transport column to realtime_measurements when missing.
-// We keep SQL portable by using vendor-specific IF NOT EXISTS only where supported.
-// Older SQLite/Genji databases are inspected via PRAGMA before issuing ALTER TABLE.
-func (db *Database) ensureRealtimeTransportColumn(dbType string) error {
+// ensureRealtimeMetadataColumns upgrades realtime_measurements with optional metadata columns.
+// Each column is added lazily so existing installations keep their history without manual SQL.
+func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
+	type column struct {
+		name string
+		def  string
+	}
+	required := []column{
+		{name: "transport", def: "transport TEXT"},
+		{name: "device_name", def: "device_name TEXT"},
+		{name: "tube", def: "tube TEXT"},
+		{name: "country", def: "country TEXT"},
+		{name: "extra", def: "extra TEXT"},
+	}
+
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
-		// These engines support IF NOT EXISTS and will ignore duplicates.
-		_, err := db.DB.Exec(`ALTER TABLE realtime_measurements ADD COLUMN IF NOT EXISTS transport TEXT`)
-		return err
+		// Engines with IF NOT EXISTS syntax can add columns individually without prior inspection.
+		for _, col := range required {
+			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN IF NOT EXISTS %s", col.def)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
 
 	default:
-		// SQLite and friends: introspect the table first to avoid an error.
+		// SQLite-style engines require manual detection before issuing ALTER TABLE statements.
 		rows, err := db.DB.Query(`PRAGMA table_info(realtime_measurements);`)
 		if err != nil {
 			return fmt.Errorf("describe realtime_measurements: %w", err)
 		}
 		defer rows.Close()
+
+		present := make(map[string]bool)
 		for rows.Next() {
 			var (
 				cid     int
@@ -485,15 +516,22 @@ func (db *Database) ensureRealtimeTransportColumn(dbType string) error {
 			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
 				return fmt.Errorf("scan pragma: %w", err)
 			}
-			if name == "transport" {
-				return nil // column already present
-			}
+			present[name] = true
 		}
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("iterate pragma: %w", err)
 		}
-		_, err = db.DB.Exec(`ALTER TABLE realtime_measurements ADD COLUMN transport TEXT`)
-		return err
+
+		for _, col := range required {
+			if present[col.name] {
+				continue
+			}
+			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN %s", col.def)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 }
 
@@ -637,10 +675,11 @@ func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType stri
 	case "pgx", "duckdb":
 		_, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
-      (device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
-			m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
 		return err
 
 	default:
@@ -649,10 +688,11 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 		}
 		_, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
-      (id,device_id,transport,value,unit,lat,lon,measured_at,fetched_at)
-VALUES (?,?,?,?,?,?,?,?,?)
+      (id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(device_id,measured_at) DO NOTHING`,
-			m.ID, m.DeviceID, m.Transport, m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt)
+			m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
 		return err
 	}
 }
@@ -664,13 +704,13 @@ func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon flo
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
 		query = `
-SELECT device_id,value,unit,lat,lon,measured_at
+SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
 ORDER BY device_id,fetched_at DESC;`
 	default:
 		query = `
-SELECT device_id,value,unit,lat,lon,measured_at
+SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
 ORDER BY device_id,fetched_at DESC;`
@@ -689,13 +729,13 @@ ORDER BY device_id,fetched_at DESC;`
 	var out []Marker
 	for rows.Next() {
 		var (
-			id       string
-			val      float64
-			unit     string
-			lat, lon float64
-			measured int64
+			id, transport, name, tube, country, extraRaw string
+			val                                          float64
+			unit                                         string
+			lat, lon                                     float64
+			measured                                     int64
 		)
-		if err := rows.Scan(&id, &val, &unit, &lat, &lon, &measured); err != nil {
+		if err := rows.Scan(&id, &transport, &name, &tube, &country, &val, &unit, &lat, &lon, &measured, &extraRaw); err != nil {
 			return nil, fmt.Errorf("scan realtime: %w", err)
 		}
 		if lat == 0 && lon == 0 {
@@ -724,20 +764,92 @@ ORDER BY device_id,fetched_at DESC;`
 			continue
 		}
 
+		var extras map[string]float64
+		trimmed := strings.TrimSpace(extraRaw)
+		if trimmed != "" {
+			// Parsing happens lazily to avoid overhead for historical rows without metadata.
+			if err := json.Unmarshal([]byte(trimmed), &extras); err != nil {
+				log.Printf("parse realtime extra for %s: %v", id, err)
+			}
+		}
+
 		seen[id] = true
-		out = append(out, Marker{
-			DoseRate:  doseRate,
-			Date:      measured,
-			Lon:       lon,
-			Lat:       lat,
-			CountRate: 0,
-			Zoom:      0,
-			Speed:     -1,           // negative speed marks realtime in UI
-			TrackID:   "live:" + id, // prefix avoids clashing with stored tracks
-		})
+		marker := Marker{
+			DoseRate:   doseRate,
+			Date:       measured,
+			Lon:        lon,
+			Lat:        lat,
+			CountRate:  0,
+			Zoom:       0,
+			Speed:      -1,           // negative speed marks realtime in UI
+			TrackID:    "live:" + id, // prefix avoids clashing with stored tracks
+			DeviceID:   id,
+			DeviceName: name,
+			Transport:  transport,
+			Tube:       tube,
+			Country:    country,
+			LiveExtra:  extras,
+		}
+		out = append(out, marker)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate realtime: %w", err)
+	}
+	return out, nil
+}
+
+// GetRealtimeHistory returns all realtime measurements for a device since the requested timestamp.
+// Callers can reuse the raw transport/name metadata to describe the sensor while charting the values.
+func (db *Database) GetRealtimeHistory(deviceID string, since int64, dbType string) ([]RealtimeMeasurement, error) {
+	if deviceID == "" {
+		return nil, fmt.Errorf("device id required")
+	}
+
+	var query string
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		query = `
+SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra
+FROM realtime_measurements
+WHERE device_id = $1 AND measured_at >= $2
+ORDER BY measured_at ASC;`
+	default:
+		query = `
+SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra
+FROM realtime_measurements
+WHERE device_id = ? AND measured_at >= ?
+ORDER BY measured_at ASC;`
+	}
+
+	rows, err := db.DB.Query(query, deviceID, since)
+	if err != nil {
+		return nil, fmt.Errorf("realtime history: %w", err)
+	}
+	defer rows.Close()
+
+	var out []RealtimeMeasurement
+	for rows.Next() {
+		var m RealtimeMeasurement
+		if err := rows.Scan(
+			&m.DeviceID,
+			&m.Transport,
+			&m.DeviceName,
+			&m.Tube,
+			&m.Country,
+			&m.Value,
+			&m.Unit,
+			&m.Lat,
+			&m.Lon,
+			&m.MeasuredAt,
+			&m.FetchedAt,
+			&m.Extra,
+		); err != nil {
+			return nil, fmt.Errorf("scan realtime history: %w", err)
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate realtime history: %w", err)
 	}
 	return out, nil
 }
