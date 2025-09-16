@@ -1,150 +1,582 @@
 package countryresolver
 
-import "sort"
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+	"sort"
+	"strings"
 
-const (
-	priorityEnclave   = 0  // Highest precedence to avoid larger neighbours swallowing enclaves.
-	priorityCityState = 5  // City states need to win over their surrounding countries.
-	prioritySmall     = 10 // Small border countries should beat regional rectangles.
-	priorityRegional  = 20 // Normal precedence for mid-sized countries.
-	priorityLarge     = 40 // Large countries that can safely come later.
-	priorityHuge      = 80 // Massive rectangles only act as fallbacks.
+	"chicha-isotope-map/public_html/geojson"
 )
 
-// buildBoxes enumerates coarse rectangular boundaries for countries
-// where realtime sensors have been observed.  The list intentionally
-// prefers more precise rectangles so sensors near borders resolve to the
-// expected state.
-func buildBoxes() []regionBox {
-	regions := []regionBox{
-		// Special administrative regions and city states.
-		newBox(priorityEnclave, "MO", "Macao", 22.0, 22.4, 113.4, 113.7),
-		newBox(priorityEnclave, "HK", "Hong Kong", 22.1, 22.6, 113.8, 114.5),
-		newBox(priorityCityState, "SG", "Singapore", 1.1, 1.6, 103.6, 104.1),
+// datasetPath reflects the URL exposed by the web server so error messages
+// stay useful to operators watching logs.
+const datasetPath = "/static/geojson/ne_10m_admin_0_countries.geojson"
 
-		// Africa.
-		newBox(prioritySmall, "RW", "Rwanda", -3.0, -0.5, 28.5, 31.0),
-		newBox(priorityRegional, "SN", "Senegal", 12.0, 17.5, -18.5, -11.0),
-		newBox(priorityRegional, "CI", "Côte d'Ivoire", 4.0, 10.0, -8.6, -2.5),
-		newBox(priorityRegional, "GH", "Ghana", 4.0, 11.5, -3.5, 1.8),
-		newBox(prioritySmall, "TG", "Togo", 6.0, 11.5, -0.5, 1.8),
-		newBox(prioritySmall, "BJ", "Benin", 6.0, 12.5, 1.0, 3.8),
-		newBox(priorityRegional, "NG", "Nigeria", 4.0, 14.5, 2.0, 15.0),
-		newBox(priorityRegional, "ZA", "South Africa", -35.0, -21.0, 16.0, 33.0),
+// countries holds the parsed polygons grouped by ISO code.  The slice is
+// populated during package initialisation so Resolve can stay allocation
+// free at runtime.
+var countries []country
 
-		// South and Southeast Asia.
-		newBox(priorityRegional, "TH", "Thailand", 5.0, 21.0, 97.0, 106.0),
-		newBox(priorityRegional, "VN", "Vietnam", 8.0, 24.5, 102.0, 110.5),
-		newBox(priorityLarge, "IN", "India", 6.0, 37.5, 68.0, 98.0),
-		newBox(prioritySmall, "TW", "Taiwan", 21.0, 26.5, 119.0, 123.5),
-		newBox(prioritySmall, "KR", "South Korea", 33.0, 39.5, 124.0, 131.5),
-		newBox(priorityRegional, "JP", "Japan", 30.0, 46.5, 129.0, 146.5),
-		newBox(priorityRegional, "JP", "Japan", 24.0, 29.5, 122.0, 132.0),
-		newBox(priorityHuge, "CN", "China", 18.0, 54.0, 73.0, 135.0),
+// spatialIndex keeps a packed R-tree of every polygon.  Querying this tree
+// gives us a tiny candidate set before we run the slower point-in-polygon
+// math.
+var spatialIndex *treeNode
 
-		// Oceania.
-		newBox(priorityRegional, "US", "United States", 24.0, 49.5, -125.0, -66.0),
-		newBox(priorityRegional, "US", "United States", 18.0, 23.0, -161.0, -154.0),
-		newBox(priorityRegional, "US", "United States", 51.0, 72.0, -171.0, -129.0),
-		newBox(priorityHuge, "CA", "Canada", 41.0, 84.0, -141.0, -52.0),
-		newBox(priorityRegional, "MX", "Mexico", 14.0, 33.0, -118.0, -86.0),
-		newBox(priorityRegional, "NZ", "New Zealand", -48.0, -33.0, 165.0, 180.0),
-		newBox(priorityLarge, "AU", "Australia", -45.0, -9.0, 112.0, 155.0),
-		newBox(prioritySmall, "FJ", "Fiji", -21.5, -15.0, 176.0, 180.0),
+// nameByCode is constructed from the loaded dataset so NameFor can keep its
+// simple map lookup behaviour.
+var nameByCode map[string]string
 
-		// South America.
-		newBox(priorityRegional, "BO", "Bolivia", -23.0, -9.0, -70.0, -57.0),
-		newBox(priorityRegional, "PE", "Peru", -19.0, -3.0, -82.0, -68.0),
-		newBox(priorityLarge, "BR", "Brazil", -35.0, 6.0, -75.0, -34.0),
-		newBox(priorityRegional, "AR", "Argentina", -56.0, -21.0, -74.0, -53.0),
-		newBox(priorityRegional, "CL", "Chile", -56.0, -17.0, -76.0, -66.0),
-		newBox(priorityRegional, "CO", "Colombia", -5.0, 13.0, -79.0, -66.0),
-		newBox(priorityRegional, "EC", "Ecuador", -5.5, 2.0, -92.0, -75.0),
-		newBox(priorityRegional, "UY", "Uruguay", -35.0, -30.0, -58.5, -53.0),
-		newBox(priorityRegional, "PY", "Paraguay", -28.0, -18.0, -63.5, -54.0),
-
-		// Western Europe.
-		newBox(priorityRegional, "ES", "Spain", 35.5, 44.5, -10.0, 4.5),
-		newBox(priorityRegional, "PT", "Portugal", 36.5, 42.5, -9.8, -6.0),
-		newBox(priorityRegional, "FR", "France", 41.0, 51.5, -5.5, 9.5),
-		newBox(priorityRegional, "IT", "Italy", 36.0, 47.5, 6.0, 19.0),
-		newBox(prioritySmall, "CH", "Switzerland", 45.5, 48.5, 5.0, 11.0),
-		newBox(prioritySmall, "SI", "Slovenia", 45.3, 47.0, 13.0, 16.0),
-		newBox(prioritySmall, "HR", "Croatia", 42.0, 47.0, 13.0, 20.5),
-		newBox(priorityRegional, "AT", "Austria", 46.0, 49.5, 9.0, 17.0),
-		newBox(priorityRegional, "DE", "Germany", 47.0, 55.5, 5.0, 16.0),
-		newBox(priorityRegional, "NL", "Netherlands", 50.5, 54.5, 3.0, 8.0),
-		newBox(prioritySmall, "BE", "Belgium", 49.5, 51.7, 2.0, 6.6),
-		newBox(prioritySmall, "LU", "Luxembourg", 49.3, 51.0, 5.5, 6.6),
-		newBox(priorityRegional, "UK", "United Kingdom", 49.5, 60.0, -9.5, 2.5),
-		newBox(priorityRegional, "IE", "Ireland", 51.0, 56.0, -11.0, -5.0),
-		newBox(priorityRegional, "IS", "Iceland", 63.0, 67.5, -25.0, -12.0),
-		newBox(priorityRegional, "NO", "Norway", 58.0, 72.5, 5.0, 32.5),
-		newBox(priorityRegional, "NO", "Norway", 74.0, 82.5, 5.0, 34.0),
-		newBox(priorityRegional, "SE", "Sweden", 55.0, 70.5, 11.0, 25.5),
-		newBox(priorityRegional, "FI", "Finland", 59.0, 70.5, 20.0, 32.0),
-		newBox(prioritySmall, "DK", "Denmark", 54.0, 58.0, 8.0, 15.0),
-		newBox(priorityRegional, "PL", "Poland", 49.0, 55.0, 14.0, 25.0),
-		newBox(priorityRegional, "CZ", "Czechia", 48.0, 51.2, 12.0, 19.0),
-		newBox(priorityRegional, "SK", "Slovakia", 47.5, 50.0, 16.0, 23.0),
-		newBox(priorityRegional, "HU", "Hungary", 45.5, 49.5, 16.0, 23.0),
-		newBox(priorityRegional, "RO", "Romania", 43.0, 49.5, 20.0, 30.0),
-		newBox(priorityRegional, "BG", "Bulgaria", 41.0, 44.5, 22.0, 29.5),
-		newBox(priorityRegional, "RS", "Serbia", 42.0, 47.5, 18.0, 23.5),
-		newBox(prioritySmall, "BA", "Bosnia and Herzegovina", 42.0, 46.5, 16.0, 19.0),
-		newBox(prioritySmall, "ME", "Montenegro", 41.5, 43.8, 18.4, 20.5),
-		newBox(prioritySmall, "MK", "North Macedonia", 40.5, 43.0, 20.4, 23.0),
-		newBox(prioritySmall, "AL", "Albania", 39.0, 43.0, 19.0, 21.5),
-		newBox(priorityRegional, "GR", "Greece", 34.5, 42.5, 19.0, 29.5),
-		newBox(prioritySmall, "UA", "Ukraine", 44.0, 53.5, 22.0, 41.5),
-		newBox(priorityRegional, "BY", "Belarus", 51.0, 56.5, 23.0, 33.0),
-		newBox(prioritySmall, "LT", "Lithuania", 53.5, 56.5, 20.5, 26.0),
-		newBox(prioritySmall, "LV", "Latvia", 56.0, 58.5, 20.5, 28.0),
-		newBox(prioritySmall, "EE", "Estonia", 57.0, 60.0, 22.0, 28.5),
-
-		// Caucasus and Central Asia.
-		newBox(prioritySmall, "GE", "Georgia", 41.0, 44.8, 40.0, 45.5),
-		newBox(prioritySmall, "AM", "Armenia", 38.5, 41.5, 43.0, 47.5),
-		newBox(priorityRegional, "AZ", "Azerbaijan", 38.5, 42.5, 46.0, 51.0),
-		newBox(priorityRegional, "AZ", "Azerbaijan", 38.5, 39.6, 44.5, 45.8),
-		newBox(priorityRegional, "TR", "Turkey", 35.0, 43.5, 25.0, 45.0),
-		newBox(priorityRegional, "KG", "Kyrgyzstan", 39.0, 44.5, 69.0, 81.5),
-		newBox(priorityLarge, "KZ", "Kazakhstan", 40.0, 56.5, 46.0, 88.0),
-		newBox(priorityHuge, "RU", "Russia", 54.0, 68.0, 19.0, 31.0),
-		newBox(priorityHuge, "RU", "Russia", 52.0, 72.5, 30.0, 180.0),
-		newBox(priorityHuge, "RU", "Russia", 43.0, 47.5, 38.0, 48.0),
-
-		// Middle East and North Africa.
-		newBox(priorityLarge, "SA", "Saudi Arabia", 15.0, 33.0, 34.0, 56.0),
-		newBox(priorityCityState, "AE", "United Arab Emirates", 22.0, 26.5, 51.5, 56.5),
-		newBox(priorityEnclave, "QA", "Qatar", 24.0, 26.5, 50.5, 52.0),
-		newBox(priorityEnclave, "BH", "Bahrain", 25.5, 26.5, 50.2, 50.8),
-		newBox(priorityRegional, "OM", "Oman", 16.0, 26.0, 52.0, 60.0),
-		newBox(priorityRegional, "EG", "Egypt", 21.0, 32.5, 24.0, 36.0),
+// init loads the embedded GeoJSON once so that worker goroutines in
+// resolver.go always see a ready-to-use index.
+func init() {
+	loadedCountries, index, err := loadDataset()
+	if err != nil {
+		panic(fmt.Sprintf("countryresolver: %v", err))
 	}
-	sort.SliceStable(regions, func(i, j int) bool {
-		if regions[i].priority != regions[j].priority {
-			return regions[i].priority < regions[j].priority
-		}
-		return regions[i].area < regions[j].area
-	})
-	return regions
+	countries = loadedCountries
+	spatialIndex = index
+	nameByCode = buildNameIndex(countries)
 }
 
-// newBox precomputes the rectangle area so caller code stays tidy.
-func newBox(priority int, code, name string, minLat, maxLat, minLon, maxLon float64) regionBox {
-	area := (maxLat - minLat) * (maxLon - minLon)
-	if area < 0 {
-		area = -area
+// ===== GeoJSON model =====
+
+type geoFeatureCollection struct {
+	Type     string       `json:"type"`
+	Features []geoFeature `json:"features"`
+}
+
+type geoFeature struct {
+	Properties geoProperties `json:"properties"`
+	Geometry   geoGeometry   `json:"geometry"`
+}
+
+type geoProperties struct {
+	ISOA2    string `json:"iso_a2"`
+	ISOA2EH  string `json:"iso_a2_eh"`
+	WBA2     string `json:"wb_a2"`
+	Postal   string `json:"postal"`
+	ADM0A3   string `json:"adm0_a3"`
+	NameEN   string `json:"name_en"`
+	Name     string `json:"name"`
+	NameLong string `json:"name_long"`
+}
+
+type geoGeometry struct {
+	Type        string          `json:"type"`
+	Coordinates json.RawMessage `json:"coordinates"`
+}
+
+// ===== Public dataset structures =====
+
+type country struct {
+	code     string
+	name     string
+	polygons []polygon
+}
+
+type polygon struct {
+	bbox  boundingBox
+	rings []ring
+	area  float64
+}
+
+type boundingBox struct {
+	minLat, maxLat float64
+	minLon, maxLon float64
+}
+
+type ring struct {
+	points []point
+}
+
+type point struct {
+	lat float64
+	lon float64
+}
+
+type treeEntry struct {
+	box          boundingBox
+	countryIndex int
+	polygonIndex int
+}
+
+type treeNode struct {
+	box      boundingBox
+	leaf     bool
+	children []*treeNode
+	entries  []treeEntry
+}
+
+type candidate struct {
+	countryIndex int
+	polygonIndex int
+}
+
+// codeInfo notes how an ISO code was obtained so loaders can treat
+// fallbacks carefully without guesswork.
+type codeInfo struct {
+	code       string
+	canonical  bool
+	fromPostal bool
+}
+
+// ===== Dataset loading =====
+
+func loadDataset() ([]country, *treeNode, error) {
+	var collection geoFeatureCollection
+	if len(geojson.Countries) == 0 {
+		return nil, nil, fmt.Errorf("embedded dataset %s is empty", datasetPath)
 	}
-	return regionBox{
-		code:     code,
-		name:     name,
-		minLat:   minLat,
-		maxLat:   maxLat,
-		minLon:   minLon,
-		maxLon:   maxLon,
-		priority: priority,
-		area:     area,
+	if err := json.Unmarshal(geojson.Countries, &collection); err != nil {
+		return nil, nil, fmt.Errorf("decode geojson %s: %w", datasetPath, err)
+	}
+	if strings.ToLower(collection.Type) != "featurecollection" {
+		return nil, nil, fmt.Errorf("unexpected geojson type %q in %s", collection.Type, datasetPath)
+	}
+	if len(collection.Features) == 0 {
+		return nil, nil, fmt.Errorf("geojson %s contains no features", datasetPath)
+	}
+
+	grouped := make(map[string]*country)
+	canonicalSeen := make(map[string]bool)
+	for _, feature := range collection.Features {
+		info := normaliseISO(feature.Properties)
+		if info.code == "" {
+			continue
+		}
+		polys, err := feature.Geometry.asPolygons()
+		if err != nil {
+			// Skip malformed geometries so one bad polygon never
+			// takes the resolver offline.
+			continue
+		}
+		if len(polys) == 0 {
+			continue
+		}
+		name := feature.Properties.englishName()
+		c, ok := grouped[info.code]
+		if !ok {
+			c = &country{code: info.code}
+			grouped[info.code] = c
+		}
+		if info.canonical {
+			canonicalSeen[info.code] = true
+			if name != "" {
+				c.name = name
+			}
+			c.polygons = append(c.polygons, polys...)
+			continue
+		}
+		if info.fromPostal && canonicalSeen[info.code] {
+			// Postal codes are often reused for disputed regions.
+			// Once we have a canonical country we skip these
+			// entries to avoid renaming unrelated states.
+			continue
+		}
+		if c.name == "" && name != "" {
+			c.name = name
+		}
+		c.polygons = append(c.polygons, polys...)
+	}
+
+	if len(grouped) == 0 {
+		return nil, nil, fmt.Errorf("geojson %s produced no usable countries", datasetPath)
+	}
+
+	list := make([]country, 0, len(grouped))
+	for _, c := range grouped {
+		list = append(list, *c)
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].code < list[j].code })
+
+	entries := make([]treeEntry, 0)
+	for countryIdx := range list {
+		polys := list[countryIdx].polygons
+		for polyIdx := range polys {
+			entries = append(entries, treeEntry{
+				box:          polys[polyIdx].bbox,
+				countryIndex: countryIdx,
+				polygonIndex: polyIdx,
+			})
+		}
+	}
+	index := buildRTree(entries, 16)
+	if index == nil {
+		return nil, nil, fmt.Errorf("failed to build spatial index")
+	}
+	return list, index, nil
+}
+
+func (p geoProperties) englishName() string {
+	for _, candidate := range []string{p.NameEN, p.NameLong, p.Name} {
+		trimmed := strings.TrimSpace(candidate)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func normaliseISO(p geoProperties) codeInfo {
+	candidates := []struct {
+		value      string
+		canonical  bool
+		fromPostal bool
+	}{
+		{p.ISOA2, true, false},
+		{p.ISOA2EH, true, false},
+		{p.WBA2, true, false},
+		{p.Postal, false, true},
+	}
+	for _, cand := range candidates {
+		code := strings.ToUpper(strings.TrimSpace(cand.value))
+		if len(code) == 2 && code != "-9" && code != "-99" {
+			return codeInfo{code: code, canonical: cand.canonical, fromPostal: cand.fromPostal}
+		}
+	}
+	upper := strings.ToUpper(strings.TrimSpace(p.ADM0A3))
+	if code, ok := specialA3ToA2[upper]; ok {
+		return codeInfo{code: code}
+	}
+	if len(upper) == 2 && upper != "" {
+		return codeInfo{code: upper}
+	}
+	return codeInfo{}
+}
+
+var specialA3ToA2 = map[string]string{
+	"BJN": "CO", // Bajo Nuevo is disputed but treated as part of Colombia for reporting.
+	"CNM": "CY", // The UN buffer zone is associated with Cyprus for display.
+	"IOA": "AU", // Australian Indian Ocean Territories operate under Australia.
+	"NOR": "NO", // Norway only exposes an ADM0 code in this dataset.
+}
+
+func (g geoGeometry) asPolygons() ([]polygon, error) {
+	switch g.Type {
+	case "Polygon":
+		var coords [][][]float64
+		if err := json.Unmarshal(g.Coordinates, &coords); err != nil {
+			return nil, fmt.Errorf("decode polygon: %w", err)
+		}
+		poly := buildPolygon(coords)
+		if len(poly.rings) == 0 {
+			return nil, nil
+		}
+		return []polygon{poly}, nil
+	case "MultiPolygon":
+		var coords [][][][]float64
+		if err := json.Unmarshal(g.Coordinates, &coords); err != nil {
+			return nil, fmt.Errorf("decode multipolygon: %w", err)
+		}
+		polys := make([]polygon, 0, len(coords))
+		for _, raw := range coords {
+			poly := buildPolygon(raw)
+			if len(poly.rings) == 0 {
+				continue
+			}
+			polys = append(polys, poly)
+		}
+		return polys, nil
+	default:
+		return nil, nil
+	}
+}
+
+func buildPolygon(raw [][][]float64) polygon {
+	rings := make([]ring, 0, len(raw))
+	box := newEmptyBox()
+	for _, segment := range raw {
+		pts := make([]point, 0, len(segment))
+		for _, coord := range segment {
+			if len(coord) < 2 {
+				continue
+			}
+			lon := coord[0]
+			lat := coord[1]
+			pts = append(pts, point{lat: lat, lon: lon})
+			box.expand(lat, lon)
+		}
+		if len(pts) >= 3 {
+			rings = append(rings, ring{points: pts})
+		}
+	}
+	if len(rings) == 0 || !box.valid() {
+		return polygon{}
+	}
+	return polygon{bbox: box, rings: rings, area: polygonArea(rings)}
+}
+
+// ===== R-tree construction =====
+
+func buildRTree(entries []treeEntry, maxEntries int) *treeNode {
+	if len(entries) == 0 {
+		return nil
+	}
+	nodes := packEntries(entries, maxEntries)
+	for len(nodes) > 1 {
+		nodes = packNodes(nodes, maxEntries)
+	}
+	return nodes[0]
+}
+
+func packEntries(entries []treeEntry, maxEntries int) []*treeNode {
+	if len(entries) == 0 {
+		return nil
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].box.minLon < entries[j].box.minLon })
+	nodeCount := int(math.Ceil(float64(len(entries)) / float64(maxEntries)))
+	sliceCount := int(math.Ceil(math.Sqrt(float64(nodeCount))))
+	if sliceCount < 1 {
+		sliceCount = 1
+	}
+	sliceCapacity := int(math.Ceil(float64(len(entries)) / float64(sliceCount)))
+	nodes := make([]*treeNode, 0, nodeCount)
+	for i := 0; i < len(entries); i += sliceCapacity {
+		end := i + sliceCapacity
+		if end > len(entries) {
+			end = len(entries)
+		}
+		slice := append([]treeEntry(nil), entries[i:end]...)
+		sort.Slice(slice, func(i, j int) bool { return slice[i].box.minLat < slice[j].box.minLat })
+		for j := 0; j < len(slice); j += maxEntries {
+			blockEnd := j + maxEntries
+			if blockEnd > len(slice) {
+				blockEnd = len(slice)
+			}
+			block := append([]treeEntry(nil), slice[j:blockEnd]...)
+			node := &treeNode{leaf: true, entries: block}
+			node.box = entriesBounds(block)
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes
+}
+
+func packNodes(children []*treeNode, maxEntries int) []*treeNode {
+	if len(children) == 0 {
+		return nil
+	}
+	if len(children) <= maxEntries {
+		parent := &treeNode{leaf: false, children: append([]*treeNode(nil), children...)}
+		parent.box = nodesBounds(parent.children)
+		return []*treeNode{parent}
+	}
+	sort.Slice(children, func(i, j int) bool { return children[i].box.minLon < children[j].box.minLon })
+	nodeCount := int(math.Ceil(float64(len(children)) / float64(maxEntries)))
+	sliceCount := int(math.Ceil(math.Sqrt(float64(nodeCount))))
+	if sliceCount < 1 {
+		sliceCount = 1
+	}
+	sliceCapacity := int(math.Ceil(float64(len(children)) / float64(sliceCount)))
+	parents := make([]*treeNode, 0, nodeCount)
+	for i := 0; i < len(children); i += sliceCapacity {
+		end := i + sliceCapacity
+		if end > len(children) {
+			end = len(children)
+		}
+		slice := append([]*treeNode(nil), children[i:end]...)
+		sort.Slice(slice, func(i, j int) bool { return slice[i].box.minLat < slice[j].box.minLat })
+		for j := 0; j < len(slice); j += maxEntries {
+			blockEnd := j + maxEntries
+			if blockEnd > len(slice) {
+				blockEnd = len(slice)
+			}
+			block := append([]*treeNode(nil), slice[j:blockEnd]...)
+			parent := &treeNode{leaf: false, children: block}
+			parent.box = nodesBounds(block)
+			parents = append(parents, parent)
+		}
+	}
+	return parents
+}
+
+// ===== Geometry helpers =====
+
+func (b *boundingBox) expand(lat, lon float64) {
+	if lat < b.minLat {
+		b.minLat = lat
+	}
+	if lat > b.maxLat {
+		b.maxLat = lat
+	}
+	if lon < b.minLon {
+		b.minLon = lon
+	}
+	if lon > b.maxLon {
+		b.maxLon = lon
+	}
+}
+
+func (b boundingBox) contains(lat, lon float64) bool {
+	if !b.valid() {
+		return false
+	}
+	if lat < b.minLat || lat > b.maxLat {
+		return false
+	}
+	if lon < b.minLon || lon > b.maxLon {
+		return false
+	}
+	return true
+}
+
+func (b boundingBox) valid() bool {
+	return b.minLat <= b.maxLat && b.minLon <= b.maxLon
+}
+
+func (b *boundingBox) include(other boundingBox) {
+	if !other.valid() {
+		return
+	}
+	b.expand(other.minLat, other.minLon)
+	b.expand(other.minLat, other.maxLon)
+	b.expand(other.maxLat, other.minLon)
+	b.expand(other.maxLat, other.maxLon)
+}
+
+func newEmptyBox() boundingBox {
+	return boundingBox{
+		minLat: math.MaxFloat64,
+		minLon: math.MaxFloat64,
+		maxLat: -math.MaxFloat64,
+		maxLon: -math.MaxFloat64,
+	}
+}
+
+func entriesBounds(entries []treeEntry) boundingBox {
+	box := newEmptyBox()
+	for _, e := range entries {
+		box.include(e.box)
+	}
+	return box
+}
+
+func nodesBounds(nodes []*treeNode) boundingBox {
+	box := newEmptyBox()
+	for _, n := range nodes {
+		box.include(n.box)
+	}
+	return box
+}
+
+func polygonArea(rings []ring) float64 {
+	if len(rings) == 0 {
+		return 0
+	}
+	outer := math.Abs(ringArea(rings[0]))
+	holes := 0.0
+	for _, hole := range rings[1:] {
+		holes += math.Abs(ringArea(hole))
+	}
+	area := outer - holes
+	if area < 0 {
+		return 0
+	}
+	return area
+}
+
+func ringArea(r ring) float64 {
+	pts := r.points
+	if len(pts) < 3 {
+		return 0
+	}
+	sum := 0.0
+	for i := range pts {
+		j := (i + 1) % len(pts)
+		sum += pts[i].lon*pts[j].lat - pts[j].lon*pts[i].lat
+	}
+	return sum / 2
+}
+
+func (p polygon) contains(lat, lon float64) bool {
+	if !p.bbox.contains(lat, lon) {
+		return false
+	}
+	if len(p.rings) == 0 {
+		return false
+	}
+	if !pointInRing(p.rings[0], lat, lon) {
+		return false
+	}
+	for _, hole := range p.rings[1:] {
+		if pointInRing(hole, lat, lon) {
+			return false
+		}
+	}
+	return true
+}
+
+func pointInRing(r ring, lat, lon float64) bool {
+	pts := r.points
+	if len(pts) < 3 {
+		return false
+	}
+	inside := false
+	j := len(pts) - 1
+	for i := 0; i < len(pts); i++ {
+		pi := pts[i]
+		pj := pts[j]
+		if pointOnSegment(pi, pj, lat, lon) {
+			return true
+		}
+		if (pi.lat > lat) != (pj.lat > lat) {
+			crossLon := (pj.lon-pi.lon)*(lat-pi.lat)/(pj.lat-pi.lat) + pi.lon
+			if lon < crossLon {
+				inside = !inside
+			}
+		}
+		j = i
+	}
+	return inside
+}
+
+func pointOnSegment(a, b point, lat, lon float64) bool {
+	cross := (b.lon-a.lon)*(lat-a.lat) - (b.lat-a.lat)*(lon-a.lon)
+	if math.Abs(cross) > 1e-9 {
+		return false
+	}
+	minLon := math.Min(a.lon, b.lon) - 1e-9
+	maxLon := math.Max(a.lon, b.lon) + 1e-9
+	minLat := math.Min(a.lat, b.lat) - 1e-9
+	maxLat := math.Max(a.lat, b.lat) + 1e-9
+	return lon >= minLon && lon <= maxLon && lat >= minLat && lat <= maxLat
+}
+
+// streamCandidates walks the R-tree and emits every polygon bounding box
+// that may contain the point.  A done channel stops the traversal as soon
+// as the caller finds a match.
+func streamCandidates(lat, lon float64, out chan<- candidate, done <-chan struct{}) {
+	walkTree(spatialIndex, lat, lon, out, done)
+}
+
+func walkTree(node *treeNode, lat, lon float64, out chan<- candidate, done <-chan struct{}) {
+	if node == nil || !node.box.contains(lat, lon) {
+		return
+	}
+	if node.leaf {
+		for _, entry := range node.entries {
+			if !entry.box.contains(lat, lon) {
+				continue
+			}
+			select {
+			case out <- candidate{countryIndex: entry.countryIndex, polygonIndex: entry.polygonIndex}:
+			case <-done:
+				return
+			}
+		}
+		return
+	}
+	for _, child := range node.children {
+		if !child.box.contains(lat, lon) {
+			continue
+		}
+		walkTree(child, lat, lon, out, done)
+		select {
+		case <-done:
+			return
+		default:
+		}
 	}
 }
