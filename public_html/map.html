@@ -1157,15 +1157,17 @@ function transportSentence(transport) {
 }
 
 function describeLiveSensor(marker) {
+  // We use bracket placeholders (e.g. [[name]]) so the Go template parser leaves
+  // them untouched while still allowing readable replacement in the browser.
   const subject = marker.deviceName
-    ? translate('live_marker_desc_named').replace('{{name}}', escapeHtml(marker.deviceName))
+    ? translate('live_marker_desc_named').replace('[[name]]', escapeHtml(marker.deviceName))
     : translate('live_marker_desc_generic');
   const place = marker.country
-    ? translate('live_marker_desc_location').replace('{{place}}', escapeHtml(marker.country))
+    ? translate('live_marker_desc_location').replace('[[place]]', escapeHtml(marker.country))
     : translate('live_marker_desc_location_unknown');
   const transport = transportSentence(marker.transport);
   const tube = marker.tube
-    ? translate('live_marker_desc_tube').replace('{{tube}}', escapeHtml(marker.tube))
+    ? translate('live_marker_desc_tube').replace('[[tube]]', escapeHtml(marker.tube))
     : translate('live_marker_desc_no_tube');
   return [subject, place, transport, tube].join(' ');
 }
