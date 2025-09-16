@@ -1121,6 +1121,8 @@ function escapeHtml(value) {
   });
 }
 
+const regionNameCache = {};
+
 function formatDateTime(ts) {
   if (!ts) return '—';
   const date = new Date(ts * 1000);
@@ -1156,14 +1158,34 @@ function transportSentence(transport) {
   return translate('live_marker_desc_transport_unknown');
 }
 
+function localizeCountry(code) {
+  if (!code) return '';
+  const normalized = String(code).toUpperCase();
+  if (normalized === '??') return normalized;
+  const langRaw = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  let locale = langRaw === 'ua' ? 'uk' : langRaw;
+  locale = locale.replace('_', '-');
+  try {
+    if (!regionNameCache[locale]) {
+      regionNameCache[locale] = new Intl.DisplayNames([locale], { type: 'region' });
+    }
+    const label = regionNameCache[locale].of(normalized);
+    if (label) return label;
+  } catch (err) {
+    // Older browsers may not support Intl.DisplayNames; fall back to the code below.
+  }
+  return normalized;
+}
+
 function describeLiveSensor(marker) {
   // We use bracket placeholders (e.g. [[name]]) so the Go template parser leaves
   // them untouched while still allowing readable replacement in the browser.
   const subject = marker.deviceName
     ? translate('live_marker_desc_named').replace('[[name]]', escapeHtml(marker.deviceName))
     : translate('live_marker_desc_generic');
-  const place = marker.country
-    ? translate('live_marker_desc_location').replace('[[place]]', escapeHtml(marker.country))
+  const placeName = marker.country ? localizeCountry(marker.country) : '';
+  const place = placeName
+    ? translate('live_marker_desc_location').replace('[[place]]', escapeHtml(placeName))
     : translate('live_marker_desc_location_unknown');
   const transport = transportSentence(marker.transport);
   const tube = marker.tube
@@ -1221,7 +1243,9 @@ function buildDeviceMeta(marker) {
     rows.push('<div><strong>' + translate('live_marker_detector') + ':</strong> ' + escapeHtml(marker.tube) + '</div>');
   }
   if (marker.country) {
-    rows.push('<div><strong>' + translate('live_marker_country') + ':</strong> ' + escapeHtml(marker.country) + '</div>');
+    const localized = localizeCountry(marker.country);
+    const display = localized || marker.country;
+    rows.push('<div><strong>' + translate('live_marker_country') + ':</strong> ' + escapeHtml(display) + '</div>');
   }
   return rows.join('');
 }
