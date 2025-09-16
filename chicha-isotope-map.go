@@ -2345,10 +2345,28 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		"year":  {},
 	}
 
+	// extraSeries collects optional temperature and humidity samples so the
+	// frontend can render matching overlays.  We keep a nested map keyed by
+	// timeframe first to mirror the radiation series layout and keep
+	// lookups straightforward in JavaScript.
+	extraSeries := make(map[string]map[string][]point)
+
 	var (
 		metaName, metaTransport, metaTube, metaCountry string
 		extra                                          map[string]float64
+		latestExtraTs                                  int64
 	)
+
+	// addExtra appends an environmental point to the requested timeframe,
+	// creating the inner map when needed.  This keeps the main loop tidy
+	// and follows "A little copying is better than a little dependency" –
+	// no external helpers are required.
+	addExtra := func(bucket, key string, pt point) {
+		if extraSeries[bucket] == nil {
+			extraSeries[bucket] = make(map[string][]point)
+		}
+		extraSeries[bucket][key] = append(extraSeries[bucket][key], pt)
+	}
 
 	for _, m := range rows {
 		val, ok := safecastrealtime.FromRealtime(m.Value, m.Unit)
@@ -2356,7 +2374,9 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		pt := point{Timestamp: m.MeasuredAt, Value: val}
+		ur := safecastrealtime.ToMicroRoentgen(val)
+
+		pt := point{Timestamp: m.MeasuredAt, Value: ur}
 		series["year"] = append(series["year"], pt)
 		if m.MeasuredAt >= monthCutoff {
 			series["month"] = append(series["month"], pt)
@@ -2384,27 +2404,51 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		if trimmed != "" {
 			var parsed map[string]float64
 			if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
-				extra = parsed
+				if len(parsed) > 0 {
+					if m.MeasuredAt >= latestExtraTs {
+						// The feed is ordered chronologically, yet we still compare
+						// timestamps so future refactors that change ordering keep
+						// the latest snapshot intact.
+						latestExtraTs = m.MeasuredAt
+						extra = parsed
+					}
+					extraPoint := point{Timestamp: m.MeasuredAt}
+					for key, value := range parsed {
+						if math.IsNaN(value) || math.IsInf(value, 0) {
+							continue
+						}
+						extraPoint.Value = value
+						addExtra("year", key, extraPoint)
+						if m.MeasuredAt >= monthCutoff {
+							addExtra("month", key, extraPoint)
+						}
+						if m.MeasuredAt >= dayCutoff {
+							addExtra("day", key, extraPoint)
+						}
+					}
+				}
 			}
 		}
 	}
 
 	resp := struct {
-		DeviceID   string             `json:"deviceID"`
-		DeviceName string             `json:"deviceName,omitempty"`
-		Transport  string             `json:"transport,omitempty"`
-		Tube       string             `json:"tube,omitempty"`
-		Country    string             `json:"country,omitempty"`
-		Series     map[string][]point `json:"series"`
-		Extra      map[string]float64 `json:"extra,omitempty"`
+		DeviceID    string                        `json:"deviceID"`
+		DeviceName  string                        `json:"deviceName,omitempty"`
+		Transport   string                        `json:"transport,omitempty"`
+		Tube        string                        `json:"tube,omitempty"`
+		Country     string                        `json:"country,omitempty"`
+		Series      map[string][]point            `json:"series"`
+		Extra       map[string]float64            `json:"extra,omitempty"`
+		ExtraSeries map[string]map[string][]point `json:"extraSeries,omitempty"`
 	}{
-		DeviceID:   device,
-		DeviceName: metaName,
-		Transport:  metaTransport,
-		Tube:       metaTube,
-		Country:    metaCountry,
-		Series:     series,
-		Extra:      extra,
+		DeviceID:    device,
+		DeviceName:  metaName,
+		Transport:   metaTransport,
+		Tube:        metaTube,
+		Country:     metaCountry,
+		Series:      series,
+		Extra:       extra,
+		ExtraSeries: extraSeries,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
