@@ -2181,6 +2181,11 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	if *safecastRealtimeEnabled {
 		// We only touch realtime tables when the operator explicitly enables the feature.
 		if rt, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType); err == nil {
+			for i := range rt {
+				// Sanitise detector names on the fly so legacy rows without
+				// the new resolver still produce friendly popups.
+				rt[i].Tube = safecastrealtime.DetectorLabel(rt[i].Tube, rt[i].Transport, rt[i].DeviceName)
+			}
 			markers = append(markers, rt...)
 		} else {
 			log.Printf("realtime query: %v", err)
@@ -2366,8 +2371,10 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		if metaTransport == "" && m.Transport != "" {
 			metaTransport = m.Transport
 		}
-		if metaTube == "" && m.Tube != "" {
-			metaTube = m.Tube
+		if tube := safecastrealtime.DetectorLabel(m.Tube, m.Transport, m.DeviceName); tube != "" {
+			if metaTube == "" {
+				metaTube = tube
+			}
 		}
 		if metaCountry == "" && m.Country != "" {
 			metaCountry = m.Country

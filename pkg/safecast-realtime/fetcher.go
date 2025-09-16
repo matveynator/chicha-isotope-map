@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
+	"chicha-isotope-map/pkg/countryresolver"
 	"chicha-isotope-map/pkg/database"
 )
 
@@ -262,32 +265,6 @@ func fetch(ctx context.Context, url string) ([]devicePayload, error) {
 	return raw, nil
 }
 
-// bbox defines a coarse country boundary.
-// We keep only a few major regions to avoid heavyweight geo libraries.
-type bbox struct {
-	code           string
-	minLat, maxLat float64
-	minLon, maxLon float64
-}
-
-var countryBoxes = []bbox{
-	{"JP", 30, 46, 129, 146},  // Japan
-	{"US", 24, 49, -125, -66}, // Continental USA
-	{"RU", 41, 82, 19, 180},   // Rough Russia mainland
-	{"EU", 36, 71, -25, 40},   // Generic Europe box
-}
-
-// countryFor returns a rough country code for given coordinates.
-// Unknown points fall back to "??".
-func countryFor(lat, lon float64) string {
-	for _, b := range countryBoxes {
-		if lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon {
-			return b.code
-		}
-	}
-	return "??"
-}
-
 // containsAir reports whether the descriptor hints at Safecast Air hardware.
 // Air units do not produce radiation readings, so we filter them eagerly.
 func containsAir(s string) bool {
@@ -295,6 +272,48 @@ func containsAir(s string) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(s), "air")
+}
+
+// cleanDetector strips IP-like tokens and normalises whitespace so the UI
+// displays meaningful detector labels.  The helper follows "Clear is better
+// than clever" by keeping the sanitising logic small and transparent.
+func cleanDetector(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	trimmed = strings.Trim(trimmed, "\"'")
+	if trimmed == "" {
+		return ""
+	}
+	if ip := net.ParseIP(trimmed); ip != nil {
+		return ""
+	}
+	hasLetter := false
+	for _, r := range trimmed {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+			break
+		}
+	}
+	if !hasLetter {
+		return ""
+	}
+	return strings.Join(strings.Fields(trimmed), " ")
+}
+
+// DetectorLabel chooses the most descriptive string out of the available
+// Safecast fields.  We prefer explicit tube information, then fall back to the
+// transport hint, and finally the device name.  Returning a single string keeps
+// the calling code tidy and avoids leaking implementation details elsewhere.
+func DetectorLabel(tube, transport, name string) string {
+	candidates := []string{tube, transport, name}
+	for _, c := range candidates {
+		if label := cleanDetector(c); label != "" {
+			return label
+		}
+	}
+	return ""
 }
 
 // convertIfRadiation filters Safecast Air units and returns the converted
@@ -405,16 +424,19 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						continue
 					}
 
-					country := d.Country
+					country := strings.ToUpper(strings.TrimSpace(d.Country))
 					if country == "" {
-						country = countryFor(d.Lat, d.Lon)
+						if code, _ := countryresolver.Resolve(d.Lat, d.Lon); code != "" {
+							country = code
+						}
 					}
+					detector := DetectorLabel(d.Tube, d.Type, d.Name)
 
 					m := database.RealtimeMeasurement{
 						DeviceID:   d.ID,
 						Transport:  d.Type,
 						DeviceName: d.Name,
-						Tube:       d.Tube,
+						Tube:       detector,
 						Country:    country,
 						Value:      d.Value,
 						Unit:       d.Unit,
@@ -439,13 +461,16 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					}
 
 					curr[d.ID] = struct{}{}
-					c := country
+					statsKey := country
+					if statsKey == "" {
+						statsKey = "??"
+					}
 					// We already converted the value once; reuse it for
 					// summaries so statistics reflect what we display.
-					s := stats[c]
+					s := stats[statsKey]
 					s.sum += converted
 					s.count++
-					stats[c] = s
+					stats[statsKey] = s
 				}
 				reports <- len(curr)
 
@@ -467,7 +492,11 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				parts := make([]string, 0, len(stats))
 				for country, s := range stats {
 					avg := s.sum / float64(s.count)
-					parts = append(parts, fmt.Sprintf("%s:%d avg=%.2f", country, s.count, avg))
+					label := country
+					if name := countryresolver.NameFor(country); name != "" {
+						label = fmt.Sprintf("%s (%s)", name, country)
+					}
+					parts = append(parts, fmt.Sprintf("%s:%d avg=%.2f", label, s.count, avg))
 				}
 				sort.Strings(parts)
 
