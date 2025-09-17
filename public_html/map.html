@@ -560,39 +560,67 @@ body, html {
           letter-spacing: -0.02em;
         }
 
-        .live-tooltip {
-          max-width: 260px;
-        }
 
-        /* Allow long sensor descriptions to wrap inside Leaflet overlays. */
-        .leaflet-tooltip.custom-tooltip {
-          white-space: normal;
-          max-width: 260px;
-          overflow-wrap: anywhere;
-        }
 
-        .live-tooltip-header {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-          margin-bottom: 6px;
-        }
+				/* ---- Unified tooltip/popup sizing & wrapping ----
+					 Keep tooltip (hover) and popup (click) the same width.
+					 Leaflet's default popup maxWidth is ~300px, so we reuse that.
+					 Adjust --tooltip-max if you want it wider/narrower in one place. */
+				:root {
+					--tooltip-max: 300px;   /* single source of truth for both tooltip & popup widths */
+					--tooltip-min: 220px;   /* prevents collapsing into a thin vertical strip */
+				}
 
-        .live-tooltip-heart {
-          width: 28px;
-          height: 28px;
-        }
+				/* Wrapper used inside both tooltip and popup content */
+				.live-tooltip {
+					max-width: var(--tooltip-max);  /* wider than old 260px */
+				}
 
-        .live-tooltip-title {
-          font-weight: 700;
-          margin: 0;
-        }
+				/* Leaflet tooltip content (hover). Make it match popup width and wrap nicely. */
+				.leaflet-tooltip.custom-tooltip {
+					white-space: normal;            /* allow line wrapping */
+					max-width: var(--tooltip-max);  /* match popup max width */
+					min-inline-size: var(--tooltip-min); /* avoid skinny column */
+					overflow-wrap: break-word;      /* break long words/URLs only when needed */
+					word-break: break-word;         /* compatibility for older browsers */
+					hyphens: auto;                  /* nicer hyphenation when available */
+				}
 
-        .live-tooltip-desc {
-          margin: 0;
-          font-size: 12px;
-          line-height: 1.4;
-        }
+				/* Leaflet popup content (click). Enforce the same max width to match tooltip. */
+				.leaflet-popup-content {
+					max-width: var(--tooltip-max);  /* unify with tooltip width */
+				}
+
+				/* Flex header: allow text to shrink in flex so it doesn't overflow. */
+				.live-tooltip-header {
+					display: flex;
+					gap: 10px;
+					align-items: center;
+					margin-bottom: 6px;
+					min-width: 0;                   /* critical for proper flex text shrinking */
+				}
+
+				/* Fixed-size heart icon so it doesn't affect layout */
+				.live-tooltip-heart {
+					width: 28px;
+					height: 28px;
+					flex: 0 0 28px;
+				}
+
+				/* Title and description: let text wrap and shrink inside flex */
+				.live-tooltip-title,
+				.live-tooltip-desc {
+					margin: 0;
+					min-width: 0;                   /* allow shrinking in flex */
+					flex: 1 1 auto;                 /* take available space without overflowing */
+				}
+
+				.live-tooltip-desc {
+					font-size: 12px;
+					line-height: 1.4;
+				}
+
+
 
         .live-extra-list {
           margin: 4px 0 0 0;
