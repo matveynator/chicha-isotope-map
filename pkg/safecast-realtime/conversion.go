@@ -17,9 +17,15 @@ const (
 	// Safecast labels these fields as "lnd_7317" even though the hardware
 	// variants are 7318U and 7318C.  Field manuals quote 334 CPM per µSv/h.
 	factorLND7317 = 334.0
+	// factorLND7317CPS converts counts per second into µSv/h for 7318 tubes.
+	// Dividing the CPM factor by 60 honours the same calibration while
+	// accepting realtime CPS feeds without duplicating constants elsewhere.
+	factorLND7317CPS = factorLND7317 / 60.0
 	// factorLND712 covers the classic LND 712 and the shielded 7128 EC.
 	// Both share the same 108 CPM per µSv/h calibration in Safecast docs.
 	factorLND712 = 108.0
+	// factorLND712CPS mirrors the CPM constant for CPS payloads on LND 712.
+	factorLND712CPS = factorLND712 / 60.0
 )
 
 // ─── Public conversion helpers ──────────────────────────────────────────────
@@ -47,14 +53,6 @@ func FromRealtime(value float64, unit string) (float64, bool) {
 		return value, true
 	}
 
-	// Safecast sometimes provides micro roentgen-per-hour values labelled
-	// with a trailing "u".  Those numbers are scaled by 100, so 53 means
-	// 0.53 µSv/h.  Keeping the handling here fixes legacy rows that were
-	// stored before realtime parsing normalised the unit name.
-	if strings.HasSuffix(normalized, "u") && strings.Contains(normalized, "lnd") {
-		return value / 100.0, true
-	}
-
 	// Counts-per-minute fields require detector specific calibration.  We
 	// normalise the string further by keeping only letters and digits so we
 	// can match both "lnd_7317" and "lnd-7317-cpm" without another lookup
@@ -65,9 +63,15 @@ func FromRealtime(value float64, unit string) (float64, bool) {
 	}
 
 	if containsAny(clean, []string{"lnd7317", "lnd7318"}) {
+		if strings.Contains(clean, "cps") {
+			return value / factorLND7317CPS, true
+		}
 		return value / factorLND7317, true
 	}
 	if containsAny(clean, []string{"lnd7128", "lnd712"}) {
+		if strings.Contains(clean, "cps") {
+			return value / factorLND712CPS, true
+		}
 		return value / factorLND712, true
 	}
 
