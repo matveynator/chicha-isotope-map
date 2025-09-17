@@ -564,6 +564,13 @@ body, html {
           max-width: 260px;
         }
 
+        /* Allow long sensor descriptions to wrap inside Leaflet overlays. */
+        .leaflet-tooltip.custom-tooltip {
+          white-space: normal;
+          max-width: 260px;
+          overflow-wrap: anywhere;
+        }
+
         .live-tooltip-header {
           display: flex;
           gap: 10px;
@@ -2492,8 +2499,14 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
       const y1 = plotBottom - ((prev.value - minY) / rangeY) * plotH;
       const x2 = plotLeft + ((curr.timestamp - minX) / rangeX) * plotW;
       const y2 = plotBottom - ((curr.value - minY) / rangeY) * plotH;
-      const mid = (prev.value + curr.value) / 2;
-      ctx.strokeStyle = radiationLineColor(mid);
+      // Applying a per-segment gradient keeps falling values flowing back to green
+      // and rising values blending toward the warmer colors.
+      const startColor = radiationLineColor(prev.value);
+      const endColor = radiationLineColor(curr.value);
+      const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+      gradient.addColorStop(0, startColor);
+      gradient.addColorStop(1, endColor);
+      ctx.strokeStyle = gradient;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -2550,7 +2563,11 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   let legendX = plotLeft;
   const legendEntries = [];
   if (hasRadiation) {
-    legendEntries.push({ label: translate('radiation_dose') + ' (µR/h)', color: radiationLineColor((minY + maxY) / 2), solid: true });
+    // The legend reuses a gradient so the key matches the multi-hued line.
+    const legendGradient = ctx.createLinearGradient(legendX, legendY, legendX + 18, legendY);
+    legendGradient.addColorStop(0, radiationLineColor(minY));
+    legendGradient.addColorStop(1, radiationLineColor(maxY));
+    legendEntries.push({ label: translate('radiation_dose') + ' (µR/h)', color: legendGradient, solid: true });
   }
   extraKeys.forEach(function(key) {
     const suffix = extraUnitSuffix(key);
