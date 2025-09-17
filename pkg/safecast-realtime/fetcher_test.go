@@ -112,6 +112,50 @@ func TestDevicePayloadUnmarshalTube(t *testing.T) {
 	}
 }
 
+// TestDevicePayloadMeasurementSelection keeps the measurement picking logic
+// predictable so CPS feeds are preferred over CPM, while plain detector fields
+// still work as a fallback.
+func TestDevicePayloadMeasurementSelection(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		json      string
+		wantValue float64
+		wantUnit  string
+	}{
+		{
+			name:      "prefers cps over cpm",
+			json:      `{"device_urn":"device:1","lnd_7318c_cpm":120,"lnd_7318c_cps":2}`,
+			wantValue: 2,
+			wantUnit:  "lnd_7318c_cps",
+		},
+		{
+			name:      "falls back to raw counts",
+			json:      `{"device_urn":"device:2","lnd_7318u":73}`,
+			wantValue: 73,
+			wantUnit:  "lnd_7318u",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var d devicePayload
+			if err := json.Unmarshal([]byte(tc.json), &d); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if d.Value != tc.wantValue {
+				t.Fatalf("Value=%v want %v", d.Value, tc.wantValue)
+			}
+			if d.Unit != tc.wantUnit {
+				t.Fatalf("Unit=%q want %q", d.Unit, tc.wantUnit)
+			}
+		})
+	}
+}
+
 // TestDevicePayloadMetrics ensures we pick up optional environmental metrics.
 func TestDevicePayloadMetrics(t *testing.T) {
 	t.Parallel()

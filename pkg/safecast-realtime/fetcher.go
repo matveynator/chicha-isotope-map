@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"sort"
@@ -37,6 +38,23 @@ type devicePayload struct {
 	Metrics map[string]float64
 }
 
+// measurementCandidate records a possible radiation reading parsed from the
+// JSON payload.  We keep the struct tiny and local so the selection logic in
+// UnmarshalJSON stays readable and follows "Clear is better than clever".
+type measurementCandidate struct {
+	value    float64
+	unit     string
+	key      string
+	priority int
+}
+
+const (
+	priorityDoseRate        = iota // explicit µSv/h or µR/h hints
+	priorityCountsPerSecond        // CPS fields
+	priorityCountsPerMinute        // CPM fields
+	priorityGenericCounts          // any remaining detector field
+)
+
 // numericValue converts different JSON value representations into float64.
 // Safecast occasionally serialises environmental metrics as strings; normalising
 // them here keeps the rest of the pipeline simple and mirrors "Clear is better
@@ -58,6 +76,44 @@ func numericValue(v any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// newMeasurementCandidate normalises a possible "lnd_*" measurement field into
+// a measurementCandidate.  Returning false keeps the caller compact when the
+// value is missing or malformed.  Explicit dose rate hints trump counts so the
+// selected reading reflects the most calibrated number available.
+func newMeasurementCandidate(key string, raw any) (measurementCandidate, bool) {
+	val, ok := numericValue(raw)
+	if !ok {
+		return measurementCandidate{}, false
+	}
+	lower := strings.ToLower(key)
+	candidate := measurementCandidate{
+		value:    val,
+		unit:     key,
+		key:      lower,
+		priority: priorityGenericCounts,
+	}
+	if strings.Contains(lower, "usv") {
+		candidate.unit = "µSv/h"
+		candidate.priority = priorityDoseRate
+		return candidate, true
+	}
+	if strings.Contains(lower, "urh") {
+		candidate.value = val / 100.0
+		candidate.unit = "µSv/h"
+		candidate.priority = priorityDoseRate
+		return candidate, true
+	}
+	if strings.Contains(lower, "cps") {
+		candidate.priority = priorityCountsPerSecond
+		return candidate, true
+	}
+	if strings.Contains(lower, "cpm") {
+		candidate.priority = priorityCountsPerMinute
+		return candidate, true
+	}
+	return candidate, true
 }
 
 // metricKeyFor recognises temperature and humidity hints from the payload map.
@@ -175,33 +231,29 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 		d.Lon = v
 	}
 
-	// Measurement value: prioritise keys ending with "u" which Safecast
-	// uses for micro roentgen per hour in centi-units (53 → 0.53 µSv/h).
-	// We search twice: first for these unit-suffixed fields, then as a
-	// fallback for any remaining "lnd_" entry. This avoids picking CPM
-	// fields by accident, echoing "Clear is better than clever".
-
-	// pass 1: look for "lnd_*u" values
-	for k, v := range m {
-		if strings.HasPrefix(k, "lnd_") && strings.HasSuffix(k, "u") {
-			if fv, ok := v.(float64); ok {
-				d.Value = fv / 100.0
-				d.Unit = "µSv/h"
-				goto gotValue
-			}
+	// Measurement value: pick the most explicit "lnd_" field.  Older feeds
+	// expose a mix of CPM, CPS, and legacy µR/h integers, so we collect all
+	// candidates and prefer explicit dose rates first, then per-second
+	// counts, then per-minute counts, and finally any remaining raw field.
+	// This keeps the selection deterministic and follows "Clear is better
+	// than clever" by centralising the heuristics.
+	best := measurementCandidate{priority: math.MaxInt}
+	for k, raw := range m {
+		if !strings.HasPrefix(k, "lnd_") {
+			continue
+		}
+		candidate, ok := newMeasurementCandidate(k, raw)
+		if !ok {
+			continue
+		}
+		if candidate.priority < best.priority || (candidate.priority == best.priority && candidate.key < best.key) {
+			best = candidate
 		}
 	}
-	// pass 2: any other "lnd_" field (counts, raw units)
-	for k, v := range m {
-		if strings.HasPrefix(k, "lnd_") {
-			if fv, ok := v.(float64); ok {
-				d.Value = fv
-				d.Unit = k
-				goto gotValue
-			}
-		}
+	if best.priority != math.MaxInt {
+		d.Value = best.value
+		d.Unit = best.unit
 	}
-gotValue:
 
 	// Timestamp is provided as RFC3339 string.
 	if v, ok := m["when_captured"].(string); ok {
