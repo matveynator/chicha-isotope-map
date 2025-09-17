@@ -20,14 +20,14 @@ const (
         // factorLND7317CPS converts counts per second into µSv/h for 7318 tubes.
         // Dividing the CPM factor by 60 honours the same calibration while
         // accepting realtime CPS feeds without duplicating constants elsewhere.
-        factorLND7317CPS = factorLND7317 / 60.0
+        factorLND7317CPS = factorLND7317
 	// factorLND712 covers the classic LND 712 and the shielded 7128 EC.
 	// Both share the same 108 CPM per µSv/h calibration in Safecast docs.
 	factorLND712 = 108.0
         // factorLND712CPS mirrors the CPM constant for CPS payloads on LND 712.
         // Safecast documents 108 CPM per µSv/h; for per-second counts we divide
         // by 60 so both units share the same physical calibration.
-        factorLND712CPS = factorLND712 / 60.0
+        factorLND712CPS = factorLND712
 )
 
 // ─── Public conversion helpers ──────────────────────────────────────────────
@@ -64,13 +64,16 @@ func FromRealtime(value float64, unit string) (float64, bool) {
 		return 0, false
 	}
 
+
 	if containsAny(clean, []string{"lnd7317", "lnd7318"}) {
 		if strings.Contains(clean, "cps") {
 			return value / factorLND7317CPS, true
 		}
 		return value / factorLND7317, true
 	}
-	if containsAny(clean, []string{"lnd7128", "lnd712"}) {
+	if containsAny(clean, []string{"lnd712u"}) {
+		return value, true
+	} else if containsAny(clean, []string{"lnd7128", "lnd712"}) {
 		if strings.Contains(clean, "cps") {
 			return value / factorLND712CPS, true
 		}
