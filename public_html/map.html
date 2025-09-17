@@ -564,6 +564,13 @@ body, html {
           max-width: 260px;
         }
 
+        /* Allow long sensor descriptions to wrap inside Leaflet overlays. */
+        .leaflet-tooltip.custom-tooltip {
+          white-space: normal;
+          max-width: 260px;
+          overflow-wrap: anywhere;
+        }
+
         .live-tooltip-header {
           display: flex;
           gap: 10px;
@@ -686,14 +693,28 @@ body, html {
 
         .live-chart-title {
           margin: 0 0 8px 0;
-          font-weight: 600;
           display: flex;
-          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 4px 12px;
           align-items: baseline;
         }
 
-        .live-chart-title span {
+        .live-chart-label {
+          font-size: 14px;
+          font-weight: 600;
+          flex: 1 1 auto;
+        }
+
+        .live-chart-unit {
           font-size: 12px;
+          color: var(--modal-text);
+          opacity: 0.8;
+        }
+
+        .live-chart-window {
+          font-size: 11px;
+          color: var(--modal-text);
+          opacity: 0.7;
         }
 
         .live-chart-canvas {
@@ -975,19 +996,31 @@ body, html {
     <div id="liveModalExtra" class="live-modal-meta"></div>
     <div class="live-chart-stack">
       <div class="live-chart-block" data-range="day">
-        <h4 class="live-chart-title"><span id="liveChartTitleDay"></span><span>µR/h</span></h4>
+        <h4 class="live-chart-title">
+          <span class="live-chart-label" id="liveChartTitleDay"></span>
+          <span class="live-chart-unit">µR/h</span>
+          <span class="live-chart-window" data-range="day"></span>
+        </h4>
         <canvas class="live-chart-canvas" data-range="day"></canvas>
         <p class="live-chart-empty" data-range="day"></p>
       </div>
       <div class="live-chart-block" data-range="month">
-        <h4 class="live-chart-title"><span id="liveChartTitleMonth"></span><span>µR/h</span></h4>
+        <h4 class="live-chart-title">
+          <span class="live-chart-label" id="liveChartTitleMonth"></span>
+          <span class="live-chart-unit">µR/h</span>
+          <span class="live-chart-window" data-range="month"></span>
+        </h4>
         <canvas class="live-chart-canvas" data-range="month"></canvas>
         <p class="live-chart-empty" data-range="month"></p>
       </div>
-      <div class="live-chart-block" data-range="year">
-        <h4 class="live-chart-title"><span id="liveChartTitleYear"></span><span>µR/h</span></h4>
-        <canvas class="live-chart-canvas" data-range="year"></canvas>
-        <p class="live-chart-empty" data-range="year"></p>
+      <div class="live-chart-block" data-range="all">
+        <h4 class="live-chart-title">
+          <span class="live-chart-label" id="liveChartTitleAll"></span>
+          <span class="live-chart-unit">µR/h</span>
+          <span class="live-chart-window" data-range="all"></span>
+        </h4>
+        <canvas class="live-chart-canvas" data-range="all"></canvas>
+        <p class="live-chart-empty" data-range="all"></p>
       </div>
     </div>
     <button type="button" class="live-modal-close" id="liveModalClose"></button>
@@ -2125,9 +2158,172 @@ function chartColors() {
   return { grid: 'rgba(0,0,0,0.2)', line: '#1e88e5', text: '#333333', background: 'rgba(0,0,0,0.05)' };
 }
 
-function drawLiveChart(canvas, radiationPoints, extrasByKey) {
+function radiationLineColor(valueMicroRoentgen) {
+  return getGradientColor(valueMicroRoentgen / 100);
+}
+
+function niceNumber(range, round) {
+  if (!isFinite(range) || range === 0) return 0;
+  const exponent = Math.floor(Math.log10(Math.abs(range)));
+  const fraction = range / Math.pow(10, exponent);
+  let niceFraction;
+  if (round) {
+    if (fraction < 1.5) niceFraction = 1;
+    else if (fraction < 3) niceFraction = 2;
+    else if (fraction < 7) niceFraction = 5;
+    else niceFraction = 10;
+  } else {
+    if (fraction <= 1) niceFraction = 1;
+    else if (fraction <= 2) niceFraction = 2;
+    else if (fraction <= 5) niceFraction = 5;
+    else niceFraction = 10;
+  }
+  return niceFraction * Math.pow(10, exponent);
+}
+
+function niceTicks(min, max, count) {
+  if (!isFinite(min) || !isFinite(max) || count <= 0) return [];
+  if (min === max) return [min];
+  const range = niceNumber(max - min, false);
+  if (range === 0) return [];
+  const spacing = niceNumber(range / (count - 1), true);
+  if (!isFinite(spacing) || spacing === 0) return [];
+  const niceMin = Math.floor(min / spacing) * spacing;
+  const niceMax = Math.ceil(max / spacing) * spacing;
+  const ticks = [];
+  for (let v = niceMin; v <= niceMax + spacing / 2; v += spacing) {
+    ticks.push(v);
+  }
+  return ticks;
+}
+
+const TIME_TICK_STEPS = [
+  60,
+  120,
+  300,
+  600,
+  900,
+  1800,
+  3600,
+  7200,
+  14400,
+  21600,
+  43200,
+  86400,
+  172800,
+  604800,
+  1209600,
+  2592000,
+  7776000,
+  15552000,
+  31536000,
+];
+
+function selectTimeStep(spanSeconds, bucketSeconds) {
+  if (!isFinite(spanSeconds) || spanSeconds <= 0) {
+    return bucketSeconds || 60;
+  }
+  let minStep = spanSeconds / 6;
+  if (bucketSeconds && bucketSeconds > minStep) {
+    minStep = bucketSeconds;
+  } else if (bucketSeconds) {
+    minStep = Math.max(bucketSeconds, minStep / 2);
+  }
+  for (let i = 0; i < TIME_TICK_STEPS.length; i++) {
+    if (TIME_TICK_STEPS[i] >= minStep) {
+      return TIME_TICK_STEPS[i];
+    }
+  }
+  return Math.max(bucketSeconds || TIME_TICK_STEPS[TIME_TICK_STEPS.length - 1], Math.round(minStep));
+}
+
+function buildTimeTicks(start, end, bucketSeconds) {
+  if (!isFinite(start) || !isFinite(end) || end <= start) return [];
+  const span = end - start;
+  const step = selectTimeStep(span, bucketSeconds);
+  if (!isFinite(step) || step <= 0) return [];
+  const ticks = [];
+  const first = Math.ceil(start / step) * step;
+  for (let ts = first; ts <= end; ts += step) {
+    ticks.push(ts);
+  }
+  return ticks;
+}
+
+function formatTimeTickLabel(ts, spanSeconds, lang) {
+  if (!isFinite(ts)) return '';
+  const date = new Date(ts * 1000);
+  if (!isFinite(spanSeconds) || spanSeconds <= 0) {
+    return date.toLocaleString(lang, { hour: '2-digit', minute: '2-digit' });
+  }
+  if (spanSeconds <= 48 * 3600) {
+    return date.toLocaleString(lang, { hour: '2-digit', minute: '2-digit' });
+  }
+  if (spanSeconds <= 90 * 86400) {
+    return date.toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit' });
+  }
+  if (spanSeconds <= 400 * 86400) {
+    return date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
+  }
+  if (spanSeconds <= 5 * 365 * 86400) {
+    return date.toLocaleDateString(lang, { year: 'numeric', month: 'short' });
+  }
+  return date.toLocaleDateString(lang, { year: 'numeric' });
+}
+
+function formatAveragingWindow(seconds) {
+  if (!seconds || !isFinite(seconds)) return '';
+  const abs = Math.abs(seconds);
+  const units = [
+    { limit: 3600, key: 'duration_minutes', divisor: 60 },
+    { limit: 48 * 3600, key: 'duration_hours', divisor: 3600 },
+    { limit: 14 * 86400, key: 'duration_days', divisor: 86400 },
+    { limit: 90 * 86400, key: 'duration_weeks', divisor: 604800 },
+    { limit: Infinity, key: 'duration_months', divisor: 2592000 },
+  ];
+  let chosen = units[units.length - 1];
+  for (let i = 0; i < units.length; i++) {
+    if (abs < units[i].limit) {
+      chosen = units[i];
+      break;
+    }
+  }
+  const template = translate(chosen.key);
+  if (!template) return '';
+  const count = Math.max(1, Math.round(abs / chosen.divisor));
+  return template.replace('[[count]]', count);
+}
+
+function describeRangeLabel(range) {
+  if (!range || typeof range.start !== 'number' || typeof range.end !== 'number') return '';
+  if (range.end <= range.start) return '';
+  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  const span = range.end - range.start;
+  let startOpts;
+  let endOpts;
+  if (span <= 48 * 3600) {
+    startOpts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+    endOpts = startOpts;
+  } else if (span <= 120 * 86400) {
+    startOpts = { month: 'short', day: 'numeric' };
+    endOpts = { month: 'short', day: 'numeric' };
+  } else if (span <= 720 * 86400) {
+    startOpts = { year: 'numeric', month: 'short' };
+    endOpts = { year: 'numeric', month: 'short' };
+  } else {
+    startOpts = { year: 'numeric', month: 'short' };
+    endOpts = { year: 'numeric', month: 'short' };
+  }
+  const startText = new Date(range.start * 1000).toLocaleString(lang, startOpts);
+  const endText = new Date(range.end * 1000).toLocaleString(lang, endOpts);
+  if (!startText || !endText) return '';
+  return startText + ' → ' + endText;
+}
+
+function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
+  if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -2140,11 +2336,9 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey) {
   const colors = chartColors();
   canvas.style.background = colors.background;
 
-  const hasRadiation = Array.isArray(radiationPoints) && radiationPoints.length > 0;
-
   const extras = {};
   if (extrasByKey && typeof extrasByKey === 'object') {
-    Object.keys(extrasByKey).forEach(function(key){
+    Object.keys(extrasByKey).forEach(function(key) {
       const series = extrasByKey[key];
       if (Array.isArray(series) && series.length) {
         extras[key] = series;
@@ -2152,55 +2346,74 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey) {
     });
   }
   const extraKeys = sortExtraKeys(Object.keys(extras));
-
+  const hasRadiation = Array.isArray(radiationPoints) && radiationPoints.length > 0;
   if (!hasRadiation && extraKeys.length === 0) {
     return;
   }
 
   const baseSeries = hasRadiation ? radiationPoints : extras[extraKeys[0]];
-  const minX = baseSeries[0].timestamp;
-  const maxX = baseSeries[baseSeries.length - 1].timestamp || (minX + 1);
+  if (!baseSeries || !baseSeries.length) {
+    return;
+  }
 
-  let minY = hasRadiation ? radiationPoints[0].value : 0;
-  let maxY = hasRadiation ? radiationPoints[0].value : 1;
+  const opts = options || {};
+  let minX = baseSeries[0].timestamp;
+  let maxX = baseSeries[baseSeries.length - 1].timestamp || (minX + 1);
+  if (typeof opts.start === 'number' && typeof opts.end === 'number' && opts.end > opts.start) {
+    minX = opts.start;
+    maxX = opts.end;
+  }
+  if (!(maxX > minX)) {
+    maxX = minX + 1;
+  }
+  const bucketSeconds = typeof opts.bucketSeconds === 'number' ? opts.bucketSeconds : 0;
 
+  let minY;
+  let maxY;
   if (hasRadiation) {
-    radiationPoints.forEach(function(p){
-      if (p.value < minY) minY = p.value;
-      if (p.value > maxY) maxY = p.value;
+    minY = radiationPoints[0].value;
+    maxY = radiationPoints[0].value;
+    radiationPoints.forEach(function(point) {
+      if (point.value < minY) minY = point.value;
+      if (point.value > maxY) maxY = point.value;
     });
-    if (minY === maxY) {
-      const delta = minY === 0 ? 0.5 : Math.abs(minY) * 0.1;
-      minY -= delta;
-      maxY += delta;
-    }
   } else {
-    minY = 0;
-    maxY = 1;
+    const key = extraKeys[0];
+    minY = extras[key][0].value;
+    maxY = extras[key][0].value;
+    extras[key].forEach(function(point) {
+      if (point.value < minY) minY = point.value;
+      if (point.value > maxY) maxY = point.value;
+    });
+  }
+  if (minY === maxY) {
+    const delta = minY === 0 ? 0.5 : Math.abs(minY) * 0.2;
+    minY -= delta;
+    maxY += delta;
   }
 
   const extraRanges = {};
-  extraKeys.forEach(function(key){
+  extraKeys.forEach(function(key) {
     const series = extras[key];
     let minVal = series[0].value;
     let maxVal = series[0].value;
-    series.forEach(function(p){
-      if (p.value < minVal) minVal = p.value;
-      if (p.value > maxVal) maxVal = p.value;
+    series.forEach(function(point) {
+      if (point.value < minVal) minVal = point.value;
+      if (point.value > maxVal) maxVal = point.value;
     });
     if (minVal === maxVal) {
-      const delta = minVal === 0 ? 0.5 : Math.abs(minVal) * 0.1;
+      const delta = minVal === 0 ? 0.5 : Math.abs(minVal) * 0.2;
       minVal -= delta;
       maxVal += delta;
     }
     extraRanges[key] = { min: minVal, max: maxVal };
   });
 
-  const extraColumnWidth = 64;
-  const rightPad = extraKeys.length ? extraColumnWidth * extraKeys.length + 16 : 16;
-  const leftPad = hasRadiation ? 52 : 24;
-  const topPad = 42;
-  const bottomPad = 32;
+  const extraColumnWidth = 72;
+  const rightPad = extraKeys.length ? extraColumnWidth * extraKeys.length + 20 : 20;
+  const leftPad = hasRadiation ? 70 : 50;
+  const topPad = 64;
+  const bottomPad = 44;
 
   const plotLeft = leftPad;
   const plotRight = width - rightPad;
@@ -2208,6 +2421,12 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey) {
   const plotBottom = height - bottomPad;
   const plotW = Math.max(plotRight - plotLeft, 10);
   const plotH = Math.max(plotBottom - plotTop, 10);
+
+  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  const spanSeconds = maxX - minX;
+
+  const rangeX = (maxX - minX) || 1;
+  const rangeY = hasRadiation ? ((maxY - minY) || 1) : 1;
 
   ctx.strokeStyle = colors.grid;
   ctx.lineWidth = 1;
@@ -2221,24 +2440,90 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey) {
   }
   ctx.stroke();
 
-  const rangeX = (maxX - minX) || 1;
-  const rangeY = hasRadiation ? ((maxY - minY) || 1) : 1;
-
-  if (hasRadiation) {
-    ctx.strokeStyle = colors.line;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([]);
+  const ticksY = niceTicks(minY, maxY, 5);
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = colors.text;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ticksY.forEach(function(value) {
+    if (!isFinite(value)) return;
+    const y = plotBottom - ((value - minY) / rangeY) * plotH;
+    ctx.strokeStyle = colorWithAlpha(colors.grid, 0.5);
     ctx.beginPath();
-    radiationPoints.forEach(function(p, idx){
-      const x = plotLeft + ((p.timestamp - minX) / rangeX) * plotW;
-      const y = plotBottom - ((p.value - minY) / rangeY) * plotH;
-      if (idx === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
+    ctx.moveTo(plotLeft, y);
+    ctx.lineTo(plotRight, y);
     ctx.stroke();
+    const label = formatMicroRoentgenValue(value);
+    ctx.fillStyle = colors.text;
+    ctx.fillText(label, plotLeft - 8, y);
+  });
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  const ticksX = buildTimeTicks(minX, maxX, bucketSeconds);
+  ctx.strokeStyle = colorWithAlpha(colors.grid, 0.35);
+  ticksX.forEach(function(ts) {
+    if (!isFinite(ts)) return;
+    const x = plotLeft + ((ts - minX) / rangeX) * plotW;
+    ctx.beginPath();
+    ctx.moveTo(x, plotTop);
+    ctx.lineTo(x, plotBottom);
+    ctx.stroke();
+    const label = formatTimeTickLabel(ts, spanSeconds, lang);
+    if (!label) return;
+    ctx.fillStyle = colors.text;
+    ctx.fillText(label, x, height - 10);
+  });
+
+  const showStart = !ticksX.some(function(ts) { return Math.abs(ts - minX) < Math.max(60, bucketSeconds || 0); });
+  const showEnd = !ticksX.some(function(ts) { return Math.abs(ts - maxX) < Math.max(60, bucketSeconds || 0); });
+  ctx.textAlign = 'left';
+  ctx.fillStyle = colors.text;
+  const startLabel = formatTimeTickLabel(minX, spanSeconds, lang);
+  if (showStart && startLabel) {
+    ctx.fillText(startLabel, plotLeft, height - 10);
+  }
+  ctx.textAlign = 'right';
+  const endLabel = formatTimeTickLabel(maxX, spanSeconds, lang);
+  if (showEnd && endLabel) {
+    ctx.fillText(endLabel, plotRight, height - 10);
   }
 
-  extraKeys.forEach(function(key, idx){
+  if (hasRadiation) {
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    for (let i = 1; i < radiationPoints.length; i++) {
+      const prev = radiationPoints[i - 1];
+      const curr = radiationPoints[i];
+      const x1 = plotLeft + ((prev.timestamp - minX) / rangeX) * plotW;
+      const y1 = plotBottom - ((prev.value - minY) / rangeY) * plotH;
+      const x2 = plotLeft + ((curr.timestamp - minX) / rangeX) * plotW;
+      const y2 = plotBottom - ((curr.value - minY) / rangeY) * plotH;
+      // Applying a per-segment gradient keeps falling values flowing back to green
+      // and rising values blending toward the warmer colors.
+      const startColor = radiationLineColor(prev.value);
+      const endColor = radiationLineColor(curr.value);
+      const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+      gradient.addColorStop(0, startColor);
+      gradient.addColorStop(1, endColor);
+      ctx.strokeStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    if (radiationPoints.length === 1) {
+      const lone = radiationPoints[0];
+      const x = plotLeft + ((lone.timestamp - minX) / rangeX) * plotW;
+      const y = plotBottom - ((lone.value - minY) / rangeY) * plotH;
+      ctx.fillStyle = radiationLineColor(lone.value);
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  extraKeys.forEach(function(key, idx) {
     const series = extras[key];
     const range = extraRanges[key];
     const denom = (range.max - range.min) || 1;
@@ -2247,10 +2532,10 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey) {
     ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 3]);
     ctx.beginPath();
-    series.forEach(function(p, j){
-      const x = plotLeft + ((p.timestamp - minX) / rangeX) * plotW;
-      const y = plotBottom - ((p.value - range.min) / denom) * plotH;
-      if (j === 0) ctx.moveTo(x, y);
+    series.forEach(function(point, i) {
+      const x = plotLeft + ((point.timestamp - minX) / rangeX) * plotW;
+      const y = plotBottom - ((point.value - range.min) / denom) * plotH;
+      if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
@@ -2261,7 +2546,8 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey) {
     const maxLabel = formatExtraAxisValue(key, range.max);
     const minLabel = formatExtraAxisValue(key, range.min);
     ctx.fillStyle = color;
-    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
     if (maxLabel) {
       ctx.fillText(maxLabel + (suffix ? ' ' + suffix : ''), xBase, plotTop + 12);
     }
@@ -2270,43 +2556,62 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey) {
     }
   });
 
-  ctx.fillStyle = colors.text;
-  ctx.font = '12px sans-serif';
-  if (hasRadiation) {
-    ctx.fillText(formatMicroRoentgenValue(maxY), plotLeft + 4, plotTop + 12);
-    ctx.fillText(formatMicroRoentgenValue(minY), plotLeft + 4, plotBottom - 4);
-  }
-
-  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
-  const startLabel = new Date(minX * 1000).toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-  const endLabel = new Date(maxX * 1000).toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-  ctx.fillText(startLabel, plotLeft, height - 8);
-  const endWidth = ctx.measureText(endLabel).width;
-  ctx.fillText(endLabel, Math.max(plotLeft + 4, plotRight - endWidth), height - 8);
-
   ctx.font = '11px sans-serif';
+  ctx.fillStyle = colors.text;
+  ctx.textAlign = 'left';
+  const legendY = topPad - 20;
   let legendX = plotLeft;
-  const legendY = topPad - 14;
   const legendEntries = [];
   if (hasRadiation) {
-    legendEntries.push({ label: translate('radiation_dose') + ' (µR/h)', color: colors.line });
+    // The legend reuses a gradient so the key matches the multi-hued line.
+    const legendGradient = ctx.createLinearGradient(legendX, legendY, legendX + 18, legendY);
+    legendGradient.addColorStop(0, radiationLineColor(minY));
+    legendGradient.addColorStop(1, radiationLineColor(maxY));
+    legendEntries.push({ label: translate('radiation_dose') + ' (µR/h)', color: legendGradient, solid: true });
   }
-  extraKeys.forEach(function(key){
+  extraKeys.forEach(function(key) {
     const suffix = extraUnitSuffix(key);
     const label = labelForExtraKey(key) + (suffix ? ' (' + suffix + ')' : '');
-    legendEntries.push({ label: label, color: colorForExtraKey(key) });
+    legendEntries.push({ label: label, color: colorForExtraKey(key), solid: false });
   });
-  legendEntries.forEach(function(entry){
+  legendEntries.forEach(function(entry) {
     ctx.strokeStyle = entry.color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = entry.solid ? 3 : 1.5;
+    ctx.setLineDash(entry.solid ? [] : [5, 3]);
     ctx.beginPath();
     ctx.moveTo(legendX, legendY);
-    ctx.lineTo(legendX + 14, legendY);
+    ctx.lineTo(legendX + 18, legendY);
     ctx.stroke();
+    ctx.setLineDash([]);
     ctx.fillStyle = colors.text;
-    ctx.fillText(entry.label, legendX + 18, legendY + 4);
-    legendX += ctx.measureText(entry.label).width + 40;
+    ctx.fillText(entry.label, legendX + 24, legendY + 4);
+    legendX += ctx.measureText(entry.label).width + 64;
   });
+}
+
+function updateChartHeading(element, key, ranges) {
+  if (!element) return;
+  const base = translate('live_chart_' + key);
+  const range = ranges && ranges[key];
+  const desc = describeRangeLabel(range);
+  element.textContent = desc ? base + ' · ' + desc : base;
+}
+
+function updateChartWindowLabel(rangeKey, ranges) {
+  const el = document.querySelector(`.live-chart-window[data-range="${rangeKey}"]`);
+  if (!el) return;
+  const range = ranges && ranges[rangeKey];
+  if (!range || !range.bucketSeconds) {
+    el.textContent = '';
+    return;
+  }
+  const windowText = formatAveragingWindow(range.bucketSeconds);
+  if (!windowText) {
+    el.textContent = '';
+    return;
+  }
+  const template = translate('live_chart_averaged');
+  el.textContent = template ? template.replace('[[window]]', windowText) : windowText;
 }
 
 function hideLiveModal() {
@@ -2326,10 +2631,10 @@ async function openLiveModal(deviceID, fallback) {
 
   const dayTitle = document.getElementById('liveChartTitleDay');
   const monthTitle = document.getElementById('liveChartTitleMonth');
-  const yearTitle = document.getElementById('liveChartTitleYear');
-  if (dayTitle) dayTitle.textContent = translate('live_chart_day');
-  if (monthTitle) monthTitle.textContent = translate('live_chart_month');
-  if (yearTitle) yearTitle.textContent = translate('live_chart_year');
+  const allTitle = document.getElementById('liveChartTitleAll');
+  updateChartHeading(dayTitle, 'day');
+  updateChartHeading(monthTitle, 'month');
+  updateChartHeading(allTitle, 'all');
 
   const closeBtn = document.getElementById('liveModalClose');
   if (closeBtn) closeBtn.textContent = translate('live_chart_close');
@@ -2355,7 +2660,7 @@ async function openLiveModal(deviceID, fallback) {
     extraEl.innerHTML = '';
   }
 
-  ['day','month','year'].forEach(function(range){
+  ['day','month','all'].forEach(function(range){
     const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
     if (empty) { empty.textContent = ''; empty.style.display = 'none'; }
     const canvas = document.querySelector(`.live-chart-canvas[data-range="${range}"]`);
@@ -2363,6 +2668,7 @@ async function openLiveModal(deviceID, fallback) {
       const ctx = canvas.getContext('2d');
       if (ctx) ctx.clearRect(0,0,canvas.width,canvas.height);
     }
+    updateChartWindowLabel(range);
   });
 
   try {
@@ -2398,15 +2704,35 @@ async function openLiveModal(deviceID, fallback) {
       extraEl.innerHTML = renderLiveExtras(merged.liveExtra);
     }
 
-    ['day','month','year'].forEach(function(range){
+    const ranges = (data && data.ranges && typeof data.ranges === 'object') ? data.ranges : {};
+    // Range metadata keeps headings and averaging labels aligned with backend aggregation.
+
+    updateChartHeading(dayTitle, 'day', ranges);
+    updateChartHeading(monthTitle, 'month', ranges);
+    updateChartHeading(allTitle, 'all', ranges);
+    updateChartWindowLabel('day', ranges);
+    updateChartWindowLabel('month', ranges);
+    updateChartWindowLabel('all', ranges);
+
+    ['day','month','all'].forEach(function(range){
       const canvas = document.querySelector(`.live-chart-canvas[data-range="${range}"]`);
       const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
       const series = data.series && data.series[range] ? data.series[range] : [];
       const extras = data.extraSeries && data.extraSeries[range] ? data.extraSeries[range] : null;
       const hasSeries = (series && series.length) || hasExtraSeries(extras);
+      const rangeInfo = ranges && ranges[range] ? ranges[range] : null;
+      const options = {};
+      // Passing explicit bounds avoids axes jumping when resampled data omits raw endpoints.
+      if (rangeInfo && typeof rangeInfo.start === 'number' && typeof rangeInfo.end === 'number') {
+        options.start = rangeInfo.start;
+        options.end = rangeInfo.end;
+      }
+      if (rangeInfo && typeof rangeInfo.bucketSeconds === 'number') {
+        options.bucketSeconds = rangeInfo.bucketSeconds;
+      }
       if (canvas && hasSeries) {
         if (empty) empty.style.display = 'none';
-        drawLiveChart(canvas, series, extras);
+        drawLiveChart(canvas, series, extras, options);
       } else if (empty) {
         empty.textContent = translate('live_marker_no_data');
         empty.style.display = 'block';
@@ -2416,12 +2742,13 @@ async function openLiveModal(deviceID, fallback) {
     if (descEl) {
       descEl.textContent = translate('live_marker_history_error');
     }
-    ['day','month','year'].forEach(function(range){
+    ['day','month','all'].forEach(function(range){
       const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
       if (empty) {
         empty.textContent = translate('live_marker_no_data');
         empty.style.display = 'block';
       }
+      updateChartWindowLabel(range);
     });
   }
 }
