@@ -2305,6 +2305,408 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// realtimePoint holds a single measurement for realtime history charts.
+// Keeping the struct tiny helps when we duplicate slices for aggregation.
+type realtimePoint struct {
+	Timestamp int64   `json:"timestamp"`
+	Value     float64 `json:"value"`
+}
+
+// rangeSummary describes the plotted window and aggregation bucket.
+// Returning it to the frontend lets JavaScript render friendly titles.
+type rangeSummary struct {
+	Start         int64 `json:"start"`
+	End           int64 `json:"end"`
+	BucketSeconds int64 `json:"bucketSeconds"`
+}
+
+// historyAggregate bundles the processed realtime readings so the handler can
+// serialise the JSON response without juggling several parallel slices.
+type historyAggregate struct {
+	Series      map[string][]realtimePoint
+	ExtraSeries map[string]map[string][]realtimePoint
+	Extra       map[string]float64
+	Ranges      map[string]rangeSummary
+	DeviceName  string
+	Transport   string
+	Tube        string
+	Country     string
+}
+
+// realtimeMeasurementPayload moves measurements between goroutines without
+// sharing mutable state and keeps channel signatures consistent across helpers.
+type realtimeMeasurementPayload struct {
+	timestamp int64
+	radiation float64
+	extras    map[string]float64
+	name      string
+	transport string
+	tube      string
+	country   string
+}
+
+// decodeRealtimeExtras converts the optional JSON blob with temperature or
+// humidity hints into a float map.  Invalid payloads are ignored so noisy
+// devices do not break chart rendering.
+func decodeRealtimeExtras(raw string) map[string]float64 {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var parsed map[string]float64
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		log.Printf("decode realtime extras: %v", err)
+		return nil
+	}
+	clean := make(map[string]float64, len(parsed))
+	for key, value := range parsed {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		clean[key] = value
+	}
+	if len(clean) == 0 {
+		return nil
+	}
+	return clean
+}
+
+// copyFloatMap duplicates a float map so later mutations do not affect cached
+// responses.  We prefer copying over shared state to follow Go's advice of
+// communicating values explicitly.
+func copyFloatMap(src map[string]float64) map[string]float64 {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]float64, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+// cloneRealtimePoints allocates a fresh slice so callers can trim or
+// resample without affecting other views.
+func cloneRealtimePoints(points []realtimePoint) []realtimePoint {
+	if len(points) == 0 {
+		return nil
+	}
+	out := make([]realtimePoint, len(points))
+	copy(out, points)
+	return out
+}
+
+// filterPointsSince keeps only values with timestamps at or after the cutoff.
+// The helper assumes the input slice is sorted by timestamp.
+func filterPointsSince(points []realtimePoint, cutoff int64) []realtimePoint {
+	if cutoff <= 0 || len(points) == 0 {
+		return cloneRealtimePoints(points)
+	}
+	idx := sort.Search(len(points), func(i int) bool {
+		return points[i].Timestamp >= cutoff
+	})
+	if idx >= len(points) {
+		return nil
+	}
+	return cloneRealtimePoints(points[idx:])
+}
+
+// resampleRealtimePoints collapses samples into evenly sized buckets using the
+// average value per bucket.  Returning a new slice keeps the caller's data
+// immutable and mirrors the "don't mutate shared structures" guidance.
+func resampleRealtimePoints(points []realtimePoint, bucket int64) []realtimePoint {
+	if bucket <= 0 || len(points) == 0 {
+		return cloneRealtimePoints(points)
+	}
+	out := make([]realtimePoint, 0, len(points))
+	currentBucket := (points[0].Timestamp / bucket) * bucket
+	var sum float64
+	var count int
+	for _, p := range points {
+		bucketID := (p.Timestamp / bucket) * bucket
+		if bucketID != currentBucket && count > 0 {
+			out = append(out, realtimePoint{
+				Timestamp: currentBucket + bucket/2,
+				Value:     sum / float64(count),
+			})
+			currentBucket = bucketID
+			sum = 0
+			count = 0
+		}
+		sum += p.Value
+		count++
+	}
+	if count > 0 {
+		out = append(out, realtimePoint{
+			Timestamp: currentBucket + bucket/2,
+			Value:     sum / float64(count),
+		})
+	}
+	return out
+}
+
+// realtimeBucketSteps enumerates pleasant aggregation steps from minutes to
+// months.  The list keeps resampling predictable and friendly on charts.
+var realtimeBucketSteps = []int64{
+	60,
+	120,
+	300,
+	600,
+	900,
+	1800,
+	3600,
+	7200,
+	14400,
+	28800,
+	43200,
+	86400,
+	172800,
+	604800,
+	1209600,
+	2592000,
+	7776000,
+}
+
+// pickNiceBucket chooses the smallest bucket from realtimeBucketSteps that is
+// greater or equal to the requested minimum.  Falling back to doubling keeps
+// the function total when the data spans many years.
+func pickNiceBucket(minStep int64) int64 {
+	if minStep <= 1 {
+		return 1
+	}
+	for _, step := range realtimeBucketSteps {
+		if step >= minStep {
+			return step
+		}
+	}
+	return realtimeBucketSteps[len(realtimeBucketSteps)-1]
+}
+
+// nextBucket returns the next larger bucket after the provided step.
+func nextBucket(step int64) int64 {
+	for _, candidate := range realtimeBucketSteps {
+		if candidate > step {
+			return candidate
+		}
+	}
+	if step <= 0 {
+		return 1
+	}
+	return step * 2
+}
+
+// prepareRealtimeSeries optionally resamples a slice so the frontend receives
+// at most "limit" points.  When defaultBucket is positive we always aggregate
+// using that duration; otherwise the function derives a pleasant step.
+func prepareRealtimeSeries(points []realtimePoint, limit int, defaultBucket int64) ([]realtimePoint, int64) {
+	if len(points) == 0 {
+		return nil, 0
+	}
+	if defaultBucket > 0 {
+		bucket := defaultBucket
+		resampled := resampleRealtimePoints(points, bucket)
+		for len(resampled) > limit {
+			bucket = nextBucket(bucket)
+			resampled = resampleRealtimePoints(points, bucket)
+		}
+		return resampled, bucket
+	}
+	if len(points) <= limit {
+		return cloneRealtimePoints(points), 0
+	}
+	span := points[len(points)-1].Timestamp - points[0].Timestamp
+	if span <= 0 {
+		return cloneRealtimePoints(points), 0
+	}
+	approx := span / int64(limit)
+	if approx <= 0 {
+		approx = 1
+	}
+	bucket := pickNiceBucket(approx)
+	resampled := resampleRealtimePoints(points, bucket)
+	for len(resampled) > limit {
+		bucket = nextBucket(bucket)
+		resampled = resampleRealtimePoints(points, bucket)
+	}
+	return resampled, bucket
+}
+
+// selectAllBucket picks a default aggregation window for the long-term chart
+// so multi-year histories remain readable while single-season sensors keep
+// finer detail.
+func selectAllBucket(spanSeconds int64) int64 {
+	if spanSeconds <= 0 {
+		return 0
+	}
+	switch {
+	case spanSeconds <= int64(120*time.Hour/time.Second):
+		return int64(30 * time.Minute / time.Second)
+	case spanSeconds <= int64(180*24*time.Hour/time.Second):
+		return int64(6 * time.Hour / time.Second)
+	case spanSeconds <= int64(365*24*time.Hour/time.Second):
+		return int64(12 * time.Hour / time.Second)
+	case spanSeconds <= int64(3*365*24*time.Hour/time.Second):
+		return int64(24 * time.Hour / time.Second)
+	case spanSeconds <= int64(6*365*24*time.Hour/time.Second):
+		return int64(7 * 24 * time.Hour / time.Second)
+	default:
+		return int64(30 * 24 * time.Hour / time.Second)
+	}
+}
+
+// summariseRealtimeHistory processes DB rows on a background goroutine and
+// returns aggregated series for day, month, and all-time windows.
+func summariseRealtimeHistory(rows []database.RealtimeMeasurement, now time.Time) historyAggregate {
+	input := make(chan realtimeMeasurementPayload)
+	go func() {
+		defer close(input)
+		for _, row := range rows {
+			val, ok := safecastrealtime.FromRealtime(row.Value, row.Unit)
+			if !ok {
+				continue
+			}
+			payload := realtimeMeasurementPayload{
+				timestamp: row.MeasuredAt,
+				radiation: safecastrealtime.ToMicroRoentgen(val),
+				extras:    decodeRealtimeExtras(row.Extra),
+				name:      row.DeviceName,
+				transport: row.Transport,
+				tube:      row.Tube,
+				country:   row.Country,
+			}
+			input <- payload
+		}
+	}()
+
+	return collectRealtimeMeasurements(input, now, len(rows))
+}
+
+// collectRealtimeMeasurements consumes the measurement stream, keeps track of
+// metadata, and prepares slices for each chart timeframe.
+func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now time.Time, expected int) historyAggregate {
+	agg := historyAggregate{
+		Series: map[string][]realtimePoint{
+			"day":   {},
+			"month": {},
+			"all":   {},
+		},
+		ExtraSeries: map[string]map[string][]realtimePoint{
+			"day":   {},
+			"month": {},
+			"all":   {},
+		},
+		Ranges: make(map[string]rangeSummary, 3),
+	}
+
+	extrasAll := make(map[string][]realtimePoint)
+	if expected <= 0 {
+		expected = 1024
+	}
+	allPoints := make([]realtimePoint, 0, expected)
+	var firstTs int64
+	var lastTs int64
+
+	for payload := range input {
+		point := realtimePoint{Timestamp: payload.timestamp, Value: payload.radiation}
+		allPoints = append(allPoints, point)
+		lastTs = payload.timestamp
+		if firstTs == 0 {
+			firstTs = payload.timestamp
+		}
+
+		if agg.DeviceName == "" && payload.name != "" {
+			agg.DeviceName = payload.name
+		}
+		if agg.Transport == "" && payload.transport != "" {
+			agg.Transport = payload.transport
+		}
+		if agg.Country == "" && payload.country != "" {
+			agg.Country = payload.country
+		}
+		if agg.Tube == "" {
+			if label := safecastrealtime.DetectorLabel(payload.tube, payload.transport, payload.name); label != "" {
+				agg.Tube = label
+			}
+		}
+
+		if len(payload.extras) > 0 {
+			agg.Extra = copyFloatMap(payload.extras)
+			for key, value := range payload.extras {
+				extrasAll[key] = append(extrasAll[key], realtimePoint{Timestamp: payload.timestamp, Value: value})
+			}
+		}
+	}
+
+	nowUnix := now.Unix()
+	agg.Ranges["day"] = rangeSummary{Start: now.Add(-24 * time.Hour).Unix(), End: nowUnix}
+	agg.Ranges["month"] = rangeSummary{Start: now.Add(-30 * 24 * time.Hour).Unix(), End: nowUnix}
+	if len(allPoints) > 0 {
+		agg.Ranges["all"] = rangeSummary{Start: firstTs, End: lastTs}
+	} else {
+		agg.Ranges["all"] = rangeSummary{Start: agg.Ranges["month"].Start, End: nowUnix}
+	}
+
+	dayCutoff := agg.Ranges["day"].Start
+	monthCutoff := agg.Ranges["month"].Start
+	allSpan := agg.Ranges["all"].End - agg.Ranges["all"].Start
+
+	dayRaw := filterPointsSince(allPoints, dayCutoff)
+	daySeries, dayBucket := prepareRealtimeSeries(dayRaw, 720, 0)
+
+	monthRaw := filterPointsSince(allPoints, monthCutoff)
+	monthSeries, monthBucket := prepareRealtimeSeries(monthRaw, 900, int64(time.Hour/time.Second))
+	if monthBucket == 0 && len(monthSeries) > 0 {
+		monthBucket = int64(time.Hour / time.Second)
+		monthSeries = resampleRealtimePoints(monthRaw, monthBucket)
+	}
+	allBucketDefault := selectAllBucket(allSpan)
+	allSeries, allBucket := prepareRealtimeSeries(allPoints, 1200, allBucketDefault)
+
+	agg.Series["day"] = daySeries
+	agg.Series["month"] = monthSeries
+	agg.Series["all"] = allSeries
+	agg.Ranges["day"] = rangeSummary{Start: agg.Ranges["day"].Start, End: agg.Ranges["day"].End, BucketSeconds: dayBucket}
+	agg.Ranges["month"] = rangeSummary{Start: agg.Ranges["month"].Start, End: agg.Ranges["month"].End, BucketSeconds: monthBucket}
+	agg.Ranges["all"] = rangeSummary{Start: agg.Ranges["all"].Start, End: agg.Ranges["all"].End, BucketSeconds: allBucket}
+
+	buildExtras := func(target string, cutoff int64, bucket int64) {
+		if len(extrasAll) == 0 {
+			return
+		}
+		series := make(map[string][]realtimePoint)
+		for key, pts := range extrasAll {
+			filtered := filterPointsSince(pts, cutoff)
+			if len(filtered) == 0 {
+				continue
+			}
+			if bucket > 0 {
+				series[key] = resampleRealtimePoints(filtered, bucket)
+			} else {
+				series[key] = filtered
+			}
+		}
+		if len(series) > 0 {
+			agg.ExtraSeries[target] = series
+		}
+	}
+
+	buildExtras("day", dayCutoff, dayBucket)
+	buildExtras("month", monthCutoff, monthBucket)
+	buildExtras("all", agg.Ranges["all"].Start, allBucket)
+
+	if agg.Series["day"] == nil {
+		agg.Series["day"] = []realtimePoint{}
+	}
+	if agg.Series["month"] == nil {
+		agg.Series["month"] = []realtimePoint{}
+	}
+	if agg.Series["all"] == nil {
+		agg.Series["all"] = []realtimePoint{}
+	}
+
+	return agg
+}
+
 // realtimeHistoryHandler returns one year of realtime measurements for a device.
 // The handler keeps the response lightweight so the frontend can draw Grafana-style
 // charts without shipping a dedicated dashboard backend.
@@ -2324,131 +2726,45 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	since := now.Add(-365 * 24 * time.Hour).Unix()
-	dayCutoff := now.Add(-24 * time.Hour).Unix()
-	monthCutoff := now.Add(-30 * 24 * time.Hour).Unix()
-
-	rows, err := db.GetRealtimeHistory(device, since, *dbType)
+	rows, err := db.GetRealtimeHistory(device, 0, *dbType)
 	if err != nil {
 		http.Error(w, "history error", http.StatusInternalServerError)
 		return
 	}
 
-	type point struct {
-		Timestamp int64   `json:"timestamp"`
-		Value     float64 `json:"value"`
-	}
+	historyCh := make(chan historyAggregate, 1)
+	go func() {
+		historyCh <- summariseRealtimeHistory(rows, now)
+	}()
 
-	series := map[string][]point{
-		"day":   {},
-		"month": {},
-		"year":  {},
-	}
-
-	// extraSeries collects optional temperature and humidity samples so the
-	// frontend can render matching overlays.  We keep a nested map keyed by
-	// timeframe first to mirror the radiation series layout and keep
-	// lookups straightforward in JavaScript.
-	extraSeries := make(map[string]map[string][]point)
-
-	var (
-		metaName, metaTransport, metaTube, metaCountry string
-		extra                                          map[string]float64
-		latestExtraTs                                  int64
-	)
-
-	// addExtra appends an environmental point to the requested timeframe,
-	// creating the inner map when needed.  This keeps the main loop tidy
-	// and follows "A little copying is better than a little dependency" –
-	// no external helpers are required.
-	addExtra := func(bucket, key string, pt point) {
-		if extraSeries[bucket] == nil {
-			extraSeries[bucket] = make(map[string][]point)
-		}
-		extraSeries[bucket][key] = append(extraSeries[bucket][key], pt)
-	}
-
-	for _, m := range rows {
-		val, ok := safecastrealtime.FromRealtime(m.Value, m.Unit)
-		if !ok {
-			continue
-		}
-
-		ur := safecastrealtime.ToMicroRoentgen(val)
-
-		pt := point{Timestamp: m.MeasuredAt, Value: ur}
-		series["year"] = append(series["year"], pt)
-		if m.MeasuredAt >= monthCutoff {
-			series["month"] = append(series["month"], pt)
-		}
-		if m.MeasuredAt >= dayCutoff {
-			series["day"] = append(series["day"], pt)
-		}
-
-		if metaName == "" && m.DeviceName != "" {
-			metaName = m.DeviceName
-		}
-		if metaTransport == "" && m.Transport != "" {
-			metaTransport = m.Transport
-		}
-		if tube := safecastrealtime.DetectorLabel(m.Tube, m.Transport, m.DeviceName); tube != "" {
-			if metaTube == "" {
-				metaTube = tube
-			}
-		}
-		if metaCountry == "" && m.Country != "" {
-			metaCountry = m.Country
-		}
-
-		trimmed := strings.TrimSpace(m.Extra)
-		if trimmed != "" {
-			var parsed map[string]float64
-			if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
-				if len(parsed) > 0 {
-					if m.MeasuredAt >= latestExtraTs {
-						// The feed is ordered chronologically, yet we still compare
-						// timestamps so future refactors that change ordering keep
-						// the latest snapshot intact.
-						latestExtraTs = m.MeasuredAt
-						extra = parsed
-					}
-					extraPoint := point{Timestamp: m.MeasuredAt}
-					for key, value := range parsed {
-						if math.IsNaN(value) || math.IsInf(value, 0) {
-							continue
-						}
-						extraPoint.Value = value
-						addExtra("year", key, extraPoint)
-						if m.MeasuredAt >= monthCutoff {
-							addExtra("month", key, extraPoint)
-						}
-						if m.MeasuredAt >= dayCutoff {
-							addExtra("day", key, extraPoint)
-						}
-					}
-				}
-			}
-		}
+	var agg historyAggregate
+	select {
+	case <-r.Context().Done():
+		http.Error(w, "request cancelled", http.StatusRequestTimeout)
+		return
+	case agg = <-historyCh:
 	}
 
 	resp := struct {
-		DeviceID    string                        `json:"deviceID"`
-		DeviceName  string                        `json:"deviceName,omitempty"`
-		Transport   string                        `json:"transport,omitempty"`
-		Tube        string                        `json:"tube,omitempty"`
-		Country     string                        `json:"country,omitempty"`
-		Series      map[string][]point            `json:"series"`
-		Extra       map[string]float64            `json:"extra,omitempty"`
-		ExtraSeries map[string]map[string][]point `json:"extraSeries,omitempty"`
+		DeviceID    string                                `json:"deviceID"`
+		DeviceName  string                                `json:"deviceName,omitempty"`
+		Transport   string                                `json:"transport,omitempty"`
+		Tube        string                                `json:"tube,omitempty"`
+		Country     string                                `json:"country,omitempty"`
+		Series      map[string][]realtimePoint            `json:"series"`
+		Extra       map[string]float64                    `json:"extra,omitempty"`
+		ExtraSeries map[string]map[string][]realtimePoint `json:"extraSeries,omitempty"`
+		Ranges      map[string]rangeSummary               `json:"ranges,omitempty"`
 	}{
 		DeviceID:    device,
-		DeviceName:  metaName,
-		Transport:   metaTransport,
-		Tube:        metaTube,
-		Country:     metaCountry,
-		Series:      series,
-		Extra:       extra,
-		ExtraSeries: extraSeries,
+		DeviceName:  agg.DeviceName,
+		Transport:   agg.Transport,
+		Tube:        agg.Tube,
+		Country:     agg.Country,
+		Series:      agg.Series,
+		Extra:       agg.Extra,
+		ExtraSeries: agg.ExtraSeries,
+		Ranges:      agg.Ranges,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
