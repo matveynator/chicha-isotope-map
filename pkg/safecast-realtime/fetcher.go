@@ -27,6 +27,7 @@ import (
 type devicePayload struct {
 	ID      string
 	Type    string  // transport tag such as car or walk
+	Class   string  // upstream device_class retained for unit heuristics
 	Name    string  // human friendly device title from the feed
 	Tube    string  // detector type as advertised by the feed
 	Value   float64 // dose rate
@@ -116,9 +117,9 @@ func newMeasurementCandidate(key string, raw any) (measurementCandidate, bool) {
 	return candidate, true
 }
 
-// metricKeyFor recognises temperature and humidity hints from the payload map.
-// Returning a normalised key allows us to keep the stored JSON compact and easy
-// to translate in the UI later.
+// metricKeyFor recognises temperature, humidity, and pressure hints from the
+// payload map.  Returning a normalised key allows us to keep the stored JSON
+// compact and easy to translate in the UI later.
 func metricKeyFor(raw string) (string, bool) {
 	if strings.Contains(raw, "lnd") {
 		return "", false // measurement fields are handled separately
@@ -132,7 +133,33 @@ func metricKeyFor(raw string) (string, bool) {
 	if strings.Contains(raw, "humidity") || strings.HasPrefix(raw, "humid") {
 		return "humidity_percent", true
 	}
+	if strings.Contains(raw, "press") || strings.Contains(raw, "baro") {
+		return "pressure_hpa", true
+	}
 	return "", false
+}
+
+// reinterpretCountsUnit upgrades bare detector fields from specific hardware
+// into explicit CPS units.  Blues Radnote and Airnote devices expose counts under
+// "lnd_7318*" without suffixes, so mapping them here keeps downstream
+// conversion consistent with Safecast documentation while avoiding extra
+// conditionals elsewhere.
+func reinterpretCountsUnit(class, unit string) string {
+	if class == "" || unit == "" {
+		return unit
+	}
+	loweredClass := strings.ToLower(class)
+	if !strings.Contains(loweredClass, "radnote") && !strings.Contains(loweredClass, "airnote") {
+		return unit
+	}
+	loweredUnit := strings.ToLower(unit)
+	if !strings.HasPrefix(loweredUnit, "lnd_7318") {
+		return unit
+	}
+	if strings.Contains(loweredUnit, "cps") || strings.Contains(loweredUnit, "cpm") || strings.Contains(loweredUnit, "usv") || strings.Contains(loweredUnit, "urh") {
+		return unit
+	}
+	return unit + "_cps"
 }
 
 // addMetric records a derived environmental metric when present.
@@ -180,7 +207,10 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 
 	// Transport or class info
 	if v, ok := m["device_class"].(string); ok {
-		d.Type = v
+		d.Class = v
+		if d.Type == "" {
+			d.Type = v
+		}
 	}
 	if v, ok := m["service_transport"].(string); ok {
 		parts := strings.Split(v, ":")
@@ -252,7 +282,7 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 	}
 	if best.priority != math.MaxInt {
 		d.Value = best.value
-		d.Unit = best.unit
+		d.Unit = reinterpretCountsUnit(d.Class, best.unit)
 	}
 
 	// Timestamp is provided as RFC3339 string.
