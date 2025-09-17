@@ -1275,6 +1275,10 @@ function labelForExtraKey(key) {
       return translate('live_marker_temperature_f');
     case 'humidity_percent':
       return translate('live_marker_humidity');
+    case 'pressure_hpa':
+      // Safecast Airnote units expose pressure alongside humidity; handling it
+      // here keeps the legend consistent with the live charts.
+      return translate('live_marker_pressure');
     default:
       return key.replace(/_/g, ' ').replace(/\b\w/g, function(m){ return m.toUpperCase(); });
   }
@@ -1288,15 +1292,21 @@ function formatExtraValue(key, value) {
   if (key === 'humidity_percent') {
     return value.toFixed(0) + ' %';
   }
+  if (key === 'pressure_hpa') {
+    // Pressure varies slowly, so one decimal keeps the tooltip readable.
+    return value.toFixed(1) + ' hPa';
+  }
   return value.toFixed(2);
 }
 
-const EXTRA_SERIES_ORDER = ['temperature_c', 'temperature_f', 'humidity_percent'];
+// Adding pressure keeps environmental series grouped together for clarity.
+const EXTRA_SERIES_ORDER = ['temperature_c', 'temperature_f', 'humidity_percent', 'pressure_hpa'];
 
 function extraUnitSuffix(key) {
   if (key === 'temperature_c') return '°C';
   if (key === 'temperature_f') return '°F';
   if (key === 'humidity_percent') return '%';
+  if (key === 'pressure_hpa') return 'hPa';
   return '';
 }
 
@@ -1308,12 +1318,19 @@ function formatExtraAxisValue(key, value) {
   if (key === 'humidity_percent') {
     return value.toFixed(0);
   }
+  if (key === 'pressure_hpa') {
+    return value.toFixed(1);
+  }
   return value.toFixed(2);
 }
 
 function colorForExtraKey(key) {
   if (key === 'temperature_c' || key === 'temperature_f') return '#ff7043';
   if (key === 'humidity_percent') return '#26a69a';
+  if (key === 'pressure_hpa') {
+    // Pressure gets a calming blue to distinguish it from humidity's green.
+    return '#5c6bc0';
+  }
   return '#ab47bc';
 }
 
