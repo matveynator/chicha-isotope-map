@@ -94,6 +94,12 @@ func NewDatabase(config Config) (*Database, error) {
 		db.SetMaxIdleConns(1)
 		// Never recycle the single connection (keeps it stable for the whole process).
 		db.SetConnMaxLifetime(0)
+		// Tuning WAL/synchronous/busy_timeout keeps inserts fast enough for realtime uploads.
+		tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := tuneSQLiteLikeConnection(tuneCtx, db, log.Printf); err != nil {
+			log.Printf("sqlite tuning skipped: %v", err)
+		}
+		cancel()
 	}
 
 	// Cheap liveness probe with timeout so we don't hang at startup
@@ -131,6 +137,70 @@ func NewDatabase(config Config) (*Database, error) {
 		DB:          db,
 		idGenerator: idChannel,
 	}, nil
+}
+
+// tuneSQLiteLikeConnection applies WAL/synchronous/busy pragmas for SQLite-like engines.
+// We keep the steps portable and run them through a small channel pipeline so the
+// work happens outside the caller goroutine, following "Don't communicate by sharing
+// memory; share memory by communicating".
+func tuneSQLiteLikeConnection(ctx context.Context, db *sql.DB, logf func(string, ...any)) error {
+	type pragma struct {
+		label     string
+		query     string
+		expectRow bool
+	}
+
+	steps := []pragma{
+		{label: "journal_mode", query: "PRAGMA journal_mode=WAL;", expectRow: true},
+		{label: "synchronous", query: "PRAGMA synchronous=NORMAL;"},
+		{label: "temp_store", query: "PRAGMA temp_store=MEMORY;"},
+		{label: "cache_size", query: "PRAGMA cache_size=-20000;"},
+		{label: "busy_timeout", query: "PRAGMA busy_timeout=5000;"},
+	}
+
+	jobs := make(chan pragma)
+	errs := make(chan error, 1)
+
+	go func() {
+		defer close(errs)
+		for step := range jobs {
+			select {
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			default:
+			}
+
+			if step.expectRow {
+				var mode string
+				if err := db.QueryRowContext(ctx, step.query).Scan(&mode); err != nil {
+					errs <- fmt.Errorf("apply %s: %w", step.label, err)
+					return
+				}
+				logf("SQLite tuning %s -> %s", step.label, mode)
+				continue
+			}
+
+			if _, err := db.ExecContext(ctx, step.query); err != nil {
+				errs <- fmt.Errorf("apply %s: %w", step.label, err)
+				return
+			}
+			logf("SQLite tuning %s applied", step.label)
+		}
+		errs <- nil
+	}()
+
+	go func() {
+		defer close(jobs)
+		for _, step := range steps {
+			jobs <- step
+		}
+	}()
+
+	if err := <-errs; err != nil {
+		return err
+	}
+	return nil
 }
 
 // EnsureIndexesAsync builds non-critical indexes in background, politely.
@@ -230,8 +300,13 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// 2) Selective singles
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Dedicated date helpers keep slider filtering responsive even with WAL on.
+			{"idx_markers_trackid_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_zoom_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 			// Realtime history: keep per-device scans and bounds responsive.
@@ -255,8 +330,13 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Dedicated date helpers keep slider filtering responsive even with WAL on.
+			{"idx_markers_trackid_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_zoom_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 			// Realtime history: keep per-device scans and bounds responsive.
@@ -281,8 +361,13 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Dedicated date helpers keep slider filtering responsive even with WAL on.
+			{"idx_markers_trackid_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_zoom_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 			// Realtime history: keep per-device scans and bounds responsive.
@@ -307,8 +392,13 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Dedicated date helpers keep slider filtering responsive even with WAL on.
+			{"idx_markers_trackid_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_zoom_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 			// Realtime history: keep per-device scans and bounds responsive.
