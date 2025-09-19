@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/database"
+	"chicha-isotope-map/pkg/database/drivers"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
@@ -74,6 +75,13 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var CompileVersion = "dev"
 
 var db *database.Database
+
+func init() {
+	// We trigger driver registration here so "go run chicha-isotope-map.go" keeps
+	// working even when auxiliary files are skipped; relying on init avoids extra
+	// coordination primitives and mirrors Go's preference for simplicity.
+	drivers.Ready()
+}
 
 // ==========
 // Константы для слияния маркеров
