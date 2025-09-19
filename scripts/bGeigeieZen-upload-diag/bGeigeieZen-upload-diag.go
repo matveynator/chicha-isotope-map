@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/database"
+	"chicha-isotope-map/pkg/database/drivers"
 	"chicha-isotope-map/pkg/logger"
 )
 
@@ -33,6 +34,12 @@ var (
 )
 
 var db *database.Database
+
+func init() {
+	// Diagnostics may be run with "go run bGeigeieZen-upload-diag.go" so we
+	// register drivers here to keep behaviour identical to full builds.
+	drivers.Ready()
+}
 
 // ---- Logging helper compatible with main app ----
 func logT(trackID, component, format string, v ...any) {

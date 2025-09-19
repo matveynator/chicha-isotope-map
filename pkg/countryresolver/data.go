@@ -14,30 +14,41 @@ import (
 // stay useful to operators watching logs.
 const datasetPath = "/static/geojson/ne_10m_admin_0_countries.geojson"
 
-// countries holds the parsed polygons grouped by ISO code.  The slice is
-// populated during package initialisation so Resolve can stay allocation
-// free at runtime.
+// countries holds the parsed polygons grouped by ISO code.  We populate the
+// slice lazily through datasetCoordinator so package init stays lightweight
+// and go test/go vet do not appear stuck parsing JSON.
 var countries []country
 
-// spatialIndex keeps a packed R-tree of every polygon.  Querying this tree
-// gives us a tiny candidate set before we run the slower point-in-polygon
-// math.
+// spatialIndex keeps a packed R-tree of every polygon.  The coordinator fills
+// it once and publishes the snapshot via channels so all goroutines share the
+// same immutable structure without locks.
 var spatialIndex *treeNode
 
 // nameByCode is constructed from the loaded dataset so NameFor can keep its
 // simple map lookup behaviour.
 var nameByCode map[string]string
 
-// init loads the embedded GeoJSON once so that worker goroutines in
-// resolver.go always see a ready-to-use index.
+// datasetSnapshot groups the state produced by loadDataset.  Using a struct
+// keeps channel messages clear and mirrors the Go proverb "Clear is better
+// than clever" by bundling related values together.
+type datasetSnapshot struct {
+	countries []country
+	index     *treeNode
+	names     map[string]string
+}
+
+// datasetRequests receives waiters asking for a fully initialised dataset.
+// datasetSnapshots publishes the first completed load so all future callers
+// get immediate answers without recomputing heavy geometry.
+var (
+	datasetRequests  = make(chan chan datasetSnapshot)
+	datasetSnapshots = make(chan datasetSnapshot, 1)
+)
+
+// init starts the dataset coordinator goroutine.  Loading is deferred until
+// the first Resolve/NameFor call sends a request through datasetRequests.
 func init() {
-	loadedCountries, index, err := loadDataset()
-	if err != nil {
-		panic(fmt.Sprintf("countryresolver: %v", err))
-	}
-	countries = loadedCountries
-	spatialIndex = index
-	nameByCode = buildNameIndex(countries)
+	go datasetCoordinator()
 }
 
 // ===== GeoJSON model =====
@@ -120,6 +131,63 @@ type codeInfo struct {
 	code       string
 	canonical  bool
 	fromPostal bool
+}
+
+// datasetCoordinator multiplexes requests for the country polygons.  The
+// first caller triggers loadDataset inside a goroutine so package init finishes
+// instantly and tooling like go test/go vet do not observe long silent periods.
+func datasetCoordinator() {
+	var (
+		cached  datasetSnapshot
+		ready   bool
+		loading bool
+		waiters []chan datasetSnapshot
+	)
+
+	for {
+		select {
+		case req := <-datasetRequests:
+			if ready {
+				req <- cached
+				continue
+			}
+			waiters = append(waiters, req)
+			if !loading {
+				loading = true
+				go func() {
+					loadedCountries, index, err := loadDataset()
+					if err != nil {
+						panic(fmt.Sprintf("countryresolver: %v", err))
+					}
+					datasetSnapshots <- datasetSnapshot{
+						countries: loadedCountries,
+						index:     index,
+						names:     buildNameIndex(loadedCountries),
+					}
+				}()
+			}
+		case snap := <-datasetSnapshots:
+			countries = snap.countries
+			spatialIndex = snap.index
+			nameByCode = snap.names
+			cached = snap
+			ready = true
+			loading = false
+			for _, waiter := range waiters {
+				waiter <- snap
+			}
+			waiters = nil
+		}
+	}
+}
+
+// ensureDatasetReady hands back the cached dataset.  Using a channel keeps the
+// coordination lock-free and honours "Share memory by communicating" so every
+// goroutine waits only once for the heavy initialisation.
+func ensureDatasetReady() datasetSnapshot {
+	reply := make(chan datasetSnapshot, 1)
+	datasetRequests <- reply
+	return <-reply
 }
 
 // ===== Dataset loading =====
@@ -547,8 +615,8 @@ func pointOnSegment(a, b point, lat, lon float64) bool {
 // streamCandidates walks the R-tree and emits every polygon bounding box
 // that may contain the point.  A done channel stops the traversal as soon
 // as the caller finds a match.
-func streamCandidates(lat, lon float64, out chan<- candidate, done <-chan struct{}) {
-	walkTree(spatialIndex, lat, lon, out, done)
+func streamCandidates(index *treeNode, lat, lon float64, out chan<- candidate, done <-chan struct{}) {
+	walkTree(index, lat, lon, out, done)
 }
 
 func walkTree(node *treeNode, lat, lon float64, out chan<- candidate, done <-chan struct{}) {
