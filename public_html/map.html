@@ -20,9 +20,12 @@ body, html {
   overflow: hidden; /* Hide scrollbars */
   background: var(--modal-bg); /* Apply theme background color */
   color: var(--modal-text); /* Ensure text inherits theme color */
+  font-family: var(--font-family-base); /* Keep text styling consistent across the UI */
+  font-size: var(--font-size-base); /* Align base size so similar widgets match */
+  line-height: 1.5; /* Provide comfortable reading in both themes */
 }
 
-        /* Color variables adapt to system theme */
+        /* Color and typography variables adapt to system theme */
         :root {
           --overlay-bg: rgba(255, 255, 255, 0.7);
           --progress-bg: #ffffff;
@@ -39,6 +42,13 @@ body, html {
           --modal-border: 1px solid #888;
           --link-color: #007bff;
           color-scheme: light; /* Default to light scheme */
+          --font-family-base: "Segoe UI", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; /* Shared font stack keeps every control aligned */
+          --font-size-base: 14px; /* Main text size for buttons, menus, and labels */
+          --font-size-sm: 12px; /* Secondary text such as helper descriptions */
+          --font-size-xs: 11px; /* Compact labels and metadata */
+          --font-size-lg: 16px; /* Slightly larger controls where extra emphasis helps */
+          --font-size-xl: 20px; /* Section headings */
+          --font-size-display: 28px; /* Prominent readings inside tooltips */
         }
 
         @media (prefers-color-scheme: dark) {
@@ -59,6 +69,46 @@ body, html {
             --link-color: #90caf9;
             color-scheme: dark; /* Match system dark scheme */
           }
+        }
+
+        /* Reuse the same typography across controls so menus, buttons, and overlays match */
+        body, html, button, input, select, textarea {
+          font-family: var(--font-family-base);
+        }
+
+        button,
+        .upload-btn,
+        .locate-btn,
+        .back-to-all-btn,
+        .slider-reset-btn,
+        .slider-toggle button,
+        .qr-btn,
+        .live-modal-close {
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-base);
+        }
+
+        /* Align shared UI chrome sizes while letting specialized components override when needed */
+        .slider-label,
+        .slider-toggle button,
+        .live-popup-meta,
+        .live-popup-small-link {
+          font-size: var(--font-size-xs);
+        }
+
+        .live-tooltip-desc,
+        .live-popup-dose-secondary,
+        .live-popup-dose-status,
+        .live-chart-unit {
+          font-size: var(--font-size-sm);
+        }
+
+        .leaflet-container,
+        .leaflet-container .leaflet-control,
+        .leaflet-container .leaflet-popup,
+        .leaflet-container .leaflet-tooltip {
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-base);
         }
 
         /* Manual theme overrides */
@@ -109,10 +159,17 @@ body, html {
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
           padding: 4px 6px;
           z-index: 1000;
-          font-family: inherit;
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-base);
           display: flex;
           align-items: center;
+          gap: 6px;
           color: var(--modal-text);
+        }
+
+        .theme-icon {
+          font-size: var(--font-size-base);
+          line-height: 1;
         }
 
         .theme-switch {
@@ -209,7 +266,7 @@ body, html {
           border-radius: 4px;
           padding: 5px 10px;
           cursor: pointer;
-          font-size: 14px;
+          font-size: var(--font-size-base);
           color: #ffffff; /* White text stays readable across themes */
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
@@ -269,7 +326,7 @@ body, html {
         /* Server processing indicator */
         .server-processing {
           margin-left: 10px;
-          font-size: 14px;
+          font-size: var(--font-size-base);
           color: #ff9800;
         }
 
@@ -293,7 +350,7 @@ body, html {
           border-radius: 4px;
           padding: 5px 10px;
           cursor: pointer;
-          font-size: 16px;
+          font-size: var(--font-size-base);
           color: var(--modal-text);
           box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
           display: flex;
@@ -331,7 +388,7 @@ body, html {
           left: 70px;
           z-index: 1000;
           color: var(--modal-text);
-          font-size: 14px;
+          font-size: var(--font-size-base);
           opacity: 0.6;
         }
 
@@ -364,7 +421,7 @@ body, html {
           border-radius: 4px;
           padding: 5px 10px;
           cursor: pointer;
-          font-size: 14px;
+          font-size: var(--font-size-base);
           color: var(--modal-text);
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
@@ -419,16 +476,16 @@ body, html {
 
         .slider-label{
           margin:2px 0;
-          font-size:11px;
+          font-size: var(--font-size-xs);
           line-height:1.15em;
           white-space:nowrap;
-          text-align:center; 
+          text-align:center;
         }
 
         /* ───── Year / Month toggle ───── */
         .slider-toggle{
           display:flex; gap:2px; margin:2px 0 4px;
-          font-size:11px; line-height:1; user-select:none;
+          font-size: var(--font-size-xs); line-height:1; user-select:none;
         }
         /* Year/Month toggle buttons adapt to theme */
         .slider-toggle button{
@@ -461,7 +518,7 @@ body, html {
           width:100%;
           margin-top:4px;
           padding:2px 4px;
-          font-size:11px;
+          font-size: var(--font-size-xs);
           border: var(--legend-border);
           background: var(--control-bg);
           border-radius:3px;
@@ -542,6 +599,7 @@ body, html {
           gap: 2px;
           text-align: center;
           font-weight: 600;
+          font-family: var(--font-family-base);
           box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
           color: #000;
           overflow: hidden;
@@ -616,7 +674,7 @@ body, html {
 				}
 
         .live-tooltip-desc {
-          font-size: 12px;
+          font-size: var(--font-size-sm);
           line-height: 1.4;
         }
 
@@ -630,7 +688,7 @@ body, html {
         }
 
         .live-popup-dose-primary {
-          font-size: 28px;
+          font-size: var(--font-size-display);
           font-weight: 700;
           line-height: 1;
           letter-spacing: -0.01em;
@@ -638,29 +696,29 @@ body, html {
 
         .live-popup-dose-unit {
           margin-left: 6px;
-          font-size: 14px;
+          font-size: var(--font-size-base);
           font-weight: 500;
         }
 
         .live-popup-dose-secondary {
-          font-size: 12px;
+          font-size: var(--font-size-sm);
           opacity: 0.85;
         }
 
         .live-popup-dose-status {
           padding: 4px 10px;
           border-radius: 6px;
-          font-size: 12px;
+          font-size: var(--font-size-sm);
           font-weight: 600;
         }
 
         .live-popup-climate {
-          font-size: 13px;
+          font-size: var(--font-size-base);
           font-weight: 500;
         }
 
         .live-popup-meta {
-          font-size: 11px;
+          font-size: var(--font-size-xs);
           line-height: 1.4;
           opacity: 0.85;
           display: grid;
@@ -673,7 +731,7 @@ body, html {
         }
 
         .live-popup-small-link {
-          font-size: 11px;
+          font-size: var(--font-size-xs);
           display: inline-block;
           margin-top: 4px;
         }
@@ -750,7 +808,7 @@ body, html {
 
         .live-modal-title {
           margin: 0;
-          font-size: 20px;
+          font-size: var(--font-size-xl);
         }
 
         .live-modal-description {
@@ -761,7 +819,7 @@ body, html {
         .live-modal-meta {
           display: grid;
           gap: 6px;
-          font-size: 14px;
+          font-size: var(--font-size-base);
         }
 
         .live-chart-stack {
@@ -786,19 +844,19 @@ body, html {
         }
 
         .live-chart-label {
-          font-size: 14px;
+          font-size: var(--font-size-base);
           font-weight: 600;
           flex: 1 1 auto;
         }
 
         .live-chart-unit {
-          font-size: 12px;
+          font-size: var(--font-size-sm);
           color: var(--modal-text);
           opacity: 0.8;
         }
 
         .live-chart-window {
-          font-size: 11px;
+          font-size: var(--font-size-xs);
           color: var(--modal-text);
           opacity: 0.7;
         }
@@ -813,7 +871,7 @@ body, html {
 
         .live-chart-empty {
           margin: 0;
-          font-size: 12px;
+          font-size: var(--font-size-sm);
           color: var(--modal-text);
         }
 
@@ -953,12 +1011,12 @@ body, html {
 
     <!-- Theme toggle -->
     <div id="themeToggle">
-      <span style="font-size:14px;">☀️</span>
+      <span class="theme-icon">☀️</span>
       <label class="theme-switch">
         <input type="checkbox" id="themeSwitch">
         <span class="theme-slider"></span>
       </label>
-      <span style="font-size:14px;">🌙</span>
+      <span class="theme-icon">🌙</span>
     </div>
 
 <!-- Compact Legend (clickable) -->
@@ -971,17 +1029,17 @@ body, html {
   border-radius: 4px;
   box-shadow: 0 1px 5px rgba(0,0,0,0.65);
   padding: 10px 10px 10px 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.4em;
   cursor: pointer;
   z-index: 1000;
-  font-family: inherit;
+  font-family: var(--font-family-base);
   display: flex;
   overflow: hidden;">
     <div style="width:16px; margin-left:6px; margin-right:6px; border-radius:4px 4px 4px 4px; overflow:hidden; background:linear-gradient(to top,#008000,#FFD700,#FF8C00,#FF4500,#000); position:relative;">
-    <span style="position:absolute; bottom:4px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size:8px;">{{translate "legend_safe"}}</span>
-    <span style="position:absolute; top:4px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size:8px;">{{translate "legend_danger"}}</span>
-  </div>
+    <span style="position:absolute; bottom:4px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size: var(--font-size-xs);">{{translate "legend_safe"}}</span>
+    <span style="position:absolute; top:4px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size: var(--font-size-xs);">{{translate "legend_danger"}}</span>
+</div>
   <div>
     <strong>{{translate "legend_title"}}</strong><br>
     <div><span style="color:#000000;">■</span> >100 µR/h</div>
@@ -990,7 +1048,7 @@ body, html {
    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
   </div>
 </div>
-<div id="legendTooltip" class="custom-tooltip" style="display:none; position:fixed; max-width:400px; padding:10px; font-size:8px; line-height:1.4em; z-index:1001;"></div>
+<div id="legendTooltip" class="custom-tooltip" style="display:none; position:fixed; max-width:400px; padding:10px; font-size: var(--font-size-sm); line-height:1.4em; z-index:1001;"></div>
 <!--
   Compact 4-bin legend (µR/h) with vertical gradient bar (green→yellow→orange→red→black).
   White labels mark safe at the bottom and danger at the top.
@@ -1014,10 +1072,10 @@ body, html {
     overflow-y:auto;
     padding:20px;
     border-radius:10px;
-    font-size:14px;
+    font-size: var(--font-size-base);
     line-height:1.6em;
     box-shadow:0 0 10px rgba(0,0,0,0.5);
-    font-family: inherit;">
+    font-family: var(--font-family-base);">
     <h3 style="margin-top:0;">{{translate "legend_title"}}</h3>
     <!-- We inject the localized full text below -->
     <div id="legendText" style="line-height:1.6em;"></div>
@@ -1053,10 +1111,10 @@ body, html {
     overflow-y:auto;
     padding:20px;
     border-radius:10px;
-    font-size:14px;
+    font-size: var(--font-size-base);
     line-height:1.6em;
     box-shadow:0 0 10px rgba(0,0,0,0.5);
-    font-family: inherit;">
+    font-family: var(--font-family-base);">
     <h3 id="infoTitle" style="margin-top:0;"></h3>
     <div id="infoText" style="line-height:1.6em;"></div>
     <div style="margin-top:12px; text-align:right;">
@@ -1124,6 +1182,33 @@ body, html {
 
     <!-- Helper functions -->
     <script>
+      // Cache typography tokens so dynamic canvases reuse the same styling as CSS.
+      let cachedFontTokens;
+      function resolveFontTokens() {
+        if (cachedFontTokens) return cachedFontTokens;
+        const root = document.documentElement;
+        const styles = window.getComputedStyle(root);
+        const fallbackFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+        const familyRaw = (styles.getPropertyValue('--font-family-base') || '').trim();
+        const family = familyRaw || fallbackFamily;
+
+        function pickSize(varName, defaultSize) {
+          const value = (styles.getPropertyValue(varName) || '').trim();
+          return value || defaultSize;
+        }
+
+        cachedFontTokens = {
+          family: family,
+          xs: pickSize('--font-size-xs', '11px'),
+          sm: pickSize('--font-size-sm', '12px'),
+          base: pickSize('--font-size-base', '14px'),
+          lg: pickSize('--font-size-lg', '16px'),
+          xl: pickSize('--font-size-xl', '20px'),
+          display: pickSize('--font-size-display', '28px'),
+        };
+        return cachedFontTokens;
+      }
+
       // Compute marker color from radiation level
       function getGradientColor(doseRate) {
         if (doseRate <= 0.04) return "#006400"; // Dark green
@@ -2516,11 +2601,12 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   const colors = chartColors();
   canvas.style.background = colors.background;
 
+  const fontTokens = resolveFontTokens(); // Use CSS-driven sizes so canvas labels match the rest of the UI.
   const fonts = {
-    axisY: '12px sans-serif',
-    axisX: '9px sans-serif',
-    extras: '11px sans-serif',
-    legend: '13px sans-serif'
+    axisY: fontTokens.sm + ' ' + fontTokens.family,
+    axisX: fontTokens.xs + ' ' + fontTokens.family,
+    extras: fontTokens.sm + ' ' + fontTokens.family,
+    legend: fontTokens.base + ' ' + fontTokens.family,
   };
 
   const extras = {};
@@ -2673,7 +2759,6 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   const tolerance = Math.max(60, approxStep || 0);
   const showStart = !ticksX.some(function(ts) { return Math.abs(ts - minX) < tolerance; });
   const showEnd = !ticksX.some(function(ts) { return Math.abs(ts - maxX) < tolerance; });
-  ctx.textAlign = 'left';
   ctx.fillStyle = colors.text;
   const startLabel = formatTimeTickLabel(minX, spanSeconds, lang);
   if (showStart && startLabel) {
@@ -2785,6 +2870,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     legendX += ctx.measureText(entry.label).width + 64;
   });
 }
+
 
 function updateChartHeading(element, key, ranges) {
   if (!element) return;
