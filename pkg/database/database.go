@@ -86,6 +86,12 @@ func realtimeValueColumnDefinition(dbType string) string {
 // column back to "value" so the rest of the code keeps scanning into
 // RealtimeMeasurement.Value without engine-specific branches.
 func realtimeValueSelectExpression(dbType string) string {
+	// Genji treats VALUE as a reserved keyword, so we skip the alias and
+	// read the raw column name directly. Other engines keep the alias to
+	// preserve the historical column list returned to callers.
+	if strings.EqualFold(dbType, "genji") {
+		return realtimeValueColumnName(dbType)
+	}
 	return fmt.Sprintf("%s AS value", realtimeValueColumnName(dbType))
 }
 
@@ -751,6 +757,29 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`, col)
 		_, err := db.DB.Exec(query,
 			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
+		return err
+
+	case "genji":
+		// Genji does not understand the ON CONFLICT syntax that SQLite
+		// accepts, so we perform a best-effort insert and tolerate
+		// duplicate errors from the unique index. Channels keep ID
+		// allocation safe without relying on mutexes.
+		if m.ID == 0 {
+			m.ID = <-db.idGenerator
+		}
+		query := fmt.Sprintf(`
+INSERT INTO realtime_measurements
+      (id,device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,fetched_at,extra)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, col)
+		_, err := db.DB.Exec(query,
+			m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
+		if err != nil {
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "duplicate") || strings.Contains(msg, "already exists") || strings.Contains(msg, "constraint") {
+				return nil
+			}
+		}
 		return err
 
 	default:
