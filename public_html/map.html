@@ -1299,6 +1299,54 @@ function isDarkColor(color) {
   return luminance < 140;
 }
 
+// getCurrentTheme inspects document state, cached preference, and media queries
+// so realtime popups can style text with the correct contrast for each theme.
+function getCurrentTheme() {
+  const explicit = document.documentElement && document.documentElement.dataset
+    ? document.documentElement.dataset.theme
+    : '';
+  if (explicit === 'light' || explicit === 'dark') return explicit;
+  try {
+    const stored = sessionStorage.getItem('themePreference');
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch (err) {
+    // Accessing sessionStorage may fail in strict privacy modes; fall back to media queries.
+  }
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return prefersDark ? 'dark' : 'light';
+}
+
+// buildOutlineShadow emits a multi-directional text-shadow so letters gain a
+// colored outline similar to the warning buttons used elsewhere in the UI.
+function buildOutlineShadow(color) {
+  const rgb = parseColor(color);
+  const outlineColor = rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.85)` : color;
+  const offsets = [-1, 0, 1];
+  const shadows = [];
+  offsets.forEach(function(x){
+    offsets.forEach(function(y){
+      if (x === 0 && y === 0) return;
+      shadows.push(`${x}px ${y}px 0 ${outlineColor}`);
+    });
+  });
+  return shadows.join(', ');
+}
+
+// buildStatusTextStyles centralizes contrast handling so both the popup badge
+// and the risk link stay legible regardless of the current theme.
+function buildStatusTextStyles(doseColor) {
+  const theme = getCurrentTheme();
+  const lightTheme = theme === 'light';
+  const textColor = lightTheme ? '#000000' : (isDarkColor(doseColor) ? '#ffffff' : '#000000');
+  const outline = lightTheme ? buildOutlineShadow(doseColor) : '';
+  const shadowStyle = outline ? `text-shadow:${outline};` : '';
+  return {
+    textColor: textColor,
+    containerStyle: `color:${textColor};${shadowStyle}`,
+    linkStyle: `color:${textColor};${shadowStyle}`,
+  };
+}
+
 // formatMicroRoentgen converts µSv/h into µR/h text while avoiding excessive
 // decimals.  Smaller values keep two decimals; larger ones are rounded to the
 // nearest whole number for quick scanning on the map.
@@ -1393,6 +1441,12 @@ function localizeCountry(code) {
 }
 
 function describeLiveSensor(marker) {
+  // Start with a clear statement so every modal instantly communicates the device purpose.
+  const sentences = [];
+  const radiationIntro = translate('live_marker_desc_radiation_sensor');
+  if (radiationIntro && radiationIntro !== 'live_marker_desc_radiation_sensor') {
+    sentences.push(radiationIntro.trim());
+  }
   // We use bracket placeholders (e.g. [[name]]) so the Go template parser leaves
   // them untouched while still allowing readable replacement in the browser.
   const subject = marker.deviceName
@@ -1407,7 +1461,12 @@ function describeLiveSensor(marker) {
   const tube = sensorName
     ? translate('live_marker_desc_tube').replace('[[tube]]', escapeHtml(sensorName))
     : translate('live_marker_desc_no_tube');
-  return [subject, place, transport, tube].join(' ');
+  [subject, place, transport, tube].forEach(function(part){
+    if (part && typeof part === 'string' && part.trim()) {
+      sentences.push(part.trim());
+    }
+  });
+  return sentences.join(' ');
 }
 
 function labelForExtraKey(key) {
@@ -2152,7 +2211,7 @@ function createDateRangeSlider(){
     const doseColor = getGradientColor(doseRate);
     const statusKey = doseCategory(doseRate);
     const statusLabel = translate(statusKey);
-    const statusTextColor = isDarkColor(doseColor) ? '#ffffff' : '#000000';
+    const statusStyles = buildStatusTextStyles(doseColor);
     const milliSievert = `${doseRate.toFixed(3)} µSv/h`;
     const lastSeen = formatDateTime(marker.date);
     const local = approximateLocalTime(marker.lat, marker.lon);
@@ -2214,8 +2273,8 @@ function createDateRangeSlider(){
           <div class="live-popup-dose-secondary" style="color:${doseColor};">
             ${milliSievert}
           </div>
-          <div class="live-popup-dose-status" style="background:${doseColor};color:${statusTextColor};">
-            <a href="#" class="risk-link" style="color:${statusTextColor};">${escapeHtml(statusLabel)}</a>
+          <div class="live-popup-dose-status" style="background:${doseColor};${statusStyles.containerStyle}">
+            <a href="#" class="risk-link" style="${statusStyles.linkStyle}">${escapeHtml(statusLabel)}</a>
           </div>
         </div>
         ${climateHtml}
