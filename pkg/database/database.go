@@ -46,7 +46,7 @@ func startIDGenerator(initialID int64) chan int64 {
 
 // Config holds the configuration details for initializing the database.
 type Config struct {
-	DBType    string // The type of the database driver (e.g., "sqlite", "genji", or "pgx" (PostgreSQL))
+	DBType    string // The type of the database driver (e.g., "sqlite", "chai", or "pgx" (PostgreSQL))
 	DBPath    string // The file path to the database file (for file-based databases)
 	DBHost    string // The host for PostgreSQL
 	DBPort    int    // The port for PostgreSQL
@@ -58,12 +58,12 @@ type Config struct {
 }
 
 // NewDatabase opens DB and configures connection pooling.
-// For SQLite/Genji we force single-connection mode (no concurrent DB access).
+// For SQLite/Chai we force single-connection mode (no concurrent DB access).
 func NewDatabase(config Config) (*Database, error) {
 	var dsn string
 
 	switch strings.ToLower(config.DBType) {
-	case "sqlite", "genji":
+	case "sqlite", "chai":
 		dsn = config.DBPath
 		if dsn == "" {
 			dsn = fmt.Sprintf("database-%d.%s", config.Port, strings.ToLower(config.DBType))
@@ -86,14 +86,20 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("error opening the database: %v", err)
 	}
 
-	// === CRITICAL: serialize SQLite/Genji access over a single underlying connection ===
+	// === CRITICAL: serialize SQLite/Chai access over a single underlying connection ===
 	switch strings.ToLower(config.DBType) {
-	case "sqlite", "genji":
+	case "sqlite", "chai":
 		// One physical connection; no concurrent statements at DB layer.
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 		// Never recycle the single connection (keeps it stable for the whole process).
 		db.SetConnMaxLifetime(0)
+		// Tuning WAL/synchronous/busy_timeout keeps inserts fast enough for realtime uploads.
+		tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := tuneSQLiteLikeConnection(tuneCtx, db, log.Printf); err != nil {
+			log.Printf("sqlite tuning skipped: %v", err)
+		}
+		cancel()
 	}
 
 	// Cheap liveness probe with timeout so we don't hang at startup
@@ -133,8 +139,72 @@ func NewDatabase(config Config) (*Database, error) {
 	}, nil
 }
 
+// tuneSQLiteLikeConnection applies WAL/synchronous/busy pragmas for SQLite-like engines.
+// We keep the steps portable and run them through a small channel pipeline so the
+// work happens outside the caller goroutine, following "Don't communicate by sharing
+// memory; share memory by communicating".
+func tuneSQLiteLikeConnection(ctx context.Context, db *sql.DB, logf func(string, ...any)) error {
+	type pragma struct {
+		label     string
+		query     string
+		expectRow bool
+	}
+
+	steps := []pragma{
+		{label: "journal_mode", query: "PRAGMA journal_mode=WAL;", expectRow: true},
+		{label: "synchronous", query: "PRAGMA synchronous=NORMAL;"},
+		{label: "temp_store", query: "PRAGMA temp_store=MEMORY;"},
+		{label: "cache_size", query: "PRAGMA cache_size=-20000;"},
+		{label: "busy_timeout", query: "PRAGMA busy_timeout=5000;"},
+	}
+
+	jobs := make(chan pragma)
+	errs := make(chan error, 1)
+
+	go func() {
+		defer close(errs)
+		for step := range jobs {
+			select {
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			default:
+			}
+
+			if step.expectRow {
+				var mode string
+				if err := db.QueryRowContext(ctx, step.query).Scan(&mode); err != nil {
+					errs <- fmt.Errorf("apply %s: %w", step.label, err)
+					return
+				}
+				logf("SQLite tuning %s -> %s", step.label, mode)
+				continue
+			}
+
+			if _, err := db.ExecContext(ctx, step.query); err != nil {
+				errs <- fmt.Errorf("apply %s: %w", step.label, err)
+				return
+			}
+			logf("SQLite tuning %s applied", step.label)
+		}
+		errs <- nil
+	}()
+
+	go func() {
+		defer close(jobs)
+		for _, step := range steps {
+			jobs <- step
+		}
+	}()
+
+	if err := <-errs; err != nil {
+		return err
+	}
+	return nil
+}
+
 // EnsureIndexesAsync builds non-critical indexes in background, politely.
-// - No pinned connections (important for sqlite/genji with MaxOpenConns(1)).
+// - No pinned connections (important for sqlite/chai with MaxOpenConns(1)).
 // - No pre-checks: just CREATE INDEX IF NOT EXISTS.
 // - Retries with exponential backoff on "database is locked"/"SQLITE_BUSY".
 func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf func(string, ...any)) {
@@ -153,7 +223,7 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 			start := time.Now()
 			logf("▶️  start index %s", it.name)
 
-			// polite retry loop for SQLite/Genji "busy"/locks; portable for others too
+			// polite retry loop for SQLite/Chai "busy"/locks; portable for others too
 			backoff := 50 * time.Millisecond
 			for {
 				// respect outer context: if cancelled — stop gracefully
@@ -230,8 +300,13 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// 2) Selective singles
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Dedicated date helpers keep slider filtering responsive even with WAL on.
+			{"idx_markers_trackid_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_zoom_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 			// Realtime history: keep per-device scans and bounds responsive.
@@ -255,8 +330,13 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Dedicated date helpers keep slider filtering responsive even with WAL on.
+			{"idx_markers_trackid_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_zoom_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 			// Realtime history: keep per-device scans and bounds responsive.
@@ -266,8 +346,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
 
-	case "sqlite", "genji":
-		// SQLite/Genji: keep a UNIQUE index (no table-level UNIQUE constraint there).
+	case "sqlite", "chai":
+		// SQLite/Chai: keep a UNIQUE index (no table-level UNIQUE constraint there).
 		return []struct{ name, sql string }{
 			{"idx_markers_unique",
 				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
@@ -281,8 +361,13 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Dedicated date helpers keep slider filtering responsive even with WAL on.
+			{"idx_markers_trackid_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_zoom_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 			// Realtime history: keep per-device scans and bounds responsive.
@@ -293,7 +378,7 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 		}
 
 	default:
-		// Fallback: behave like SQLite/Genji (portable everywhere that supports IF NOT EXISTS).
+		// Fallback: behave like SQLite/Chai (portable everywhere that supports IF NOT EXISTS).
 		return []struct{ name, sql string }{
 			{"idx_markers_unique",
 				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
@@ -307,8 +392,13 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Dedicated date helpers keep slider filtering responsive even with WAL on.
+			{"idx_markers_trackid_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
+			{"idx_markers_zoom_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
 			// Realtime history: keep per-device scans and bounds responsive.
@@ -343,7 +433,7 @@ LIMIT 1`
 		}
 		return err == nil, err
 
-	case "sqlite", "genji":
+	case "sqlite", "chai":
 		// Standard SQLite catalog
 		const q = `SELECT name FROM sqlite_master WHERE type='index' AND name=? LIMIT 1`
 		var name string
@@ -400,8 +490,8 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
 );`
 
-	case "sqlite", "genji":
-		// Portable SQLite/Genji side — explicit INTEGER PK
+	case "sqlite", "chai":
+		// Portable SQLite/Chai side — explicit INTEGER PK
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
   id         INTEGER PRIMARY KEY,
@@ -613,7 +703,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
 
 		default:
-			// SQLite / Genji: need explicit 'id' if we want to avoid PRIMARY KEY conflicts
+			// SQLite / Chai: need explicit 'id' if we want to avoid PRIMARY KEY conflicts
 			// when multiple aggregated markers would default to 0.
 			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID) VALUES ")
 			argn := 0
@@ -651,7 +741,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
 //
 //   - PostgreSQL (pgx) – опираемся на BIGSERIAL, id не передаём;
-//   - SQLite и Genji   – если id == 0, берём следующий из idGenerator.
+//   - SQLite и Chai   – если id == 0, берём следующий из idGenerator.
 //     Это устраняет ошибку, когда все агрегатные маркеры имели id-0
 //     и вторая вставка ломалась на UNIQUE PRIMARY KEY.
 func (db *Database) SaveMarkerAtomic(
@@ -671,7 +761,7 @@ ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID)
 		return err
 
-	// ─────────────────────── SQLite / Genji / другие ─────────
+	// ─────────────────────── SQLite / Chai / другие ─────────
 	default:
 		if m.ID == 0 {
 			// берём следующий уникальный id из генератора
@@ -1033,7 +1123,7 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 		FROM markers
 		WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
 		`
-	default: // SQLite or Genji
+	default: // SQLite or Chai
 		query = `
 		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
 		FROM markers
@@ -1181,7 +1271,7 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
           AND  zoom     = $2
           AND  lat BETWEEN $3 AND $4
           AND  lon BETWEEN $5 AND $6;`
-	default: // SQLite / Genji
+	default: // SQLite / Chai
 		query = `
         SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
         FROM   markers
@@ -1311,7 +1401,7 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 //   - speedRanges     – zero, one or many closed intervals [Min, Max] m/s.
 //     Empty → no speed filter at all.
 //   - dbType          – "pgx" → PostgreSQL dollar-placeholders ($1,$2,…),
-//     anything else → use "?" (SQLite, Genji, MySQL…).
+//     anything else → use "?" (SQLite, Chai, MySQL…).
 //
 // The function never locks—concurrency is achieved by running each call
 // in its own goroutine and passing the result through a channel if the
@@ -1411,7 +1501,7 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 func (db *Database) DetectExistingTrackID(
 	markers []Marker, // freshly-parsed markers (any zoom)
 	threshold int, // how many identical points constitute identity
-	dbType string, // "pgx" | "sqlite" | "genji" | …
+	dbType string, // "pgx" | "sqlite" | "chai" | …
 ) (string, error) {
 
 	if len(markers) == 0 {
@@ -1421,33 +1511,126 @@ func (db *Database) DetectExistingTrackID(
 		threshold = 10 // sane default
 	}
 
-	// Helper: build driver-neutral query text in one place.
-	query := map[string]string{
-		"pgx":   `SELECT trackID FROM markers WHERE lat=$1 AND lon=$2 AND date=$3 AND doseRate=$4 LIMIT 1`,
-		"other": `SELECT trackID FROM markers WHERE lat=?  AND lon=?  AND date=? AND doseRate=?  LIMIT 1`,
+	// We deduplicate probe points so the SQL planner works on the minimal set
+	// of equality comparisons. This keeps the generated OR chain compact and
+	// reduces needless aggregation work on engines that are already busy
+	// serving inserts.
+	type identityPoint struct {
+		lat, lon float64
+		date     int64
+		dose     float64
 	}
-	q := query["other"]
-	if dbType == "pgx" {
-		q = query["pgx"]
-	}
-
-	hits := make(map[string]int) // TrackID → identical-points counter
-
+	seen := make(map[identityPoint]struct{})
+	unique := make([]identityPoint, 0, len(markers))
 	for _, m := range markers {
-		var tid string
-		err := db.DB.QueryRow(q, m.Lat, m.Lon, m.Date, m.DoseRate).Scan(&tid)
-		switch {
-		case err == sql.ErrNoRows:
-			continue // no identical point yet → keep scanning
-		case err != nil:
-			return "", fmt.Errorf("DetectExistingTrackID: %w", err)
-		default:
-			hits[tid]++
-			if hits[tid] >= threshold {
+		p := identityPoint{lat: m.Lat, lon: m.Lon, date: m.Date, dose: m.DoseRate}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		unique = append(unique, p)
+	}
+	if len(unique) == 0 {
+		return "", nil
+	}
+
+	// Collect chunked work over a channel so we stay faithful to the project
+	// rule “share memory by communicating”. Each chunk translates into a
+	// single SQL statement, dramatically lowering round-trips for the pure-Go
+	// Chai driver while remaining portable for other engines.
+	const maxChunk = 32
+	chunkSize := maxChunk
+	if len(unique) < chunkSize {
+		chunkSize = len(unique)
+	}
+	chunks := make(chan []identityPoint)
+	done := make(chan struct{})
+	go func(points []identityPoint, size int, stop <-chan struct{}) {
+		defer close(chunks)
+		for start := 0; start < len(points); start += size {
+			end := start + size
+			if end > len(points) {
+				end = len(points)
+			}
+			select {
+			case <-stop:
+				return
+			case chunks <- points[start:end]:
+			}
+		}
+	}(unique, chunkSize, done)
+	defer close(done)
+
+	totals := make(map[string]int) // TrackID → aggregated identical hits
+	engine := strings.ToLower(dbType)
+
+	for block := range chunks {
+		if len(block) == 0 {
+			continue
+		}
+
+		var sb strings.Builder
+		// We write the SELECT+GROUP BY statement by hand so we can reuse it
+		// for every engine without relying on vendor-specific helpers.
+		sb.WriteString("SELECT trackID, COUNT(*) FROM markers WHERE ")
+
+		args := make([]interface{}, 0, len(block)*4)
+		argPos := 0
+		ph := func() string {
+			argPos++
+			if engine == "pgx" {
+				return fmt.Sprintf("$%d", argPos)
+			}
+			return "?"
+		}
+
+		for i, point := range block {
+			if i > 0 {
+				sb.WriteString(" OR ")
+			}
+			sb.WriteString("(lat = ")
+			sb.WriteString(ph())
+			sb.WriteString(" AND lon = ")
+			sb.WriteString(ph())
+			sb.WriteString(" AND date = ")
+			sb.WriteString(ph())
+			sb.WriteString(" AND doseRate = ")
+			sb.WriteString(ph())
+			sb.WriteString(")")
+
+			args = append(args, point.lat, point.lon, point.date, point.dose)
+		}
+
+		sb.WriteString(" GROUP BY trackID")
+
+		rows, err := db.DB.Query(sb.String(), args...)
+		if err != nil {
+			return "", fmt.Errorf("DetectExistingTrackID bulk: %w", err)
+		}
+
+		for rows.Next() {
+			var (
+				tid  string
+				hits int
+			)
+			if err := rows.Scan(&tid, &hits); err != nil {
+				rows.Close()
+				return "", fmt.Errorf("DetectExistingTrackID scan: %w", err)
+			}
+			totals[tid] += hits
+			if totals[tid] >= threshold {
+				rows.Close()
 				return tid, nil // FOUND!
 			}
 		}
+
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return "", fmt.Errorf("DetectExistingTrackID rows: %w", err)
+		}
+		rows.Close()
 	}
+
 	return "", nil // unique track — safe to create a new one
 }
 
