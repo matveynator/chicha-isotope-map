@@ -1511,33 +1511,126 @@ func (db *Database) DetectExistingTrackID(
 		threshold = 10 // sane default
 	}
 
-	// Helper: build driver-neutral query text in one place.
-	query := map[string]string{
-		"pgx":   `SELECT trackID FROM markers WHERE lat=$1 AND lon=$2 AND date=$3 AND doseRate=$4 LIMIT 1`,
-		"other": `SELECT trackID FROM markers WHERE lat=?  AND lon=?  AND date=? AND doseRate=?  LIMIT 1`,
+	// We deduplicate probe points so the SQL planner works on the minimal set
+	// of equality comparisons. This keeps the generated OR chain compact and
+	// reduces needless aggregation work on engines that are already busy
+	// serving inserts.
+	type identityPoint struct {
+		lat, lon float64
+		date     int64
+		dose     float64
 	}
-	q := query["other"]
-	if dbType == "pgx" {
-		q = query["pgx"]
-	}
-
-	hits := make(map[string]int) // TrackID → identical-points counter
-
+	seen := make(map[identityPoint]struct{})
+	unique := make([]identityPoint, 0, len(markers))
 	for _, m := range markers {
-		var tid string
-		err := db.DB.QueryRow(q, m.Lat, m.Lon, m.Date, m.DoseRate).Scan(&tid)
-		switch {
-		case err == sql.ErrNoRows:
-			continue // no identical point yet → keep scanning
-		case err != nil:
-			return "", fmt.Errorf("DetectExistingTrackID: %w", err)
-		default:
-			hits[tid]++
-			if hits[tid] >= threshold {
+		p := identityPoint{lat: m.Lat, lon: m.Lon, date: m.Date, dose: m.DoseRate}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		unique = append(unique, p)
+	}
+	if len(unique) == 0 {
+		return "", nil
+	}
+
+	// Collect chunked work over a channel so we stay faithful to the project
+	// rule “share memory by communicating”. Each chunk translates into a
+	// single SQL statement, dramatically lowering round-trips for the pure-Go
+	// Chai driver while remaining portable for other engines.
+	const maxChunk = 32
+	chunkSize := maxChunk
+	if len(unique) < chunkSize {
+		chunkSize = len(unique)
+	}
+	chunks := make(chan []identityPoint)
+	done := make(chan struct{})
+	go func(points []identityPoint, size int, stop <-chan struct{}) {
+		defer close(chunks)
+		for start := 0; start < len(points); start += size {
+			end := start + size
+			if end > len(points) {
+				end = len(points)
+			}
+			select {
+			case <-stop:
+				return
+			case chunks <- points[start:end]:
+			}
+		}
+	}(unique, chunkSize, done)
+	defer close(done)
+
+	totals := make(map[string]int) // TrackID → aggregated identical hits
+	engine := strings.ToLower(dbType)
+
+	for block := range chunks {
+		if len(block) == 0 {
+			continue
+		}
+
+		var sb strings.Builder
+		// We write the SELECT+GROUP BY statement by hand so we can reuse it
+		// for every engine without relying on vendor-specific helpers.
+		sb.WriteString("SELECT trackID, COUNT(*) FROM markers WHERE ")
+
+		args := make([]interface{}, 0, len(block)*4)
+		argPos := 0
+		ph := func() string {
+			argPos++
+			if engine == "pgx" {
+				return fmt.Sprintf("$%d", argPos)
+			}
+			return "?"
+		}
+
+		for i, point := range block {
+			if i > 0 {
+				sb.WriteString(" OR ")
+			}
+			sb.WriteString("(lat = ")
+			sb.WriteString(ph())
+			sb.WriteString(" AND lon = ")
+			sb.WriteString(ph())
+			sb.WriteString(" AND date = ")
+			sb.WriteString(ph())
+			sb.WriteString(" AND doseRate = ")
+			sb.WriteString(ph())
+			sb.WriteString(")")
+
+			args = append(args, point.lat, point.lon, point.date, point.dose)
+		}
+
+		sb.WriteString(" GROUP BY trackID")
+
+		rows, err := db.DB.Query(sb.String(), args...)
+		if err != nil {
+			return "", fmt.Errorf("DetectExistingTrackID bulk: %w", err)
+		}
+
+		for rows.Next() {
+			var (
+				tid  string
+				hits int
+			)
+			if err := rows.Scan(&tid, &hits); err != nil {
+				rows.Close()
+				return "", fmt.Errorf("DetectExistingTrackID scan: %w", err)
+			}
+			totals[tid] += hits
+			if totals[tid] >= threshold {
+				rows.Close()
 				return tid, nil // FOUND!
 			}
 		}
+
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return "", fmt.Errorf("DetectExistingTrackID rows: %w", err)
+		}
+		rows.Close()
 	}
+
 	return "", nil // unique track — safe to create a new one
 }
 
