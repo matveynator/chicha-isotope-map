@@ -89,12 +89,17 @@ func Resolve(lat, lon float64) (string, string) {
 // polygon.  Preferring the tiniest area means enclaves and islands win over
 // their host countries without manual priority lists.
 func resolvePoint(lat, lon float64) (string, string) {
+	// We ask the dataset coordinator for the cached polygons so the heavy
+	// JSON parsing only happens once per process and never during package
+	// init, keeping startup friendly to go test/go vet.
+	snapshot := ensureDatasetReady()
+
 	candidateCh := make(chan candidate)
 	done := make(chan struct{})
 
 	go func() {
 		defer close(candidateCh)
-		streamCandidates(lat, lon, candidateCh, done)
+		streamCandidates(snapshot.index, lat, lon, candidateCh, done)
 	}()
 
 	defer close(done)
@@ -109,7 +114,7 @@ func resolvePoint(lat, lon float64) (string, string) {
 			if !ok {
 				return bestCode, bestName
 			}
-			country := countries[cand.countryIndex]
+			country := snapshot.countries[cand.countryIndex]
 			poly := country.polygons[cand.polygonIndex]
 			if !poly.contains(lat, lon) {
 				continue
@@ -130,8 +135,11 @@ func NameFor(code string) string {
 	if code == "" {
 		return ""
 	}
+	// Lazily request the dataset so command-line tools do not pay the
+	// parsing cost unless NameFor is actually used during the run.
+	snapshot := ensureDatasetReady()
 	upper := strings.ToUpper(code)
-	if name, ok := nameByCode[upper]; ok {
+	if name, ok := snapshot.names[upper]; ok {
 		return name
 	}
 	return ""

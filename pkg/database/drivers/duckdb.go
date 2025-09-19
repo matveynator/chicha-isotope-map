@@ -12,8 +12,10 @@
 //   # Windows (PowerShell)
 //   $env:CGO_ENABLED="1"; go build -tags duckdb -o chicha-isotope-map.exe
 
-package database
+package drivers
 
 import (
+	// DuckDB stays behind an explicit build tag because it requires CGO.
+	// Binaries that need DuckDB can import this package with the duckdb tag.
 	_ "github.com/marcboeker/go-duckdb"
 )
