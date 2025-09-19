@@ -1,6 +1,6 @@
 [![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
-<table>
+<table border="0">
   <tr>
     <td width="20%" valign="middle">
       <img align="left" src="https://github.com/user-attachments/assets/668934cd-c3e7-411c-bdb9-85f0e5f59de0" width="100%">
