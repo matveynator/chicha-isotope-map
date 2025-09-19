@@ -2,23 +2,23 @@
 
 <table>
   <tr>
-    <td width="20%" valign="top">
+    <td width="20%" valign="middle">
       <img align="left" src="https://github.com/user-attachments/assets/668934cd-c3e7-411c-bdb9-85f0e5f59de0" width="100%">
     </td>
     <td width="5%"></td>
-    <td valign="top">
-
-      - [🇬🇧 English](/README.md)
-      - [🇫🇷 Français](/doc/README_FR.md)
-      - [🇯🇵 日本語](/doc/README_JP.md)
-      - [🇷🇺 Русский](/doc/README_RU.md) 
-#  chicha‑isotope‑map is a world ☢️ radiation map.
-Example can be found at [https://pelora.org/](https://pelora.org/)
+    <td valign="middle">
+      <ul>
+        <li><a href="/README.md">🇬🇧 English</a></li>
+        <li><a href="/doc/README_FR.md">🇫🇷 Français</a></li>
+        <li><a href="/doc/README_JP.md">🇯🇵 日本語</a></li>
+        <li><a href="/doc/README_RU.md">🇷🇺 Русский</a></li>
+      </ul>
+      <h1>chicha-isotope-map is a world ☢️ radiation map.</h1>
+      <p>Example can be found at <a href="https://pelora.org/">https://pelora.org/</a></p>
     </td>
-
-
   </tr>
 </table>
+
 
 
 
