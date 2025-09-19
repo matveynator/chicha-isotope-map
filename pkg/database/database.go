@@ -234,6 +234,11 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			// Realtime history: keep per-device scans and bounds responsive.
+			{"idx_realtime_device_fetched",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
+			{"idx_realtime_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
 
 	case "duckdb":
@@ -254,6 +259,11 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			// Realtime history: keep per-device scans and bounds responsive.
+			{"idx_realtime_device_fetched",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
+			{"idx_realtime_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
 
 	case "sqlite", "genji":
@@ -275,6 +285,11 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			// Realtime history: keep per-device scans and bounds responsive.
+			{"idx_realtime_device_fetched",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
+			{"idx_realtime_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
 
 	default:
@@ -296,6 +311,11 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			// Realtime history: keep per-device scans and bounds responsive.
+			{"idx_realtime_device_fetched",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
+			{"idx_realtime_bounds",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
 	}
 }
