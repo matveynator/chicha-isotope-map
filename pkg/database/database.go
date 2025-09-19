@@ -46,7 +46,7 @@ func startIDGenerator(initialID int64) chan int64 {
 
 // Config holds the configuration details for initializing the database.
 type Config struct {
-	DBType    string // The type of the database driver (e.g., "sqlite", "genji", or "pgx" (PostgreSQL))
+	DBType    string // The type of the database driver (e.g., "sqlite", "chai", or "pgx" (PostgreSQL))
 	DBPath    string // The file path to the database file (for file-based databases)
 	DBHost    string // The host for PostgreSQL
 	DBPort    int    // The port for PostgreSQL
@@ -58,12 +58,12 @@ type Config struct {
 }
 
 // NewDatabase opens DB and configures connection pooling.
-// For SQLite/Genji we force single-connection mode (no concurrent DB access).
+// For SQLite/Chai we force single-connection mode (no concurrent DB access).
 func NewDatabase(config Config) (*Database, error) {
 	var dsn string
 
 	switch strings.ToLower(config.DBType) {
-	case "sqlite", "genji":
+	case "sqlite", "chai":
 		dsn = config.DBPath
 		if dsn == "" {
 			dsn = fmt.Sprintf("database-%d.%s", config.Port, strings.ToLower(config.DBType))
@@ -86,9 +86,9 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("error opening the database: %v", err)
 	}
 
-	// === CRITICAL: serialize SQLite/Genji access over a single underlying connection ===
+	// === CRITICAL: serialize SQLite/Chai access over a single underlying connection ===
 	switch strings.ToLower(config.DBType) {
-	case "sqlite", "genji":
+	case "sqlite", "chai":
 		// One physical connection; no concurrent statements at DB layer.
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
@@ -134,7 +134,7 @@ func NewDatabase(config Config) (*Database, error) {
 }
 
 // EnsureIndexesAsync builds non-critical indexes in background, politely.
-// - No pinned connections (important for sqlite/genji with MaxOpenConns(1)).
+// - No pinned connections (important for sqlite/chai with MaxOpenConns(1)).
 // - No pre-checks: just CREATE INDEX IF NOT EXISTS.
 // - Retries with exponential backoff on "database is locked"/"SQLITE_BUSY".
 func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf func(string, ...any)) {
@@ -153,7 +153,7 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 			start := time.Now()
 			logf("▶️  start index %s", it.name)
 
-			// polite retry loop for SQLite/Genji "busy"/locks; portable for others too
+			// polite retry loop for SQLite/Chai "busy"/locks; portable for others too
 			backoff := 50 * time.Millisecond
 			for {
 				// respect outer context: if cancelled — stop gracefully
@@ -266,8 +266,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
 
-	case "sqlite", "genji":
-		// SQLite/Genji: keep a UNIQUE index (no table-level UNIQUE constraint there).
+	case "sqlite", "chai":
+		// SQLite/Chai: keep a UNIQUE index (no table-level UNIQUE constraint there).
 		return []struct{ name, sql string }{
 			{"idx_markers_unique",
 				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
@@ -293,7 +293,7 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 		}
 
 	default:
-		// Fallback: behave like SQLite/Genji (portable everywhere that supports IF NOT EXISTS).
+		// Fallback: behave like SQLite/Chai (portable everywhere that supports IF NOT EXISTS).
 		return []struct{ name, sql string }{
 			{"idx_markers_unique",
 				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
@@ -343,7 +343,7 @@ LIMIT 1`
 		}
 		return err == nil, err
 
-	case "sqlite", "genji":
+	case "sqlite", "chai":
 		// Standard SQLite catalog
 		const q = `SELECT name FROM sqlite_master WHERE type='index' AND name=? LIMIT 1`
 		var name string
@@ -400,8 +400,8 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
 );`
 
-	case "sqlite", "genji":
-		// Portable SQLite/Genji side — explicit INTEGER PK
+	case "sqlite", "chai":
+		// Portable SQLite/Chai side — explicit INTEGER PK
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
   id         INTEGER PRIMARY KEY,
@@ -613,7 +613,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
 
 		default:
-			// SQLite / Genji: need explicit 'id' if we want to avoid PRIMARY KEY conflicts
+			// SQLite / Chai: need explicit 'id' if we want to avoid PRIMARY KEY conflicts
 			// when multiple aggregated markers would default to 0.
 			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID) VALUES ")
 			argn := 0
@@ -651,7 +651,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
 //
 //   - PostgreSQL (pgx) – опираемся на BIGSERIAL, id не передаём;
-//   - SQLite и Genji   – если id == 0, берём следующий из idGenerator.
+//   - SQLite и Chai   – если id == 0, берём следующий из idGenerator.
 //     Это устраняет ошибку, когда все агрегатные маркеры имели id-0
 //     и вторая вставка ломалась на UNIQUE PRIMARY KEY.
 func (db *Database) SaveMarkerAtomic(
@@ -671,7 +671,7 @@ ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID)
 		return err
 
-	// ─────────────────────── SQLite / Genji / другие ─────────
+	// ─────────────────────── SQLite / Chai / другие ─────────
 	default:
 		if m.ID == 0 {
 			// берём следующий уникальный id из генератора
@@ -1033,7 +1033,7 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 		FROM markers
 		WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
 		`
-	default: // SQLite or Genji
+	default: // SQLite or Chai
 		query = `
 		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
 		FROM markers
@@ -1181,7 +1181,7 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
           AND  zoom     = $2
           AND  lat BETWEEN $3 AND $4
           AND  lon BETWEEN $5 AND $6;`
-	default: // SQLite / Genji
+	default: // SQLite / Chai
 		query = `
         SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
         FROM   markers
@@ -1311,7 +1311,7 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 //   - speedRanges     – zero, one or many closed intervals [Min, Max] m/s.
 //     Empty → no speed filter at all.
 //   - dbType          – "pgx" → PostgreSQL dollar-placeholders ($1,$2,…),
-//     anything else → use "?" (SQLite, Genji, MySQL…).
+//     anything else → use "?" (SQLite, Chai, MySQL…).
 //
 // The function never locks—concurrency is achieved by running each call
 // in its own goroutine and passing the result through a channel if the
@@ -1411,7 +1411,7 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 func (db *Database) DetectExistingTrackID(
 	markers []Marker, // freshly-parsed markers (any zoom)
 	threshold int, // how many identical points constitute identity
-	dbType string, // "pgx" | "sqlite" | "genji" | …
+	dbType string, // "pgx" | "sqlite" | "chai" | …
 ) (string, error) {
 
 	if len(markers) == 0 {

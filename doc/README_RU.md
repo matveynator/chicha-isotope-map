@@ -152,9 +152,9 @@ sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download
 
 ### Хранение данных
 
-* `-db-type string` — драйвер базы: `duckdb`, `genji`, `sqlite`, `pgx` (PostgreSQL). По умолчанию `sqlite`.
+* `-db-type string` — драйвер базы: `duckdb`, `chai`, `sqlite`, `pgx` (PostgreSQL). По умолчанию `sqlite`.
 
-* `-db-path string` — путь к файлу базы для `duckdb`/`genji`/`sqlite`.
+* `-db-path string` — путь к файлу базы для `duckdb`/`chai`/`sqlite`.
 
 * `-db-host string`, `-db-port int`, `-db-name string`, `-db-user string`, `-db-pass string` — параметры подключения к PostgreSQL (`pgx`).
 

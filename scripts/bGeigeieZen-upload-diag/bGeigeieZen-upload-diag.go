@@ -23,8 +23,8 @@ import (
 // ---- CLI flags (independent of the main app) ----
 var (
 	port   = flag.Int("port", 8877, "Port for running the diagnostics server")
-	dbType = flag.String("db-type", "sqlite", "Database driver: genji | sqlite | duckdb | pgx")
-	dbPath = flag.String("db-path", "", "Database file path (for sqlite/genji/duckdb)")
+	dbType = flag.String("db-type", "sqlite", "Database driver: chai | sqlite | duckdb | pgx")
+	dbPath = flag.String("db-path", "", "Database file path (for sqlite/chai/duckdb)")
 	dbHost = flag.String("db-host", "127.0.0.1", "DB host (pgx)")
 	dbPort = flag.Int("db-port", 5432, "DB port (pgx)")
 	dbUser = flag.String("db-user", "postgres", "DB user (pgx)")
