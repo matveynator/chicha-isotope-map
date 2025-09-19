@@ -57,6 +57,38 @@ type Config struct {
 	Port      int    // The port number (used in database file naming if needed)
 }
 
+// realtimeValueColumnName abstracts the measurement column name per engine.
+// Genji treats VALUE as a reserved keyword, so we store readings under
+// "reading" there while keeping the historical "value" column everywhere else.
+func realtimeValueColumnName(dbType string) string {
+	if strings.EqualFold(dbType, "genji") {
+		return "reading"
+	}
+	return "value"
+}
+
+// realtimeValueColumnDefinition formats the measurement column definition.
+// We keep the type portable: REAL for SQLite/Genji and DOUBLE precision for
+// analytical engines to mirror previous behaviour.
+func realtimeValueColumnDefinition(dbType string) string {
+	name := realtimeValueColumnName(dbType)
+	switch strings.ToLower(dbType) {
+	case "pgx":
+		return fmt.Sprintf("%s DOUBLE PRECISION", name)
+	case "duckdb":
+		return fmt.Sprintf("%s DOUBLE", name)
+	default:
+		return fmt.Sprintf("%s REAL", name)
+	}
+}
+
+// realtimeValueSelectExpression returns an expression that aliases the stored
+// column back to "value" so the rest of the code keeps scanning into
+// RealtimeMeasurement.Value without engine-specific branches.
+func realtimeValueSelectExpression(dbType string) string {
+	return fmt.Sprintf("%s AS value", realtimeValueColumnName(dbType))
+}
+
 // NewDatabase opens DB and configures connection pooling.
 // For SQLite/Genji we force single-connection mode (no concurrent DB access).
 func NewDatabase(config Config) (*Database, error) {
@@ -369,7 +401,7 @@ func (db *Database) InitSchema(cfg Config) error {
 	switch strings.ToLower(cfg.DBType) {
 	case "pgx":
 		// PostgreSQL — standard types, named UNIQUE to target by ON CONFLICT
-		schema = `
+		schema = fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS markers (
   id         BIGSERIAL PRIMARY KEY,
   doseRate   DOUBLE PRECISION,
@@ -390,7 +422,7 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   device_name TEXT,
   tube        TEXT,
   country     TEXT,
-  value       DOUBLE PRECISION,
+  %s,
   unit        TEXT,
   lat         DOUBLE PRECISION,
   lon         DOUBLE PRECISION,
@@ -398,11 +430,11 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   fetched_at  BIGINT,
   extra       TEXT,
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
-);`
+);`, realtimeValueColumnDefinition(cfg.DBType))
 
 	case "sqlite", "genji":
 		// Portable SQLite/Genji side — explicit INTEGER PK
-		schema = `
+		schema = fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS markers (
   id         INTEGER PRIMARY KEY,
   doseRate   REAL,
@@ -424,7 +456,7 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   device_name TEXT,
   tube        TEXT,
   country     TEXT,
-  value       REAL,
+  %s,
   unit        TEXT,
   lat         REAL,
   lon         REAL,
@@ -433,14 +465,14 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   extra       TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_realtime_unique
-  ON realtime_measurements (device_id,measured_at);`
+  ON realtime_measurements (device_id,measured_at);`, realtimeValueColumnDefinition(cfg.DBType))
 
 	case "duckdb":
 		// DuckDB — no SERIAL/AUTOINCREMENT; use a sequence + DEFAULT nextval(...).
 		// Both CREATE SEQUENCE IF NOT EXISTS and ON CONFLICT are supported.
 		// We also keep a named UNIQUE to match our upsert policy.
 		// Ref: DuckDB docs for sequences & ON CONFLICT.
-		schema = `
+		schema = fmt.Sprintf(`
 CREATE SEQUENCE IF NOT EXISTS markers_id_seq START 1;
 CREATE TABLE IF NOT EXISTS markers (
   id         BIGINT PRIMARY KEY DEFAULT nextval('markers_id_seq'),
@@ -463,7 +495,7 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   device_name TEXT,
   tube        TEXT,
   country     TEXT,
-  value       DOUBLE,
+  %s,
   unit        TEXT,
   lat         DOUBLE,
   lon         DOUBLE,
@@ -471,7 +503,7 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   fetched_at  BIGINT,
   extra       TEXT,
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
-);`
+);`, realtimeValueColumnDefinition(cfg.DBType))
 
 	default:
 		return fmt.Errorf("unsupported database type: %s", cfg.DBType)
@@ -497,6 +529,7 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 		def  string
 	}
 	required := []column{
+		{name: realtimeValueColumnName(dbType), def: realtimeValueColumnDefinition(dbType)},
 		{name: "transport", def: "transport TEXT"},
 		{name: "device_name", def: "device_name TEXT"},
 		{name: "tube", def: "tube TEXT"},
@@ -510,6 +543,22 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 		for _, col := range required {
 			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN IF NOT EXISTS %s", col.def)
 			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case "genji":
+		// Genji lacks PRAGMA/IF NOT EXISTS helpers and uses ADD FIELD
+		// syntax, so we optimistically add each field and ignore
+		// duplicate errors.
+		for _, col := range required {
+			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD FIELD %s", col.def)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				msg := strings.ToLower(err.Error())
+				if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "already exists") || strings.Contains(msg, "conflicting constraints") {
+					continue
+				}
 				return err
 			}
 		}
@@ -691,13 +740,15 @@ ON CONFLICT DO NOTHING`,
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
+	col := realtimeValueColumnName(dbType)
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
-		_, err := db.DB.Exec(`
+		query := fmt.Sprintf(`
 INSERT INTO realtime_measurements
-      (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
+      (device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
+ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`, col)
+		_, err := db.DB.Exec(query,
 			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
 		return err
@@ -706,11 +757,12 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 		if m.ID == 0 {
 			m.ID = <-db.idGenerator
 		}
-		_, err := db.DB.Exec(`
+		query := fmt.Sprintf(`
 INSERT INTO realtime_measurements
-      (id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
+      (id,device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(device_id,measured_at) DO NOTHING`,
+ON CONFLICT(device_id,measured_at) DO NOTHING`, col)
+		_, err := db.DB.Exec(query,
 			m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
 		return err
@@ -721,19 +773,20 @@ ON CONFLICT(device_id,measured_at) DO NOTHING`,
 // We keep SQL portable and filter duplicates in Go, following "Clear is better than clever".
 func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
 	var query string
+	colExpr := realtimeValueSelectExpression(dbType)
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
-		query = `
-SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
+		query = fmt.Sprintf(`
+SELECT device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
-ORDER BY device_id,fetched_at DESC;`
+ORDER BY device_id,fetched_at DESC;`, colExpr)
 	default:
-		query = `
-SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
+		query = fmt.Sprintf(`
+SELECT device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
-ORDER BY device_id,fetched_at DESC;`
+ORDER BY device_id,fetched_at DESC;`, colExpr)
 	}
 
 	rows, err := db.DB.Query(query, minLat, maxLat, minLon, maxLon)
@@ -826,19 +879,20 @@ func (db *Database) GetRealtimeHistory(deviceID string, since int64, dbType stri
 	}
 
 	var query string
+	colExpr := realtimeValueSelectExpression(dbType)
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
-		query = `
-SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra
+		query = fmt.Sprintf(`
+SELECT device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,fetched_at,extra
 FROM realtime_measurements
 WHERE device_id = $1 AND measured_at >= $2
-ORDER BY measured_at ASC;`
+ORDER BY measured_at ASC;`, colExpr)
 	default:
-		query = `
-SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra
+		query = fmt.Sprintf(`
+SELECT device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,fetched_at,extra
 FROM realtime_measurements
 WHERE device_id = ? AND measured_at >= ?
-ORDER BY measured_at ASC;`
+ORDER BY measured_at ASC;`, colExpr)
 	}
 
 	rows, err := db.DB.Query(query, deviceID, since)
@@ -965,11 +1019,12 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 // fetchRealtimeByDevice returns all realtime rows for a given device.
 func (db *Database) fetchRealtimeByDevice(id, dbType string) ([]RealtimeMeasurement, error) {
 	var q string
+	colExpr := realtimeValueSelectExpression(dbType)
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
-		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=$1`
+		q = fmt.Sprintf(`SELECT device_id,transport,%s,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=$1`, colExpr)
 	default:
-		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=?`
+		q = fmt.Sprintf(`SELECT device_id,transport,%s,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=?`, colExpr)
 	}
 	rows, err := db.DB.Query(q, id)
 	if err != nil {
