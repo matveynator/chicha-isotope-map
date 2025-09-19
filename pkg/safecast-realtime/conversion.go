@@ -20,14 +20,14 @@ const (
         // factorLND7317CPS converts counts per second into µSv/h for 7318 tubes.
         // Dividing the CPM factor by 60 honours the same calibration while
         // accepting realtime CPS feeds without duplicating constants elsewhere.
-        factorLND7317CPS = factorLND7317
+        factorLND7317CPS = factorLND7317 / 60.0
 	// factorLND712 covers the classic LND 712 and the shielded 7128 EC.
 	// Both share the same 108 CPM per µSv/h calibration in Safecast docs.
 	factorLND712 = 108.0
         // factorLND712CPS mirrors the CPM constant for CPS payloads on LND 712.
         // Safecast documents 108 CPM per µSv/h; for per-second counts we divide
         // by 60 so both units share the same physical calibration.
-        factorLND712CPS = factorLND712
+        factorLND712CPS = factorLND712 / 60.0
 )
 
 // ─── Public conversion helpers ──────────────────────────────────────────────

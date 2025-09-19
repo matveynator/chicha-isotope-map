@@ -2445,6 +2445,87 @@ func resampleRealtimePoints(points []realtimePoint, bucket int64) []realtimePoin
 	return out
 }
 
+// lastNRealtimePoints keeps only the newest buckets so short charts honour fixed
+// divisions without redrawing hundreds of samples. Copying avoids sharing slices.
+func lastNRealtimePoints(points []realtimePoint, keep int) []realtimePoint {
+	if keep <= 0 || len(points) == 0 {
+		return nil
+	}
+	if len(points) <= keep {
+		return points
+	}
+	out := make([]realtimePoint, keep)
+	copy(out, points[len(points)-keep:])
+	return out
+}
+
+// alignToCeil snaps timestamps up to the next step boundary so chart grids show
+// whole buckets even when the latest measurement arrives mid-interval.
+func alignToCeil(t time.Time, step time.Duration) time.Time {
+	if step <= 0 {
+		return t.UTC()
+	}
+	tt := t.UTC()
+	truncated := tt.Truncate(step)
+	if tt.Equal(truncated) {
+		return tt
+	}
+	return truncated.Add(step)
+}
+
+// alignMonthCeil advances to the first day of the next month so the long-term
+// chart can display complete calendar months without partial buckets.
+func alignMonthCeil(t time.Time) time.Time {
+	tt := t.UTC()
+	base := time.Date(tt.Year(), tt.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return base.AddDate(0, 1, 0)
+}
+
+// aggregateMonthly groups samples by calendar month using the average value per
+// month. This keeps the "months" chart faithful to calendar boundaries.
+func aggregateMonthly(points []realtimePoint, start time.Time, months int) []realtimePoint {
+	if months <= 0 || len(points) == 0 {
+		return nil
+	}
+	startUTC := time.Date(start.UTC().Year(), start.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
+	filtered := filterPointsSince(points, startUTC.Unix())
+	if len(filtered) == 0 {
+		return nil
+	}
+	out := make([]realtimePoint, 0, months)
+	idx := 0
+	for i := 0; i < months; i++ {
+		monthStart := startUTC.AddDate(0, i, 0)
+		monthEnd := monthStart.AddDate(0, 1, 0)
+		startUnix := monthStart.Unix()
+		endUnix := monthEnd.Unix()
+		for idx < len(filtered) && filtered[idx].Timestamp < startUnix {
+			idx++
+		}
+		if idx >= len(filtered) {
+			break
+		}
+		sum := 0.0
+		count := 0
+		j := idx
+		for j < len(filtered) {
+			ts := filtered[j].Timestamp
+			if ts >= endUnix {
+				break
+			}
+			sum += filtered[j].Value
+			count++
+			j++
+		}
+		if count > 0 {
+			mid := startUnix + (endUnix-startUnix)/2
+			out = append(out, realtimePoint{Timestamp: mid, Value: sum / float64(count)})
+			idx = j
+		}
+	}
+	return out
+}
+
 // realtimeBucketSteps enumerates pleasant aggregation steps from minutes to
 // months.  The list keeps resampling predictable and friendly on charts.
 var realtimeBucketSteps = []int64{
@@ -2531,29 +2612,6 @@ func prepareRealtimeSeries(points []realtimePoint, limit int, defaultBucket int6
 	return resampled, bucket
 }
 
-// selectAllBucket picks a default aggregation window for the long-term chart
-// so multi-year histories remain readable while single-season sensors keep
-// finer detail.
-func selectAllBucket(spanSeconds int64) int64 {
-	if spanSeconds <= 0 {
-		return 0
-	}
-	switch {
-	case spanSeconds <= int64(120*time.Hour/time.Second):
-		return int64(30 * time.Minute / time.Second)
-	case spanSeconds <= int64(180*24*time.Hour/time.Second):
-		return int64(6 * time.Hour / time.Second)
-	case spanSeconds <= int64(365*24*time.Hour/time.Second):
-		return int64(12 * time.Hour / time.Second)
-	case spanSeconds <= int64(3*365*24*time.Hour/time.Second):
-		return int64(24 * time.Hour / time.Second)
-	case spanSeconds <= int64(6*365*24*time.Hour/time.Second):
-		return int64(7 * 24 * time.Hour / time.Second)
-	default:
-		return int64(30 * 24 * time.Hour / time.Second)
-	}
-}
-
 // summariseRealtimeHistory processes DB rows on a background goroutine and
 // returns aggregated series for day, month, and all-time windows.
 func summariseRealtimeHistory(rows []database.RealtimeMeasurement, now time.Time) historyAggregate {
@@ -2603,16 +2661,12 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 		expected = 1024
 	}
 	allPoints := make([]realtimePoint, 0, expected)
-	var firstTs int64
 	var lastTs int64
 
 	for payload := range input {
 		point := realtimePoint{Timestamp: payload.timestamp, Value: payload.radiation}
 		allPoints = append(allPoints, point)
 		lastTs = payload.timestamp
-		if firstTs == 0 {
-			firstTs = payload.timestamp
-		}
 
 		if agg.DeviceName == "" && payload.name != "" {
 			agg.DeviceName = payload.name
@@ -2637,37 +2691,51 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 		}
 	}
 
-	nowUnix := now.Unix()
-	agg.Ranges["day"] = rangeSummary{Start: now.Add(-24 * time.Hour).Unix(), End: nowUnix}
-	agg.Ranges["month"] = rangeSummary{Start: now.Add(-30 * 24 * time.Hour).Unix(), End: nowUnix}
-	if len(allPoints) > 0 {
-		agg.Ranges["all"] = rangeSummary{Start: firstTs, End: lastTs}
-	} else {
-		agg.Ranges["all"] = rangeSummary{Start: agg.Ranges["month"].Start, End: nowUnix}
+	reference := now.UTC()
+	if lastTs > 0 {
+		lastSeen := time.Unix(lastTs, 0).UTC()
+		if lastSeen.After(reference) {
+			reference = lastSeen
+		}
 	}
 
-	dayCutoff := agg.Ranges["day"].Start
-	monthCutoff := agg.Ranges["month"].Start
-	allSpan := agg.Ranges["all"].End - agg.Ranges["all"].Start
+	const (
+		hourlySegments  = 24
+		dailySegments   = 24
+		monthlySegments = 24
+	)
+	const dayDuration = 24 * time.Hour
 
-	dayRaw := filterPointsSince(allPoints, dayCutoff)
-	daySeries, dayBucket := prepareRealtimeSeries(dayRaw, 720, 0)
+	dayEnd := alignToCeil(reference, time.Hour)
+	dayStart := dayEnd.Add(-time.Duration(hourlySegments) * time.Hour)
+	monthEnd := alignToCeil(reference, dayDuration)
+	monthStart := monthEnd.Add(-time.Duration(dailySegments) * dayDuration)
+	allEnd := alignMonthCeil(reference)
+	allStart := allEnd.AddDate(0, -monthlySegments, 0)
 
-	monthRaw := filterPointsSince(allPoints, monthCutoff)
-	monthSeries, monthBucket := prepareRealtimeSeries(monthRaw, 900, int64(time.Hour/time.Second))
-	if monthBucket == 0 && len(monthSeries) > 0 {
-		monthBucket = int64(time.Hour / time.Second)
-		monthSeries = resampleRealtimePoints(monthRaw, monthBucket)
+	dayCutoff := dayStart.Unix()
+	monthCutoff := monthStart.Unix()
+	allCutoff := allStart.Unix()
+
+	hourBucket := int64(time.Hour / time.Second)
+	daySeries := lastNRealtimePoints(resampleRealtimePoints(filterPointsSince(allPoints, dayCutoff), hourBucket), hourlySegments)
+
+	dayBucketSeconds := int64(dayDuration / time.Second)
+	monthSeries := lastNRealtimePoints(resampleRealtimePoints(filterPointsSince(allPoints, monthCutoff), dayBucketSeconds), dailySegments)
+
+	allSeries := aggregateMonthly(allPoints, allStart, monthlySegments)
+	avgBucket := (allEnd.Sub(allStart) / time.Duration(monthlySegments)) / time.Second
+	allBucketSeconds := int64(avgBucket)
+	if allBucketSeconds <= 0 {
+		allBucketSeconds = int64(30 * dayDuration / time.Second)
 	}
-	allBucketDefault := selectAllBucket(allSpan)
-	allSeries, allBucket := prepareRealtimeSeries(allPoints, 1200, allBucketDefault)
 
 	agg.Series["day"] = daySeries
 	agg.Series["month"] = monthSeries
 	agg.Series["all"] = allSeries
-	agg.Ranges["day"] = rangeSummary{Start: agg.Ranges["day"].Start, End: agg.Ranges["day"].End, BucketSeconds: dayBucket}
-	agg.Ranges["month"] = rangeSummary{Start: agg.Ranges["month"].Start, End: agg.Ranges["month"].End, BucketSeconds: monthBucket}
-	agg.Ranges["all"] = rangeSummary{Start: agg.Ranges["all"].Start, End: agg.Ranges["all"].End, BucketSeconds: allBucket}
+	agg.Ranges["day"] = rangeSummary{Start: dayCutoff, End: dayEnd.Unix(), BucketSeconds: hourBucket}
+	agg.Ranges["month"] = rangeSummary{Start: monthCutoff, End: monthEnd.Unix(), BucketSeconds: dayBucketSeconds}
+	agg.Ranges["all"] = rangeSummary{Start: allCutoff, End: allEnd.Unix(), BucketSeconds: allBucketSeconds}
 
 	buildExtras := func(target string, cutoff int64, bucket int64) {
 		if len(extrasAll) == 0 {
@@ -2690,9 +2758,26 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 		}
 	}
 
-	buildExtras("day", dayCutoff, dayBucket)
-	buildExtras("month", monthCutoff, monthBucket)
-	buildExtras("all", agg.Ranges["all"].Start, allBucket)
+	buildMonthlyExtras := func(target string, start time.Time, months int) {
+		if len(extrasAll) == 0 {
+			return
+		}
+		series := make(map[string][]realtimePoint)
+		for key, pts := range extrasAll {
+			aggregated := aggregateMonthly(pts, start, months)
+			if len(aggregated) == 0 {
+				continue
+			}
+			series[key] = aggregated
+		}
+		if len(series) > 0 {
+			agg.ExtraSeries[target] = series
+		}
+	}
+
+	buildExtras("day", dayCutoff, hourBucket)
+	buildExtras("month", monthCutoff, dayBucketSeconds)
+	buildMonthlyExtras("all", allStart, monthlySegments)
 
 	if agg.Series["day"] == nil {
 		agg.Series["day"] = []realtimePoint{}

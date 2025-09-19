@@ -615,10 +615,68 @@ body, html {
 					flex: 1 1 auto;                 /* take available space without overflowing */
 				}
 
-				.live-tooltip-desc {
-					font-size: 12px;
-					line-height: 1.4;
-				}
+        .live-tooltip-desc {
+          font-size: 12px;
+          line-height: 1.4;
+        }
+
+        /* Highlight realtime dose with large numerals while keeping context compact. */
+        .live-popup-dose {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 6px;
+          margin: 6px 0;
+        }
+
+        .live-popup-dose-primary {
+          font-size: 28px;
+          font-weight: 700;
+          line-height: 1;
+          letter-spacing: -0.01em;
+        }
+
+        .live-popup-dose-unit {
+          margin-left: 6px;
+          font-size: 14px;
+          font-weight: 500;
+        }
+
+        .live-popup-dose-secondary {
+          font-size: 12px;
+          opacity: 0.85;
+        }
+
+        .live-popup-dose-status {
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .live-popup-climate {
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        .live-popup-meta {
+          font-size: 11px;
+          line-height: 1.4;
+          opacity: 0.85;
+          display: grid;
+          gap: 4px;
+          margin-top: 6px;
+        }
+
+        .live-popup-meta strong {
+          font-weight: 600;
+        }
+
+        .live-popup-small-link {
+          font-size: 11px;
+          display: inline-block;
+          margin-top: 4px;
+        }
 
 
 
@@ -2005,13 +2063,34 @@ function createDateRangeSlider(){
 // Build HTML once so popups and tooltips share identical content.
   function buildLiveMarkerPopup(marker) {
     const doseRate = marker.doseRate || 0;
-    const doseLine = `${(doseRate * 100).toFixed(2)} µR/h (${doseRate.toFixed(3)} µSv/h)`;
+    const microValue = formatMicroRoentgen(doseRate);
+    const doseColor = getGradientColor(doseRate);
+    const statusKey = doseCategory(doseRate);
+    const statusLabel = translate(statusKey);
+    const statusTextColor = isDarkColor(doseColor) ? '#ffffff' : '#000000';
+    const milliSievert = `${doseRate.toFixed(3)} µSv/h`;
     const lastSeen = formatDateTime(marker.date);
     const local = approximateLocalTime(marker.lat, marker.lon);
-    const localBlock = local ? `<div><strong>${translate('live_marker_local_time')}:</strong> ${escapeHtml(local.text)} (${escapeHtml(local.zone)})</div>` : '';
-    const metaHtml = buildDeviceMeta(marker);
-    const metaBlock = metaHtml ? `<div>${metaHtml}</div>` : '';
-    const extrasBlock = renderLiveExtras(marker.liveExtra);
+    const extrasRaw = (marker.liveExtra && typeof marker.liveExtra === 'object') ? marker.liveExtra : null;
+    const extrasCopy = extrasRaw ? Object.assign({}, extrasRaw) : {};
+
+    const climateParts = [];
+    if (extrasRaw) {
+      if (typeof extrasRaw.temperature_c === 'number') {
+        climateParts.push(`${escapeHtml(translate('live_marker_temperature'))}: ${escapeHtml(formatExtraValue('temperature_c', extrasRaw.temperature_c))}`);
+        delete extrasCopy.temperature_c;
+      } else if (typeof extrasRaw.temperature_f === 'number') {
+        climateParts.push(`${escapeHtml(translate('live_marker_temperature_f'))}: ${escapeHtml(formatExtraValue('temperature_f', extrasRaw.temperature_f))}`);
+        delete extrasCopy.temperature_f;
+      }
+      if (typeof extrasRaw.humidity_percent === 'number') {
+        climateParts.push(`${escapeHtml(translate('live_marker_humidity'))}: ${escapeHtml(formatExtraValue('humidity_percent', extrasRaw.humidity_percent))}`);
+        delete extrasCopy.humidity_percent;
+      }
+    }
+
+    const climateHtml = climateParts.length ? `<div class="live-popup-climate">${climateParts.join(' · ')}</div>` : '';
+    const extrasBlock = renderLiveExtras(extrasCopy);
     const deviceID = marker.deviceID || (marker.trackID ? marker.trackID.replace(/^live:/, '') : '');
     const attrs = [];
     if (deviceID) attrs.push(`data-device="${escapeHtml(deviceID)}"`);
@@ -2021,7 +2100,18 @@ function createDateRangeSlider(){
     if (marker.country) attrs.push(`data-country="${escapeHtml(marker.country)}"`);
     if (typeof marker.lat === 'number') attrs.push(`data-lat="${marker.lat}"`);
     if (typeof marker.lon === 'number') attrs.push(`data-lon="${marker.lon}"`);
-    const chartLink = deviceID ? `<div style="margin-top:6px;"><a href="#" class="live-chart-link" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</a></div>` : '';
+    const chartLink = deviceID ? `<div><a href="#" class="live-chart-link live-popup-small-link" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</a></div>` : '';
+
+    const metaBits = [];
+    metaBits.push(`<div><strong>${translate('live_marker_last_seen')}:</strong> ${escapeHtml(lastSeen)}</div>`);
+    if (local) {
+      metaBits.push(`<div><strong>${translate('live_marker_local_time')}:</strong> ${escapeHtml(local.text)} (${escapeHtml(local.zone)})</div>`);
+    }
+    const deviceMeta = buildDeviceMeta(marker);
+    if (deviceMeta) metaBits.push(deviceMeta);
+    if (extrasBlock) metaBits.push(extrasBlock);
+    if (chartLink) metaBits.push(chartLink);
+    const metaHtmlBlock = metaBits.length ? `<div class="live-popup-meta">${metaBits.join('')}</div>` : '';
 
     return `
       <div class="custom-tooltip live-tooltip">
@@ -2032,15 +2122,19 @@ function createDateRangeSlider(){
             <p class="live-tooltip-desc">${describeLiveSensor(marker)}</p>
           </div>
         </div>
-        <div><strong>${translate('radiation_dose')}:</strong><br>
-          ${doseLine}
-          (<a href="#" class="risk-link">${translate(doseCategory(doseRate))}</a>)
+        <div class="live-popup-dose">
+          <div class="live-popup-dose-primary" style="color:${doseColor};">
+            ${microValue}<span class="live-popup-dose-unit">µR/h</span>
+          </div>
+          <div class="live-popup-dose-secondary" style="color:${doseColor};">
+            ${milliSievert}
+          </div>
+          <div class="live-popup-dose-status" style="background:${doseColor};color:${statusTextColor};">
+            <a href="#" class="risk-link" style="color:${statusTextColor};">${escapeHtml(statusLabel)}</a>
+          </div>
         </div>
-        <div><strong>${translate('live_marker_last_seen')}:</strong> ${escapeHtml(lastSeen)}</div>
-        ${localBlock}
-        ${metaBlock}
-        ${extrasBlock}
-        ${chartLink}
+        ${climateHtml}
+        ${metaHtmlBlock}
       </div>`;
   }
 
@@ -2295,6 +2389,47 @@ function buildTimeTicks(start, end, bucketSeconds) {
   return ticks;
 }
 
+function secondsForUnit(unit) {
+  switch (unit) {
+    case 'hour':
+      return 3600;
+    case 'day':
+      return 86400;
+    default:
+      return 0;
+  }
+}
+
+// buildSegmentTicks divides the range into evenly spaced segments without relying
+// on heuristics so the canvas grid can honour strict hour/day/month splits.
+function buildSegmentTicks(start, end, segments, unit) {
+  if (!isFinite(start) || !isFinite(end) || end <= start) return [];
+  if (!segments || segments <= 0) return [];
+  if (unit === 'month') {
+    const ticks = [];
+    let cursor = new Date(start * 1000);
+    cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), 1, 0, 0, 0, 0));
+    for (let i = 1; i < segments; i++) {
+      cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1, 0, 0, 0, 0));
+      const ts = Math.floor(cursor.getTime() / 1000);
+      if (ts <= start || ts >= end) {
+        continue;
+      }
+      ticks.push(ts);
+    }
+    return ticks;
+  }
+  const step = secondsForUnit(unit);
+  if (!step) return [];
+  const ticks = [];
+  for (let i = 1; i < segments; i++) {
+    const ts = start + step * i;
+    if (ts <= start || ts >= end) continue;
+    ticks.push(ts);
+  }
+  return ticks;
+}
+
 function formatTimeTickLabel(ts, spanSeconds, lang) {
   if (!isFinite(ts)) return '';
   const date = new Date(ts * 1000);
@@ -2380,6 +2515,13 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
 
   const colors = chartColors();
   canvas.style.background = colors.background;
+
+  const fonts = {
+    axisY: '12px sans-serif',
+    axisX: '9px sans-serif',
+    extras: '11px sans-serif',
+    legend: '13px sans-serif'
+  };
 
   const extras = {};
   if (extrasByKey && typeof extrasByKey === 'object') {
@@ -2486,7 +2628,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   ctx.stroke();
 
   const ticksY = niceTicks(minY, maxY, 5);
-  ctx.font = '11px sans-serif';
+  ctx.font = fonts.axisY;
   ctx.fillStyle = colors.text;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
@@ -2503,9 +2645,17 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.fillText(label, plotLeft - 8, y);
   });
 
+  const tickUnit = opts.tickUnit || null;
+  const tickSegments = opts.tickSegments || 0;
+  const forcedTicks = (tickUnit && tickSegments > 0) ? buildSegmentTicks(minX, maxX, tickSegments, tickUnit) : null;
+  const ticksX = forcedTicks && forcedTicks.length ? forcedTicks : buildTimeTicks(minX, maxX, bucketSeconds);
+  const approxStep = (tickUnit && tickSegments > 0)
+    ? (tickUnit === 'month' ? (maxX - minX) / tickSegments : secondsForUnit(tickUnit))
+    : (bucketSeconds || 0);
+  const axisLabelY = height - 12;
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'alphabetic';
-  const ticksX = buildTimeTicks(minX, maxX, bucketSeconds);
+  ctx.textBaseline = 'top';
+  ctx.font = fonts.axisX;
   ctx.strokeStyle = colorWithAlpha(colors.grid, 0.35);
   ticksX.forEach(function(ts) {
     if (!isFinite(ts)) return;
@@ -2517,21 +2667,22 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     const label = formatTimeTickLabel(ts, spanSeconds, lang);
     if (!label) return;
     ctx.fillStyle = colors.text;
-    ctx.fillText(label, x, height - 10);
+    ctx.fillText(label, x, axisLabelY);
   });
 
-  const showStart = !ticksX.some(function(ts) { return Math.abs(ts - minX) < Math.max(60, bucketSeconds || 0); });
-  const showEnd = !ticksX.some(function(ts) { return Math.abs(ts - maxX) < Math.max(60, bucketSeconds || 0); });
+  const tolerance = Math.max(60, approxStep || 0);
+  const showStart = !ticksX.some(function(ts) { return Math.abs(ts - minX) < tolerance; });
+  const showEnd = !ticksX.some(function(ts) { return Math.abs(ts - maxX) < tolerance; });
   ctx.textAlign = 'left';
   ctx.fillStyle = colors.text;
   const startLabel = formatTimeTickLabel(minX, spanSeconds, lang);
   if (showStart && startLabel) {
-    ctx.fillText(startLabel, plotLeft, height - 10);
+    ctx.fillText(startLabel, plotLeft, axisLabelY);
   }
   ctx.textAlign = 'right';
   const endLabel = formatTimeTickLabel(maxX, spanSeconds, lang);
   if (showEnd && endLabel) {
-    ctx.fillText(endLabel, plotRight, height - 10);
+    ctx.fillText(endLabel, plotRight, axisLabelY);
   }
 
   if (hasRadiation) {
@@ -2590,6 +2741,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     const suffix = extraUnitSuffix(key);
     const maxLabel = formatExtraAxisValue(key, range.max);
     const minLabel = formatExtraAxisValue(key, range.min);
+    ctx.font = fonts.extras;
     ctx.fillStyle = color;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
@@ -2601,7 +2753,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     }
   });
 
-  ctx.font = '11px sans-serif';
+  ctx.font = fonts.legend;
   ctx.fillStyle = colors.text;
   ctx.textAlign = 'left';
   const legendY = topPad - 20;
@@ -2774,6 +2926,16 @@ async function openLiveModal(deviceID, fallback) {
       }
       if (rangeInfo && typeof rangeInfo.bucketSeconds === 'number') {
         options.bucketSeconds = rangeInfo.bucketSeconds;
+      }
+      if (range === 'day') {
+        options.tickUnit = 'hour';
+        options.tickSegments = 24;
+      } else if (range === 'month') {
+        options.tickUnit = 'day';
+        options.tickSegments = 24;
+      } else if (range === 'all') {
+        options.tickUnit = 'month';
+        options.tickSegments = 24;
       }
       if (canvas && hasSeries) {
         if (empty) empty.style.display = 'none';
