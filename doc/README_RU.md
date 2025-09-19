@@ -1,12 +1,14 @@
 
 [![Последний стабильный релиз](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
+<img align="left" width="20%" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/cff18b8a-860c-46f2-80e8-3d7943863382" />
+
 * [🇬🇧 English](/README.md)
 * [🇫🇷 Français](/doc/README_FR.md)
 * [🇯🇵 日本語](/doc/README_JP.md)
 * [🇷🇺 Русский](/doc/README_RU.md)
 
-# chicha-isotope-map — мировая карта ☢️ радиации
+# Мировая Карта Радиации ☢️.
 
 Живая демонстрация: [https://pelora.org/](https://pelora.org/)
 
