@@ -800,6 +800,7 @@ ON CONFLICT(device_id,measured_at) DO NOTHING`, col)
 
 // GetLatestRealtimeByBounds returns the newest reading per device within bounds.
 // We keep SQL portable and filter duplicates in Go, following "Clear is better than clever".
+// Explicit sort directions keep Genji's SQL parser satisfied while preserving ordering for other engines.
 func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
 	var query string
 	colExpr := realtimeValueSelectExpression(dbType)
@@ -809,13 +810,13 @@ func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon flo
 SELECT device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
-ORDER BY device_id,fetched_at DESC;`, colExpr)
+ORDER BY device_id ASC, fetched_at DESC;`, colExpr)
 	default:
 		query = fmt.Sprintf(`
 SELECT device_id,transport,device_name,tube,country,%s,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
-ORDER BY device_id,fetched_at DESC;`, colExpr)
+ORDER BY device_id ASC, fetched_at DESC;`, colExpr)
 	}
 
 	rows, err := db.DB.Query(query, minLat, maxLat, minLon, maxLon)
