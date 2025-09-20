@@ -1,6 +1,6 @@
 [![Dernière version stable](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
-<img align="left" width="20%" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/cff18b8a-860c-46f2-80e8-3d7943863382" />
+<img width="30%" align="left" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/39bfa7b1-03fb-43dd-89bd-8d6c516fd4db" />
 
 * [🇬🇧 English](/README.md)
 * [🇫🇷 Français](/doc/README_FR.md)
