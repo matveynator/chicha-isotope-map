@@ -14,7 +14,7 @@ Example can be found at [https://pelora.org/](https://pelora.org/)
 
 ### 📸 **Live demo**
 
-<a href="https://pelora.org" target="_blank"><img width="800"  alt="pelora.org chicha-isotope-map example demo" src="https://github.com/user-attachments/assets/be706959-a2d5-4949-9378-811f4022aa98" /></a>
+<a href="https://pelora.org" target="_blank"><img width="600"  alt="pelora.org chicha-isotope-map example demo" src="https://private-user-images.githubusercontent.com/26712073/491906917-383172f0-1f6d-4840-88b1-08d786f2e5e4.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTgzNjY3NTIsIm5iZiI6MTc1ODM2NjQ1MiwicGF0aCI6Ii8yNjcxMjA3My80OTE5MDY5MTctMzgzMTcyZjAtMWY2ZC00ODQwLTg4YjEtMDhkNzg2ZjJlNWU0LnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA5MjAlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwOTIwVDExMDczMlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTJmNzgyOGU1ZTAwN2ZkNGQ0ZjBhZmIxY2E2MzExZWM4OTFkZThiNWUyYWJkZjM1Mzc5ODIxNjY3YzZkOWQyYjMmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.Q9g2ygnzyvIf8WW7Nu9m2XoeDL2iCIID4CwwfNLdGak" /></a>
 
 
 ---
