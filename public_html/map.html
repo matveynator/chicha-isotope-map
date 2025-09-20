@@ -36,17 +36,17 @@ body, html {
           --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
           --control-bg: rgba(255, 255, 255, 0.25);
           --control-bg-hover: rgba(255, 255, 255, 0.35);
-          --legend-border: 1px solid #ccc;
+          --legend-border: 0px solid #ccc;
           --modal-bg: #ffffff;
           --modal-text: #333333;
           --modal-border: 1px solid #888;
           --link-color: #007bff;
           color-scheme: light; /* Default to light scheme */
           --font-family-base: "Segoe UI", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; /* Shared font stack keeps every control aligned */
-          --font-size-base: 14px; /* Main text size for buttons, menus, and labels */
-          --font-size-sm: 12px; /* Secondary text such as helper descriptions */
-          --font-size-xs: 11px; /* Compact labels and metadata */
-          --font-size-lg: 16px; /* Slightly larger controls where extra emphasis helps */
+          --font-size-base: 12px; /* Main text size for buttons, menus, and labels */
+          --font-size-sm: 10px; /* Secondary text such as helper descriptions */
+          --font-size-xs: 6px; /* Compact labels and metadata */
+          --font-size-lg: 14px; /* Slightly larger controls where extra emphasis helps */
           --font-size-xl: 20px; /* Section headings */
           --font-size-display: 28px; /* Prominent readings inside tooltips */
         }
@@ -122,7 +122,7 @@ body, html {
           --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
           --control-bg: rgba(255, 255, 255, 0.25);
           --control-bg-hover: rgba(255, 255, 255, 0.35);
-          --legend-border: 1px solid #ccc;
+          --legend-border: 0px solid #ccc;
           --modal-bg: #ffffff;
           --modal-text: #333333;
           --modal-border: 1px solid #888;
@@ -372,9 +372,9 @@ body, html {
         }
 
         .github-icon {
-          width: 40px;
-          height: 40px;
-          opacity: 0.6;
+          width: 60px;
+          height: 60px;
+          opacity: 0.7;
         }
 
         .github-icon:hover {
@@ -995,12 +995,8 @@ body, html {
 
     <!-- GitHub link and program info -->
     <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
-      <img src="/static/images/GitHub-Mark.png" alt="GitHub" class="github-icon">
+      <img src="/static/images/chicha-isotope-map-round-logo.png" alt="{{translate "description"}} (version: {{ .Version }})" title="{{translate "description"}} (version: {{ .Version }})" class="github-icon">
     </a>
-
-    <div class="program-info">
-      <a href="https://github.com/matveynator/chicha-isotope-map/releases/tag/latest" target="_blank"><strong>{{translate "description"}}</strong> (version: {{ .Version }})</a>
-    </div>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -1048,7 +1044,7 @@ body, html {
    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
   </div>
 </div>
-<div id="legendTooltip" class="custom-tooltip" style="display:none; position:fixed; max-width:400px; padding:10px; font-size: var(--font-size-sm); line-height:1.4em; z-index:1001;"></div>
+<div id="legendTooltip" class="custom-tooltip" style="display:none; position:fixed; max-width:500px; padding:10px; font-size: var(--font-size-xs); line-height:1.4em; z-index:1001;"></div>
 <!--
   Compact 4-bin legend (µR/h) with vertical gradient bar (green→yellow→orange→red→black).
   White labels mark safe at the bottom and danger at the top.
@@ -1199,10 +1195,10 @@ body, html {
 
         cachedFontTokens = {
           family: family,
-          xs: pickSize('--font-size-xs', '11px'),
-          sm: pickSize('--font-size-sm', '12px'),
-          base: pickSize('--font-size-base', '14px'),
-          lg: pickSize('--font-size-lg', '16px'),
+          xs: pickSize('--font-size-xs', '6px'),
+          sm: pickSize('--font-size-sm', '10px'),
+          base: pickSize('--font-size-base', '12px'),
+          lg: pickSize('--font-size-lg', '14px'),
           xl: pickSize('--font-size-xl', '20px'),
           display: pickSize('--font-size-display', '28px'),
         };

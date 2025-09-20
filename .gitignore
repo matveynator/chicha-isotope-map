@@ -4,6 +4,9 @@
 *.duckdb
 *.duckdb.wal
 *.swp
+*.chai
+*.chai-shm
+*.chai-wal
 binaries
 chicha-isotope-map
 certs
