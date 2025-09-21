@@ -92,24 +92,71 @@ LIMIT %s;`, strings.Join(conditions, " AND "), limitPlaceholder)
 		}
 		defer rows.Close()
 
+		// We read the entire page before emitting results so we can compute the
+		// starting index once. This avoids hammering PostgreSQL with COUNT(DISTINCT)
+		// calls for every single track, which previously spiked CPU during archive
+		// creation. The buffered slice stays small because callers already cap
+		// page sizes.
+		summaries := make([]TrackSummary, 0, limit)
 		for rows.Next() {
 			var summary TrackSummary
 			if err := rows.Scan(&summary.TrackID, &summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
 				errs <- fmt.Errorf("scan track summary: %w", err)
 				return
 			}
-
-			select {
-			case <-ctx.Done():
-				errs <- ctx.Err()
-				return
-			case results <- summary:
-			}
+			summaries = append(summaries, summary)
 		}
 
 		if err := rows.Err(); err != nil {
 			errs <- fmt.Errorf("iterate track summaries: %w", err)
 			return
+		}
+
+		if len(summaries) == 0 {
+			errs <- nil
+			return
+		}
+
+		trimmed := strings.TrimSpace(startAfter)
+		baseIndex := int64(0)
+		haveBase := false
+
+		if trimmed != "" {
+			// When resuming from a known track we only need its index once
+			// per page. Subsequent tracks increment locally without extra SQL.
+			var count int64
+			if count, err = db.CountTrackIDsUpTo(ctx, trimmed, dbType); err != nil {
+				errs <- fmt.Errorf("count track ids base: %w", err)
+				return
+			}
+			baseIndex = count
+			haveBase = true
+		}
+
+		if !haveBase {
+			// For the very first page we derive the base from the first row.
+			// Using a second query here is still cheaper than doing it per track
+			// and the buffer keeps the connection free before the next query.
+			var firstCount int64
+			if firstCount, err = db.CountTrackIDsUpTo(ctx, summaries[0].TrackID, dbType); err != nil {
+				errs <- fmt.Errorf("count track ids first page: %w", err)
+				return
+			}
+			baseIndex = firstCount - 1
+			if baseIndex < 0 {
+				baseIndex = 0
+			}
+		}
+
+		for i := range summaries {
+			summaries[i].Index = baseIndex + int64(i) + 1
+
+			select {
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			case results <- summaries[i]:
+			}
 		}
 
 		errs <- nil

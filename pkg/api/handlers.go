@@ -654,7 +654,12 @@ func (h *Handler) finalizeSummaries(
 	var base int64
 	var err error
 
-	if trimmed := strings.TrimSpace(startAfter); trimmed != "" {
+	if summaries[0].Index > 0 {
+		// New database streaming already delivers the index, so we only need to
+		// adjust it into a zero-based base once. This keeps handlers cheap while
+		// still supporting legacy databases that lack the precomputed value.
+		base = summaries[0].Index - 1
+	} else if trimmed := strings.TrimSpace(startAfter); trimmed != "" {
 		base, err = h.DB.CountTrackIDsUpTo(ctx, trimmed, h.DBType)
 		if err != nil {
 			return 0, err
