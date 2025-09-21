@@ -46,7 +46,7 @@ import (
 	"chicha-isotope-map/pkg/api"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
-	"chicha-isotope-map/pkg/kmlarchive"
+	"chicha-isotope-map/pkg/jsonarchive"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
@@ -3247,13 +3247,13 @@ func main() {
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
-	// Build a daily tar.gz with all known KML files. We keep the generator in
+	// Build a daily tar.gz with all known JSON .cim files. We keep the generator in
 	// its own context so shutdown remains explicit, following the Go proverb
 	// "Share memory by communicating" via the archive channels.
 	ctxArchive, cancelArchive := context.WithCancel(context.Background())
 	defer cancelArchive()
-	archivePath := filepath.Join("rawdata", "archives", "daily-kml.tar.gz")
-	archiveGen := kmlarchive.Start(ctxArchive, db, *dbType, archivePath, 24*time.Hour, log.Printf)
+	archivePath := filepath.Join("rawdata", "archives", "daily-json.tar.gz")
+	archiveGen := jsonarchive.Start(ctxArchive, db, *dbType, archivePath, 24*time.Hour, log.Printf)
 
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")

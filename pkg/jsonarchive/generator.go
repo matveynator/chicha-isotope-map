@@ -1,11 +1,11 @@
-package kmlarchive
+package jsonarchive
 
 import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
 	"context"
-	"encoding/xml"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/database"
+	"chicha-isotope-map/pkg/trackjson"
 )
 
 // ========================
@@ -28,9 +29,9 @@ type Info struct {
 	ModTime time.Time
 }
 
-// Generator continuously maintains a tar.gz bundle of KML exports for all
-// tracks stored in the database. Synchronisation happens via channels so we
-// rely on message passing instead of mutexes.
+// Generator continuously maintains a tar.gz bundle of JSON .cim exports for all
+// tracks stored in the database. Synchronisation happens via channels so we rely
+// on message passing instead of mutexes.
 type Generator struct {
 	requests chan chan result
 	done     chan struct{}
@@ -42,11 +43,11 @@ type result struct {
 }
 
 // Start launches the background worker.
-// The worker exports every known track into temporary KML files, packs them
-// into a tar.gz archive, and atomically replaces the destination file once the
-// build succeeds. We trigger the initial build synchronously so the file exists
-// before the HTTP layer starts serving requests, matching the user's request to
-// have a fresh archive on startup.
+// The worker exports every known track into temporary .cim JSON files, packs
+// them into a tar.gz archive, and atomically replaces the destination file once
+// the build succeeds. We trigger the initial build synchronously so the file
+// exists before the HTTP layer starts serving requests, matching the user's
+// request to have a fresh archive on startup.
 func Start(
 	ctx context.Context,
 	db *database.Database,
@@ -80,9 +81,9 @@ func Start(
 				res := runBuild(ctx, db, dbType, destPath)
 				if logf != nil {
 					if res.err != nil {
-						logf("kml archive rebuild failed: %v", res.err)
+						logf("json archive rebuild failed: %v", res.err)
 					} else {
-						logf("kml archive ready: %s", res.info.Path)
+						logf("json archive ready: %s", res.info.Path)
 					}
 				}
 				select {
@@ -98,9 +99,9 @@ func Start(
 	initial := runBuild(ctx, db, dbType, destPath)
 	if logf != nil {
 		if initial.err != nil {
-			logf("kml archive initial build failed: %v", initial.err)
+			logf("json archive initial build failed: %v", initial.err)
 		} else {
-			logf("kml archive initialised: %s", initial.info.Path)
+			logf("json archive initialised: %s", initial.info.Path)
 		}
 	}
 
@@ -178,7 +179,7 @@ func runBuild(ctx context.Context, db *database.Database, dbType, destPath strin
 }
 
 // buildArchive streams track summaries from the database, exports each track to
-// a temporary KML file, and writes them into a tar.gz bundle. We only replace
+// a temporary JSON file, and writes them into a tar.gz bundle. We only replace
 // the destination after the build succeeds so clients never observe a partial
 // archive.
 func buildArchive(ctx context.Context, db *database.Database, dbType, destPath string) (string, time.Time, error) {
@@ -186,7 +187,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		return "", time.Time{}, fmt.Errorf("create archive directory: %w", err)
 	}
 
-	tmpFile, err := os.CreateTemp(filepath.Dir(destPath), "kml-*.tar.gz")
+	tmpFile, err := os.CreateTemp(filepath.Dir(destPath), "json-*.tar.gz")
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("tmp archive: %w", err)
 	}
@@ -285,15 +286,20 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 	return destPath, info.ModTime(), nil
 }
 
-// appendTrack exports a single track into a temporary KML file and appends it
-// to the tar writer. We keep the logic streaming to avoid buffering entire
-// tracks in memory, leaning on disk as a safety net for huge exports.
+// appendTrack exports a single track into a temporary .cim JSON file and then
+// copies it into the tar writer. We stream markers so archives stay memory
+// efficient even for very long tracks.
 func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbType string, summary database.TrackSummary) error {
 	if strings.TrimSpace(summary.TrackID) == "" || summary.MarkerCount == 0 {
 		return nil
 	}
 
-	tmp, err := os.CreateTemp("", "track-*.kml")
+	trackIndex, err := db.CountTrackIDsUpTo(ctx, summary.TrackID, dbType)
+	if err != nil {
+		return fmt.Errorf("track %s index: %w", summary.TrackID, err)
+	}
+
+	tmp, err := os.CreateTemp("", "track-*.cim")
 	if err != nil {
 		return fmt.Errorf("tmp track %s: %w", summary.TrackID, err)
 	}
@@ -301,7 +307,7 @@ func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbT
 	defer os.Remove(tmpPath)
 
 	writer := bufio.NewWriter(tmp)
-	latest, err := writeTrackKML(ctx, db, dbType, summary, writer)
+	latest, err := writeTrackJSON(ctx, db, dbType, summary, trackIndex, writer)
 	if err != nil {
 		tmp.Close()
 		return fmt.Errorf("write track %s: %w", summary.TrackID, err)
@@ -350,40 +356,44 @@ func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbT
 	return nil
 }
 
-// writeTrackKML streams all markers for a track into the writer and returns the
-// latest timestamp encountered so callers can use it as the file's modification
-// time.
-func writeTrackKML(
+// writeTrackJSON streams markers into the JSON payload and returns the latest
+// timestamp so the tar entry can mirror the freshest measurement.
+func writeTrackJSON(
 	ctx context.Context,
 	db *database.Database,
 	dbType string,
 	summary database.TrackSummary,
+	trackIndex int64,
 	w *bufio.Writer,
 ) (time.Time, error) {
-	now := time.Now().UTC()
-	if _, err := fmt.Fprintf(w, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"); err != nil {
+	if _, err := fmt.Fprintf(w, "{\n"); err != nil {
 		return time.Time{}, err
 	}
-	if _, err := fmt.Fprintf(w, "<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n"); err != nil {
+	if _, err := fmt.Fprintf(w, "  \"trackID\": %q,\n", summary.TrackID); err != nil {
 		return time.Time{}, err
 	}
-	if _, err := fmt.Fprintf(w, "  <Document>\n"); err != nil {
+	if _, err := fmt.Fprintf(w, "  \"trackIndex\": %d,\n", trackIndex); err != nil {
 		return time.Time{}, err
 	}
-	if _, err := fmt.Fprintf(w, "    <name>%s</name>\n", xmlEscape(summary.TrackID)); err != nil {
+	if _, err := fmt.Fprintf(w, "  \"apiURL\": %q,\n", trackjson.TrackAPIPath(summary.TrackID)); err != nil {
 		return time.Time{}, err
 	}
-	if _, err := fmt.Fprintf(w, "    <description>Exported %s (%d markers)</description>\n", now.Format(time.RFC3339), summary.MarkerCount); err != nil {
+	if _, err := fmt.Fprintf(w, "  \"firstID\": %d,\n", summary.FirstID); err != nil {
 		return time.Time{}, err
 	}
-	if _, err := fmt.Fprintf(w, "    <Folder>\n"); err != nil {
+	if _, err := fmt.Fprintf(w, "  \"lastID\": %d,\n", summary.LastID); err != nil {
 		return time.Time{}, err
 	}
-	if _, err := fmt.Fprintf(w, "      <name>Measurements</name>\n"); err != nil {
+	if _, err := fmt.Fprintf(w, "  \"markerCount\": %d,\n", summary.MarkerCount); err != nil {
+		return time.Time{}, err
+	}
+
+	if _, err := w.WriteString("  \"markers\": ["); err != nil {
 		return time.Time{}, err
 	}
 
 	latest := time.Time{}
+	first := true
 	handler := func(marker database.Marker) error {
 		select {
 		case <-ctx.Done():
@@ -391,42 +401,27 @@ func writeTrackKML(
 		default:
 		}
 
-		when := time.Unix(marker.Date, 0).UTC()
+		payload, when := trackjson.MakeMarkerPayload(marker)
 		if when.After(latest) {
 			latest = when
 		}
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal marker %d: %w", marker.ID, err)
+		}
 
-		if _, err := fmt.Fprintf(w, "      <Placemark>\n"); err != nil {
+		prefix := "\n    "
+		if !first {
+			prefix = ",\n    "
+		}
+		if _, err := w.WriteString(prefix); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, "        <name>%s #%d</name>\n", xmlEscape(summary.TrackID), marker.ID); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "        <TimeStamp><when>%s</when></TimeStamp>\n", when.Format(time.RFC3339)); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "        <ExtendedData>\n"); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "          <Data name=\"doseRate\"><value>%.6f</value></Data>\n", marker.DoseRate); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "          <Data name=\"countRate\"><value>%.6f</value></Data>\n", marker.CountRate); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "          <Data name=\"speed\"><value>%.6f</value></Data>\n", marker.Speed); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "        </ExtendedData>\n"); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "        <Point><coordinates>%.6f,%.6f,0</coordinates></Point>\n", marker.Lon, marker.Lat); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(w, "      </Placemark>\n"); err != nil {
+		if _, err := w.Write(encoded); err != nil {
 			return err
 		}
 
+		first = false
 		return nil
 	}
 
@@ -434,13 +429,21 @@ func writeTrackKML(
 		return time.Time{}, err
 	}
 
-	if _, err := fmt.Fprintf(w, "    </Folder>\n"); err != nil {
-		return time.Time{}, err
+	if first {
+		if _, err := w.WriteString("],\n"); err != nil {
+			return time.Time{}, err
+		}
+	} else {
+		if _, err := w.WriteString("\n  ],\n"); err != nil {
+			return time.Time{}, err
+		}
 	}
-	if _, err := fmt.Fprintf(w, "  </Document>\n"); err != nil {
-		return time.Time{}, err
+
+	disclaimers, err := json.Marshal(trackjson.Disclaimers)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("marshal disclaimers: %w", err)
 	}
-	if _, err := fmt.Fprintf(w, "</kml>\n"); err != nil {
+	if _, err := fmt.Fprintf(w, "  \"disclaimers\": %s\n}", disclaimers); err != nil {
 		return time.Time{}, err
 	}
 
@@ -501,35 +504,12 @@ func streamTrackMarkers(
 // appends the first marker ID to keep names unique even if sanitisation removes
 // characters.
 func safeTrackFilename(summary database.TrackSummary) string {
-	var b strings.Builder
-	for _, r := range summary.TrackID {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '-' || r == '_':
-			b.WriteRune(r)
-		default:
-			b.WriteRune('-')
-		}
-	}
-	name := strings.Trim(b.String(), "-")
+	base := trackjson.SafeCIMFilename(summary.TrackID)
+	name := strings.TrimSuffix(base, ".cim")
 	if name == "" {
 		name = "track"
 	}
-	return fmt.Sprintf("%s-%d.kml", name, summary.FirstID)
-}
-
-// xmlEscape escapes a string for XML text nodes.
-func xmlEscape(s string) string {
-	var b strings.Builder
-	if err := xml.EscapeText(&b, []byte(s)); err != nil {
-		return s
-	}
-	return b.String()
+	return fmt.Sprintf("%s-%d.cim", name, summary.FirstID)
 }
 
 // replaceFile atomically replaces the destination with the temporary file.
