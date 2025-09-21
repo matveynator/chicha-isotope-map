@@ -436,6 +436,33 @@ body, html {
           background-color: var(--control-bg-hover);
         }
 
+        /* Dedicated download container lives under the back button so
+           track view controls remain grouped for quick access. */
+        .download-track-container {
+          position: absolute;
+          top: 225px; /* keep consistent spacing below the back button */
+          right: 20px;
+          z-index: 1000;
+          display: none;
+        }
+
+        .download-track-btn {
+          background-color: var(--control-bg);
+          border: var(--legend-border);
+          border-radius: 4px;
+          padding: 5px 10px;
+          cursor: pointer;
+          font-size: var(--font-size-base);
+          color: var(--modal-text);
+          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+          text-decoration: none;
+          display: inline-block;
+        }
+
+        .download-track-btn:hover {
+          background-color: var(--control-bg-hover);
+        }
+
 
         /* ─────────–– Slider clean-look patch ─────────── */
         .date-slider-box {
@@ -995,6 +1022,11 @@ body, html {
     <!-- Container for "Back to all tracks" button -->
     <div class="back-to-all-container leaflet-control" style="display: none;">
       <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
+    </div>
+
+    <!-- Track download button appears only in track view so users can retrieve the original JSON quickly. -->
+    <div class="download-track-container leaflet-control" style="display: none;">
+      <a id="downloadTrackLink" class="download-track-btn" href="#">{{ translate "download_track_cim" }}</a>
     </div>
 
     <!-- File upload overlay -->
@@ -1646,6 +1678,28 @@ var osmLayer, googleSatellite;
 var trackBounds;
 var currentTrackID = null;
 
+/* ---------------------------------------------------------------
+ *  refreshDownloadLink() toggles the track download button.
+ *  We compute the href lazily so the button is only active when a
+ *  track is selected, keeping the default map uncluttered.
+ * ---------------------------------------------------------------*/
+function refreshDownloadLink() {
+  var link = document.getElementById('downloadTrackLink');
+  var box  = document.querySelector('.download-track-container');
+  if (!link || !box) {
+    return;
+  }
+  if (currentTrackID) {
+    link.href = '/api/track/' + currentTrackID + '.cim';
+    link.setAttribute('download', currentTrackID + '.cim');
+    box.style.display = 'block';
+  } else {
+    link.href = '#';
+    link.removeAttribute('download');
+    box.style.display = 'none';
+  }
+}
+
 // New controller to cancel previous request
 var markerStreamSource = null;
 
@@ -1730,6 +1784,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var backBox = document.querySelector('.back-to-all-container');
     if (backBox) backBox.style.display = 'block';
   }
+  refreshDownloadLink();
   // Initialize layers and auto theme switch
   const media = window.matchMedia('(prefers-color-scheme: dark)');
   const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -1776,7 +1831,8 @@ document.addEventListener('DOMContentLoaded', function () {
   map.attributionControl.addAttribution(
     '<a href="#" class="attr-link" data-info="legal">' + translate('attr_legal') + '</a> | ' +
     '<a href="#" class="attr-link" data-info="sources">' + translate('attr_sources') + '</a> | ' +
-    '<a href="#" class="attr-link" data-info="license">' + translate('attr_license') + '</a>'
+    '<a href="#" class="attr-link" data-info="license">' + translate('attr_license') + '</a> | ' +
+    '<a href="#" class="attr-link" data-info="api">' + translate('attr_api') + '</a>'
   );
 
   // Track view initialization
@@ -3181,6 +3237,10 @@ function initializeUIElements() {
       window.location.href = '/' + params;
     });
   }
+
+  // Keep the download button aligned with the current track state even if
+  // the DOM was injected before listeners finished binding.
+  refreshDownloadLink();
 }
 
 function centerMapToLocation() {
@@ -3418,6 +3478,12 @@ function centerMapToLocation() {
   // Open modal with legal, source or license text
   function openInfoModal(topic) {
     hideLegendTooltip(); // avoid overlap with legend tooltip
+    if (topic === 'api') {
+      // Direct users to the machine-readable API docs in a new tab so the
+      // attribution footer doubles as an entry point for developers.
+      window.open('/api', '_blank', 'noopener');
+      return;
+    }
     var box = document.getElementById('infoText');
     if (box) box.innerHTML = buildInfoHTML(translate(topic + '_full'));
     var head = document.getElementById('infoTitle');

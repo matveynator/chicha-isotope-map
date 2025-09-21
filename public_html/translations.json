@@ -74,15 +74,17 @@
     "legend_safe": "Безопасно",
     "legend_attention": "Внимание",
     "legend_danger": "Опасно",
-    "attr_legal": "правовые сведения",
-    "attr_sources": "источники данных",
-    "attr_license": "лицензия",
+    "attr_legal": "Правовые сведения",
+    "attr_sources": "Источники данных",
+    "attr_license": "Лицензия",
     "legal_title": "Правовые сведения",
     "legal_full": "Дорогие друзья, эта карта рождена общими усилиями и живёт открытым трудом. Все показания приходят анонимно и в автоматическом порядке из множества приборов и источников. Проверить или верифицировать каждое значение мы никак не можем, потому воспринимайте карту как набросок, а не как точный чертёж. Авторы не несут никакой ответственности за последствия, что могут последовать из пользования этими данными.\n\nВо имя удобства посещения сайт ставит лишь короткий технический cookie для сессии. Он гаснет, как только вы покидаете карту; иных следов мы не оставляем.\n\nЕсли вам близка цель нашего труда, будем рады вашей помощи и доброму участию.",
     "sources_title": "Источники данных",
     "sources_full": "Мы благодарим каждого, кто делится измерениями.\n\nЛюдей кто анонимно загружает треки на наш сервис.\n<a href=\"https://safecast.org\" target=\"_blank\">Safecast</a> ведёт мировую летопись радиационных данных.\n<a href=\"https://atomfast.net\" target=\"_blank\">Atomfast</a> дозиметры AtomFast и облако Atomcloud.\n<a href=\"https://radiaverse.com\" target=\"_blank\">Radioverse</a> развивает линейку дозиметров-спектрометров Radiacode.\n\nКаждый вклад расширяет общую картину; присоединяйтесь и вы.",
     "license_title": "Лицензия",
-    "license_full": "Проект живёт под лицензией <a href=\"/LICENSE\" target=\"_blank\">GNU GPLv3</a>. Полный текст лежит в корне репозитория и на сайте GNU. Вы вольны изучать, распространять и менять код, сохраняя эти свободы для других."
+    "license_full": "Проект живёт под лицензией <a href=\"/LICENSE\" target=\"_blank\">GNU GPLv3</a>. Полный текст лежит в корне репозитория и на сайте GNU. Вы вольны изучать, распространять и менять код, сохраняя эти свободы для других.",
+    "attr_api": "API",
+    "download_track_cim": "Скачать трек (.cim)"
   },
   "en": {
     "title": "Chicha’s Isotope Map — Radiological Map of Planet Earth",
@@ -159,15 +161,17 @@
     "legend_safe": "Safe",
     "legend_attention": "Attention",
     "legend_danger": "Danger",
-    "attr_legal": "legal",
-    "attr_sources": "data sources",
-    "attr_license": "license",
+    "attr_legal": "Legal",
+    "attr_sources": "Data Sources",
+    "attr_license": "License",
     "legal_title": "Legal & Cookies",
     "legal_full": "Dear friends, this map springs from shared effort and open hearts. Every reading arrives anonymously and automatically from many devices and sources. We have no means to verify or validate each value, so please regard the map as a sketch rather than an exact plan. The authors accept no responsibility whatsoever for any outcome that may arise from using these data.\n\nFor your convenience, the site sets only a brief technical cookie for the session. It fades as soon as you leave; no other traces are kept.\n\nIf our work speaks to you, you are warmly invited to lend a hand and help it flourish.",
     "sources_title": "Data Sources",
     "sources_full": "We thank all who share measurements.\n\nAnonymous uploads trace quiet paths on the map.\n<a href=\"https://safecast.org\" target=\"_blank\">Safecast</a> fosters a global archive of readings.\n<a href=\"https://atomfast.net\" target=\"_blank\">Atomfast</a> keeps the Atomcloud alight.\n<a href=\"https://radiaverse.com\" target=\"_blank\">Radioverse</a> gathers insights from Radiacode.\n\nEach contribution widens the common picture; you are warmly invited to add your own.",
     "license_title": "License",
-    "license_full": "This project grows under the <a href=\"/LICENSE\" target=\"_blank\">GNU GPLv3</a>. The full text rests in the repository's root and on the GNU site. You may study, share, and alter the code, provided these freedoms travel with your work."
+    "license_full": "This project grows under the <a href=\"/LICENSE\" target=\"_blank\">GNU GPLv3</a>. The full text rests in the repository's root and on the GNU site. You may study, share, and alter the code, provided these freedoms travel with your work.",
+    "attr_api": "API",
+    "download_track_cim": "Download track (.cim)"
   },
   "es": {
     "title": "Mapa de Isótopos de Chicha — Mapa radiológico del planeta Tierra",
@@ -243,7 +247,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Aviso legal",
+    "attr_sources": "Fuentes de datos",
+    "attr_license": "Licencia",
+    "attr_api": "API",
+    "download_track_cim": "Descargar recorrido (.cim)"
   },
   "fr": {
     "title": "Carte des isotopes de Chicha — Carte radiologique de la planète Terre",
@@ -319,7 +328,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Mentions légales",
+    "attr_sources": "Sources de données",
+    "attr_license": "Licence",
+    "attr_api": "API",
+    "download_track_cim": "Télécharger la piste (.cim)"
   },
   "de": {
     "title": "Chichas Isotopenkarte — Radiologische Karte des Planeten Erde",
@@ -395,7 +409,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Rechtliche Hinweise",
+    "attr_sources": "Datenquellen",
+    "attr_license": "Lizenz",
+    "attr_api": "API",
+    "download_track_cim": "Track herunterladen (.cim)"
   },
   "zh": {
     "title": "Chicha 同位素地图——地球辐射地图",
@@ -471,7 +490,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "法律信息",
+    "attr_sources": "数据来源",
+    "attr_license": "许可",
+    "attr_api": "API",
+    "download_track_cim": "下载轨迹 (.cim)"
   },
   "ja": {
     "title": "チチャの同位体マップ — 地球の放射線マップ",
@@ -547,7 +571,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "法的情報",
+    "attr_sources": "データソース",
+    "attr_license": "ライセンス",
+    "attr_api": "API",
+    "download_track_cim": "トラックをダウンロード (.cim)"
   },
   "ko": {
     "title": "치차 동위원소 지도 — 지구 방사선 지도",
@@ -623,7 +652,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "법적 정보",
+    "attr_sources": "데이터 출처",
+    "attr_license": "라이선스",
+    "attr_api": "API",
+    "download_track_cim": "트랙 다운로드 (.cim)"
   },
   "pt": {
     "title": "Mapa de Isótopos da Chicha — Mapa radiológico do planeta Terra",
@@ -699,7 +733,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Informações legais",
+    "attr_sources": "Fontes de dados",
+    "attr_license": "Licença",
+    "attr_api": "API",
+    "download_track_cim": "Baixar trilha (.cim)"
   },
   "it": {
     "title": "Mappa degli isotopi di Chicha — Mappa radiologica del pianeta Terra",
@@ -775,7 +814,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Informazioni legali",
+    "attr_sources": "Fonti dati",
+    "attr_license": "Licenza",
+    "attr_api": "API",
+    "download_track_cim": "Scarica traccia (.cim)"
   },
   "ar": {
     "title": "خريطة نظائر تشيتشا — خريطة إشعاعية لكوكب الأرض",
@@ -851,7 +895,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "معلومات قانونية",
+    "attr_sources": "مصادر البيانات",
+    "attr_license": "الترخيص",
+    "attr_api": "واجهة API",
+    "download_track_cim": "تحميل المسار (.cim)"
   },
   "hi": {
     "title": "चिचा समस्थानिक मानचित्र — पृथ्वी ग्रह का विकिरण मानचित्र",
@@ -927,7 +976,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "कानूनी जानकारी",
+    "attr_sources": "डेटा स्रोत",
+    "attr_license": "लाइसेंस",
+    "attr_api": "API",
+    "download_track_cim": "ट्रैक डाउनलोड करें (.cim)"
   },
   "tr": {
     "title": "Chicha İzotop Haritası — Dünya gezegeninin radyolojik haritası",
@@ -1003,7 +1057,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Hukuki bilgiler",
+    "attr_sources": "Veri kaynakları",
+    "attr_license": "Lisans",
+    "attr_api": "API",
+    "download_track_cim": "Parkuru indir (.cim)"
   },
   "nl": {
     "title": "Chicha Isotopenkaart — Radiologische kaart van planeet Aarde",
@@ -1079,7 +1138,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Juridische informatie",
+    "attr_sources": "Gegevensbronnen",
+    "attr_license": "Licentie",
+    "attr_api": "API",
+    "download_track_cim": "Track downloaden (.cim)"
   },
   "el": {
     "title": "Χάρτης ισοτόπων της Chicha — Ραδιολογικός χάρτης του πλανήτη Γη",
@@ -1155,7 +1219,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Νομικές πληροφορίες",
+    "attr_sources": "Πηγές δεδομένων",
+    "attr_license": "Άδεια",
+    "attr_api": "API",
+    "download_track_cim": "Λήψη διαδρομής (.cim)"
   },
   "pl": {
     "title": "Mapa izotopów Chichy — Radiologiczna mapa Ziemi",
@@ -1231,7 +1300,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Informacje prawne",
+    "attr_sources": "Źródła danych",
+    "attr_license": "Licencja",
+    "attr_api": "API",
+    "download_track_cim": "Pobierz trasę (.cim)"
   },
   "uk": {
     "title": "Карта ізотопів Чічі — Радіологічна карта планети Земля",
@@ -1307,7 +1381,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Правова інформація",
+    "attr_sources": "Джерела даних",
+    "attr_license": "Ліцензія",
+    "attr_api": "API",
+    "download_track_cim": "Завантажити трек (.cim)"
   },
   "cs": {
     "title": "Chichina mapa izotopů — Radiologická mapa planety Země",
@@ -1378,7 +1457,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Právní informace",
+    "attr_sources": "Zdroje dat",
+    "attr_license": "Licence",
+    "attr_api": "API",
+    "download_track_cim": "Stáhnout trasu (.cim)"
   },
   "fi": {
     "title": "Chichan isotooppikartta — Maapallon radiologinen kartta",
@@ -1454,7 +1538,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Oikeudelliset tiedot",
+    "attr_sources": "Tietolähteet",
+    "attr_license": "Lisenssi",
+    "attr_api": "API",
+    "download_track_cim": "Lataa reitti (.cim)"
   },
   "sv": {
     "title": "Chichas isotopkarta — Radiologisk karta över planeten Jorden",
@@ -1530,7 +1619,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Juridisk information",
+    "attr_sources": "Datakällor",
+    "attr_license": "Licens",
+    "attr_api": "API",
+    "download_track_cim": "Ladda ned spår (.cim)"
   },
   "no": {
     "title": "Chichas isotopkart — Radiologisk kart over planeten Jorden",
@@ -1606,7 +1700,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Juridisk informasjon",
+    "attr_sources": "Datakilder",
+    "attr_license": "Lisens",
+    "attr_api": "API",
+    "download_track_cim": "Last ned spor (.cim)"
   },
   "da": {
     "title": "Chichas isotopkort — Radiologisk kort over planeten Jorden",
@@ -1682,7 +1781,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Juridiske oplysninger",
+    "attr_sources": "Datakilder",
+    "attr_license": "Licens",
+    "attr_api": "API",
+    "download_track_cim": "Hent spor (.cim)"
   },
   "hu": {
     "title": "Chicha izotóptérképe — A Föld radiológiai térképe",
@@ -1758,7 +1862,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Jogi információk",
+    "attr_sources": "Adatforrások",
+    "attr_license": "Licenc",
+    "attr_api": "API",
+    "download_track_cim": "Pálya letöltése (.cim)"
   },
   "th": {
     "title": "แผนที่ไอโซโทปของ Chicha — แผนที่รังสีของโลก",
@@ -1834,7 +1943,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "ข้อมูลทางกฎหมาย",
+    "attr_sources": "แหล่งข้อมูล",
+    "attr_license": "สัญญาอนุญาต",
+    "attr_api": "API",
+    "download_track_cim": "ดาวน์โหลดเส้นทาง (.cim)"
   },
   "vi": {
     "title": "Bản đồ đồng vị của Chicha — Bản đồ phóng xạ của Trái Đất",
@@ -1910,7 +2024,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Thông tin pháp lý",
+    "attr_sources": "Nguồn dữ liệu",
+    "attr_license": "Giấy phép",
+    "attr_api": "API",
+    "download_track_cim": "Tải bản ghi (.cim)"
   },
   "id": {
     "title": "Peta Isotop Chicha — Peta radiologi Planet Bumi",
@@ -1986,7 +2105,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Informasi hukum",
+    "attr_sources": "Sumber data",
+    "attr_license": "Lisensi",
+    "attr_api": "API",
+    "download_track_cim": "Unduh trek (.cim)"
   },
   "ms": {
     "title": "Peta Isotop Chicha — Peta radiologi Planet Bumi",
@@ -2062,7 +2186,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "Maklumat undang-undang",
+    "attr_sources": "Sumber data",
+    "attr_license": "Lesen",
+    "attr_api": "API",
+    "download_track_cim": "Muat turun trek (.cim)"
   },
   "fa": {
     "title": "نقشه ایزوتوپ‌های چیچا — نقشهٔ رادیولوژیِ سیارهٔ زمین",
@@ -2138,7 +2267,12 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "اطلاعات حقوقی",
+    "attr_sources": "منابع داده",
+    "attr_license": "مجوز",
+    "attr_api": "رابط API",
+    "download_track_cim": "دانلود مسیر (.cim)"
   },
   "he": {
     "title": "מפת האיזוטופים של Chicha — מפת קרינה של כוכב הלכת הארץ",
@@ -2214,6 +2348,11 @@
     "duration_days": "[[count]] days",
     "duration_weeks": "[[count]] weeks",
     "duration_months": "[[count]] months",
-    "live_chart_close": "Close"
+    "live_chart_close": "Close",
+    "attr_legal": "מידע משפטי",
+    "attr_sources": "מקורות נתונים",
+    "attr_license": "רישיון",
+    "attr_api": "ממשק API",
+    "download_track_cim": "הורדת מסלול (.cim)"
   }
 }
