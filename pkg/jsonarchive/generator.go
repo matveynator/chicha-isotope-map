@@ -124,8 +124,9 @@ func Start(
 		ticker := time.NewTicker(refreshInterval)
 		defer ticker.Stop()
 
-		current := initialResult
-		haveResult := haveInitial
+
+		current := result{}
+		haveResult := false
 
 		for {
 			select {
