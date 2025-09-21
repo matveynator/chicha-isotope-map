@@ -9,6 +9,8 @@
 *.chai-wal
 *.sqlite-shm
 *.sqlite-wal
+*.duckdb-shm
+*.duckdb-wal
 binaries
 chicha-isotope-map
 certs
