@@ -312,9 +312,16 @@ func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbT
 		return nil
 	}
 
-	trackIndex, err := db.CountTrackIDsUpTo(ctx, summary.TrackID, dbType)
-	if err != nil {
-		return fmt.Errorf("track %s index: %w", summary.TrackID, err)
+	trackIndex := summary.Index
+	if trackIndex <= 0 {
+		// Older databases may not supply the index yet. We keep the fallback
+		// to avoid breaking incremental migrations but expect the new streaming
+		// path to populate it so PostgreSQL is not hammered during archive builds.
+		var err error
+		trackIndex, err = db.CountTrackIDsUpTo(ctx, summary.TrackID, dbType)
+		if err != nil {
+			return fmt.Errorf("track %s index: %w", summary.TrackID, err)
+		}
 	}
 
 	tmp, err := os.CreateTemp("", "track-*.cim")

@@ -318,6 +318,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// 2) Selective singles
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Date-first variant accelerates archive/year pagination that filters primarily by time.
+			{"idx_markers_date_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid ON markers (date, trackID)`},
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
@@ -350,6 +353,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Date-first variant accelerates archive/year pagination that filters primarily by time.
+			{"idx_markers_date_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid ON markers (date, trackID)`},
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
@@ -383,6 +389,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Date-first variant accelerates archive/year pagination that filters primarily by time.
+			{"idx_markers_date_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid ON markers (date, trackID)`},
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
@@ -416,6 +425,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid ON markers (trackID)`},
+			// Date-first variant accelerates archive/year pagination that filters primarily by time.
+			{"idx_markers_date_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid ON markers (date, trackID)`},
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
