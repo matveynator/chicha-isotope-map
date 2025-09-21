@@ -7,6 +7,8 @@
 *.chai
 *.chai-shm
 *.chai-wal
+*.sqlite-shm
+*.sqlite-wal
 binaries
 chicha-isotope-map
 certs
