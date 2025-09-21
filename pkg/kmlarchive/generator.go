@@ -215,19 +215,19 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		}
 
 		summariesCh, errCh := db.StreamTrackSummaries(buildCtx, startAfter, pageSize, dbType)
-		fetched := 0
+		summaries := make([]database.TrackSummary, 0, pageSize)
 		var lastID string
 
 		for summary := range summariesCh {
-			fetched++
-			lastID = summary.TrackID
-			if err := appendTrack(buildCtx, tarw, db, dbType, summary); err != nil {
+			if err := ctx.Err(); err != nil {
 				cancel()
 				tarw.Close()
 				gz.Close()
 				cleanup()
 				return "", time.Time{}, err
 			}
+			lastID = summary.TrackID
+			summaries = append(summaries, summary)
 		}
 
 		if err := <-errCh; err != nil {
@@ -238,7 +238,21 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 			return "", time.Time{}, err
 		}
 
-		if fetched < pageSize || lastID == "" {
+		// Process the page only after the summary query closes so SQLite releases
+		// its connection before we begin streaming markers. Without this staging
+		// step the marker query would block waiting for the still-open summary
+		// cursor, leading to the deadlock observed at startup.
+		for _, summary := range summaries {
+			if err := appendTrack(buildCtx, tarw, db, dbType, summary); err != nil {
+				cancel()
+				tarw.Close()
+				gz.Close()
+				cleanup()
+				return "", time.Time{}, err
+			}
+		}
+
+		if len(summaries) < pageSize || lastID == "" {
 			break
 		}
 		startAfter = lastID
