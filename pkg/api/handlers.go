@@ -31,6 +31,11 @@ type Handler struct {
 	Logf    func(string, ...any)
 }
 
+// microRoentgenPerMicroSievert stores the factor for translating between
+// microsieverts per hour and microroentgen per hour. We keep it in one place so
+// both the exporter and importer remain consistent with each other.
+const microRoentgenPerMicroSievert = 100.0
+
 // NewHandler constructs a Handler with sane defaults.
 // Logf is optional; pass nil if logging is not required.
 func NewHandler(db *database.Database, dbType string, archive *kmlarchive.Generator, logf func(string, ...any)) *Handler {
@@ -425,22 +430,23 @@ func (h *Handler) handleTracksByMonth(w http.ResponseWriter, r *http.Request) {
 // serveTrackData centralises the marker streaming logic so both ID-based and
 // index-based handlers produce identical responses.
 type trackMarkerPayload struct {
-	ID               int64    `json:"id"`
-	TimeUnix         int64    `json:"timeUnix"`
-	TimeUTC          string   `json:"timeUTC"`
-	Lat              float64  `json:"lat"`
-	Lon              float64  `json:"lon"`
-	AltitudeM        float64  `json:"altitudeM"`
-	DoseRateMicroSvH float64  `json:"doseRateMicroSvH"`
-	DoseRateMilliSvH float64  `json:"doseRateMilliSvH"`
-	DoseRateMilliRH  float64  `json:"doseRateMilliRH"`
-	CountRateCPS     float64  `json:"countRateCPS"`
-	SpeedMS          float64  `json:"speedMS"`
-	SpeedKMH         float64  `json:"speedKMH"`
-	TemperatureC     float64  `json:"temperatureC"`
-	HumidityPercent  float64  `json:"humidityPercent"`
-	DetectorType     string   `json:"detectorType,omitempty"`
-	RadiationTypes   []string `json:"radiationTypes,omitempty"`
+	ID                     int64    `json:"id"`
+	TrackID                string   `json:"trackID"`
+	TimeUnix               int64    `json:"timeUnix"`
+	TimeUTC                string   `json:"timeUTC"`
+	Lat                    float64  `json:"lat"`
+	Lon                    float64  `json:"lon"`
+	AltitudeM              float64  `json:"altitudeM"`
+	DoseRateMicroSvH       float64  `json:"doseRateMicroSvH"`
+	DoseRateMicroRoentgenH float64  `json:"doseRateMicroRh"`
+	CountRateCPS           float64  `json:"countRateCPS"`
+	SpeedMS                float64  `json:"speedMS"`
+	SpeedKMH               float64  `json:"speedKMH"`
+	TemperatureC           float64  `json:"temperatureC"`
+	HumidityPercent        float64  `json:"humidityPercent"`
+	DetectorName           string   `json:"detectorName,omitempty"`
+	DetectorType           string   `json:"detectorType,omitempty"`
+	RadiationTypes         []string `json:"radiationTypes,omitempty"`
 }
 
 func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID string) {
@@ -514,23 +520,24 @@ func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID
 		ts, unixSeconds := normalizeMarkerTime(marker.Date)
 		detector := strings.TrimSpace(marker.Detector)
 		pm := trackMarkerPayload{
-			ID:               marker.ID,
-			TimeUnix:         unixSeconds,
-			TimeUTC:          ts.Format(time.RFC3339),
-			Lat:              marker.Lat,
-			Lon:              marker.Lon,
-			AltitudeM:        marker.Altitude,
-			DoseRateMicroSvH: marker.DoseRate,
-			DoseRateMilliSvH: marker.DoseRate / 1000.0,
-			DoseRateMilliRH:  marker.DoseRate / 10.0,
-			CountRateCPS:     marker.CountRate,
-			SpeedMS:          marker.Speed,
-			SpeedKMH:         marker.Speed * 3.6,
-			TemperatureC:     marker.Temperature,
-			HumidityPercent:  marker.Humidity,
+			ID:                     marker.ID,
+			TrackID:                marker.TrackID,
+			TimeUnix:               unixSeconds,
+			TimeUTC:                ts.Format(time.RFC3339),
+			Lat:                    marker.Lat,
+			Lon:                    marker.Lon,
+			AltitudeM:              marker.Altitude,
+			DoseRateMicroSvH:       marker.DoseRate,
+			DoseRateMicroRoentgenH: marker.DoseRate * microRoentgenPerMicroSievert,
+			CountRateCPS:           marker.CountRate,
+			SpeedMS:                marker.Speed,
+			SpeedKMH:               marker.Speed * 3.6,
+			TemperatureC:           marker.Temperature,
+			HumidityPercent:        marker.Humidity,
 		}
 		if detector != "" {
 			pm.DetectorType = detector
+			pm.DetectorName = stableDetectorName(marker.TrackID, detector)
 		}
 		if channels := splitRadiationChannels(marker.Radiation); len(channels) > 0 {
 			pm.RadiationTypes = channels
@@ -755,6 +762,24 @@ func splitRadiationChannels(raw string) []string {
 		return nil
 	}
 	return out
+}
+
+// stableDetectorName synthesises a reproducible detector label. We fold the
+// track ID into the name so uploads that lacked an explicit serial number can
+// still be matched when data is re-imported later.
+func stableDetectorName(trackID, detector string) string {
+	trackID = strings.TrimSpace(trackID)
+	detector = strings.TrimSpace(detector)
+	switch {
+	case trackID == "" && detector == "":
+		return ""
+	case trackID == "":
+		return detector
+	case detector == "":
+		return trackID
+	default:
+		return trackID + ":" + detector
+	}
 }
 
 func parseIntDefault(v string, def int) int {

@@ -93,6 +93,10 @@ const (
 	minValidTS     = 1262304000 // 2010-01-01 00:00:00 UTC
 )
 
+// microRoentgenPerMicroSievert keeps conversion logic explicit so both the API
+// exporter and the JSON importer agree on the units we advertise publicly.
+const microRoentgenPerMicroSievert = 100.0
+
 type SpeedRange struct{ Min, Max float64 }
 
 var errNotChichaTrackJSON = errors.New("not chicha track json payload")
@@ -1752,26 +1756,31 @@ func processChichaTrackJSON(
 		Format  string `json:"format"`
 		Version int    `json:"version"`
 		Track   struct {
+			TrackID        string   `json:"trackID"`
+			DetectorName   string   `json:"detectorName"`
 			DetectorType   string   `json:"detectorType"`
 			RadiationTypes []string `json:"radiationTypes"`
 		} `json:"track"`
 		Markers []struct {
-			ID              int64    `json:"id"`
-			TimeUnix        int64    `json:"timeUnix"`
-			TimeUTC         string   `json:"timeUTC"`
-			Lat             float64  `json:"lat"`
-			Lon             float64  `json:"lon"`
-			AltitudeM       float64  `json:"altitudeM"`
-			DoseMicroSvH    float64  `json:"doseRateMicroSvH"`
-			DoseMilliSvH    float64  `json:"doseRateMilliSvH"`
-			DoseMilliRH     float64  `json:"doseRateMilliRH"`
-			CountRateCPS    float64  `json:"countRateCPS"`
-			SpeedMS         float64  `json:"speedMS"`
-			SpeedKMH        float64  `json:"speedKMH"`
-			TemperatureC    float64  `json:"temperatureC"`
-			HumidityPercent float64  `json:"humidityPercent"`
-			DetectorType    string   `json:"detectorType"`
-			RadiationTypes  []string `json:"radiationTypes"`
+			ID                 int64    `json:"id"`
+			TrackID            string   `json:"trackID"`
+			TimeUnix           int64    `json:"timeUnix"`
+			TimeUTC            string   `json:"timeUTC"`
+			Lat                float64  `json:"lat"`
+			Lon                float64  `json:"lon"`
+			AltitudeM          float64  `json:"altitudeM"`
+			DoseMicroSvH       float64  `json:"doseRateMicroSvH"`
+			DoseMicroRoentgenH float64  `json:"doseRateMicroRh"`
+			DoseMilliSvH       float64  `json:"doseRateMilliSvH"`
+			DoseMilliRH        float64  `json:"doseRateMilliRH"`
+			CountRateCPS       float64  `json:"countRateCPS"`
+			SpeedMS            float64  `json:"speedMS"`
+			SpeedKMH           float64  `json:"speedKMH"`
+			TemperatureC       float64  `json:"temperatureC"`
+			HumidityPercent    float64  `json:"humidityPercent"`
+			DetectorName       string   `json:"detectorName"`
+			DetectorType       string   `json:"detectorType"`
+			RadiationTypes     []string `json:"radiationTypes"`
 		} `json:"markers"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
@@ -1784,13 +1793,18 @@ func processChichaTrackJSON(
 		return database.Bounds{}, trackID, fmt.Errorf("chicha track json: no markers")
 	}
 
-	defaultDetector := strings.TrimSpace(payload.Track.DetectorType)
+	candidateTrackID := strings.TrimSpace(payload.Track.TrackID)
+	defaultDetectorType := strings.TrimSpace(payload.Track.DetectorType)
+	defaultDetectorName := strings.TrimSpace(payload.Track.DetectorName)
 	defaultRadiation := normalizeRadiationList(payload.Track.RadiationTypes)
 
 	markers := make([]database.Marker, 0, len(payload.Markers))
 	for _, item := range payload.Markers {
 		ts := extractUnixSeconds(item.TimeUnix, item.TimeUTC)
 		dose := item.DoseMicroSvH
+		if dose == 0 && item.DoseMicroRoentgenH != 0 {
+			dose = item.DoseMicroRoentgenH / microRoentgenPerMicroSievert
+		}
 		if dose == 0 && item.DoseMilliSvH != 0 {
 			dose = item.DoseMilliSvH * 1000.0
 		}
@@ -1803,9 +1817,17 @@ func processChichaTrackJSON(
 			speed = item.SpeedKMH / 3.6
 		}
 
+		detectorName := strings.TrimSpace(item.DetectorName)
+		if detectorName == "" {
+			detectorName = defaultDetectorName
+		}
+
 		detector := strings.TrimSpace(item.DetectorType)
 		if detector == "" {
-			detector = defaultDetector
+			detector = defaultDetectorType
+		}
+		if detector == "" {
+			detector = detectorTypeFromName(detectorName)
 		}
 
 		radiationList := normalizeRadiationList(item.RadiationTypes)
@@ -1827,6 +1849,14 @@ func processChichaTrackJSON(
 			Detector:    detector,
 			Radiation:   strings.Join(radiationList, ","),
 		})
+
+		if candidateTrackID == "" {
+			candidateTrackID = strings.TrimSpace(item.TrackID)
+		}
+	}
+
+	if candidateTrackID != "" {
+		trackID = candidateTrackID
 	}
 
 	logT(trackID, "ChichaJSON", "parsed %d markers", len(markers))
@@ -1869,6 +1899,23 @@ func normalizeRadiationList(values []string) []string {
 		return nil
 	}
 	return out
+}
+
+// detectorTypeFromName extracts the type hint that we encode into detectorName
+// during export. We slice on the first ':' because stableDetectorName prefixes
+// the trackID before the reported detector model.
+func detectorTypeFromName(detectorName string) string {
+	detectorName = strings.TrimSpace(detectorName)
+	if detectorName == "" {
+		return ""
+	}
+	if idx := strings.Index(detectorName, ":"); idx >= 0 && idx+1 < len(detectorName) {
+		candidate := strings.TrimSpace(detectorName[idx+1:])
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // parseBGeigieCoord parses coordinates that may have hemisphere suffix.
