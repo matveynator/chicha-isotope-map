@@ -60,13 +60,27 @@ type Config struct {
 // NewDatabase opens DB and configures connection pooling.
 // For SQLite/Chai we force single-connection mode (no concurrent DB access).
 func NewDatabase(config Config) (*Database, error) {
-	var dsn string
+	driverName := strings.ToLower(strings.TrimSpace(config.DBType))
+	var (
+		dsn                string
+		applySQLitePragmas bool
+	)
 
-	switch strings.ToLower(config.DBType) {
-	case "sqlite", "chai":
+	switch driverName {
+	case "sqlite":
+		applySQLitePragmas = true
 		dsn = config.DBPath
 		if dsn == "" {
-			dsn = fmt.Sprintf("database-%d.%s", config.Port, strings.ToLower(config.DBType))
+			dsn = fmt.Sprintf("database-%d.%s", config.Port, driverName)
+		}
+	case "chai":
+		// Chai is a separate driver that happens to reuse sqlite-style DSNs.
+		// We still keep the single-connection behaviour but intentionally
+		// skip SQLite-specific PRAGMA tuning so the driver can manage its
+		// own transaction and caching strategy.
+		dsn = config.DBPath
+		if dsn == "" {
+			dsn = fmt.Sprintf("database-%d.%s", config.Port, driverName)
 		}
 	case "duckdb":
 		// файл создастся при первом открытии
@@ -81,13 +95,13 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
 
-	db, err := sql.Open(strings.ToLower(config.DBType), dsn)
+	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("error opening the database: %v", err)
 	}
 
 	// === CRITICAL: serialize SQLite/Chai access over a single underlying connection ===
-	switch strings.ToLower(config.DBType) {
+	switch driverName {
 	case "sqlite", "chai":
 		// One physical connection; no concurrent statements at DB layer.
 		db.SetMaxOpenConns(1)
@@ -95,11 +109,15 @@ func NewDatabase(config Config) (*Database, error) {
 		// Never recycle the single connection (keeps it stable for the whole process).
 		db.SetConnMaxLifetime(0)
 		// Tuning WAL/synchronous/busy_timeout keeps inserts fast enough for realtime uploads.
-		tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		if err := tuneSQLiteLikeConnection(tuneCtx, db, log.Printf); err != nil {
-			log.Printf("sqlite tuning skipped: %v", err)
+		if applySQLitePragmas {
+			tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			if err := tuneSQLiteLikeConnection(tuneCtx, db, log.Printf); err != nil {
+				log.Printf("sqlite tuning skipped: %v", err)
+			}
+			cancel()
+		} else {
+			log.Printf("sqlite tuning skipped: driver %s manages pragmas itself", driverName)
 		}
-		cancel()
 	}
 
 	// Cheap liveness probe with timeout so we don't hang at startup
@@ -112,7 +130,7 @@ func NewDatabase(config Config) (*Database, error) {
 		}
 	}
 
-	log.Printf("Using database driver: %s with DSN: %s", strings.ToLower(config.DBType), dsn)
+	log.Printf("Using database driver: %s with DSN: %s", driverName, dsn)
 
 	// Bootstrap ID generator from the highest ID across tables so each row
 	// receives a unique primary key. We query both markers and realtime data
