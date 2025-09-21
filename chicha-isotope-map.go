@@ -73,6 +73,7 @@ var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated daily JSON archive tarball")
 
 var CompileVersion = "dev"
 
@@ -83,6 +84,40 @@ func init() {
 	// working even when auxiliary files are skipped; relying on init avoids extra
 	// coordination primitives and mirrors Go's preference for simplicity.
 	drivers.Ready()
+}
+
+// resolveArchivePath decides where the JSON archive tarball should live.
+// We prefer explicit destinations from flags, otherwise fall back to the user's
+// home directory so long-running services do not clutter the repository tree.
+// We log resolution failures so operators notice and can correct their setup.
+func resolveArchivePath(flagValue string, logf func(string, ...any)) string {
+	cleaned := strings.TrimSpace(flagValue)
+	if cleaned != "" {
+		abs, err := filepath.Abs(cleaned)
+		if err != nil {
+			if logf != nil {
+				logf("json archive path resolution fallback for %q: %v", cleaned, err)
+			}
+			return filepath.Clean(cleaned)
+		}
+		return abs
+	}
+
+	home, err := os.UserHomeDir()
+	if err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, "daily-json.tar.gz")
+	}
+
+	// Falling back to the working directory keeps the archive predictable even
+	// in minimal environments where HOME is undefined, trading cleverness for
+	// clarity per the Go proverbs.
+	wd, wdErr := os.Getwd()
+	if wdErr == nil && strings.TrimSpace(wd) != "" {
+		return filepath.Join(wd, "daily-json.tar.gz")
+	}
+
+	// As a last resort return a relative filename so the generator can still run.
+	return "daily-json.tar.gz"
 }
 
 // ==========
@@ -3252,7 +3287,11 @@ func main() {
 	// "Share memory by communicating" via the archive channels.
 	ctxArchive, cancelArchive := context.WithCancel(context.Background())
 	defer cancelArchive()
-	archivePath := filepath.Join("rawdata", "archives", "daily-json.tar.gz")
+	archivePath := resolveArchivePath(*jsonArchivePathFlag, log.Printf)
+	if abs, err := filepath.Abs(archivePath); err == nil {
+		archivePath = abs
+	}
+	log.Printf("json archive destination resolved: %s", archivePath)
 	archiveGen := jsonarchive.Start(ctxArchive, db, *dbType, archivePath, 24*time.Hour, log.Printf)
 
 	// 4. Маршруты и статика

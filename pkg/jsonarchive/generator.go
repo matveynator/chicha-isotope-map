@@ -63,6 +63,20 @@ func Start(
 
 	destPath = filepath.Clean(destPath)
 
+	// If a previous run already produced an archive we can reuse it immediately
+	// so HTTP handlers keep responding without waiting for the fresh build to
+	// finish. This keeps startup "Clear is better than clever" by serving the
+	// existing snapshot while the background worker prepares the next revision.
+	var initialResult result
+	haveInitial := false
+	if info, err := os.Stat(destPath); err == nil && info.Mode().IsRegular() {
+		initialResult = result{info: Info{Path: destPath, ModTime: info.ModTime()}}
+		haveInitial = true
+		if logf != nil {
+			logf("json archive previous snapshot found: %s", destPath)
+		}
+	}
+
 	triggerBuild := func() {
 		select {
 		case buildRequests <- struct{}{}:
@@ -109,6 +123,7 @@ func Start(
 
 		ticker := time.NewTicker(refreshInterval)
 		defer ticker.Stop()
+
 
 		current := result{}
 		haveResult := false
