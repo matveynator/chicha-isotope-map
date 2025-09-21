@@ -45,9 +45,9 @@ type result struct {
 // Start launches the background worker.
 // The worker exports every known track into temporary .cim JSON files, packs
 // them into a tar.gz archive, and atomically replaces the destination file once
-// the build succeeds. We trigger the initial build synchronously so the file
-// exists before the HTTP layer starts serving requests, matching the user's
-// request to have a fresh archive on startup.
+// the build succeeds. The initial build happens in the background so startup
+// remains responsive even on large databases while HTTP handlers can still
+// block until the first snapshot is ready if they need the data immediately.
 func Start(
 	ctx context.Context,
 	db *database.Database,
@@ -95,14 +95,12 @@ func Start(
 		}
 	}()
 
-	// Synchronous build on startup so consumers immediately see a file.
-	initial := runBuild(ctx, db, dbType, destPath)
+	// Kick off the first build asynchronously so the main goroutine keeps
+	// starting up quickly even on very large databases. We still log the
+	// scheduling step so operators understand why Fetch may briefly wait.
+	triggerBuild()
 	if logf != nil {
-		if initial.err != nil {
-			logf("json archive initial build failed: %v", initial.err)
-		} else {
-			logf("json archive initialised: %s", initial.info.Path)
-		}
+		logf("json archive initial build scheduled: %s", destPath)
 	}
 
 	// Coordinator goroutine multiplexes ticker events and HTTP requests.
@@ -112,7 +110,8 @@ func Start(
 		ticker := time.NewTicker(refreshInterval)
 		defer ticker.Stop()
 
-		current := initial
+		current := result{}
+		haveResult := false
 
 		for {
 			select {
@@ -122,8 +121,9 @@ func Start(
 				triggerBuild()
 			case res := <-buildResults:
 				current = res
+				haveResult = true
 			case ch := <-requests:
-				if (current.info.Path == "" && current.err == nil) || current.err != nil {
+				if !haveResult || (current.info.Path == "" && current.err == nil) || current.err != nil {
 					triggerBuild()
 					select {
 					case <-ctx.Done():
@@ -132,6 +132,7 @@ func Start(
 						return
 					case res := <-buildResults:
 						current = res
+						haveResult = true
 					}
 				}
 				ch <- current
