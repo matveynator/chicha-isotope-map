@@ -38,6 +38,8 @@ type TrackSummary struct {
 	FirstID     int64  `json:"firstID"`
 	LastID      int64  `json:"lastID"`
 	MarkerCount int64  `json:"markerCount"`
+	Index       int64  `json:"index,omitempty"`  // 1-based order so clients can fetch by number.
+	APIURL      string `json:"apiURL,omitempty"` // Direct API link helps developers discover the track endpoint.
 }
 
 // Bounds описывает прямоугольник (minLat,minLon) – (maxLat,maxLon).

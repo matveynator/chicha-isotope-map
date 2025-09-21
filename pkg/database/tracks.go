@@ -13,13 +13,41 @@ import (
 // =====================
 
 // StreamTrackSummaries streams metadata about tracks ordered by their ID.
-// We keep the DB scan in its own goroutine so callers can consume the
-// channel incrementally without blocking the main HTTP handlers.
+// We delegate to the shared streamTrackSummaries helper so future filters
+// (year/month) reuse the same channel-based plumbing.
 func (db *Database) StreamTrackSummaries(
 	ctx context.Context,
 	startAfter string,
 	limit int,
 	dbType string,
+) (<-chan TrackSummary, <-chan error) {
+	return db.streamTrackSummaries(ctx, startAfter, limit, dbType, false, 0, 0)
+}
+
+// StreamTrackSummariesByDateRange restricts tracks to a time window.
+// We expose it for the year/month API variants so they can reuse the
+// streaming pattern without duplicating SQL logic.
+func (db *Database) StreamTrackSummariesByDateRange(
+	ctx context.Context,
+	startAfter string,
+	limit int,
+	from int64,
+	to int64,
+	dbType string,
+) (<-chan TrackSummary, <-chan error) {
+	return db.streamTrackSummaries(ctx, startAfter, limit, dbType, true, from, to)
+}
+
+// streamTrackSummaries performs the actual query and pushes rows over
+// channels so handlers can encode responses progressively.
+func (db *Database) streamTrackSummaries(
+	ctx context.Context,
+	startAfter string,
+	limit int,
+	dbType string,
+	restrictDates bool,
+	from int64,
+	to int64,
 ) (<-chan TrackSummary, <-chan error) {
 	results := make(chan TrackSummary)
 	errs := make(chan error, 1)
@@ -34,27 +62,30 @@ func (db *Database) StreamTrackSummaries(
 			limit = 100
 		}
 
-		query := `SELECT trackID, MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
-FROM markers
-WHERE trackID > %s
-GROUP BY trackID
-ORDER BY trackID
-LIMIT %s;`
+		nextPlaceholder := newPlaceholderGenerator(dbType)
+		conditions := []string{fmt.Sprintf("trackID > %s", nextPlaceholder())}
+		args := []any{startAfter}
 
-		placeholderGreater := "?"
-		placeholderLimit := "?"
-
-		switch strings.ToLower(dbType) {
-		case "pgx":
-			placeholderGreater = "$1"
-			placeholderLimit = "$2"
-		default:
-			// SQLite/Chai/DuckDB share the question-mark syntax.
+		if restrictDates {
+			// The API provides inclusive start and exclusive end boundaries
+			// so date math stays consistent with Go's time package.
+			conditions = append(conditions, fmt.Sprintf("date >= %s", nextPlaceholder()))
+			args = append(args, from)
+			conditions = append(conditions, fmt.Sprintf("date < %s", nextPlaceholder()))
+			args = append(args, to)
 		}
 
-		query = fmt.Sprintf(query, placeholderGreater, placeholderLimit)
+		limitPlaceholder := nextPlaceholder()
+		args = append(args, limit)
 
-		rows, err := db.DB.QueryContext(ctx, query, startAfter, limit)
+		query := fmt.Sprintf(`SELECT trackID, MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
+FROM markers
+WHERE %s
+GROUP BY trackID
+ORDER BY trackID
+LIMIT %s;`, strings.Join(conditions, " AND "), limitPlaceholder)
+
+		rows, err := db.DB.QueryContext(ctx, query, args...)
 		if err != nil {
 			errs <- fmt.Errorf("list tracks: %w", err)
 			return
@@ -200,4 +231,84 @@ LIMIT %s;`
 	}()
 
 	return out, errs
+}
+
+// CountTrackIDsUpTo returns how many distinct track IDs are lexicographically
+// less than or equal to the provided ID. We use it to translate string track
+// IDs into stable numeric indices for the API.
+func (db *Database) CountTrackIDsUpTo(ctx context.Context, trackID, dbType string) (int64, error) {
+	if strings.TrimSpace(trackID) == "" {
+		return 0, nil
+	}
+
+	nextPlaceholder := newPlaceholderGenerator(dbType)
+	where := fmt.Sprintf("trackID <= %s", nextPlaceholder())
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT DISTINCT trackID FROM markers WHERE %s) AS sub;`, where)
+
+	row := db.DB.QueryRowContext(ctx, query, trackID)
+	var count sql.NullInt64
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count track ids up to: %w", err)
+	}
+	if !count.Valid {
+		return 0, nil
+	}
+	return count.Int64, nil
+}
+
+// GetTrackIDByIndex resolves a 1-based numeric index to the actual track ID.
+// Returning an empty string keeps HTTP handlers free to decide how to map it
+// to status codes.
+func (db *Database) GetTrackIDByIndex(ctx context.Context, index int64, dbType string) (string, error) {
+	if index <= 0 {
+		return "", fmt.Errorf("index must be positive")
+	}
+
+	nextPlaceholder := newPlaceholderGenerator(dbType)
+	offsetPlaceholder := nextPlaceholder()
+	query := fmt.Sprintf(`SELECT trackID FROM (SELECT DISTINCT trackID FROM markers ORDER BY trackID LIMIT 1 OFFSET %s) AS sub;`, offsetPlaceholder)
+
+	row := db.DB.QueryRowContext(ctx, query, index-1)
+	var trackID string
+	if err := row.Scan(&trackID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("track id by index: %w", err)
+	}
+	return trackID, nil
+}
+
+// CountTracksInRange reports how many distinct tracks contain markers inside
+// the provided date window. Handlers expose the number so API users know how
+// many pages exist for the requested period.
+func (db *Database) CountTracksInRange(ctx context.Context, from, to int64, dbType string) (int64, error) {
+	nextPlaceholder := newPlaceholderGenerator(dbType)
+	condFrom := fmt.Sprintf("date >= %s", nextPlaceholder())
+	condTo := fmt.Sprintf("date < %s", nextPlaceholder())
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT DISTINCT trackID FROM markers WHERE %s AND %s) AS sub;`, condFrom, condTo)
+
+	row := db.DB.QueryRowContext(ctx, query, from, to)
+	var count sql.NullInt64
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count tracks in range: %w", err)
+	}
+	if !count.Valid {
+		return 0, nil
+	}
+	return count.Int64, nil
+}
+
+// newPlaceholderGenerator returns a closure that produces the correct
+// placeholder syntax for the configured driver. Using a generator keeps the
+// SQL assembly readable even as the number of filters grows.
+func newPlaceholderGenerator(dbType string) func() string {
+	if strings.ToLower(dbType) == "pgx" {
+		counter := 0
+		return func() string {
+			counter++
+			return fmt.Sprintf("$%d", counter)
+		}
+	}
+	return func() string { return "?" }
 }

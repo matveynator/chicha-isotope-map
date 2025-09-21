@@ -176,26 +176,37 @@ func buildArchive(ctx context.Context, sourceDir string) (string, time.Time, err
 	fileCh := make(chan string)
 	walkErr := make(chan error, 1)
 
-	go func() {
-		defer close(fileCh)
-		walkErr <- filepath.WalkDir(sourceDir, func(path string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if d.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(strings.ToLower(d.Name()), ".kml") {
-				return nil
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case fileCh <- path:
-				return nil
-			}
-		})
-	}()
+	if _, statErr := os.Stat(sourceDir); statErr != nil {
+		if !os.IsNotExist(statErr) {
+			cleanup()
+			return "", time.Time{}, fmt.Errorf("scan source: %w", statErr)
+		}
+		// No KML directory yet: close the channel immediately so the
+		// archive becomes an empty placeholder built on demand.
+		close(fileCh)
+		walkErr <- nil
+	} else {
+		go func() {
+			defer close(fileCh)
+			walkErr <- filepath.WalkDir(sourceDir, func(path string, d fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if d.IsDir() {
+					return nil
+				}
+				if !strings.HasSuffix(strings.ToLower(d.Name()), ".kml") {
+					return nil
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case fileCh <- path:
+					return nil
+				}
+			})
+		}()
+	}
 
 	for {
 		select {
