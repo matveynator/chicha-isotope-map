@@ -772,6 +772,11 @@ body, html {
           height: 100%;
         }
 
+        /* Apply grayscale filter so emoji icons render in monochrome without altering other assets. */
+        .speed-filter-icon--mono {
+          filter: grayscale(1) brightness(0.65) contrast(1.2);
+        }
+
         #liveModal {
           display: none;
           position: fixed;
@@ -1832,10 +1837,10 @@ document.addEventListener('DOMContentLoaded', function () {
         div.style.padding = '6px 10px';
 
         // helper that returns one <label> line
-        const row = (id, iconMarkup, checked) => `
+        const row = (id, iconMarkup, checked, extraClass = '') => `
             <label style="white-space:nowrap;display:block;cursor:pointer;">
             <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
-            <span class="speed-filter-icon">${iconMarkup}</span>
+            <span class="speed-filter-icon ${extraClass}">${iconMarkup}</span>
             </label>`;
 
         // Build rows dynamically so the realtime checkbox only appears when supported server-side.
@@ -1847,9 +1852,9 @@ document.addEventListener('DOMContentLoaded', function () {
           pieces.push('<div class="leaflet-control-layers-separator"></div>');
         }
         pieces.push(
-          row('sfPlane', '✈️', state.plane),
-          row('sfCar',   '🚗', state.car),
-          row('sfPed',   '🚶', state.ped)
+          row('sfPlane', '✈️', state.plane, 'speed-filter-icon--mono'),
+          row('sfCar',   '🚗', state.car,   'speed-filter-icon--mono'),
+          row('sfPed',   '🚶', state.ped,   'speed-filter-icon--mono')
         );
         div.innerHTML = pieces.join('');
 
