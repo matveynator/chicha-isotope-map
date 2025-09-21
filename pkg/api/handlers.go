@@ -49,7 +49,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tracks/months/", h.handleTracksByMonth)
 	mux.HandleFunc("/api/track/", h.handleTrackData)
 	mux.HandleFunc("/api/tracks/", h.handleTrackData) // legacy alias for older clients
-	mux.HandleFunc("/api/json/daily.tar.gz", h.handleArchiveDownload)
+	if h.Archive != nil {
+		// Expose the tarball endpoint only when archive generation is enabled
+		// so clients do not see a dangling route that always fails.
+		mux.HandleFunc("/api/json/daily.tar.gz", h.handleArchiveDownload)
+	}
 }
 
 // handleOverview publishes machine-readable docs so developers understand
@@ -63,6 +67,48 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	endpoints := map[string]any{
+		"listTracks": map[string]any{
+			"method":      "GET",
+			"path":        "/api/tracks",
+			"query":       []string{"startAfter", "limit"},
+			"description": "Returns track summaries sorted alphabetically. Each summary exposes an index and apiURL. Use nextStartAfter to continue pagination.",
+		},
+		"trackByNumber": map[string]any{
+			"method":      "GET",
+			"path":        "/api/tracks/index/{number}",
+			"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/track/{trackID}.cim.",
+		},
+		"trackMarkers": map[string]any{
+			"method":      "GET",
+			"path":        "/api/track/{trackID}.cim",
+			"query":       []string{"from", "to"},
+			"description": "Downloads the full track as JSON with a .cim extension so browsers save it as a file. Optional 'from'/'to' IDs can narrow the range.",
+		},
+		"tracksByYear": map[string]any{
+			"method":      "GET",
+			"path":        "/api/tracks/years/{year}",
+			"query":       []string{"startAfter", "limit"},
+			"description": "Lists tracks that contain markers within the given year. Pagination mirrors /api/tracks and keeps global indices.",
+		},
+		"tracksByMonth": map[string]any{
+			"method":      "GET",
+			"path":        "/api/tracks/months/{year}/{month}",
+			"query":       []string{"startAfter", "limit"},
+			"description": "Lists tracks for a calendar month using the same pagination fields.",
+		},
+	}
+	if h.Archive != nil {
+		// Advertise the archive only when generation is active to keep the
+		// machine-readable docs truthful.
+		endpoints["dailyJSON"] = map[string]any{
+			"method":      "GET",
+			"path":        "/api/json/daily.tar.gz",
+			"description": "Downloads the current tar.gz bundle of all published .cim JSON tracks.",
+			"frequency":   "Updated once per day",
+		}
+	}
+
 	overview := struct {
 		Disclaimers      map[string]string `json:"disclaimers"`
 		Endpoints        map[string]any    `json:"endpoints"`
@@ -74,43 +120,7 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 		TotalTracks:      totalTracks,
 		LatestTrackIndex: totalTracks,
 		LatestTrackID:    latestTrackID,
-		Endpoints: map[string]any{
-			"listTracks": map[string]any{
-				"method":      "GET",
-				"path":        "/api/tracks",
-				"query":       []string{"startAfter", "limit"},
-				"description": "Returns track summaries sorted alphabetically. Each summary exposes an index and apiURL. Use nextStartAfter to continue pagination.",
-			},
-			"trackByNumber": map[string]any{
-				"method":      "GET",
-				"path":        "/api/tracks/index/{number}",
-				"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/track/{trackID}.cim.",
-			},
-			"trackMarkers": map[string]any{
-				"method":      "GET",
-				"path":        "/api/track/{trackID}.cim",
-				"query":       []string{"from", "to"},
-				"description": "Downloads the full track as JSON with a .cim extension so browsers save it as a file. Optional 'from'/'to' IDs can narrow the range.",
-			},
-			"tracksByYear": map[string]any{
-				"method":      "GET",
-				"path":        "/api/tracks/years/{year}",
-				"query":       []string{"startAfter", "limit"},
-				"description": "Lists tracks that contain markers within the given year. Pagination mirrors /api/tracks and keeps global indices.",
-			},
-			"tracksByMonth": map[string]any{
-				"method":      "GET",
-				"path":        "/api/tracks/months/{year}/{month}",
-				"query":       []string{"startAfter", "limit"},
-				"description": "Lists tracks for a calendar month using the same pagination fields.",
-			},
-			"dailyJSON": map[string]any{
-				"method":      "GET",
-				"path":        "/api/json/daily.tar.gz",
-				"description": "Downloads the current tar.gz bundle of all published .cim JSON tracks.",
-				"frequency":   "Updated once per day",
-			},
-		},
+		Endpoints:        endpoints,
 	}
 
 	h.respondJSON(w, overview)

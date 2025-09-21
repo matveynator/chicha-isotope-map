@@ -67,6 +67,9 @@ func Start(
 	// so HTTP handlers keep responding without waiting for the fresh build to
 	// finish. This keeps startup "Clear is better than clever" by serving the
 	// existing snapshot while the background worker prepares the next revision.
+	// Capture any existing archive so Fetch callers can immediately serve it
+	// while the background build runs. This keeps the system responsive even
+	// before the first refresh completes.
 	var initialResult result
 	haveInitial := false
 	if info, err := os.Stat(destPath); err == nil && info.Mode().IsRegular() {
@@ -124,9 +127,8 @@ func Start(
 		ticker := time.NewTicker(refreshInterval)
 		defer ticker.Stop()
 
-
-		current := result{}
-		haveResult := false
+		current := initialResult
+		haveResult := haveInitial
 
 		for {
 			select {

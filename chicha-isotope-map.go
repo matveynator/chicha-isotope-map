@@ -3282,17 +3282,31 @@ func main() {
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
-	// Build a daily tar.gz with all known JSON .cim files. We keep the generator in
-	// its own context so shutdown remains explicit, following the Go proverb
-	// "Share memory by communicating" via the archive channels.
-	ctxArchive, cancelArchive := context.WithCancel(context.Background())
-	defer cancelArchive()
-	archivePath := resolveArchivePath(*jsonArchivePathFlag, log.Printf)
-	if abs, err := filepath.Abs(archivePath); err == nil {
-		archivePath = abs
+	// Build a daily tar.gz with all known JSON .cim files only when operators
+	// explicitly opt in via -json-archive-path. This avoids surprise disk IO
+	// on deployments that do not need the bundle while keeping the design
+	// configurable through channels when enabled.
+	var (
+		archiveGen     *jsonarchive.Generator
+		archiveCancel  context.CancelFunc
+		archivePath    string
+		archiveEnabled = strings.TrimSpace(*jsonArchivePathFlag) != ""
+	)
+	if archiveEnabled {
+		ctxArchive, cancelArchive := context.WithCancel(context.Background())
+		archiveCancel = cancelArchive
+		archivePath = resolveArchivePath(*jsonArchivePathFlag, log.Printf)
+		if abs, err := filepath.Abs(archivePath); err == nil {
+			archivePath = abs
+		}
+		log.Printf("json archive destination resolved: %s", archivePath)
+		archiveGen = jsonarchive.Start(ctxArchive, db, *dbType, archivePath, 24*time.Hour, log.Printf)
+	} else {
+		log.Printf("json archive disabled: set -json-archive-path to enable tarball generation")
 	}
-	log.Printf("json archive destination resolved: %s", archivePath)
-	archiveGen := jsonarchive.Start(ctxArchive, db, *dbType, archivePath, 24*time.Hour, log.Printf)
+	if archiveCancel != nil {
+		defer archiveCancel()
+	}
 
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")
