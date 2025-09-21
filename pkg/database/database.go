@@ -61,10 +61,23 @@ type Config struct {
 // For SQLite/Chai we force single-connection mode (no concurrent DB access).
 func NewDatabase(config Config) (*Database, error) {
 	driverName := strings.ToLower(strings.TrimSpace(config.DBType))
-	var dsn string
+	var (
+		dsn                string
+		applySQLitePragmas bool
+	)
 
 	switch driverName {
-	case "sqlite", "chai":
+	case "sqlite":
+		applySQLitePragmas = true
+		dsn = config.DBPath
+		if dsn == "" {
+			dsn = fmt.Sprintf("database-%d.%s", config.Port, driverName)
+		}
+	case "chai":
+		// Chai is a separate driver that happens to reuse sqlite-style DSNs.
+		// We still keep the single-connection behaviour but intentionally
+		// skip SQLite-specific PRAGMA tuning so the driver can manage its
+		// own transaction and caching strategy.
 		dsn = config.DBPath
 		if dsn == "" {
 			dsn = fmt.Sprintf("database-%d.%s", config.Port, driverName)
@@ -96,11 +109,15 @@ func NewDatabase(config Config) (*Database, error) {
 		// Never recycle the single connection (keeps it stable for the whole process).
 		db.SetConnMaxLifetime(0)
 		// Tuning WAL/synchronous/busy_timeout keeps inserts fast enough for realtime uploads.
-		tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		if err := tuneSQLiteLikeConnection(tuneCtx, db, log.Printf); err != nil {
-			log.Printf("sqlite tuning skipped: %v", err)
+		if applySQLitePragmas {
+			tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			if err := tuneSQLiteLikeConnection(tuneCtx, db, log.Printf); err != nil {
+				log.Printf("sqlite tuning skipped: %v", err)
+			}
+			cancel()
+		} else {
+			log.Printf("sqlite tuning skipped: driver %s manages pragmas itself", driverName)
 		}
-		cancel()
 	}
 
 	// Cheap liveness probe with timeout so we don't hang at startup
