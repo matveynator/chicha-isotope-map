@@ -303,6 +303,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
+			{"idx_markers_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_id ON markers (trackID, id)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_zoom_date",
@@ -333,6 +335,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
+			{"idx_markers_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_id ON markers (trackID, id)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_zoom_date",
@@ -364,6 +368,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
+			{"idx_markers_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_id ON markers (trackID, id)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_zoom_date",
@@ -395,6 +401,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
+			{"idx_markers_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_id ON markers (trackID, id)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_zoom_date",
@@ -461,15 +469,20 @@ func (db *Database) InitSchema(cfg Config) error {
 		// PostgreSQL — standard types, named UNIQUE to target by ON CONFLICT
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
-  id         BIGSERIAL PRIMARY KEY,
-  doseRate   DOUBLE PRECISION,
-  date       BIGINT,
-  lon        DOUBLE PRECISION,
-  lat        DOUBLE PRECISION,
-  countRate  DOUBLE PRECISION,
-  zoom       INTEGER,
-  speed      DOUBLE PRECISION,
-  trackID    TEXT,
+  id          BIGSERIAL PRIMARY KEY,
+  doseRate    DOUBLE PRECISION,
+  date        BIGINT,
+  lon         DOUBLE PRECISION,
+  lat         DOUBLE PRECISION,
+  countRate   DOUBLE PRECISION,
+  zoom        INTEGER,
+  speed       DOUBLE PRECISION,
+  trackID     TEXT,
+  altitude    DOUBLE PRECISION,
+  detector    TEXT,
+  radiation   TEXT,
+  temperature DOUBLE PRECISION,
+  humidity    DOUBLE PRECISION,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
@@ -494,15 +507,20 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
 		// Portable SQLite/Chai side — explicit INTEGER PK
 		schema = `
 CREATE TABLE IF NOT EXISTS markers (
-  id         INTEGER PRIMARY KEY,
-  doseRate   REAL,
-  date       BIGINT,
-  lon        REAL,
-  lat        REAL,
-  countRate  REAL,
-  zoom       INTEGER,
-  speed      REAL,
-  trackID    TEXT
+  id          INTEGER PRIMARY KEY,
+  doseRate    REAL,
+  date        BIGINT,
+  lon         REAL,
+  lat         REAL,
+  countRate   REAL,
+  zoom        INTEGER,
+  speed       REAL,
+  trackID     TEXT,
+  altitude    REAL,
+  detector    TEXT,
+  radiation   TEXT,
+  temperature REAL,
+  humidity    REAL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
   ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
@@ -533,15 +551,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_realtime_unique
 		schema = `
 CREATE SEQUENCE IF NOT EXISTS markers_id_seq START 1;
 CREATE TABLE IF NOT EXISTS markers (
-  id         BIGINT PRIMARY KEY DEFAULT nextval('markers_id_seq'),
-  doseRate   DOUBLE,
-  date       BIGINT,
-  lon        DOUBLE,
-  lat        DOUBLE,
-  countRate  DOUBLE,
-  zoom       INTEGER,
-  speed      DOUBLE,
-  trackID    TEXT,
+  id          BIGINT PRIMARY KEY DEFAULT nextval('markers_id_seq'),
+  doseRate    DOUBLE,
+  date        BIGINT,
+  lon         DOUBLE,
+  lat         DOUBLE,
+  countRate   DOUBLE,
+  zoom        INTEGER,
+  speed       DOUBLE,
+  trackID     TEXT,
+  altitude    DOUBLE,
+  detector    TEXT,
+  radiation   TEXT,
+  temperature DOUBLE,
+  humidity    DOUBLE,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
@@ -572,6 +595,9 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
 	}
 
 	// Ensure optional columns exist even for older databases.
+	if err := db.ensureMarkerMetadataColumns(cfg.DBType); err != nil {
+		return fmt.Errorf("add marker metadata column: %w", err)
+	}
 	if err := db.ensureRealtimeMetadataColumns(cfg.DBType); err != nil {
 		return fmt.Errorf("add realtime metadata column: %w", err)
 	}
@@ -581,6 +607,71 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
 
 // ensureRealtimeMetadataColumns upgrades realtime_measurements with optional metadata columns.
 // Each column is added lazily so existing installations keep their history without manual SQL.
+// ensureMarkerMetadataColumns upgrades the markers table with optional telemetry columns.
+// We add altitude, detector type, radiation channel, temperature, and humidity lazily so
+// historical databases built before this format continue working without manual SQL.
+func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
+	type column struct {
+		name string
+		def  string
+	}
+	required := []column{
+		{name: "altitude", def: "altitude DOUBLE PRECISION"},
+		{name: "detector", def: "detector TEXT"},
+		{name: "radiation", def: "radiation TEXT"},
+		{name: "temperature", def: "temperature DOUBLE PRECISION"},
+		{name: "humidity", def: "humidity DOUBLE PRECISION"},
+	}
+
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		for _, col := range required {
+			stmt := fmt.Sprintf("ALTER TABLE markers ADD COLUMN IF NOT EXISTS %s", col.def)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	default:
+		rows, err := db.DB.Query(`PRAGMA table_info(markers);`)
+		if err != nil {
+			return fmt.Errorf("describe markers: %w", err)
+		}
+		defer rows.Close()
+
+		present := make(map[string]bool)
+		for rows.Next() {
+			var (
+				cid     int
+				name    string
+				ctype   string
+				notnull int
+				dflt    sql.NullString
+				pk      int
+			)
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+				return fmt.Errorf("scan markers pragma: %w", err)
+			}
+			present[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate markers pragma: %w", err)
+		}
+
+		for _, col := range required {
+			if present[col.name] {
+				continue
+			}
+			stmt := fmt.Sprintf("ALTER TABLE markers ADD COLUMN %s", col.def)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
 func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 	type column struct {
 		name string
@@ -678,19 +769,20 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 		chunk := markers[i:end]
 
 		var sb strings.Builder
-		args := make([]interface{}, 0, len(chunk)*9) // worst-case (SQLite needs id)
+		args := make([]interface{}, 0, len(chunk)*14) // 14 covers SQLite/Chai worst-case with id
 
 		switch strings.ToLower(dbType) {
 		case "pgx":
-			// PostgreSQL: BIGSERIAL fills id, no id column in VALUES.
-			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID) VALUES ")
+			// PostgreSQL: BIGSERIAL fills id, so we only ship the payload columns.
+			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
 			argn := 0
+			const cols = 13
 			for j, m := range chunk {
 				if j > 0 {
 					sb.WriteString(",")
 				}
 				sb.WriteString("(")
-				for k := 0; k < 8; k++ {
+				for k := 0; k < cols; k++ {
 					if k > 0 {
 						sb.WriteString(",")
 					}
@@ -698,26 +790,32 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 					sb.WriteString(ph(argn))
 				}
 				sb.WriteString(")")
-				args = append(args, m.DoseRate, m.Date, m.Lon, m.Lat, m.CountRate, m.Zoom, m.Speed, m.TrackID)
+				args = append(args,
+					m.DoseRate, m.Date, m.Lon, m.Lat,
+					m.CountRate, m.Zoom, m.Speed, m.TrackID,
+					nullableFloat64(m.AltitudeValid, m.Altitude),
+					m.Detector, m.Radiation,
+					nullableFloat64(m.TemperatureValid, m.Temperature),
+					nullableFloat64(m.HumidityValid, m.Humidity),
+				)
 			}
 			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
 
 		default:
-			// SQLite / Chai: need explicit 'id' if we want to avoid PRIMARY KEY conflicts
-			// when multiple aggregated markers would default to 0.
-			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID) VALUES ")
+			// SQLite / Chai: keep explicit ids to avoid PRIMARY KEY clashes when aggregating zooms.
+			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
 			argn := 0
+			const cols = 14
 			for j, m := range chunk {
 				if j > 0 {
 					sb.WriteString(",")
 				}
-				// Ensure id is unique through our channel generator.
 				if m.ID == 0 {
 					m.ID = <-db.idGenerator
 					chunk[j].ID = m.ID
 				}
 				sb.WriteString("(")
-				for k := 0; k < 9; k++ {
+				for k := 0; k < cols; k++ {
 					if k > 0 {
 						sb.WriteString(",")
 					}
@@ -725,7 +823,14 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 					sb.WriteString(ph(argn))
 				}
 				sb.WriteString(")")
-				args = append(args, m.ID, m.DoseRate, m.Date, m.Lon, m.Lat, m.CountRate, m.Zoom, m.Speed, m.TrackID)
+				args = append(args,
+					m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
+					m.CountRate, m.Zoom, m.Speed, m.TrackID,
+					nullableFloat64(m.AltitudeValid, m.Altitude),
+					m.Detector, m.Radiation,
+					nullableFloat64(m.TemperatureValid, m.Temperature),
+					nullableFloat64(m.HumidityValid, m.Humidity),
+				)
 			}
 			sb.WriteString(" ON CONFLICT DO NOTHING")
 		}
@@ -754,11 +859,15 @@ func (db *Database) SaveMarkerAtomic(
 	case "pgx":
 		_, err := exec.Exec(`
 INSERT INTO markers
-      (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.DoseRate, m.Date, m.Lon, m.Lat,
-			m.CountRate, m.Zoom, m.Speed, m.TrackID)
+			m.CountRate, m.Zoom, m.Speed, m.TrackID,
+			nullableFloat64(m.AltitudeValid, m.Altitude),
+			m.Detector, m.Radiation,
+			nullableFloat64(m.TemperatureValid, m.Temperature),
+			nullableFloat64(m.HumidityValid, m.Humidity))
 		return err
 
 	// ─────────────────────── SQLite / Chai / другие ─────────
@@ -769,13 +878,26 @@ ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 		}
 		_, err := exec.Exec(`
 INSERT INTO markers
-      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID)
-VALUES (?,?,?,?,?,?,?,?,?)
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT DO NOTHING`,
 			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
-			m.CountRate, m.Zoom, m.Speed, m.TrackID)
+			m.CountRate, m.Zoom, m.Speed, m.TrackID,
+			nullableFloat64(m.AltitudeValid, m.Altitude),
+			m.Detector, m.Radiation,
+			nullableFloat64(m.TemperatureValid, m.Temperature),
+			nullableFloat64(m.HumidityValid, m.Humidity))
 		return err
 	}
+}
+
+// nullableFloat64 converts optional measurement fields into SQL-friendly values so we
+// persist NULL when a sensor never reported altitude, temperature, or humidity.
+func nullableFloat64(valid bool, value float64) any {
+	if !valid {
+		return nil
+	}
+	return value
 }
 
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
@@ -1166,19 +1288,28 @@ func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker
 	switch dbType {
 	case "pgx":
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = $1;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+                       COALESCE(altitude, 0),
+                       COALESCE(detector, ''),
+                       COALESCE(radiation, ''),
+                       COALESCE(temperature, 0),
+                       COALESCE(humidity, 0)
+                FROM markers
+                WHERE trackID = $1;
+                `
 	default:
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = ?;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+                       COALESCE(altitude, 0),
+                       COALESCE(detector, ''),
+                       COALESCE(radiation, ''),
+                       COALESCE(temperature, 0),
+                       COALESCE(humidity, 0)
+                FROM markers
+                WHERE trackID = ?;
+                `
 	}
 
-	// Execute the query
 	rows, err := db.DB.Query(query, trackID)
 	if err != nil {
 		return nil, fmt.Errorf("error querying markers by trackID: %v", err)
@@ -1186,18 +1317,18 @@ func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker
 	defer rows.Close()
 
 	var markers []Marker
-
-	// Iterate over the rows and scan each result into a Marker struct
 	for rows.Next() {
 		var marker Marker
-		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID)
-		if err != nil {
+		if err := rows.Scan(
+			&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat,
+			&marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID,
+			&marker.Altitude, &marker.Detector, &marker.Radiation, &marker.Temperature, &marker.Humidity,
+		); err != nil {
 			return nil, fmt.Errorf("error scanning marker: %v", err)
 		}
 		markers = append(markers, marker)
 	}
 
-	// Check for any errors encountered during iteration
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over result set: %v", err)
 	}
@@ -1213,16 +1344,26 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 	switch dbType {
 	case "pgx":
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+                       COALESCE(altitude, 0),
+                       COALESCE(detector, ''),
+                       COALESCE(radiation, ''),
+                       COALESCE(temperature, 0),
+                       COALESCE(humidity, 0)
+                FROM markers
+                WHERE trackID = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
+                `
 	default:
 		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE trackID = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
-		`
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+                       COALESCE(altitude, 0),
+                       COALESCE(detector, ''),
+                       COALESCE(radiation, ''),
+                       COALESCE(temperature, 0),
+                       COALESCE(humidity, 0)
+                FROM markers
+                WHERE trackID = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
+                `
 	}
 
 	// Execute the query
@@ -1237,7 +1378,9 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 	// Iterate over the rows and scan each result into a Marker struct
 	for rows.Next() {
 		var marker Marker
-		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID)
+		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat,
+			&marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID,
+			&marker.Altitude, &marker.Detector, &marker.Radiation, &marker.Temperature, &marker.Humidity)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning marker: %v", err)
 		}
@@ -1265,7 +1408,12 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 	switch dbType {
 	case "pgx": // PostgreSQL
 		query = `
-        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+               COALESCE(altitude, 0),
+               COALESCE(detector, ''),
+               COALESCE(radiation, ''),
+               COALESCE(temperature, 0),
+               COALESCE(humidity, 0)
         FROM   markers
         WHERE  trackID = $1
           AND  zoom     = $2
@@ -1273,7 +1421,12 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
           AND  lon BETWEEN $5 AND $6;`
 	default: // SQLite / Chai
 		query = `
-        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+               COALESCE(altitude, 0),
+               COALESCE(detector, ''),
+               COALESCE(radiation, ''),
+               COALESCE(temperature, 0),
+               COALESCE(humidity, 0)
         FROM   markers
         WHERE  trackID = ?
           AND  zoom     = ?
@@ -1292,7 +1445,8 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 	for rows.Next() {
 		var m Marker
 		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date,
-			&m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			&m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
 			return nil, fmt.Errorf("error scanning marker: %w", err)
 		}
 		markers = append(markers, m)
@@ -1366,8 +1520,13 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 		}
 	}
 
-	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID
-	                      FROM markers WHERE %s;`, sb.String())
+	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
+                                     COALESCE(altitude, 0) AS altitude,
+                                     COALESCE(detector, '') AS detector,
+                                     COALESCE(radiation, '') AS radiation,
+                                     COALESCE(temperature, 0) AS temperature,
+                                     COALESCE(humidity, 0) AS humidity
+                              FROM markers WHERE %s;`, sb.String())
 
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
@@ -1379,7 +1538,8 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 	for rows.Next() {
 		var m Marker
 		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
-			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		out = append(out, m)
@@ -1469,8 +1629,13 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 		}
 	}
 
-	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID
-	                      FROM markers WHERE %s;`, sb.String())
+	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
+                                     COALESCE(altitude, 0) AS altitude,
+                                     COALESCE(detector, '') AS detector,
+                                     COALESCE(radiation, '') AS radiation,
+                                     COALESCE(temperature, 0) AS temperature,
+                                     COALESCE(humidity, 0) AS humidity
+                              FROM markers WHERE %s;`, sb.String())
 
 	rows, err := db.DB.Query(query, args...)
 	if err != nil {
@@ -1482,7 +1647,8 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	for rows.Next() {
 		var m Marker
 		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
-			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		out = append(out, m)

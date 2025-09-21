@@ -2,22 +2,30 @@ package database
 
 // Marker represents dosimeter data for a specific location or point.
 type Marker struct {
-	ID        int64   `json:"id"`        // Unique identifier for the marker (added for database purposes)
-	DoseRate  float64 `json:"doseRate"`  // The radiation dose rate in µSv/h (microsieverts per hour)
-	Date      int64   `json:"date"`      // Timestamp of the measurement (in UNIX time format)
-	Lon       float64 `json:"lon"`       // Longitude of the location where the measurement was taken
-	Lat       float64 `json:"lat"`       // Latitude of the location where the measurement was taken
-	CountRate float64 `json:"countRate"` // Count rate of the measurement (CPS - counts per second)
-	Zoom      int     `json:"zoom"`      // Zoom level
-	Speed     float64 `json:"speed"`     // Speed of the measurement point
-	TrackID   string  `json:"trackID"`   // Identifier of the track
+	ID          int64   `json:"id"`                    // Unique identifier for the marker (added for database purposes)
+	DoseRate    float64 `json:"doseRate"`              // The radiation dose rate in µSv/h (microsieverts per hour)
+	Date        int64   `json:"date"`                  // Timestamp of the measurement (in UNIX time format)
+	Lon         float64 `json:"lon"`                   // Longitude of the location where the measurement was taken
+	Lat         float64 `json:"lat"`                   // Latitude of the location where the measurement was taken
+	CountRate   float64 `json:"countRate"`             // Count rate of the measurement (CPS - counts per second)
+	Zoom        int     `json:"zoom"`                  // Zoom level
+	Speed       float64 `json:"speed"`                 // Speed of the measurement point
+	TrackID     string  `json:"trackID"`               // Identifier of the track
+	Altitude    float64 `json:"altitude,omitempty"`    // Elevation in metres above sea level when provided
+	Detector    string  `json:"detector,omitempty"`    // Detector model or type recorded for the point
+	Radiation   string  `json:"radiation,omitempty"`   // Radiation channels captured (alpha, beta, gamma)
+	Temperature float64 `json:"temperature,omitempty"` // Ambient temperature in Celsius when present
+	Humidity    float64 `json:"humidity,omitempty"`    // Relative humidity percentage when available
 	// Live metadata is kept optional so historical markers remain lightweight.
-	DeviceID   string             `json:"deviceID,omitempty"`   // Safecast device identifier for realtime markers
-	DeviceName string             `json:"deviceName,omitempty"` // Human readable device title when provided
-	Transport  string             `json:"transport,omitempty"`  // Transport hint such as walk, car or bike
-	Tube       string             `json:"tube,omitempty"`       // Detector tube description advertised by the feed
-	Country    string             `json:"country,omitempty"`    // Coarse country hint derived from Safecast payload
-	LiveExtra  map[string]float64 `json:"liveExtra,omitempty"`  // Additional numeric metrics (temperature, humidity, ...)
+	DeviceID         string             `json:"deviceID,omitempty"`   // Safecast device identifier for realtime markers
+	DeviceName       string             `json:"deviceName,omitempty"` // Human readable device title when provided
+	Transport        string             `json:"transport,omitempty"`  // Transport hint such as walk, car or bike
+	Tube             string             `json:"tube,omitempty"`       // Detector tube description advertised by the feed
+	Country          string             `json:"country,omitempty"`    // Coarse country hint derived from Safecast payload
+	LiveExtra        map[string]float64 `json:"liveExtra,omitempty"`  // Additional numeric metrics (temperature, humidity, ...)
+	AltitudeValid    bool               `json:"-"`                    // Tracks whether altitude was explicitly supplied so exporters can omit empty fields.
+	TemperatureValid bool               `json:"-"`                    // Marks that temperature was present in the source payload instead of default zero values.
+	HumidityValid    bool               `json:"-"`                    // Signals that humidity existed; keeps downstream encoders from inventing placeholders.
 }
 
 type Data struct {
@@ -27,6 +35,19 @@ type Data struct {
 	// NEW — принимаем оба варианта имён
 	IsSievert       bool `json:"sv"`        // новое поле Radiacode-Android
 	IsSievertLegacy bool `json:"isSievert"` // старые iOS-дампы
+}
+
+// TrackSummary provides lightweight metadata for iterating over tracks.
+// We expose index boundaries so clients can page through markers without
+// issuing unbounded queries, mirroring Go's advice to "keep the interface
+// small" and only return what API callers actually need.
+type TrackSummary struct {
+	TrackID     string `json:"trackID"`
+	FirstID     int64  `json:"firstID"`
+	LastID      int64  `json:"lastID"`
+	MarkerCount int64  `json:"markerCount"`
+	Index       int64  `json:"index,omitempty"`  // 1-based order so clients can fetch by number.
+	APIURL      string `json:"apiURL,omitempty"` // Direct API link helps developers discover the track endpoint.
 }
 
 // Bounds описывает прямоугольник (minLat,minLon) – (maxLat,maxLon).

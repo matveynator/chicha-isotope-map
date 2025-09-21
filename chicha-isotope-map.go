@@ -43,8 +43,10 @@ import (
 	"syscall"
 	"time"
 
+	"chicha-isotope-map/pkg/api"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
+	"chicha-isotope-map/pkg/kmlarchive"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
@@ -91,7 +93,13 @@ const (
 	minValidTS     = 1262304000 // 2010-01-01 00:00:00 UTC
 )
 
+// microRoentgenPerMicroSievert keeps conversion logic explicit so both the API
+// exporter and the JSON importer agree on the units we advertise publicly.
+const microRoentgenPerMicroSievert = 100.0
+
 type SpeedRange struct{ Min, Max float64 }
+
+var errNotChichaTrackJSON = errors.New("not chicha track json payload")
 
 // processBGeigieZenFile parses bGeigie Zen/Nano $BNRDD logs.
 // Supports ISO8601 timestamps at field[2] and DMM coordinates with N/S/E/W.
@@ -459,6 +467,9 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 	cell := 2*radiusPx + 1 // px
 	type acc struct {
 		sumLat, sumLon, sumDose, sumCnt, sumSp float64
+		sumAlt, sumTemp, sumHum                float64
+		altCount, tempCount, humCount          int
+		detector, radiation                    string
 		latest                                 int64
 		n                                      int
 	}
@@ -477,8 +488,26 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 		a.sumDose += m.DoseRate
 		a.sumCnt += m.CountRate
 		a.sumSp += m.Speed
+		if m.AltitudeValid {
+			a.sumAlt += m.Altitude
+			a.altCount++
+		}
+		if m.TemperatureValid {
+			a.sumTemp += m.Temperature
+			a.tempCount++
+		}
+		if m.HumidityValid {
+			a.sumHum += m.Humidity
+			a.humCount++
+		}
 		if m.Date > a.latest {
 			a.latest = m.Date
+		}
+		if a.detector == "" && m.Detector != "" {
+			a.detector = m.Detector
+		}
+		if a.radiation == "" && m.Radiation != "" {
+			a.radiation = m.Radiation
 		}
 		a.n++
 	}
@@ -486,15 +515,45 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 	out := make([]database.Marker, 0, len(cl))
 	for _, c := range cl {
 		n := float64(c.n)
+		var (
+			altitude float64
+			temp     float64
+			hum      float64
+		)
+		var (
+			altValid  bool
+			tempValid bool
+			humValid  bool
+		)
+		if c.altCount > 0 {
+			altitude = c.sumAlt / float64(c.altCount)
+			altValid = true
+		}
+		if c.tempCount > 0 {
+			temp = c.sumTemp / float64(c.tempCount)
+			tempValid = true
+		}
+		if c.humCount > 0 {
+			hum = c.sumHum / float64(c.humCount)
+			humValid = true
+		}
 		out = append(out, database.Marker{
-			Lat:       c.sumLat / n,
-			Lon:       c.sumLon / n,
-			DoseRate:  c.sumDose / n,
-			CountRate: c.sumCnt / n,
-			Speed:     c.sumSp / n,
-			Date:      c.latest,
-			Zoom:      zoom,
-			TrackID:   markers[0].TrackID,
+			Lat:              c.sumLat / n,
+			Lon:              c.sumLon / n,
+			DoseRate:         c.sumDose / n,
+			CountRate:        c.sumCnt / n,
+			Speed:            c.sumSp / n,
+			Altitude:         altitude,
+			Temperature:      temp,
+			Humidity:         hum,
+			Detector:         c.detector,
+			Radiation:        c.radiation,
+			Date:             c.latest,
+			Zoom:             zoom,
+			TrackID:          markers[0].TrackID,
+			AltitudeValid:    altValid,
+			TemperatureValid: tempValid,
+			HumidityValid:    humValid,
 		})
 	}
 	return out
@@ -553,12 +612,34 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 
 		// Усредняем данные кластера
 		var sumLat, sumLon, sumDose, sumCount float64
+		var sumAlt, sumTemp, sumHum float64
+		var altCount, tempCount, humCount int
 		var latestDate int64
+		detector := ""
+		radiation := ""
 		for _, c := range cluster {
 			sumLat += c.Marker.Lat
 			sumLon += c.Marker.Lon
 			sumDose += c.Marker.DoseRate
 			sumCount += c.Marker.CountRate
+			if c.Marker.AltitudeValid {
+				sumAlt += c.Marker.Altitude
+				altCount++
+			}
+			if c.Marker.TemperatureValid {
+				sumTemp += c.Marker.Temperature
+				tempCount++
+			}
+			if c.Marker.HumidityValid {
+				sumHum += c.Marker.Humidity
+				humCount++
+			}
+			if detector == "" && c.Marker.Detector != "" {
+				detector = c.Marker.Detector
+			}
+			if radiation == "" && c.Marker.Radiation != "" {
+				radiation = c.Marker.Radiation
+			}
 			// возьмём дату последнего
 			if c.Marker.Date > latestDate {
 				latestDate = c.Marker.Date
@@ -576,16 +657,43 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 		}
 		avgSpeed := sumSpeed / n
 
+		var altitude float64
+		var temp float64
+		var hum float64
+		var altValid bool
+		var tempValid bool
+		var humValid bool
+		if altCount > 0 {
+			altitude = sumAlt / float64(altCount)
+			altValid = true
+		}
+		if tempCount > 0 {
+			temp = sumTemp / float64(tempCount)
+			tempValid = true
+		}
+		if humCount > 0 {
+			hum = sumHum / float64(humCount)
+			humValid = true
+		}
+
 		// Создаём новый слитый маркер
 		newMarker := database.Marker{
-			Lat:       avgLat,
-			Lon:       avgLon,
-			DoseRate:  avgDose,
-			CountRate: avgCount,
-			Date:      latestDate,
-			Speed:     avgSpeed,
-			Zoom:      zoom,
-			TrackID:   cluster[0].Marker.TrackID, // берем хотя бы у первого
+			Lat:              avgLat,
+			Lon:              avgLon,
+			DoseRate:         avgDose,
+			CountRate:        avgCount,
+			Altitude:         altitude,
+			Temperature:      temp,
+			Humidity:         hum,
+			Detector:         detector,
+			Radiation:        radiation,
+			Date:             latestDate,
+			Speed:            avgSpeed,
+			Zoom:             zoom,
+			TrackID:          cluster[0].Marker.TrackID, // берем хотя бы у первого
+			AltitudeValid:    altValid,
+			TemperatureValid: tempValid,
+			HumidityValid:    humValid,
 		}
 		result = append(result, newMarker)
 	}
@@ -1671,6 +1779,15 @@ func processAtomFastFile(
 		return database.Bounds{}, trackID, fmt.Errorf("read AtomFast JSON: %w", err)
 	}
 
+	return processAtomFastData(data, trackID, db, dbType)
+}
+
+func processAtomFastData(
+	data []byte,
+	trackID string,
+	db *database.Database,
+	dbType string,
+) (database.Bounds, string, error) {
 	var records []struct {
 		D   float64 `json:"d"`
 		Lat float64 `json:"lat"`
@@ -1694,6 +1811,200 @@ func processAtomFastFile(
 	}
 
 	return processAndStoreMarkers(markers, trackID, db, dbType)
+}
+
+func processChichaTrackJSON(
+	data []byte,
+	trackID string,
+	db *database.Database,
+	dbType string,
+) (database.Bounds, string, error) {
+	var payload struct {
+		Format  string `json:"format"`
+		Version int    `json:"version"`
+		Track   struct {
+			TrackID        string   `json:"trackID"`
+			DetectorName   string   `json:"detectorName"`
+			DetectorType   string   `json:"detectorType"`
+			RadiationTypes []string `json:"radiationTypes"`
+		} `json:"track"`
+		Markers []struct {
+			ID                 int64    `json:"id"`
+			TrackID            string   `json:"trackID"`
+			TimeUnix           int64    `json:"timeUnix"`
+			TimeUTC            string   `json:"timeUTC"`
+			Lat                float64  `json:"lat"`
+			Lon                float64  `json:"lon"`
+			AltitudeM          *float64 `json:"altitudeM"`
+			DoseMicroSvH       float64  `json:"doseRateMicroSvH"`
+			DoseMicroRoentgenH float64  `json:"doseRateMicroRh"`
+			DoseMilliSvH       float64  `json:"doseRateMilliSvH"`
+			DoseMilliRH        float64  `json:"doseRateMilliRH"`
+			CountRateCPS       float64  `json:"countRateCPS"`
+			SpeedMS            float64  `json:"speedMS"`
+			SpeedKMH           float64  `json:"speedKMH"`
+			TemperatureC       *float64 `json:"temperatureC"`
+			HumidityPercent    *float64 `json:"humidityPercent"`
+			DetectorName       string   `json:"detectorName"`
+			DetectorType       string   `json:"detectorType"`
+			RadiationTypes     []string `json:"radiationTypes"`
+		} `json:"markers"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return database.Bounds{}, trackID, errNotChichaTrackJSON
+	}
+	if !strings.EqualFold(payload.Format, "chicha-track-json") {
+		return database.Bounds{}, trackID, errNotChichaTrackJSON
+	}
+	if len(payload.Markers) == 0 {
+		return database.Bounds{}, trackID, fmt.Errorf("chicha track json: no markers")
+	}
+
+	candidateTrackID := strings.TrimSpace(payload.Track.TrackID)
+	defaultDetectorType := strings.TrimSpace(payload.Track.DetectorType)
+	defaultDetectorName := strings.TrimSpace(payload.Track.DetectorName)
+	defaultRadiation := normalizeRadiationList(payload.Track.RadiationTypes)
+
+	markers := make([]database.Marker, 0, len(payload.Markers))
+	for _, item := range payload.Markers {
+		ts := extractUnixSeconds(item.TimeUnix, item.TimeUTC)
+		dose := item.DoseMicroSvH
+		if dose == 0 && item.DoseMicroRoentgenH != 0 {
+			dose = item.DoseMicroRoentgenH / microRoentgenPerMicroSievert
+		}
+		if dose == 0 && item.DoseMilliSvH != 0 {
+			dose = item.DoseMilliSvH * 1000.0
+		}
+		if dose == 0 && item.DoseMilliRH != 0 {
+			dose = item.DoseMilliRH * 10.0
+		}
+
+		speed := item.SpeedMS
+		if speed == 0 && item.SpeedKMH != 0 {
+			speed = item.SpeedKMH / 3.6
+		}
+
+		detectorName := strings.TrimSpace(item.DetectorName)
+		if detectorName == "" {
+			detectorName = defaultDetectorName
+		}
+
+		detector := strings.TrimSpace(item.DetectorType)
+		if detector == "" {
+			detector = defaultDetectorType
+		}
+		if detector == "" {
+			detector = detectorTypeFromName(detectorName)
+		}
+
+		radiationList := normalizeRadiationList(item.RadiationTypes)
+		if len(radiationList) == 0 {
+			radiationList = defaultRadiation
+		}
+
+		var altitude float64
+		var altitudeValid bool
+		if item.AltitudeM != nil {
+			altitude = *item.AltitudeM
+			altitudeValid = true
+		}
+		var temperature float64
+		var temperatureValid bool
+		if item.TemperatureC != nil {
+			temperature = *item.TemperatureC
+			temperatureValid = true
+		}
+		var humidity float64
+		var humidityValid bool
+		if item.HumidityPercent != nil {
+			humidity = *item.HumidityPercent
+			humidityValid = true
+		}
+
+		markers = append(markers, database.Marker{
+			ID:               item.ID,
+			DoseRate:         dose,
+			Date:             ts,
+			Lon:              item.Lon,
+			Lat:              item.Lat,
+			CountRate:        item.CountRateCPS,
+			Speed:            speed,
+			Altitude:         altitude,
+			Temperature:      temperature,
+			Humidity:         humidity,
+			Detector:         detector,
+			Radiation:        strings.Join(radiationList, ","),
+			AltitudeValid:    altitudeValid,
+			TemperatureValid: temperatureValid,
+			HumidityValid:    humidityValid,
+		})
+
+		if candidateTrackID == "" {
+			candidateTrackID = strings.TrimSpace(item.TrackID)
+		}
+	}
+
+	if candidateTrackID != "" {
+		trackID = candidateTrackID
+	}
+
+	logT(trackID, "ChichaJSON", "parsed %d markers", len(markers))
+	return processAndStoreMarkers(markers, trackID, db, dbType)
+}
+
+func extractUnixSeconds(timeUnix int64, timeUTC string) int64 {
+	if timeUnix > 1_000_000_000_000 {
+		return timeUnix / 1000
+	}
+	if timeUnix > 0 {
+		return timeUnix
+	}
+	if strings.TrimSpace(timeUTC) != "" {
+		if ts, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(timeUTC)); err == nil {
+			return ts.Unix()
+		}
+	}
+	return 0
+}
+
+func normalizeRadiationList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(values))
+	for _, raw := range values {
+		channel := strings.ToLower(strings.TrimSpace(raw))
+		if channel == "" {
+			continue
+		}
+		if _, ok := seen[channel]; ok {
+			continue
+		}
+		seen[channel] = struct{}{}
+		out = append(out, channel)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// detectorTypeFromName extracts the type hint that we encode into detectorName
+// during export. We slice on the first ':' because stableDetectorName prefixes
+// the trackID before the reported detector model.
+func detectorTypeFromName(detectorName string) string {
+	detectorName = strings.TrimSpace(detectorName)
+	if detectorName == "" {
+		return ""
+	}
+	if idx := strings.Index(detectorName, ":"); idx >= 0 && idx+1 < len(detectorName) {
+		candidate := strings.TrimSpace(detectorName[idx+1:])
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // parseBGeigieCoord parses coordinates that may have hemisphere suffix.
@@ -1872,7 +2183,16 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		case ".rctrk":
 			bbox, trackID, err = processRCTRKFile(f, trackID, db, *dbType)
 		case ".json":
-			bbox, trackID, err = processAtomFastFile(f, trackID, db, *dbType)
+			raw, readErr := io.ReadAll(f)
+			if readErr != nil {
+				bbox = database.Bounds{}
+				err = fmt.Errorf("read JSON: %w", readErr)
+				break
+			}
+			bbox, trackID, err = processChichaTrackJSON(raw, trackID, db, *dbType)
+			if errors.Is(err, errNotChichaTrackJSON) {
+				bbox, trackID, err = processAtomFastData(raw, trackID, db, *dbType)
+			}
 		case ".log", ".txt":
 			bbox, trackID, err = processBGeigieZenFile(f, trackID, db, *dbType)
 		default:
@@ -2927,6 +3247,14 @@ func main() {
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
+	// Build a daily tar.gz with all known KML files. We keep the generator in
+	// its own context so shutdown remains explicit, following the Go proverb
+	// "Share memory by communicating" via the archive channels.
+	ctxArchive, cancelArchive := context.WithCancel(context.Background())
+	defer cancelArchive()
+	archivePath := filepath.Join("rawdata", "archives", "daily-kml.tar.gz")
+	archiveGen := kmlarchive.Start(ctxArchive, db, *dbType, archivePath, 24*time.Hour, log.Printf)
+
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")
 	if err != nil {
@@ -2942,6 +3270,11 @@ func main() {
 	http.HandleFunc("/realtime_history", realtimeHistoryHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
+
+	// API endpoints ship JSON/archives. Keeping registration close to other
+	// routes avoids surprises for operators scanning main() for handlers.
+	apiHandler := api.NewHandler(db, *dbType, archiveGen, log.Printf)
+	apiHandler.Register(http.DefaultServeMux)
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
 
