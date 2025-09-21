@@ -43,8 +43,10 @@ import (
 	"syscall"
 	"time"
 
+	"chicha-isotope-map/pkg/api"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
+	"chicha-isotope-map/pkg/kmlarchive"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
@@ -2927,6 +2929,13 @@ func main() {
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
+	// Build a daily tar.gz with all known KML files. We keep the generator in
+	// its own context so shutdown remains explicit, following the Go proverb
+	// "Share memory by communicating" via the archive channels.
+	ctxArchive, cancelArchive := context.WithCancel(context.Background())
+	defer cancelArchive()
+	archiveGen := kmlarchive.Start(ctxArchive, filepath.Clean("rawdata"), 24*time.Hour, log.Printf)
+
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")
 	if err != nil {
@@ -2942,6 +2951,11 @@ func main() {
 	http.HandleFunc("/realtime_history", realtimeHistoryHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
+
+	// API endpoints ship JSON/archives. Keeping registration close to other
+	// routes avoids surprises for operators scanning main() for handlers.
+	apiHandler := api.NewHandler(db, *dbType, archiveGen, log.Printf)
+	apiHandler.Register(http.DefaultServeMux)
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
 

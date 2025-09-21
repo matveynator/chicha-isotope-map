@@ -29,6 +29,17 @@ type Data struct {
 	IsSievertLegacy bool `json:"isSievert"` // старые iOS-дампы
 }
 
+// TrackSummary provides lightweight metadata for iterating over tracks.
+// We expose index boundaries so clients can page through markers without
+// issuing unbounded queries, mirroring Go's advice to "keep the interface
+// small" and only return what API callers actually need.
+type TrackSummary struct {
+	TrackID     string `json:"trackID"`
+	FirstID     int64  `json:"firstID"`
+	LastID      int64  `json:"lastID"`
+	MarkerCount int64  `json:"markerCount"`
+}
+
 // Bounds описывает прямоугольник (minLat,minLon) – (maxLat,maxLon).
 type Bounds struct {
 	MinLat, MinLon float64

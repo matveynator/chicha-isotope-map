@@ -303,6 +303,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
+			{"idx_markers_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_id ON markers (trackID, id)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_zoom_date",
@@ -333,6 +335,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
+			{"idx_markers_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_id ON markers (trackID, id)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_zoom_date",
@@ -364,6 +368,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
+			{"idx_markers_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_id ON markers (trackID, id)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_zoom_date",
@@ -395,6 +401,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
+			{"idx_markers_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_id ON markers (trackID, id)`},
 			{"idx_markers_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date ON markers (date)`},
 			{"idx_markers_zoom_date",
