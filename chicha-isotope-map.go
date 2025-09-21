@@ -468,6 +468,7 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 	type acc struct {
 		sumLat, sumLon, sumDose, sumCnt, sumSp float64
 		sumAlt, sumTemp, sumHum                float64
+		altCount, tempCount, humCount          int
 		detector, radiation                    string
 		latest                                 int64
 		n                                      int
@@ -487,9 +488,18 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 		a.sumDose += m.DoseRate
 		a.sumCnt += m.CountRate
 		a.sumSp += m.Speed
-		a.sumAlt += m.Altitude
-		a.sumTemp += m.Temperature
-		a.sumHum += m.Humidity
+		if m.AltitudeValid {
+			a.sumAlt += m.Altitude
+			a.altCount++
+		}
+		if m.TemperatureValid {
+			a.sumTemp += m.Temperature
+			a.tempCount++
+		}
+		if m.HumidityValid {
+			a.sumHum += m.Humidity
+			a.humCount++
+		}
 		if m.Date > a.latest {
 			a.latest = m.Date
 		}
@@ -505,20 +515,45 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 	out := make([]database.Marker, 0, len(cl))
 	for _, c := range cl {
 		n := float64(c.n)
+		var (
+			altitude float64
+			temp     float64
+			hum      float64
+		)
+		var (
+			altValid  bool
+			tempValid bool
+			humValid  bool
+		)
+		if c.altCount > 0 {
+			altitude = c.sumAlt / float64(c.altCount)
+			altValid = true
+		}
+		if c.tempCount > 0 {
+			temp = c.sumTemp / float64(c.tempCount)
+			tempValid = true
+		}
+		if c.humCount > 0 {
+			hum = c.sumHum / float64(c.humCount)
+			humValid = true
+		}
 		out = append(out, database.Marker{
-			Lat:         c.sumLat / n,
-			Lon:         c.sumLon / n,
-			DoseRate:    c.sumDose / n,
-			CountRate:   c.sumCnt / n,
-			Speed:       c.sumSp / n,
-			Altitude:    c.sumAlt / n,
-			Temperature: c.sumTemp / n,
-			Humidity:    c.sumHum / n,
-			Detector:    c.detector,
-			Radiation:   c.radiation,
-			Date:        c.latest,
-			Zoom:        zoom,
-			TrackID:     markers[0].TrackID,
+			Lat:              c.sumLat / n,
+			Lon:              c.sumLon / n,
+			DoseRate:         c.sumDose / n,
+			CountRate:        c.sumCnt / n,
+			Speed:            c.sumSp / n,
+			Altitude:         altitude,
+			Temperature:      temp,
+			Humidity:         hum,
+			Detector:         c.detector,
+			Radiation:        c.radiation,
+			Date:             c.latest,
+			Zoom:             zoom,
+			TrackID:          markers[0].TrackID,
+			AltitudeValid:    altValid,
+			TemperatureValid: tempValid,
+			HumidityValid:    humValid,
 		})
 	}
 	return out
@@ -578,6 +613,7 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 		// Усредняем данные кластера
 		var sumLat, sumLon, sumDose, sumCount float64
 		var sumAlt, sumTemp, sumHum float64
+		var altCount, tempCount, humCount int
 		var latestDate int64
 		detector := ""
 		radiation := ""
@@ -586,9 +622,18 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			sumLon += c.Marker.Lon
 			sumDose += c.Marker.DoseRate
 			sumCount += c.Marker.CountRate
-			sumAlt += c.Marker.Altitude
-			sumTemp += c.Marker.Temperature
-			sumHum += c.Marker.Humidity
+			if c.Marker.AltitudeValid {
+				sumAlt += c.Marker.Altitude
+				altCount++
+			}
+			if c.Marker.TemperatureValid {
+				sumTemp += c.Marker.Temperature
+				tempCount++
+			}
+			if c.Marker.HumidityValid {
+				sumHum += c.Marker.Humidity
+				humCount++
+			}
 			if detector == "" && c.Marker.Detector != "" {
 				detector = c.Marker.Detector
 			}
@@ -612,21 +657,43 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 		}
 		avgSpeed := sumSpeed / n
 
+		var altitude float64
+		var temp float64
+		var hum float64
+		var altValid bool
+		var tempValid bool
+		var humValid bool
+		if altCount > 0 {
+			altitude = sumAlt / float64(altCount)
+			altValid = true
+		}
+		if tempCount > 0 {
+			temp = sumTemp / float64(tempCount)
+			tempValid = true
+		}
+		if humCount > 0 {
+			hum = sumHum / float64(humCount)
+			humValid = true
+		}
+
 		// Создаём новый слитый маркер
 		newMarker := database.Marker{
-			Lat:         avgLat,
-			Lon:         avgLon,
-			DoseRate:    avgDose,
-			CountRate:   avgCount,
-			Altitude:    sumAlt / n,
-			Temperature: sumTemp / n,
-			Humidity:    sumHum / n,
-			Detector:    detector,
-			Radiation:   radiation,
-			Date:        latestDate,
-			Speed:       avgSpeed,
-			Zoom:        zoom,
-			TrackID:     cluster[0].Marker.TrackID, // берем хотя бы у первого
+			Lat:              avgLat,
+			Lon:              avgLon,
+			DoseRate:         avgDose,
+			CountRate:        avgCount,
+			Altitude:         altitude,
+			Temperature:      temp,
+			Humidity:         hum,
+			Detector:         detector,
+			Radiation:        radiation,
+			Date:             latestDate,
+			Speed:            avgSpeed,
+			Zoom:             zoom,
+			TrackID:          cluster[0].Marker.TrackID, // берем хотя бы у первого
+			AltitudeValid:    altValid,
+			TemperatureValid: tempValid,
+			HumidityValid:    humValid,
 		}
 		result = append(result, newMarker)
 	}
@@ -1768,7 +1835,7 @@ func processChichaTrackJSON(
 			TimeUTC            string   `json:"timeUTC"`
 			Lat                float64  `json:"lat"`
 			Lon                float64  `json:"lon"`
-			AltitudeM          float64  `json:"altitudeM"`
+			AltitudeM          *float64 `json:"altitudeM"`
 			DoseMicroSvH       float64  `json:"doseRateMicroSvH"`
 			DoseMicroRoentgenH float64  `json:"doseRateMicroRh"`
 			DoseMilliSvH       float64  `json:"doseRateMilliSvH"`
@@ -1776,8 +1843,8 @@ func processChichaTrackJSON(
 			CountRateCPS       float64  `json:"countRateCPS"`
 			SpeedMS            float64  `json:"speedMS"`
 			SpeedKMH           float64  `json:"speedKMH"`
-			TemperatureC       float64  `json:"temperatureC"`
-			HumidityPercent    float64  `json:"humidityPercent"`
+			TemperatureC       *float64 `json:"temperatureC"`
+			HumidityPercent    *float64 `json:"humidityPercent"`
 			DetectorName       string   `json:"detectorName"`
 			DetectorType       string   `json:"detectorType"`
 			RadiationTypes     []string `json:"radiationTypes"`
@@ -1835,19 +1902,41 @@ func processChichaTrackJSON(
 			radiationList = defaultRadiation
 		}
 
+		var altitude float64
+		var altitudeValid bool
+		if item.AltitudeM != nil {
+			altitude = *item.AltitudeM
+			altitudeValid = true
+		}
+		var temperature float64
+		var temperatureValid bool
+		if item.TemperatureC != nil {
+			temperature = *item.TemperatureC
+			temperatureValid = true
+		}
+		var humidity float64
+		var humidityValid bool
+		if item.HumidityPercent != nil {
+			humidity = *item.HumidityPercent
+			humidityValid = true
+		}
+
 		markers = append(markers, database.Marker{
-			ID:          item.ID,
-			DoseRate:    dose,
-			Date:        ts,
-			Lon:         item.Lon,
-			Lat:         item.Lat,
-			CountRate:   item.CountRateCPS,
-			Speed:       speed,
-			Altitude:    item.AltitudeM,
-			Temperature: item.TemperatureC,
-			Humidity:    item.HumidityPercent,
-			Detector:    detector,
-			Radiation:   strings.Join(radiationList, ","),
+			ID:               item.ID,
+			DoseRate:         dose,
+			Date:             ts,
+			Lon:              item.Lon,
+			Lat:              item.Lat,
+			CountRate:        item.CountRateCPS,
+			Speed:            speed,
+			Altitude:         altitude,
+			Temperature:      temperature,
+			Humidity:         humidity,
+			Detector:         detector,
+			Radiation:        strings.Join(radiationList, ","),
+			AltitudeValid:    altitudeValid,
+			TemperatureValid: temperatureValid,
+			HumidityValid:    humidityValid,
 		})
 
 		if candidateTrackID == "" {

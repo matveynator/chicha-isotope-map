@@ -17,12 +17,15 @@ type Marker struct {
 	Temperature float64 `json:"temperature,omitempty"` // Ambient temperature in Celsius when present
 	Humidity    float64 `json:"humidity,omitempty"`    // Relative humidity percentage when available
 	// Live metadata is kept optional so historical markers remain lightweight.
-	DeviceID   string             `json:"deviceID,omitempty"`   // Safecast device identifier for realtime markers
-	DeviceName string             `json:"deviceName,omitempty"` // Human readable device title when provided
-	Transport  string             `json:"transport,omitempty"`  // Transport hint such as walk, car or bike
-	Tube       string             `json:"tube,omitempty"`       // Detector tube description advertised by the feed
-	Country    string             `json:"country,omitempty"`    // Coarse country hint derived from Safecast payload
-	LiveExtra  map[string]float64 `json:"liveExtra,omitempty"`  // Additional numeric metrics (temperature, humidity, ...)
+	DeviceID         string             `json:"deviceID,omitempty"`   // Safecast device identifier for realtime markers
+	DeviceName       string             `json:"deviceName,omitempty"` // Human readable device title when provided
+	Transport        string             `json:"transport,omitempty"`  // Transport hint such as walk, car or bike
+	Tube             string             `json:"tube,omitempty"`       // Detector tube description advertised by the feed
+	Country          string             `json:"country,omitempty"`    // Coarse country hint derived from Safecast payload
+	LiveExtra        map[string]float64 `json:"liveExtra,omitempty"`  // Additional numeric metrics (temperature, humidity, ...)
+	AltitudeValid    bool               `json:"-"`                    // Tracks whether altitude was explicitly supplied so exporters can omit empty fields.
+	TemperatureValid bool               `json:"-"`                    // Marks that temperature was present in the source payload instead of default zero values.
+	HumidityValid    bool               `json:"-"`                    // Signals that humidity existed; keeps downstream encoders from inventing placeholders.
 }
 
 type Data struct {

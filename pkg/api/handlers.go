@@ -51,7 +51,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tracks/index/", h.handleTrackDataByIndex)
 	mux.HandleFunc("/api/tracks/years/", h.handleTracksByYear)
 	mux.HandleFunc("/api/tracks/months/", h.handleTracksByMonth)
-	mux.HandleFunc("/api/tracks/", h.handleTrackData)
+	mux.HandleFunc("/api/track/", h.handleTrackData)
+	mux.HandleFunc("/api/tracks/", h.handleTrackData) // legacy alias for older clients
 	mux.HandleFunc("/api/kml/daily.tar.gz", h.handleArchiveDownload)
 }
 
@@ -87,13 +88,13 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 			"trackByNumber": map[string]any{
 				"method":      "GET",
 				"path":        "/api/tracks/index/{number}",
-				"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/tracks/{trackID}.",
+				"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/track/{trackID}.cim.",
 			},
 			"trackMarkers": map[string]any{
 				"method":      "GET",
-				"path":        "/api/tracks/{trackID}",
-				"query":       []string{"from", "limit", "to"},
-				"description": "Streams markers for the requested track. Provide 'from' using the firstID from summaries and increment using nextFromID.",
+				"path":        "/api/track/{trackID}.cim",
+				"query":       []string{"from", "to"},
+				"description": "Downloads the full track as JSON with a .cim extension so browsers save it as a file. Optional 'from'/'to' IDs can narrow the range.",
 			},
 			"tracksByYear": map[string]any{
 				"method":      "GET",
@@ -186,12 +187,31 @@ func (h *Handler) handleTracksList(w http.ResponseWriter, r *http.Request) {
 
 // handleTrackData streams markers from a single track using ID ranges.
 func (h *Handler) handleTrackData(w http.ResponseWriter, r *http.Request) {
-	trackID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/tracks/"), "/")
-	if trackID == "" {
+	path := r.URL.Path
+	var trimmed string
+	switch {
+	case strings.HasPrefix(path, "/api/track/"):
+		trimmed = strings.TrimPrefix(path, "/api/track/")
+	case strings.HasPrefix(path, "/api/tracks/"):
+		trimmed = strings.TrimPrefix(path, "/api/tracks/")
+	default:
 		http.NotFound(w, r)
 		return
 	}
-	h.serveTrackData(w, r, trackID)
+	trimmed = strings.Trim(trimmed, "/")
+	if trimmed == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if strings.HasSuffix(trimmed, ".cim") {
+		trimmed = strings.TrimSuffix(trimmed, ".cim")
+	}
+	decoded, err := url.PathUnescape(trimmed)
+	if err != nil || strings.TrimSpace(decoded) == "" {
+		http.NotFound(w, r)
+		return
+	}
+	h.serveTrackData(w, r, decoded)
 }
 
 // handleTrackDataByIndex resolves a numeric track number and reuses the
@@ -431,19 +451,18 @@ func (h *Handler) handleTracksByMonth(w http.ResponseWriter, r *http.Request) {
 // index-based handlers produce identical responses.
 type trackMarkerPayload struct {
 	ID                     int64    `json:"id"`
-	TrackID                string   `json:"trackID"`
 	TimeUnix               int64    `json:"timeUnix"`
 	TimeUTC                string   `json:"timeUTC"`
 	Lat                    float64  `json:"lat"`
 	Lon                    float64  `json:"lon"`
-	AltitudeM              float64  `json:"altitudeM"`
+	AltitudeM              *float64 `json:"altitudeM,omitempty"`
 	DoseRateMicroSvH       float64  `json:"doseRateMicroSvH"`
 	DoseRateMicroRoentgenH float64  `json:"doseRateMicroRh"`
 	CountRateCPS           float64  `json:"countRateCPS"`
 	SpeedMS                float64  `json:"speedMS"`
 	SpeedKMH               float64  `json:"speedKMH"`
-	TemperatureC           float64  `json:"temperatureC"`
-	HumidityPercent        float64  `json:"humidityPercent"`
+	TemperatureC           *float64 `json:"temperatureC,omitempty"`
+	HumidityPercent        *float64 `json:"humidityPercent,omitempty"`
 	DetectorName           string   `json:"detectorName,omitempty"`
 	DetectorType           string   `json:"detectorType,omitempty"`
 	RadiationTypes         []string `json:"radiationTypes,omitempty"`
@@ -476,100 +495,127 @@ func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID
 	if from < summary.FirstID {
 		from = summary.FirstID
 	}
-	limit := clampInt(parseIntDefault(q.Get("limit"), 1000), 1, 5000)
 	to := parseInt64Default(q.Get("to"), summary.LastID)
-	if to > summary.LastID {
+	if to <= 0 || to > summary.LastID {
 		to = summary.LastID
 	}
+	if from > to {
+		http.Error(w, "invalid range", http.StatusBadRequest)
+		return
+	}
 
-	markersCh, errCh := h.DB.StreamMarkersByTrackRange(ctx, trackID, from, to, limit, h.DBType)
+	chunkSize := clampInt(parseIntDefault(q.Get("chunk"), 1000), 1, 5000)
 
-	markers := make([]database.Marker, 0, limit)
-	var lastID int64
+	capEstimate := 0
+	if summary.MarkerCount > 0 {
+		if summary.MarkerCount > 4096 {
+			capEstimate = 4096
+		} else {
+			capEstimate = int(summary.MarkerCount)
+		}
+	}
+	markers := make([]trackMarkerPayload, 0, capEstimate)
 
-	for markersCh != nil {
+	nextID := from
+	for nextID <= to {
 		select {
 		case <-ctx.Done():
 			http.Error(w, "request cancelled", http.StatusRequestTimeout)
 			return
-		case marker, ok := <-markersCh:
-			if !ok {
-				markersCh = nil
-				continue
-			}
-			markers = append(markers, marker)
+		default:
+		}
+
+		limit := chunkSize
+		remaining := to - nextID + 1
+		if remaining > 0 && int64(limit) > remaining {
+			limit = int(remaining)
+		}
+
+		markersCh, errCh := h.DB.StreamMarkersByTrackRange(ctx, trackID, nextID, to, limit, h.DBType)
+		got := false
+		var lastID int64
+
+		for marker := range markersCh {
+			got = true
 			lastID = marker.ID
+			markers = append(markers, makeTrackMarkerPayload(marker))
 		}
+
+		if err := <-errCh; err != nil {
+			http.Error(w, "markers error", http.StatusInternalServerError)
+			if h.Logf != nil {
+				h.Logf("track %s markers error: %v", trackID, err)
+			}
+			return
+		}
+		if !got {
+			break
+		}
+		nextID = lastID + 1
 	}
 
-	if err := <-errCh; err != nil {
-		http.Error(w, "markers error", http.StatusInternalServerError)
-		if h.Logf != nil {
-			h.Logf("track %s markers error: %v", trackID, err)
-		}
-		return
-	}
-
-	nextFrom := int64(0)
-	if lastID > 0 && lastID < summary.LastID {
-		nextFrom = lastID + 1
-	}
-
-	payload := make([]trackMarkerPayload, 0, len(markers))
-	for _, marker := range markers {
-		ts, unixSeconds := normalizeMarkerTime(marker.Date)
-		detector := strings.TrimSpace(marker.Detector)
-		pm := trackMarkerPayload{
-			ID:                     marker.ID,
-			TrackID:                marker.TrackID,
-			TimeUnix:               unixSeconds,
-			TimeUTC:                ts.Format(time.RFC3339),
-			Lat:                    marker.Lat,
-			Lon:                    marker.Lon,
-			AltitudeM:              marker.Altitude,
-			DoseRateMicroSvH:       marker.DoseRate,
-			DoseRateMicroRoentgenH: marker.DoseRate * microRoentgenPerMicroSievert,
-			CountRateCPS:           marker.CountRate,
-			SpeedMS:                marker.Speed,
-			SpeedKMH:               marker.Speed * 3.6,
-			TemperatureC:           marker.Temperature,
-			HumidityPercent:        marker.Humidity,
-		}
-		if detector != "" {
-			pm.DetectorType = detector
-			pm.DetectorName = stableDetectorName(marker.TrackID, detector)
-		}
-		if channels := splitRadiationChannels(marker.Radiation); len(channels) > 0 {
-			pm.RadiationTypes = channels
-		}
-		payload = append(payload, pm)
-	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", safeCIMFilename(trackID)))
 
 	resp := struct {
 		TrackID     string               `json:"trackID"`
 		TrackIndex  int64                `json:"trackIndex"`
 		APIURL      string               `json:"apiURL"`
-		From        int64                `json:"from"`
-		To          int64                `json:"to"`
-		Limit       int                  `json:"limit"`
-		NextFrom    int64                `json:"nextFrom,omitempty"`
+		FirstID     int64                `json:"firstID"`
 		LastID      int64                `json:"lastID"`
+		MarkerCount int64                `json:"markerCount"`
 		Markers     []trackMarkerPayload `json:"markers"`
 		Disclaimers map[string]string    `json:"disclaimers"`
 	}{
 		TrackID:     trackID,
 		TrackIndex:  trackIndex,
 		APIURL:      h.trackAPIURL(trackID),
-		From:        from,
-		To:          to,
-		Limit:       limit,
-		NextFrom:    nextFrom,
+		FirstID:     summary.FirstID,
 		LastID:      summary.LastID,
-		Markers:     payload,
+		MarkerCount: summary.MarkerCount,
+		Markers:     markers,
 		Disclaimers: disclaimerTexts,
 	}
 
 	h.respondJSON(w, resp)
+}
+
+// makeTrackMarkerPayload converts a database marker into the API representation
+// while skipping optional fields that sensors never reported.
+func makeTrackMarkerPayload(marker database.Marker) trackMarkerPayload {
+	ts, unixSeconds := normalizeMarkerTime(marker.Date)
+	payload := trackMarkerPayload{
+		ID:                     marker.ID,
+		TimeUnix:               unixSeconds,
+		TimeUTC:                ts.Format(time.RFC3339),
+		Lat:                    marker.Lat,
+		Lon:                    marker.Lon,
+		DoseRateMicroSvH:       marker.DoseRate,
+		DoseRateMicroRoentgenH: marker.DoseRate * microRoentgenPerMicroSievert,
+		CountRateCPS:           marker.CountRate,
+		SpeedMS:                marker.Speed,
+		SpeedKMH:               marker.Speed * 3.6,
+	}
+	if marker.AltitudeValid {
+		altitude := marker.Altitude
+		payload.AltitudeM = &altitude
+	}
+	if marker.TemperatureValid {
+		temperature := marker.Temperature
+		payload.TemperatureC = &temperature
+	}
+	if marker.HumidityValid {
+		humidity := marker.Humidity
+		payload.HumidityPercent = &humidity
+	}
+	detector := strings.TrimSpace(marker.Detector)
+	if detector != "" {
+		payload.DetectorType = detector
+		payload.DetectorName = stableDetectorName(marker.TrackID, detector)
+	}
+	if channels := splitRadiationChannels(marker.Radiation); len(channels) > 0 {
+		payload.RadiationTypes = channels
+	}
+	return payload
 }
 
 // handleArchiveDownload streams the daily tar.gz produced by the generator.
@@ -707,7 +753,32 @@ func (h *Handler) latestTrackInfo(ctx context.Context) (int64, string, error) {
 // trackAPIURL builds the canonical API link for a track, escaping the ID so it
 // remains safe even with unusual characters.
 func (h *Handler) trackAPIURL(trackID string) string {
-	return "/api/tracks/" + url.PathEscape(trackID)
+	return "/api/track/" + url.PathEscape(trackID) + ".cim"
+}
+
+// safeCIMFilename keeps attachment names predictable so browsers download
+// JSON tracks with a deterministic .cim suffix.
+func safeCIMFilename(trackID string) string {
+	var b strings.Builder
+	for _, r := range trackID {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	name := strings.Trim(b.String(), "_")
+	if name == "" {
+		name = "track"
+	}
+	return name + ".cim"
 }
 
 func (h *Handler) respondJSON(w http.ResponseWriter, payload any) {

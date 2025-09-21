@@ -793,7 +793,10 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 				args = append(args,
 					m.DoseRate, m.Date, m.Lon, m.Lat,
 					m.CountRate, m.Zoom, m.Speed, m.TrackID,
-					m.Altitude, m.Detector, m.Radiation, m.Temperature, m.Humidity,
+					nullableFloat64(m.AltitudeValid, m.Altitude),
+					m.Detector, m.Radiation,
+					nullableFloat64(m.TemperatureValid, m.Temperature),
+					nullableFloat64(m.HumidityValid, m.Humidity),
 				)
 			}
 			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
@@ -823,7 +826,10 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 				args = append(args,
 					m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 					m.CountRate, m.Zoom, m.Speed, m.TrackID,
-					m.Altitude, m.Detector, m.Radiation, m.Temperature, m.Humidity,
+					nullableFloat64(m.AltitudeValid, m.Altitude),
+					m.Detector, m.Radiation,
+					nullableFloat64(m.TemperatureValid, m.Temperature),
+					nullableFloat64(m.HumidityValid, m.Humidity),
 				)
 			}
 			sb.WriteString(" ON CONFLICT DO NOTHING")
@@ -858,7 +864,10 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
-			m.Altitude, m.Detector, m.Radiation, m.Temperature, m.Humidity)
+			nullableFloat64(m.AltitudeValid, m.Altitude),
+			m.Detector, m.Radiation,
+			nullableFloat64(m.TemperatureValid, m.Temperature),
+			nullableFloat64(m.HumidityValid, m.Humidity))
 		return err
 
 	// ─────────────────────── SQLite / Chai / другие ─────────
@@ -874,9 +883,21 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT DO NOTHING`,
 			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
-			m.Altitude, m.Detector, m.Radiation, m.Temperature, m.Humidity)
+			nullableFloat64(m.AltitudeValid, m.Altitude),
+			m.Detector, m.Radiation,
+			nullableFloat64(m.TemperatureValid, m.Temperature),
+			nullableFloat64(m.HumidityValid, m.Humidity))
 		return err
 	}
+}
+
+// nullableFloat64 converts optional measurement fields into SQL-friendly values so we
+// persist NULL when a sensor never reported altitude, temperature, or humidity.
+func nullableFloat64(valid bool, value float64) any {
+	if !valid {
+		return nil
+	}
+	return value
 }
 
 // InsertRealtimeMeasurement stores live device data and skips duplicates.

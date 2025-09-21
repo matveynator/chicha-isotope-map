@@ -189,11 +189,11 @@ func (db *Database) StreamMarkersByTrackRange(
 		}
 
 		query := `SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-       COALESCE(altitude, 0) AS altitude,
+       altitude,
        COALESCE(detector, '') AS detector,
        COALESCE(radiation, '') AS radiation,
-       COALESCE(temperature, 0) AS temperature,
-       COALESCE(humidity, 0) AS humidity
+       temperature,
+       humidity
 FROM markers
 WHERE trackID = %s AND id >= %s AND id <= %s
 ORDER BY id
@@ -215,10 +215,25 @@ LIMIT %s;`
 
 		for rows.Next() {
 			var m Marker
+			var altitude sql.NullFloat64
+			var temperature sql.NullFloat64
+			var humidity sql.NullFloat64
 			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-				&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+				&altitude, &m.Detector, &m.Radiation, &temperature, &humidity); err != nil {
 				errs <- fmt.Errorf("scan marker: %w", err)
 				return
+			}
+			if altitude.Valid {
+				m.Altitude = altitude.Float64
+				m.AltitudeValid = true
+			}
+			if temperature.Valid {
+				m.Temperature = temperature.Float64
+				m.TemperatureValid = true
+			}
+			if humidity.Valid {
+				m.Humidity = humidity.Float64
+				m.HumidityValid = true
 			}
 			select {
 			case <-ctx.Done():
