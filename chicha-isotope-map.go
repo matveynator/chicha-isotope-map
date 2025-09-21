@@ -2934,7 +2934,8 @@ func main() {
 	// "Share memory by communicating" via the archive channels.
 	ctxArchive, cancelArchive := context.WithCancel(context.Background())
 	defer cancelArchive()
-	archiveGen := kmlarchive.Start(ctxArchive, filepath.Clean("rawdata"), 24*time.Hour, log.Printf)
+	archivePath := filepath.Join("rawdata", "archives", "daily-kml.tar.gz")
+	archiveGen := kmlarchive.Start(ctxArchive, db, *dbType, archivePath, 24*time.Hour, log.Printf)
 
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")
