@@ -2,15 +2,20 @@ package database
 
 // Marker represents dosimeter data for a specific location or point.
 type Marker struct {
-	ID        int64   `json:"id"`        // Unique identifier for the marker (added for database purposes)
-	DoseRate  float64 `json:"doseRate"`  // The radiation dose rate in µSv/h (microsieverts per hour)
-	Date      int64   `json:"date"`      // Timestamp of the measurement (in UNIX time format)
-	Lon       float64 `json:"lon"`       // Longitude of the location where the measurement was taken
-	Lat       float64 `json:"lat"`       // Latitude of the location where the measurement was taken
-	CountRate float64 `json:"countRate"` // Count rate of the measurement (CPS - counts per second)
-	Zoom      int     `json:"zoom"`      // Zoom level
-	Speed     float64 `json:"speed"`     // Speed of the measurement point
-	TrackID   string  `json:"trackID"`   // Identifier of the track
+	ID          int64   `json:"id"`                    // Unique identifier for the marker (added for database purposes)
+	DoseRate    float64 `json:"doseRate"`              // The radiation dose rate in µSv/h (microsieverts per hour)
+	Date        int64   `json:"date"`                  // Timestamp of the measurement (in UNIX time format)
+	Lon         float64 `json:"lon"`                   // Longitude of the location where the measurement was taken
+	Lat         float64 `json:"lat"`                   // Latitude of the location where the measurement was taken
+	CountRate   float64 `json:"countRate"`             // Count rate of the measurement (CPS - counts per second)
+	Zoom        int     `json:"zoom"`                  // Zoom level
+	Speed       float64 `json:"speed"`                 // Speed of the measurement point
+	TrackID     string  `json:"trackID"`               // Identifier of the track
+	Altitude    float64 `json:"altitude,omitempty"`    // Elevation in metres above sea level when provided
+	Detector    string  `json:"detector,omitempty"`    // Detector model or type recorded for the point
+	Radiation   string  `json:"radiation,omitempty"`   // Radiation channels captured (alpha, beta, gamma)
+	Temperature float64 `json:"temperature,omitempty"` // Ambient temperature in Celsius when present
+	Humidity    float64 `json:"humidity,omitempty"`    // Relative humidity percentage when available
 	// Live metadata is kept optional so historical markers remain lightweight.
 	DeviceID   string             `json:"deviceID,omitempty"`   // Safecast device identifier for realtime markers
 	DeviceName string             `json:"deviceName,omitempty"` // Human readable device title when provided

@@ -424,6 +424,25 @@ func (h *Handler) handleTracksByMonth(w http.ResponseWriter, r *http.Request) {
 
 // serveTrackData centralises the marker streaming logic so both ID-based and
 // index-based handlers produce identical responses.
+type trackMarkerPayload struct {
+	ID               int64    `json:"id"`
+	TimeUnix         int64    `json:"timeUnix"`
+	TimeUTC          string   `json:"timeUTC"`
+	Lat              float64  `json:"lat"`
+	Lon              float64  `json:"lon"`
+	AltitudeM        float64  `json:"altitudeM"`
+	DoseRateMicroSvH float64  `json:"doseRateMicroSvH"`
+	DoseRateMilliSvH float64  `json:"doseRateMilliSvH"`
+	DoseRateMilliRH  float64  `json:"doseRateMilliRH"`
+	CountRateCPS     float64  `json:"countRateCPS"`
+	SpeedMS          float64  `json:"speedMS"`
+	SpeedKMH         float64  `json:"speedKMH"`
+	TemperatureC     float64  `json:"temperatureC"`
+	HumidityPercent  float64  `json:"humidityPercent"`
+	DetectorType     string   `json:"detectorType,omitempty"`
+	RadiationTypes   []string `json:"radiationTypes,omitempty"`
+}
+
 func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID string) {
 	ctx := r.Context()
 
@@ -490,17 +509,46 @@ func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID
 		nextFrom = lastID + 1
 	}
 
+	payload := make([]trackMarkerPayload, 0, len(markers))
+	for _, marker := range markers {
+		ts, unixSeconds := normalizeMarkerTime(marker.Date)
+		detector := strings.TrimSpace(marker.Detector)
+		pm := trackMarkerPayload{
+			ID:               marker.ID,
+			TimeUnix:         unixSeconds,
+			TimeUTC:          ts.Format(time.RFC3339),
+			Lat:              marker.Lat,
+			Lon:              marker.Lon,
+			AltitudeM:        marker.Altitude,
+			DoseRateMicroSvH: marker.DoseRate,
+			DoseRateMilliSvH: marker.DoseRate / 1000.0,
+			DoseRateMilliRH:  marker.DoseRate / 10.0,
+			CountRateCPS:     marker.CountRate,
+			SpeedMS:          marker.Speed,
+			SpeedKMH:         marker.Speed * 3.6,
+			TemperatureC:     marker.Temperature,
+			HumidityPercent:  marker.Humidity,
+		}
+		if detector != "" {
+			pm.DetectorType = detector
+		}
+		if channels := splitRadiationChannels(marker.Radiation); len(channels) > 0 {
+			pm.RadiationTypes = channels
+		}
+		payload = append(payload, pm)
+	}
+
 	resp := struct {
-		TrackID     string            `json:"trackID"`
-		TrackIndex  int64             `json:"trackIndex"`
-		APIURL      string            `json:"apiURL"`
-		From        int64             `json:"from"`
-		To          int64             `json:"to"`
-		Limit       int               `json:"limit"`
-		NextFrom    int64             `json:"nextFrom,omitempty"`
-		LastID      int64             `json:"lastID"`
-		Markers     []database.Marker `json:"markers"`
-		Disclaimers map[string]string `json:"disclaimers"`
+		TrackID     string               `json:"trackID"`
+		TrackIndex  int64                `json:"trackIndex"`
+		APIURL      string               `json:"apiURL"`
+		From        int64                `json:"from"`
+		To          int64                `json:"to"`
+		Limit       int                  `json:"limit"`
+		NextFrom    int64                `json:"nextFrom,omitempty"`
+		LastID      int64                `json:"lastID"`
+		Markers     []trackMarkerPayload `json:"markers"`
+		Disclaimers map[string]string    `json:"disclaimers"`
 	}{
 		TrackID:     trackID,
 		TrackIndex:  trackIndex,
@@ -510,7 +558,7 @@ func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID
 		Limit:       limit,
 		NextFrom:    nextFrom,
 		LastID:      summary.LastID,
-		Markers:     markers,
+		Markers:     payload,
 		Disclaimers: disclaimerTexts,
 	}
 
@@ -660,6 +708,53 @@ func (h *Handler) respondJSON(w http.ResponseWriter, payload any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(payload)
+}
+
+func normalizeMarkerTime(unixValue int64) (time.Time, int64) {
+	if unixValue <= 0 {
+		ts := time.Unix(0, 0).UTC()
+		return ts, ts.Unix()
+	}
+	if unixValue > 1_000_000_000_000 {
+		ts := time.UnixMilli(unixValue).UTC()
+		return ts, ts.Unix()
+	}
+	ts := time.Unix(unixValue, 0).UTC()
+	return ts, unixValue
+}
+
+func splitRadiationChannels(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	fields := strings.FieldsFunc(trimmed, func(r rune) bool {
+		switch r {
+		case ',', ';', '|', '/', '\\':
+			return true
+		case ' ', '\t', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	})
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		channel := strings.ToLower(strings.TrimSpace(f))
+		if channel == "" {
+			continue
+		}
+		if _, ok := seen[channel]; ok {
+			continue
+		}
+		seen[channel] = struct{}{}
+		out = append(out, channel)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func parseIntDefault(v string, def int) int {

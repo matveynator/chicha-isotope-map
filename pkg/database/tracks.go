@@ -188,7 +188,12 @@ func (db *Database) StreamMarkersByTrackRange(
 			toID = math.MaxInt64
 		}
 
-		query := `SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+		query := `SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+       COALESCE(altitude, 0) AS altitude,
+       COALESCE(detector, '') AS detector,
+       COALESCE(radiation, '') AS radiation,
+       COALESCE(temperature, 0) AS temperature,
+       COALESCE(humidity, 0) AS humidity
 FROM markers
 WHERE trackID = %s AND id >= %s AND id <= %s
 ORDER BY id
@@ -210,7 +215,8 @@ LIMIT %s;`
 
 		for rows.Next() {
 			var m Marker
-			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+				&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
 				errs <- fmt.Errorf("scan marker: %w", err)
 				return
 			}
