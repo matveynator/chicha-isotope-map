@@ -3314,10 +3314,10 @@ func main() {
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
-	// Build a daily tar.gz with all known JSON .cim files only when operators
-	// explicitly opt in via -json-archive-path. This avoids surprise disk IO
-	// on deployments that do not need the bundle while keeping the design
-	// configurable through channels when enabled.
+	// Build a weekly tar.gz with all known JSON .cim files only when operators
+	// explicitly opt in via -json-archive-path. Stretching the cadence keeps
+	// IO predictable while still letting deployments opt in when they need a
+	// fresh bundle.
 	var (
 		archiveGen     *jsonarchive.Generator
 		archiveCancel  context.CancelFunc
@@ -3332,7 +3332,7 @@ func main() {
 			archivePath = abs
 		}
 		log.Printf("json archive destination resolved: %s", archivePath)
-		archiveGen = jsonarchive.Start(ctxArchive, db, *dbType, archivePath, 24*time.Hour, log.Printf)
+		archiveGen = jsonarchive.Start(ctxArchive, db, *dbType, archivePath, 7*24*time.Hour, log.Printf)
 	} else {
 		log.Printf("json archive disabled: set -json-archive-path to enable tarball generation")
 	}
