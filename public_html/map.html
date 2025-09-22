@@ -1970,102 +1970,117 @@ document.addEventListener('DOMContentLoaded', function () {
         );
         div.innerHTML = pieces.join('');
 
-        // If realtime is available, add a hover tooltip to the live toggle
-        // with the same styling as other popups/tooltips.
+        // Helper to attach a styled hover tooltip to a checkbox label.
+        function attachHoverTooltip(inputEl, heading, text) {
+          if (!inputEl) return;
+          const label = inputEl.closest('label');
+          const iconSpan = label ? label.querySelector('.speed-filter-icon') : null;
+          if (!label) return;
+
+          // Remove native titles to avoid duplicate tooltips
+          if (label.hasAttribute('title')) label.removeAttribute('title');
+          if (iconSpan && iconSpan.hasAttribute('title')) iconSpan.removeAttribute('title');
+
+          let hoverTip;
+          const positionTipAt = (x, y) => {
+            if (!hoverTip) return;
+            const pad = 12;
+            let left = x + pad;
+            let top  = y + 8;
+            const maxLeft = window.innerWidth - hoverTip.offsetWidth - 8;
+            const maxTop  = window.innerHeight - hoverTip.offsetHeight - 8;
+            if (left > maxLeft) left = Math.max(8, x - hoverTip.offsetWidth - pad);
+            if (top > maxTop) top = Math.max(8, y - hoverTip.offsetHeight - 8);
+            hoverTip.style.left = left + 'px';
+            hoverTip.style.top  = top + 'px';
+          };
+
+          const showTip = (evt) => {
+            if (hoverTip) return;
+            hoverTip = document.createElement('div');
+            hoverTip.className = 'custom-tooltip live-tooltip';
+            hoverTip.style.position = 'fixed';
+            hoverTip.style.zIndex = '3000';
+            hoverTip.style.pointerEvents = 'none';
+            hoverTip.innerHTML = `
+              <div style="max-width: var(--tooltip-max); min-inline-size: var(--tooltip-min);">
+                <strong>${heading}</strong><br/>
+                ${text}
+              </div>`;
+            document.body.appendChild(hoverTip);
+            if (evt && evt.clientX) {
+              positionTipAt(evt.clientX, evt.clientY);
+            } else {
+              const r = label.getBoundingClientRect();
+              positionTipAt(r.right, r.top);
+            }
+          };
+          const hideTip = () => {
+            if (hoverTip && hoverTip.parentNode) hoverTip.parentNode.removeChild(hoverTip);
+            hoverTip = null;
+            window.removeEventListener('scroll', onReposition, true);
+            window.removeEventListener('resize', onReposition, true);
+            label.removeEventListener('mousemove', onMouseMove, true);
+          };
+          const onReposition = () => {
+            const r = label.getBoundingClientRect();
+            positionTipAt(r.right, r.top);
+          };
+          const onMouseMove = (e) => positionTipAt(e.clientX, e.clientY);
+          const onEnter = (e) => {
+            showTip(e);
+            window.addEventListener('scroll', onReposition, true);
+            window.addEventListener('resize', onReposition, true);
+            label.addEventListener('mousemove', onMouseMove, true);
+          };
+          const onLeave = () => hideTip();
+          label.addEventListener('mouseenter', onEnter);
+          label.addEventListener('mouseleave', onLeave);
+          if (iconSpan) {
+            iconSpan.addEventListener('mouseenter', onEnter);
+            iconSpan.addEventListener('mouseleave', onLeave);
+          }
+          label.addEventListener('focusin', (e) => {
+            showTip(e);
+            window.addEventListener('scroll', onReposition, true);
+            window.addEventListener('resize', onReposition, true);
+          });
+          label.addEventListener('focusout', hideTip);
+        }
+
+        // Attach tooltip for realtime when enabled
         if (window.safecastRealtimeEnabled) {
           const liveInput = div.querySelector('#sfLive');
-          if (liveInput) {
-            const liveLabel = liveInput.closest('label');
-            const iconSpan = liveLabel ? liveLabel.querySelector('.speed-filter-icon') : null;
-            let hoverTip;
-            const defaultTip = 'Show or hide realtime measurements from safecast.org. Click to toggle the live layer.';
-            let tipText = defaultTip;
-            if (typeof translate === 'function') {
-              try {
-                const maybe = translate('live_toggle_help');
-                if (maybe && typeof maybe === 'string' && maybe.trim() !== '' && maybe !== 'live_toggle_help') {
-                  tipText = maybe;
-                }
-              } catch (_) {
-                tipText = defaultTip;
+          const defaultTip = 'Show or hide realtime measurements from safecast.org. Click to toggle the live layer.';
+          let tipText = defaultTip;
+          if (typeof translate === 'function') {
+            try {
+              const maybe = translate('live_toggle_help');
+              if (maybe && typeof maybe === 'string' && maybe.trim() !== '' && maybe !== 'live_toggle_help') {
+                tipText = maybe;
               }
-            }
-            // Ensure no native title is present to avoid double tooltips
-            if (liveLabel && liveLabel.hasAttribute('title')) {
-              liveLabel.removeAttribute('title');
-            }
-            if (iconSpan && iconSpan.hasAttribute('title')) {
-              iconSpan.removeAttribute('title');
-            }
-
-            const positionTipAt = (x, y) => {
-              if (!hoverTip) return;
-              const pad = 12;
-              let left = x + pad;
-              let top  = y + 8;
-              const maxLeft = window.innerWidth - hoverTip.offsetWidth - 8;
-              const maxTop  = window.innerHeight - hoverTip.offsetHeight - 8;
-              if (left > maxLeft) left = Math.max(8, x - hoverTip.offsetWidth - pad);
-              if (top > maxTop) top = Math.max(8, y - hoverTip.offsetHeight - 8);
-              hoverTip.style.left = left + 'px';
-              hoverTip.style.top  = top + 'px';
-            };
-
-            const showTip = (evt) => {
-              if (hoverTip) return;
-              hoverTip = document.createElement('div');
-              hoverTip.className = 'custom-tooltip live-tooltip';
-              hoverTip.style.position = 'fixed';
-              hoverTip.style.zIndex = '3000';
-              hoverTip.style.pointerEvents = 'none';
-              hoverTip.innerHTML = `
-                <div style="max-width: var(--tooltip-max); min-inline-size: var(--tooltip-min);">
-                  <strong>Safecast Realtime</strong><br/>
-                  ${tipText}
-                </div>`;
-              document.body.appendChild(hoverTip);
-              if (evt && evt.clientX) {
-                positionTipAt(evt.clientX, evt.clientY);
-              } else {
-                const r = liveLabel.getBoundingClientRect();
-                positionTipAt(r.right, r.top);
-              }
-            };
-            const hideTip = () => {
-              if (hoverTip && hoverTip.parentNode) hoverTip.parentNode.removeChild(hoverTip);
-              hoverTip = null;
-              window.removeEventListener('scroll', onReposition, true);
-              window.removeEventListener('resize', onReposition, true);
-              liveLabel.removeEventListener('mousemove', onMouseMove, true);
-            };
-            const onReposition = () => {
-              const r = liveLabel.getBoundingClientRect();
-              positionTipAt(r.right, r.top);
-            };
-            const onMouseMove = (e) => positionTipAt(e.clientX, e.clientY);
-
-            const onEnter = (e) => {
-              showTip(e);
-              window.addEventListener('scroll', onReposition, true);
-              window.addEventListener('resize', onReposition, true);
-              liveLabel.addEventListener('mousemove', onMouseMove, true);
-            };
-            const onLeave = () => hideTip();
-
-            liveLabel.addEventListener('mouseenter', onEnter);
-            liveLabel.addEventListener('mouseleave', onLeave);
-            if (iconSpan) {
-              iconSpan.addEventListener('mouseenter', onEnter);
-              iconSpan.addEventListener('mouseleave', onLeave);
-            }
-            liveLabel.addEventListener('focusin', (e) => {
-              showTip(e);
-              window.addEventListener('scroll', onReposition, true);
-              window.addEventListener('resize', onReposition, true);
-            });
-            liveLabel.addEventListener('focusout', hideTip);
+            } catch (_) { /* ignore */ }
           }
+          attachHoverTooltip(liveInput, 'Safecast Realtime', tipText);
         }
+
+        // Attach tooltips for plane, car, and pedestrian filters
+        const planeInput = div.querySelector('#sfPlane');
+        const carInput   = div.querySelector('#sfCar');
+        const pedInput   = div.querySelector('#sfPed');
+
+        const t = (key, fallback) => {
+          if (typeof translate !== 'function') return fallback;
+          try {
+            const s = translate(key);
+            if (s && typeof s === 'string' && s.trim() !== '' && s !== key) return s;
+          } catch (_) {}
+          return fallback;
+        };
+
+        attachHoverTooltip(planeInput, t('speed_filter_plane_heading','Aircraft measurements'), t('speed_filter_plane_help','Show or hide measurements recorded while flying.'));
+        attachHoverTooltip(carInput,   t('speed_filter_car_heading','Car measurements'),      t('speed_filter_car_help','Show or hide measurements recorded while travelling by car.'));
+        attachHoverTooltip(pedInput,   t('speed_filter_ped_heading','On-foot measurements'),  t('speed_filter_ped_help','Show or hide measurements recorded while travelling on foot.'));
 
         // prevent map drag/zoom while clicking inside the control
         L.DomEvent.disableClickPropagation(div);
