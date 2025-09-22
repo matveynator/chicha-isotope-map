@@ -542,6 +542,8 @@ CREATE TABLE IF NOT EXISTS short_links (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
+  ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
 `
@@ -592,6 +594,8 @@ CREATE TABLE IF NOT EXISTS short_links (
   target     TEXT NOT NULL UNIQUE,
   created_at BIGINT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
+  ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
 `
@@ -646,6 +650,8 @@ CREATE TABLE IF NOT EXISTS short_links (
   target     TEXT UNIQUE NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
+  ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
 `

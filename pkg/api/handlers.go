@@ -97,9 +97,9 @@ func (h *Handler) acquirePermit(w http.ResponseWriter, r *http.Request, kind Req
 	return permit, true
 }
 
-// handleShorten issues short URLs for the current map view. We keep the logic
-// explicit instead of clever so operators can audit it easily, following the
-// proverb "Clear is better than clever".
+// handleShorten issues or finalizes short URLs for the current map view. We
+// keep the logic explicit instead of clever so operators can audit it easily,
+// following the proverb "Clear is better than clever".
 func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -127,7 +127,9 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		URL string `json:"url"`
+		URL    string `json:"url"`
+		Code   string `json:"code"`
+		Commit bool   `json:"commit"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		http.Error(w, "invalid payload", http.StatusBadRequest)
@@ -182,9 +184,19 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	code, err := h.DB.SaveShortLink(ctx, target, time.Now().UTC())
+        var (
+                code   string
+                stored bool
+        )
+
+        if payload.Commit {
+                code, err = h.DB.PersistShortLink(ctx, target, payload.Code, time.Now().UTC(), 0)
+                stored = (err == nil)
+        } else {
+		code, stored, err = h.DB.PreviewShortLink(ctx, target, 0)
+	}
 	if err != nil {
-		http.Error(w, "create short link", http.StatusInternalServerError)
+		http.Error(w, "short link unavailable", http.StatusInternalServerError)
 		if h.Logf != nil {
 			h.Logf("shorten failed for %q: %v", target, err)
 		}
@@ -194,10 +206,11 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 	shortURL := fmt.Sprintf("%s://%s/s/%s", scheme, host, code)
 
 	w.Header().Set("Cache-Control", "no-store")
-	h.respondJSON(w, map[string]string{
+	h.respondJSON(w, map[string]any{
 		"code":   code,
 		"short":  shortURL,
 		"target": target,
+		"stored": stored,
 	})
 }
 

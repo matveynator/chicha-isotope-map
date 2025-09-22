@@ -2,8 +2,10 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -13,53 +15,105 @@ import (
 // =========================
 
 const base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+const defaultShortCodeLength = 8
 
-// SaveShortLink stores or retrieves a short code for the provided target URL.
-// The design leans on channels instead of mutexes so we remain faithful to
-// Go's proverb "Don't communicate by sharing memory; share memory by
-// communicating." The generator goroutine already feeds idGenerator, therefore
-// we multiplex that channel inside a select so context cancellation works.
-func (db *Database) SaveShortLink(ctx context.Context, target string, now time.Time) (string, error) {
+// PreviewShortLink fetches an existing mapping or proposes a fresh random code.
+// We prefer explicit control flow over clever caching so operators can reason
+// about the behaviour — echoing the proverb "Clear is better than clever."
+// The helper never writes to the database; it simply avoids duplicates by
+// probing the current table and respects context cancellation so callers can
+// bail out early if the user navigates away.
+func (db *Database) PreviewShortLink(ctx context.Context, target string, length int) (code string, stored bool, err error) {
 	if db == nil || db.DB == nil {
-		return "", errors.New("database not initialized")
+		return "", false, errors.New("database not initialized")
 	}
 	cleaned := strings.TrimSpace(target)
 	if cleaned == "" {
-		return "", errors.New("empty target")
+		return "", false, errors.New("empty target")
 	}
 	if len(cleaned) > 4096 {
+		return "", false, errors.New("target too long")
+	}
+
+	if existing, err := db.lookupShortLinkByTarget(ctx, cleaned); err != nil {
+		return "", false, err
+	} else if existing != "" {
+		return existing, true, nil
+	}
+
+	code, err = db.randomUnusedCode(ctx, length)
+	if err != nil {
+		return "", false, err
+	}
+	return code, false, nil
+}
+
+// PersistShortLink inserts the provided mapping if it does not exist yet. We
+// accept an optional pre-selected code so the UI can reserve a string for the
+// user before they confirm copying, matching the "share memory by
+// communicating" proverb — the browser communicates the reservation back
+// instead of reaching for shared globals.
+func (db *Database) PersistShortLink(ctx context.Context, target, code string, now time.Time, length int) (string, error) {
+	if db == nil || db.DB == nil {
+		return "", errors.New("database not initialized")
+	}
+	cleanedTarget := strings.TrimSpace(target)
+	if cleanedTarget == "" {
+		return "", errors.New("empty target")
+	}
+	if len(cleanedTarget) > 4096 {
 		return "", errors.New("target too long")
 	}
 
-	// Fast path: existing mapping
-	if existing, err := db.lookupShortLinkByTarget(ctx, cleaned); err != nil {
+	if existing, err := db.lookupShortLinkByTarget(ctx, cleanedTarget); err != nil {
 		return "", err
 	} else if existing != "" {
 		return existing, nil
 	}
 
-	for {
+	trimmedCode := strings.TrimSpace(code)
+	if trimmedCode != "" {
+		if !isBase62(trimmedCode) {
+			return "", errors.New("invalid code")
+		}
+	}
+
+	const maxAttempts = 64
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
-		case id := <-db.idGenerator:
-			if id <= 0 {
-				continue
-			}
-			code := encodeBase62(id)
-			if err := db.insertShortLink(ctx, code, cleaned, now); err != nil {
-				if isUniqueConstraintError(err) {
-					// Another request might have inserted the target concurrently.
-					if existing, lookupErr := db.lookupShortLinkByTarget(ctx, cleaned); lookupErr == nil && existing != "" {
-						return existing, nil
-					}
-					continue
-				}
+		default:
+		}
+
+		candidate := trimmedCode
+		if candidate == "" {
+			generated, err := db.randomUnusedCode(ctx, length)
+			if err != nil {
 				return "", err
 			}
-			return code, nil
+			candidate = generated
+		} else {
+			exists, err := db.shortCodeExists(ctx, candidate)
+			if err != nil {
+				return "", err
+			}
+			if exists {
+				trimmedCode = ""
+				continue
+			}
 		}
+
+		if err := db.insertShortLink(ctx, candidate, cleanedTarget, now); err != nil {
+			if isUniqueConstraintError(err) {
+				trimmedCode = ""
+				continue
+			}
+			return "", err
+		}
+		return candidate, nil
 	}
+	return "", fmt.Errorf("persist short link: exhausted %d attempts", maxAttempts)
 }
 
 // ResolveShortLink expands a short code into the stored absolute URL.
@@ -115,6 +169,108 @@ func (db *Database) lookupShortLinkByTarget(ctx context.Context, target string) 
 	return code, nil
 }
 
+// shortCodeExists reports whether a specific code is already in use. We keep the
+// logic simple — a single SELECT with LIMIT — so databases can leverage indexes
+// efficiently even at scale.
+func (db *Database) shortCodeExists(ctx context.Context, code string) (bool, error) {
+	trimmed := strings.TrimSpace(code)
+	if trimmed == "" {
+		return false, nil
+	}
+
+	query := ""
+	var arg any
+	switch strings.ToLower(db.Driver) {
+	case "pgx", "duckdb":
+		query = "SELECT 1 FROM short_links WHERE code = $1 LIMIT 1"
+		arg = trimmed
+	default:
+		query = "SELECT 1 FROM short_links WHERE code = ? LIMIT 1"
+		arg = trimmed
+	}
+
+	var dummy int
+	err := db.DB.QueryRowContext(ctx, query, arg).Scan(&dummy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// randomUnusedCode draws random characters until it finds a code that is not
+// present in the database. Rejection sampling keeps the loop simple while still
+// guaranteeing uniform distribution across the alphabet.
+func (db *Database) randomUnusedCode(ctx context.Context, length int) (string, error) {
+	if length <= 0 {
+		length = defaultShortCodeLength
+	}
+	const maxAttempts = 64
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+		candidate, err := randomBase62String(length)
+		if err != nil {
+			return "", err
+		}
+		exists, err := db.shortCodeExists(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("random code generation exhausted %d attempts", maxAttempts)
+}
+
+// randomBase62String draws secure random bytes and maps them to the base62
+// alphabet. We avoid math/rand so short links remain unpredictable.
+func randomBase62String(length int) (string, error) {
+	if length <= 0 {
+		length = defaultShortCodeLength
+	}
+	buf := make([]byte, length)
+	for i := 0; i < length; i++ {
+		var b [1]byte
+		for {
+			if _, err := rand.Read(b[:]); err != nil {
+				return "", err
+			}
+			v := int(b[0])
+			if v < 62*4 { // 248 keeps rejection rate low while staying uniform.
+				buf[i] = base62Alphabet[v%62]
+				break
+			}
+		}
+	}
+	return string(buf), nil
+}
+
+// isBase62 validates that the provided code only contains characters from our
+// alphabet. Keeping validation local avoids duplicating logic across callers.
+func isBase62(code string) bool {
+	if code == "" {
+		return false
+	}
+	for i := 0; i < len(code); i++ {
+		c := code[i]
+		switch {
+		case c >= '0' && c <= '9':
+		case c >= 'A' && c <= 'Z':
+		case c >= 'a' && c <= 'z':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // insertShortLink writes the mapping for code → target into the database.
 func (db *Database) insertShortLink(ctx context.Context, code, target string, now time.Time) error {
 	switch strings.ToLower(db.Driver) {
@@ -134,21 +290,6 @@ func (db *Database) insertShortLink(ctx context.Context, code, target string, no
 			code, target, now.Unix())
 		return err
 	}
-}
-
-// encodeBase62 renders an integer into a compact alphanumeric string.
-func encodeBase62(n int64) string {
-	if n <= 0 {
-		return "0"
-	}
-	var buf [11]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = base62Alphabet[n%62]
-		n /= 62
-	}
-	return string(buf[i:])
 }
 
 // isUniqueConstraintError normalizes driver-specific duplicate errors.

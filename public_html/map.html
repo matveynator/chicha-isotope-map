@@ -1722,6 +1722,7 @@ let shortLinkTimer = null;
 let shortLinkAbort = null;
 let lastShortLinkFull = '';
 let pendingShortLinkFull = '';
+let shortLinkCommitPromise = null;
 
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
@@ -3253,7 +3254,7 @@ function requestShortLink(fullURL) {
   const options = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: fullURL })
+    body: JSON.stringify({ url: fullURL, commit: false })
   };
   if (controller) {
     options.signal = controller.signal;
@@ -3270,15 +3271,15 @@ function requestShortLink(fullURL) {
       if (pendingShortLinkFull !== fullURL) {
         return;
       }
-      if (!data || !data.short) {
+      if (!data || !data.short || !data.target) {
         throw new Error('shorten response missing URL');
       }
-      lastShortLinkFull = fullURL;
+      lastShortLinkFull = data.target;
       pendingShortLinkFull = '';
       if (controller === shortLinkAbort) {
         shortLinkAbort = null;
       }
-      applyShortLink(data.short);
+      applyShortLink(data);
     })
     .catch(err => {
       if (err && err.name === 'AbortError') {
@@ -3295,52 +3296,139 @@ function requestShortLink(fullURL) {
     });
 }
 
-function applyShortLink(shortURL) {
-  if (!shortLinkBox) return;
+function applyShortLink(details) {
+  if (!shortLinkBox || !details) return;
+  const shortURL = details.short || '';
+  const code = details.code || '';
+  const target = details.target || '';
+  const stored = details.stored ? 'true' : 'false';
+  if (!shortURL || !target) {
+    hideShortLink();
+    return;
+  }
   shortLinkBox.style.display = 'block';
   shortLinkBox.textContent = shortURL;
   shortLinkBox.dataset.href = shortURL;
+  shortLinkBox.dataset.code = code;
+  shortLinkBox.dataset.target = target;
+  shortLinkBox.dataset.persisted = stored;
 }
 
 function hideShortLink() {
   if (!shortLinkBox) return;
   shortLinkBox.style.display = 'none';
   delete shortLinkBox.dataset.href;
+  delete shortLinkBox.dataset.code;
+  delete shortLinkBox.dataset.target;
+  delete shortLinkBox.dataset.persisted;
 }
 
-function copyShortLinkToClipboard(link) {
-  const signalSuccess = () => {
-    if (!shortLinkBox) return;
-    shortLinkBox.classList.add('copied');
-    setTimeout(() => shortLinkBox.classList.remove('copied'), 600);
-  };
-
-  const fallbackCopy = () => {
-    const textarea = document.createElement('textarea');
-    textarea.value = link;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.top = '-1000px';
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-      if (document.execCommand('copy')) {
-        signalSuccess();
-      }
-    } catch (err) {
-      console.error('copy failed', err);
-    } finally {
-      document.body.removeChild(textarea);
-    }
-  };
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(link)
-      .then(signalSuccess)
-      .catch(() => fallbackCopy());
-  } else {
-    fallbackCopy();
+// finalizeShortLink persists the reserved code only after the visitor copies it.
+// Returning a promise keeps the UI non-blocking while honoring the "share memory
+// by communicating" proverb — the page communicates with the backend instead of
+// toggling global flags.
+function finalizeShortLink() {
+  if (!shortLinkBox) {
+    return Promise.reject(new Error('short link box missing'));
   }
+  const persisted = shortLinkBox.dataset.persisted === 'true';
+  const href = shortLinkBox.dataset.href || '';
+  const target = shortLinkBox.dataset.target || '';
+  const code = shortLinkBox.dataset.code || '';
+  if (!target) {
+    return Promise.reject(new Error('missing short link target'));
+  }
+  if (persisted && href) {
+    return Promise.resolve(href);
+  }
+  if (shortLinkCommitPromise) {
+    return shortLinkCommitPromise;
+  }
+
+  const payload = { url: target, commit: true };
+  if (code) {
+    payload.code = code;
+  }
+
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  };
+
+  const pending = fetch('/api/shorten', options)
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('commit failed: ' + response.status);
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (!data || !data.short || !data.target) {
+        throw new Error('shorten response missing URL');
+      }
+      lastShortLinkFull = data.target;
+      pendingShortLinkFull = '';
+      applyShortLink(data);
+      return data.short;
+    });
+
+  shortLinkCommitPromise = pending;
+  pending.finally(() => {
+    if (shortLinkCommitPromise === pending) {
+      shortLinkCommitPromise = null;
+    }
+  });
+  return pending;
+}
+
+// copyShortLinkToClipboard waits for the backend to confirm persistence so
+// users never copy a dangling preview link. The clipboard work stays inside the
+// fulfilled branch to avoid race conditions when multiple copy attempts happen.
+function copyShortLinkToClipboard() {
+  if (!shortLinkBox) return;
+  finalizeShortLink()
+    .then(link => {
+      if (!link) {
+        throw new Error('empty short link');
+      }
+
+      const signalSuccess = () => {
+        if (!shortLinkBox) return;
+        shortLinkBox.classList.add('copied');
+        setTimeout(() => shortLinkBox.classList.remove('copied'), 600);
+      };
+
+      const fallbackCopy = () => {
+        const textarea = document.createElement('textarea');
+        textarea.value = link;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-1000px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          if (document.execCommand('copy')) {
+            signalSuccess();
+          }
+        } catch (err) {
+          console.error('copy failed', err);
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link)
+          .then(signalSuccess)
+          .catch(() => fallbackCopy());
+      } else {
+        fallbackCopy();
+      }
+    })
+    .catch(err => {
+      console.error('finalize short link failed', err);
+    });
 }
 
 function loadMapFromUrl() {
@@ -3414,16 +3502,12 @@ function initializeUIElements() {
     shortLinkBox.setAttribute('title', hint);
     shortLinkBox.setAttribute('aria-label', hint);
     shortLinkBox.addEventListener('click', () => {
-      const link = shortLinkBox.dataset.href;
-      if (!link) return;
-      copyShortLinkToClipboard(link);
+      copyShortLinkToClipboard();
     });
     shortLinkBox.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        const link = shortLinkBox.dataset.href;
-        if (!link) return;
-        copyShortLinkToClipboard(link);
+        copyShortLinkToClipboard();
       }
     });
   }
