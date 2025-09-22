@@ -42,6 +42,17 @@ type result struct {
 	err  error
 }
 
+// progressUpdate summarises archive build status for the logging goroutine.
+// Using a struct keeps the channel communication explicit and avoids mutexes,
+// echoing the proverb "Don't communicate by sharing memory; share memory by
+// communicating".
+type progressUpdate struct {
+	totalTracks     int64
+	processedTracks int64
+	bytesWritten    int64
+	currentTrack    string
+}
+
 // Start launches the background worker.
 // The worker exports every known track into temporary .cim JSON files, packs
 // them into a tar.gz archive, and atomically replaces the destination file once
@@ -62,6 +73,17 @@ func Start(
 	buildResults := make(chan result, 1)
 
 	destPath = filepath.Clean(destPath)
+	normalisedPath, err := normaliseArchiveDestination(destPath)
+	if err != nil && logf != nil {
+		logf("json archive destination normalisation warning for %q: %v", destPath, err)
+	}
+	if strings.TrimSpace(normalisedPath) != "" {
+		destPath = normalisedPath
+	}
+	archiveDir := filepath.Dir(destPath)
+	if logf != nil {
+		logf("json archive writer targeting %s (work dir %s)", destPath, archiveDir)
+	}
 
 	// If a previous run already produced an archive we can reuse it immediately
 	// so HTTP handlers keep responding without waiting for the fresh build to
@@ -95,7 +117,7 @@ func Start(
 			case <-ctx.Done():
 				return
 			case <-buildRequests:
-				res := runBuild(ctx, db, dbType, destPath)
+				res := runBuild(ctx, db, dbType, destPath, logf)
 				if logf != nil {
 					if res.err != nil {
 						logf("json archive rebuild failed: %v", res.err)
@@ -188,8 +210,8 @@ func (g *Generator) Fetch(ctx context.Context) (Info, error) {
 // ============================
 
 // runBuild wraps buildArchive so the builder goroutine stays small.
-func runBuild(ctx context.Context, db *database.Database, dbType, destPath string) result {
-	path, modTime, err := buildArchive(ctx, db, dbType, destPath)
+func runBuild(ctx context.Context, db *database.Database, dbType, destPath string, logf func(string, ...any)) result {
+	path, modTime, err := buildArchive(ctx, db, dbType, destPath, logf)
 	if err != nil {
 		return result{err: err}
 	}
@@ -200,12 +222,24 @@ func runBuild(ctx context.Context, db *database.Database, dbType, destPath strin
 // a temporary JSON file, and writes them into a tar.gz bundle. We only replace
 // the destination after the build succeeds so clients never observe a partial
 // archive.
-func buildArchive(ctx context.Context, db *database.Database, dbType, destPath string) (string, time.Time, error) {
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+func buildArchive(ctx context.Context, db *database.Database, dbType, destPath string, logf func(string, ...any)) (string, time.Time, error) {
+	destDir := filepath.Dir(destPath)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return "", time.Time{}, fmt.Errorf("create archive directory: %w", err)
 	}
 
-	tmpFile, err := os.CreateTemp(filepath.Dir(destPath), "json-*.tar.gz")
+	tmpTrackDir := filepath.Join(destDir, ".json-archive-tracks")
+	if err := os.MkdirAll(tmpTrackDir, 0o755); err != nil {
+		return "", time.Time{}, fmt.Errorf("create track temp dir: %w", err)
+	}
+	if logf != nil {
+		logf("json archive build starting: target=%s temp=%s", destPath, tmpTrackDir)
+	}
+	if err := purgeStaleTrackFiles(tmpTrackDir, logf); err != nil {
+		return "", time.Time{}, err
+	}
+
+	tmpFile, err := os.CreateTemp(destDir, "json-*.tar.gz")
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("tmp archive: %w", err)
 	}
@@ -215,11 +249,39 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		_ = os.Remove(tmpFile.Name())
 	}
 
-	gz := gzip.NewWriter(tmpFile)
+	counter := &countingWriter{Writer: tmpFile}
+	gz := gzip.NewWriter(counter)
 	tarw := tar.NewWriter(gz)
+
+	totalTracks, err := db.CountTracks(ctx)
+	if err != nil {
+		tarw.Close()
+		gz.Close()
+		cleanup()
+		return "", time.Time{}, fmt.Errorf("count tracks: %w", err)
+	}
+
+	updates := make(chan progressUpdate, 64)
+	progressWait := func() {}
+	if logf != nil {
+		progressWait = startProgressLogger(ctx, logf, destPath, updates)
+	}
+	defer func() {
+		close(updates)
+		progressWait()
+	}()
+
+	sendProgress := func(processed int64, current string) {
+		select {
+		case updates <- progressUpdate{totalTracks: totalTracks, processedTracks: processed, bytesWritten: counter.Bytes(), currentTrack: current}:
+		default:
+		}
+	}
+	sendProgress(0, "")
 
 	pageSize := 256
 	startAfter := ""
+	processed := int64(0)
 	buildCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -262,13 +324,15 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		// step the marker query would block waiting for the still-open summary
 		// cursor, leading to the deadlock observed at startup.
 		for _, summary := range summaries {
-			if err := appendTrack(buildCtx, tarw, db, dbType, summary); err != nil {
+			if err := appendTrack(buildCtx, tarw, db, dbType, summary, tmpTrackDir); err != nil {
 				cancel()
 				tarw.Close()
 				gz.Close()
 				cleanup()
 				return "", time.Time{}, err
 			}
+			processed++
+			sendProgress(processed, summary.TrackID)
 		}
 
 		if len(summaries) < pageSize || lastID == "" {
@@ -291,6 +355,8 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		return "", time.Time{}, fmt.Errorf("close archive file: %w", err)
 	}
 
+	sendProgress(processed, "finalising")
+
 	if err := replaceFile(tmpFile.Name(), destPath); err != nil {
 		cleanup()
 		return "", time.Time{}, err
@@ -301,13 +367,15 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		return "", time.Time{}, fmt.Errorf("stat archive: %w", err)
 	}
 
+	sendProgress(processed, "complete")
+
 	return destPath, info.ModTime(), nil
 }
 
 // appendTrack exports a single track into a temporary .cim JSON file and then
 // copies it into the tar writer. We stream markers so archives stay memory
 // efficient even for very long tracks.
-func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbType string, summary database.TrackSummary) error {
+func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbType string, summary database.TrackSummary, tmpDir string) error {
 	if strings.TrimSpace(summary.TrackID) == "" || summary.MarkerCount == 0 {
 		return nil
 	}
@@ -324,7 +392,7 @@ func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbT
 		}
 	}
 
-	tmp, err := os.CreateTemp("", "track-*.cim")
+	tmp, err := os.CreateTemp(tmpDir, "track-*.cim")
 	if err != nil {
 		return fmt.Errorf("tmp track %s: %w", summary.TrackID, err)
 	}
@@ -548,4 +616,173 @@ func replaceFile(tmpPath, destPath string) error {
 		}
 	}
 	return nil
+}
+
+// normaliseArchiveDestination ensures we have a concrete file path even when the
+// operator supplied a directory. This avoids surprising os.Rename failures and
+// keeps configuration simple and explicit.
+func normaliseArchiveDestination(path string) (string, error) {
+	cleaned := filepath.Clean(path)
+	if cleaned == "." {
+		return cleaned, nil
+	}
+
+	info, err := os.Stat(cleaned)
+	switch {
+	case err == nil:
+		if info.IsDir() {
+			return filepath.Join(cleaned, "daily-json.tar.gz"), nil
+		}
+		return cleaned, nil
+	case os.IsNotExist(err):
+		if strings.HasSuffix(path, string(os.PathSeparator)) {
+			dir := filepath.Clean(path)
+			return filepath.Join(dir, "daily-json.tar.gz"), nil
+		}
+		return cleaned, nil
+	default:
+		return cleaned, err
+	}
+}
+
+// purgeStaleTrackFiles removes leftover per-track temp files so fresh builds do
+// not slowly consume disk space if the process crashed mid-run previously. The
+// helper leans on logging instead of failing hard, following "A little copying is
+// better than a little dependency" by avoiding extra cleanup packages.
+func purgeStaleTrackFiles(dir string, logf func(string, ...any)) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("scan track temp dir: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "track-") || !strings.HasSuffix(name, ".cim") {
+			continue
+		}
+		full := filepath.Join(dir, name)
+		if removeErr := os.Remove(full); removeErr != nil && logf != nil {
+			logf("json archive temp removal warning: %s: %v", full, removeErr)
+		}
+	}
+	return nil
+}
+
+// startProgressLogger spins a goroutine that periodically prints build
+// milestones. Returning a wait function lets the caller coordinate shutdown via
+// channels without resorting to mutexes.
+func startProgressLogger(ctx context.Context, logf func(string, ...any), destPath string, updates <-chan progressUpdate) func() {
+	if logf == nil {
+		return func() {}
+	}
+	done := make(chan struct{})
+	go logProgress(ctx, logf, destPath, updates, done)
+	return func() { <-done }
+}
+
+// logProgress aggregates updates and emits human friendly progress messages.
+// A ticker throttles output so huge archives do not flood logs while still
+// offering operators visibility into long-running builds.
+func logProgress(
+	ctx context.Context,
+	logf func(string, ...any),
+	destPath string,
+	updates <-chan progressUpdate,
+	done chan<- struct{},
+) {
+	defer close(done)
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	var last progressUpdate
+	haveUpdate := false
+
+	emit := func(prefix string) {
+		if !haveUpdate {
+			return
+		}
+		percent := computePercent(last.processedTracks, last.totalTracks)
+		current := last.currentTrack
+		if strings.TrimSpace(current) == "" {
+			current = "startup"
+		}
+		logf("json archive %s: %.1f%% (%d/%d tracks) %s written to %s (current=%s)",
+			prefix,
+			percent,
+			last.processedTracks,
+			last.totalTracks,
+			formatBytes(last.bytesWritten),
+			destPath,
+			current,
+		)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			emit("cancelled")
+			return
+		case update, ok := <-updates:
+			if !ok {
+				emit("complete")
+				return
+			}
+			last = update
+			haveUpdate = true
+		case <-ticker.C:
+			emit("progress")
+		}
+	}
+}
+
+// computePercent returns a percentage suitable for logging, guarding against
+// division by zero so empty databases still report useful output.
+func computePercent(done, total int64) float64 {
+	if total <= 0 {
+		if done <= 0 {
+			return 100.0
+		}
+		return 100.0
+	}
+	return float64(done) / float64(total) * 100.0
+}
+
+// countingWriter wraps another writer and tracks how many bytes went through.
+// This keeps progress reporting cheap and avoids querying the filesystem on each
+// update.
+type countingWriter struct {
+	io.Writer
+	n int64
+}
+
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	n, err := cw.Writer.Write(p)
+	cw.n += int64(n)
+	return n, err
+}
+
+// Bytes reports how many bytes were written so far.
+func (cw *countingWriter) Bytes() int64 {
+	return cw.n
+}
+
+// formatBytes pretty-prints byte counts using binary units, keeping log output
+// digestible even for 300+ GiB archives.
+func formatBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%dB", n)
+	}
+	units := []string{"KiB", "MiB", "GiB", "TiB", "PiB"}
+	value := float64(n)
+	for _, suffix := range units {
+		value /= unit
+		if value < unit {
+			return fmt.Sprintf("%.1f%s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.1fEiB", value/unit)
 }
