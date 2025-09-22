@@ -323,6 +323,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Date-first variant accelerates archive/year pagination that filters primarily by time.
 			{"idx_markers_date_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid ON markers (date, trackID)`},
+			{"idx_markers_date_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid_id ON markers (date, trackID, id)`},
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
@@ -358,6 +360,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Date-first variant accelerates archive/year pagination that filters primarily by time.
 			{"idx_markers_date_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid ON markers (date, trackID)`},
+			{"idx_markers_date_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid_id ON markers (date, trackID, id)`},
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
@@ -394,6 +398,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Date-first variant accelerates archive/year pagination that filters primarily by time.
 			{"idx_markers_date_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid ON markers (date, trackID)`},
+			{"idx_markers_date_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid_id ON markers (date, trackID, id)`},
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},
@@ -430,6 +436,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Date-first variant accelerates archive/year pagination that filters primarily by time.
 			{"idx_markers_date_trackid",
 				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid ON markers (date, trackID)`},
+			{"idx_markers_date_trackid_id",
+				`CREATE INDEX IF NOT EXISTS idx_markers_date_trackid_id ON markers (date, trackID, id)`},
 			// Dedicated date helpers keep slider filtering responsive even with WAL on.
 			{"idx_markers_trackid_date",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_date ON markers (trackID, date)`},

@@ -33,12 +33,20 @@ type Handler struct {
 	Archive *jsonarchive.Generator
 	Limiter *RateLimiter
 	Logf    func(string, ...any)
+	Cache   *ResponseCache
 }
 
 // NewHandler constructs a Handler with sane defaults.
 // Logf is optional; pass nil if logging is not required.
 func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Generator, limiter *RateLimiter, logf func(string, ...any)) *Handler {
-	return &Handler{DB: db, DBType: dbType, Archive: archive, Limiter: limiter, Logf: logf}
+	return &Handler{
+		DB:      db,
+		DBType:  dbType,
+		Archive: archive,
+		Limiter: limiter,
+		Logf:    logf,
+		Cache:   NewResponseCache(24 * time.Hour),
+	}
 }
 
 // Register attaches API routes to the provided mux. We keep the method tiny
@@ -184,15 +192,15 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-        var (
-                code   string
-                stored bool
-        )
+	var (
+		code   string
+		stored bool
+	)
 
-        if payload.Commit {
-                code, err = h.DB.PersistShortLink(ctx, target, payload.Code, time.Now().UTC(), 0)
-                stored = (err == nil)
-        } else {
+	if payload.Commit {
+		code, err = h.DB.PersistShortLink(ctx, target, payload.Code, time.Now().UTC(), 0)
+		stored = (err == nil)
+	} else {
 		code, stored, err = h.DB.PreviewShortLink(ctx, target, 0)
 	}
 	if err != nil {
@@ -260,8 +268,7 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"listTracks": map[string]any{
 			"method":      "GET",
 			"path":        "/api/tracks",
-			"query":       []string{"startAfter", "limit"},
-			"description": "Returns track summaries sorted alphabetically. Each summary exposes an index and apiURL. Use nextStartAfter to continue pagination.",
+			"description": "Returns all track summaries sorted alphabetically. Each summary exposes an index and apiURL.",
 		},
 		"trackByNumber": map[string]any{
 			"method":      "GET",
@@ -277,14 +284,12 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"tracksByYear": map[string]any{
 			"method":      "GET",
 			"path":        "/api/tracks/years/{year}",
-			"query":       []string{"startAfter", "limit"},
-			"description": "Lists tracks that contain markers within the given year. Pagination mirrors /api/tracks and keeps global indices.",
+			"description": "Lists all tracks that contain markers within the given year.",
 		},
 		"tracksByMonth": map[string]any{
 			"method":      "GET",
 			"path":        "/api/tracks/months/{year}/{month}",
-			"query":       []string{"startAfter", "limit"},
-			"description": "Lists tracks for a calendar month using the same pagination fields.",
+			"description": "Lists all tracks for a calendar month without pagination.",
 		},
 	}
 	if h.Archive != nil {
@@ -326,66 +331,15 @@ func (h *Handler) handleTracksList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	q := r.URL.Query()
-	startAfter := q.Get("startAfter")
-	limit := clampInt(parseIntDefault(q.Get("limit"), 100), 1, 1000)
-
-	tracksCh, errCh := h.DB.StreamTrackSummaries(ctx, startAfter, limit, h.DBType)
-
-	summaries, lastTrackID, err := collectTrackSummaries(ctx, tracksCh, errCh, limit)
+	data, err := h.cachedJSON(ctx, "tracks:list", func(ctx context.Context) ([]byte, error) {
+		return h.buildTracksListJSON(ctx)
+	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			http.Error(w, "request cancelled", http.StatusRequestTimeout)
-			return
-		}
-		http.Error(w, "track list error", http.StatusInternalServerError)
-		if h.Logf != nil {
-			h.Logf("track list error: %v", err)
-		}
+		h.handleCacheError(w, "track list", err)
 		return
 	}
 
-	startIndex, err := h.finalizeSummaries(ctx, startAfter, summaries)
-	if err != nil {
-		http.Error(w, "track index error", http.StatusInternalServerError)
-		if h.Logf != nil {
-			h.Logf("track index error: %v", err)
-		}
-		return
-	}
-
-	next := ""
-	if len(summaries) == limit && lastTrackID != "" {
-		next = lastTrackID
-	}
-
-	totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
-	if err != nil {
-		http.Error(w, "count tracks", http.StatusInternalServerError)
-		return
-	}
-
-	resp := struct {
-		StartAfter     string                  `json:"startAfter"`
-		Limit          int                     `json:"limit"`
-		StartIndex     int64                   `json:"startIndex,omitempty"`
-		Tracks         []database.TrackSummary `json:"tracks"`
-		NextStartAfter string                  `json:"nextStartAfter,omitempty"`
-		TotalTracks    int64                   `json:"totalTracks"`
-		LatestTrackID  string                  `json:"latestTrackID,omitempty"`
-		Disclaimers    map[string]string       `json:"disclaimers"`
-	}{
-		StartAfter:     startAfter,
-		Limit:          limit,
-		StartIndex:     startIndex,
-		Tracks:         summaries,
-		NextStartAfter: next,
-		TotalTracks:    totalTracks,
-		LatestTrackID:  latestTrackID,
-		Disclaimers:    trackjson.Disclaimers,
-	}
-
-	h.respondJSON(w, resp)
+	writeJSONBytes(w, data)
 }
 
 // handleTrackData streams markers from a single track using ID ranges.
@@ -490,80 +444,16 @@ func (h *Handler) handleTracksByYear(w http.ResponseWriter, r *http.Request) {
 	start := time.Date(year, time.January, 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(1, 0, 0)
 
-	q := r.URL.Query()
-	startAfter := q.Get("startAfter")
-	limit := clampInt(parseIntDefault(q.Get("limit"), 100), 1, 1000)
-
-	tracksCh, errCh := h.DB.StreamTrackSummariesByDateRange(ctx, startAfter, limit, start.Unix(), end.Unix(), h.DBType)
-
-	summaries, lastTrackID, streamErr := collectTrackSummaries(ctx, tracksCh, errCh, limit)
-	if streamErr != nil {
-		if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
-			http.Error(w, "request cancelled", http.StatusRequestTimeout)
-			return
-		}
-		http.Error(w, "track list error", http.StatusInternalServerError)
-		if h.Logf != nil {
-			h.Logf("tracks by year %d: %v", year, streamErr)
-		}
-		return
-	}
-
-	startIndex, err := h.finalizeSummaries(ctx, startAfter, summaries)
+	cacheKey := fmt.Sprintf("tracks:year:%d", year)
+	data, err := h.cachedJSON(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+		return h.buildTracksByYearJSON(ctx, year, start, end)
+	})
 	if err != nil {
-		http.Error(w, "track index error", http.StatusInternalServerError)
-		if h.Logf != nil {
-			h.Logf("tracks by year %d index error: %v", year, err)
-		}
+		h.handleCacheError(w, fmt.Sprintf("tracks by year %d", year), err)
 		return
 	}
 
-	next := ""
-	if len(summaries) == limit && lastTrackID != "" {
-		next = lastTrackID
-	}
-
-	rangeTotal, err := h.DB.CountTracksInRange(ctx, start.Unix(), end.Unix(), h.DBType)
-	if err != nil {
-		http.Error(w, "count tracks", http.StatusInternalServerError)
-		return
-	}
-
-	totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
-	if err != nil {
-		http.Error(w, "count tracks", http.StatusInternalServerError)
-		return
-	}
-
-	resp := struct {
-		Year           int                     `json:"year"`
-		RangeStart     int64                   `json:"rangeStart"`
-		RangeEnd       int64                   `json:"rangeEnd"`
-		StartAfter     string                  `json:"startAfter"`
-		StartIndex     int64                   `json:"startIndex,omitempty"`
-		Limit          int                     `json:"limit"`
-		Tracks         []database.TrackSummary `json:"tracks"`
-		NextStartAfter string                  `json:"nextStartAfter,omitempty"`
-		RangeTotal     int64                   `json:"rangeTotal"`
-		TotalTracks    int64                   `json:"totalTracks"`
-		LatestTrackID  string                  `json:"latestTrackID,omitempty"`
-		Disclaimers    map[string]string       `json:"disclaimers"`
-	}{
-		Year:           year,
-		RangeStart:     start.Unix(),
-		RangeEnd:       end.Unix(),
-		StartAfter:     startAfter,
-		StartIndex:     startIndex,
-		Limit:          limit,
-		Tracks:         summaries,
-		NextStartAfter: next,
-		RangeTotal:     rangeTotal,
-		TotalTracks:    totalTracks,
-		LatestTrackID:  latestTrackID,
-		Disclaimers:    trackjson.Disclaimers,
-	}
-
-	h.respondJSON(w, resp)
+	writeJSONBytes(w, data)
 }
 
 // handleTracksByMonth narrows track summaries to a calendar month.
@@ -603,194 +493,31 @@ func (h *Handler) handleTracksByMonth(w http.ResponseWriter, r *http.Request) {
 	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 1, 0)
 
-	q := r.URL.Query()
-	startAfter := q.Get("startAfter")
-	limit := clampInt(parseIntDefault(q.Get("limit"), 100), 1, 1000)
-
-	tracksCh, errCh := h.DB.StreamTrackSummariesByDateRange(ctx, startAfter, limit, start.Unix(), end.Unix(), h.DBType)
-
-	summaries, lastTrackID, streamErr := collectTrackSummaries(ctx, tracksCh, errCh, limit)
-	if streamErr != nil {
-		if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
-			http.Error(w, "request cancelled", http.StatusRequestTimeout)
-			return
-		}
-		http.Error(w, "track list error", http.StatusInternalServerError)
-		if h.Logf != nil {
-			h.Logf("tracks by month %04d-%02d: %v", year, month, streamErr)
-		}
-		return
-	}
-
-	startIndex, err := h.finalizeSummaries(ctx, startAfter, summaries)
+	cacheKey := fmt.Sprintf("tracks:month:%04d-%02d", year, month)
+	data, err := h.cachedJSON(ctx, cacheKey, func(ctx context.Context) ([]byte, error) {
+		return h.buildTracksByMonthJSON(ctx, year, month, start, end)
+	})
 	if err != nil {
-		http.Error(w, "track index error", http.StatusInternalServerError)
-		if h.Logf != nil {
-			h.Logf("tracks by month %04d-%02d index error: %v", year, month, err)
-		}
+		h.handleCacheError(w, fmt.Sprintf("tracks by month %04d-%02d", year, month), err)
 		return
 	}
 
-	next := ""
-	if len(summaries) == limit && lastTrackID != "" {
-		next = lastTrackID
-	}
-
-	rangeTotal, err := h.DB.CountTracksInRange(ctx, start.Unix(), end.Unix(), h.DBType)
-	if err != nil {
-		http.Error(w, "count tracks", http.StatusInternalServerError)
-		return
-	}
-
-	totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
-	if err != nil {
-		http.Error(w, "count tracks", http.StatusInternalServerError)
-		return
-	}
-
-	resp := struct {
-		Year           int                     `json:"year"`
-		Month          int                     `json:"month"`
-		RangeStart     int64                   `json:"rangeStart"`
-		RangeEnd       int64                   `json:"rangeEnd"`
-		StartAfter     string                  `json:"startAfter"`
-		StartIndex     int64                   `json:"startIndex,omitempty"`
-		Limit          int                     `json:"limit"`
-		Tracks         []database.TrackSummary `json:"tracks"`
-		NextStartAfter string                  `json:"nextStartAfter,omitempty"`
-		RangeTotal     int64                   `json:"rangeTotal"`
-		TotalTracks    int64                   `json:"totalTracks"`
-		LatestTrackID  string                  `json:"latestTrackID,omitempty"`
-		Disclaimers    map[string]string       `json:"disclaimers"`
-	}{
-		Year:           year,
-		Month:          month,
-		RangeStart:     start.Unix(),
-		RangeEnd:       end.Unix(),
-		StartAfter:     startAfter,
-		StartIndex:     startIndex,
-		Limit:          limit,
-		Tracks:         summaries,
-		NextStartAfter: next,
-		RangeTotal:     rangeTotal,
-		TotalTracks:    totalTracks,
-		LatestTrackID:  latestTrackID,
-		Disclaimers:    trackjson.Disclaimers,
-	}
-
-	h.respondJSON(w, resp)
+	writeJSONBytes(w, data)
 }
 
 func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID string) {
 	ctx := r.Context()
 
-	summary, err := h.DB.GetTrackSummary(ctx, trackID, h.DBType)
+	data, err := h.cachedJSON(ctx, "track:data:"+trackID, func(ctx context.Context) ([]byte, error) {
+		return h.buildTrackDataJSON(ctx, trackID)
+	})
 	if err != nil {
-		http.Error(w, "summary error", http.StatusInternalServerError)
+		h.handleCacheError(w, fmt.Sprintf("track %s", trackID), err)
 		return
-	}
-	if summary.MarkerCount == 0 {
-		http.Error(w, "track not found", http.StatusNotFound)
-		return
-	}
-
-	trackIndex, err := h.DB.CountTrackIDsUpTo(ctx, trackID, h.DBType)
-	if err != nil {
-		http.Error(w, "track index error", http.StatusInternalServerError)
-		if h.Logf != nil {
-			h.Logf("track %s index error: %v", trackID, err)
-		}
-		return
-	}
-
-	q := r.URL.Query()
-	from := parseInt64Default(q.Get("from"), summary.FirstID)
-	if from < summary.FirstID {
-		from = summary.FirstID
-	}
-	to := parseInt64Default(q.Get("to"), summary.LastID)
-	if to <= 0 || to > summary.LastID {
-		to = summary.LastID
-	}
-	if from > to {
-		http.Error(w, "invalid range", http.StatusBadRequest)
-		return
-	}
-
-	chunkSize := clampInt(parseIntDefault(q.Get("chunk"), 1000), 1, 5000)
-
-	capEstimate := 0
-	if summary.MarkerCount > 0 {
-		if summary.MarkerCount > 4096 {
-			capEstimate = 4096
-		} else {
-			capEstimate = int(summary.MarkerCount)
-		}
-	}
-	markers := make([]trackjson.MarkerPayload, 0, capEstimate)
-
-	nextID := from
-	for nextID <= to {
-		select {
-		case <-ctx.Done():
-			http.Error(w, "request cancelled", http.StatusRequestTimeout)
-			return
-		default:
-		}
-
-		limit := chunkSize
-		remaining := to - nextID + 1
-		if remaining > 0 && int64(limit) > remaining {
-			limit = int(remaining)
-		}
-
-		markersCh, errCh := h.DB.StreamMarkersByTrackRange(ctx, trackID, nextID, to, limit, h.DBType)
-		got := false
-		var lastID int64
-
-		for marker := range markersCh {
-			got = true
-			lastID = marker.ID
-			payload, _ := trackjson.MakeMarkerPayload(marker)
-			markers = append(markers, payload)
-		}
-
-		if err := <-errCh; err != nil {
-			http.Error(w, "markers error", http.StatusInternalServerError)
-			if h.Logf != nil {
-				h.Logf("track %s markers error: %v", trackID, err)
-			}
-			return
-		}
-		if !got {
-			break
-		}
-		nextID = lastID + 1
 	}
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", trackjson.SafeCIMFilename(trackID)))
-
-	resp := struct {
-		TrackID     string                    `json:"trackID"`
-		TrackIndex  int64                     `json:"trackIndex"`
-		APIURL      string                    `json:"apiURL"`
-		FirstID     int64                     `json:"firstID"`
-		LastID      int64                     `json:"lastID"`
-		MarkerCount int64                     `json:"markerCount"`
-		Markers     []trackjson.MarkerPayload `json:"markers"`
-		Disclaimers map[string]string         `json:"disclaimers"`
-	}{
-		TrackID:     trackID,
-		TrackIndex:  trackIndex,
-		APIURL:      trackjson.TrackAPIPath(trackID),
-		FirstID:     summary.FirstID,
-		LastID:      summary.LastID,
-		MarkerCount: summary.MarkerCount,
-		Markers:     markers,
-		Disclaimers: trackjson.Disclaimers,
-	}
-
-	h.respondJSON(w, resp)
+	writeJSONBytes(w, data)
 }
 
 const (
@@ -910,6 +637,281 @@ func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) 
 }
 
 // =====================
+// Cached JSON builders
+// =====================
+
+func (h *Handler) buildTracksListJSON(ctx context.Context) ([]byte, error) {
+	tracksCh, errCh := h.DB.StreamTrackSummaries(ctx, "", 0, h.DBType)
+	summaries, _, err := collectTrackSummaries(ctx, tracksCh, errCh, 0)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, newAPIError(http.StatusRequestTimeout, "request cancelled", "", err)
+		}
+		return nil, newAPIError(http.StatusInternalServerError, "track list error", "track list error", err)
+	}
+	if _, err := h.finalizeSummaries(ctx, "", summaries); err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "track index error", "track index error", err)
+	}
+	totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "count tracks", "count tracks", err)
+	}
+	resp := struct {
+		Tracks        []database.TrackSummary `json:"tracks"`
+		TotalTracks   int64                   `json:"totalTracks"`
+		LatestTrackID string                  `json:"latestTrackID,omitempty"`
+		Disclaimers   map[string]string       `json:"disclaimers"`
+	}{
+		Tracks:        summaries,
+		TotalTracks:   totalTracks,
+		LatestTrackID: latestTrackID,
+		Disclaimers:   trackjson.Disclaimers,
+	}
+	data, err := encodeJSON(resp)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "encode json", "encode tracks list", err)
+	}
+	return data, nil
+}
+
+func (h *Handler) buildTracksByYearJSON(ctx context.Context, year int, start, end time.Time) ([]byte, error) {
+	tracksCh, errCh := h.DB.StreamTrackSummariesByDateRange(ctx, "", 0, start.Unix(), end.Unix(), h.DBType)
+	summaries, _, err := collectTrackSummaries(ctx, tracksCh, errCh, 0)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, newAPIError(http.StatusRequestTimeout, "request cancelled", "", err)
+		}
+		return nil, newAPIError(http.StatusInternalServerError, "track list error", fmt.Sprintf("tracks by year %d", year), err)
+	}
+	if _, err := h.finalizeSummaries(ctx, "", summaries); err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "track index error", fmt.Sprintf("tracks by year %d index error", year), err)
+	}
+	rangeTotal, err := h.DB.CountTracksInRange(ctx, start.Unix(), end.Unix(), h.DBType)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "count tracks", fmt.Sprintf("tracks by year %d range count", year), err)
+	}
+	totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "count tracks", fmt.Sprintf("tracks by year %d total", year), err)
+	}
+	resp := struct {
+		Year          int                     `json:"year"`
+		RangeStart    int64                   `json:"rangeStart"`
+		RangeEnd      int64                   `json:"rangeEnd"`
+		Tracks        []database.TrackSummary `json:"tracks"`
+		RangeTotal    int64                   `json:"rangeTotal"`
+		TotalTracks   int64                   `json:"totalTracks"`
+		LatestTrackID string                  `json:"latestTrackID,omitempty"`
+		Disclaimers   map[string]string       `json:"disclaimers"`
+	}{
+		Year:          year,
+		RangeStart:    start.Unix(),
+		RangeEnd:      end.Unix(),
+		Tracks:        summaries,
+		RangeTotal:    rangeTotal,
+		TotalTracks:   totalTracks,
+		LatestTrackID: latestTrackID,
+		Disclaimers:   trackjson.Disclaimers,
+	}
+	data, err := encodeJSON(resp)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "encode json", fmt.Sprintf("encode tracks by year %d", year), err)
+	}
+	return data, nil
+}
+
+func (h *Handler) buildTracksByMonthJSON(ctx context.Context, year, month int, start, end time.Time) ([]byte, error) {
+	tracksCh, errCh := h.DB.StreamTrackSummariesByDateRange(ctx, "", 0, start.Unix(), end.Unix(), h.DBType)
+	summaries, _, err := collectTrackSummaries(ctx, tracksCh, errCh, 0)
+	if err != nil {
+		label := fmt.Sprintf("tracks by month %04d-%02d", year, month)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, newAPIError(http.StatusRequestTimeout, "request cancelled", "", err)
+		}
+		return nil, newAPIError(http.StatusInternalServerError, "track list error", label, err)
+	}
+	if _, err := h.finalizeSummaries(ctx, "", summaries); err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "track index error", fmt.Sprintf("tracks by month %04d-%02d index error", year, month), err)
+	}
+	rangeTotal, err := h.DB.CountTracksInRange(ctx, start.Unix(), end.Unix(), h.DBType)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "count tracks", fmt.Sprintf("tracks by month %04d-%02d range count", year, month), err)
+	}
+	totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "count tracks", fmt.Sprintf("tracks by month %04d-%02d total", year, month), err)
+	}
+	resp := struct {
+		Year          int                     `json:"year"`
+		Month         int                     `json:"month"`
+		RangeStart    int64                   `json:"rangeStart"`
+		RangeEnd      int64                   `json:"rangeEnd"`
+		Tracks        []database.TrackSummary `json:"tracks"`
+		RangeTotal    int64                   `json:"rangeTotal"`
+		TotalTracks   int64                   `json:"totalTracks"`
+		LatestTrackID string                  `json:"latestTrackID,omitempty"`
+		Disclaimers   map[string]string       `json:"disclaimers"`
+	}{
+		Year:          year,
+		Month:         month,
+		RangeStart:    start.Unix(),
+		RangeEnd:      end.Unix(),
+		Tracks:        summaries,
+		RangeTotal:    rangeTotal,
+		TotalTracks:   totalTracks,
+		LatestTrackID: latestTrackID,
+		Disclaimers:   trackjson.Disclaimers,
+	}
+	data, err := encodeJSON(resp)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "encode json", fmt.Sprintf("encode tracks by month %04d-%02d", year, month), err)
+	}
+	return data, nil
+}
+
+func (h *Handler) buildTrackDataJSON(ctx context.Context, trackID string) ([]byte, error) {
+	summary, err := h.DB.GetTrackSummary(ctx, trackID, h.DBType)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "summary error", fmt.Sprintf("track %s summary error", trackID), err)
+	}
+	if summary.MarkerCount == 0 {
+		return nil, newAPIError(http.StatusNotFound, "track not found", "", nil)
+	}
+
+	trackIndex, err := h.DB.CountTrackIDsUpTo(ctx, trackID, h.DBType)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "track index error", fmt.Sprintf("track %s index error", trackID), err)
+	}
+
+	capHint := 0
+	if summary.MarkerCount > 0 {
+		if summary.MarkerCount > 4096 {
+			capHint = 4096
+		} else {
+			capHint = int(summary.MarkerCount)
+		}
+	}
+	markers := make([]trackjson.MarkerPayload, 0, capHint)
+
+	markersCh, errCh := h.DB.StreamMarkersByTrackRange(ctx, trackID, summary.FirstID, summary.LastID, 0, h.DBType)
+	for marker := range markersCh {
+		payload, _ := trackjson.MakeMarkerPayload(marker)
+		markers = append(markers, payload)
+	}
+
+	if err := <-errCh; err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, newAPIError(http.StatusRequestTimeout, "request cancelled", "", err)
+		}
+		return nil, newAPIError(http.StatusInternalServerError, "markers error", fmt.Sprintf("track %s markers error", trackID), err)
+	}
+
+	resp := struct {
+		TrackID     string                    `json:"trackID"`
+		TrackIndex  int64                     `json:"trackIndex"`
+		APIURL      string                    `json:"apiURL"`
+		FirstID     int64                     `json:"firstID"`
+		LastID      int64                     `json:"lastID"`
+		MarkerCount int64                     `json:"markerCount"`
+		Markers     []trackjson.MarkerPayload `json:"markers"`
+		Disclaimers map[string]string         `json:"disclaimers"`
+	}{
+		TrackID:     trackID,
+		TrackIndex:  trackIndex,
+		APIURL:      trackjson.TrackAPIPath(trackID),
+		FirstID:     summary.FirstID,
+		LastID:      summary.LastID,
+		MarkerCount: summary.MarkerCount,
+		Markers:     markers,
+		Disclaimers: trackjson.Disclaimers,
+	}
+
+	data, err := encodeJSON(resp)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "encode json", fmt.Sprintf("encode track %s", trackID), err)
+	}
+	return data, nil
+}
+
+func (h *Handler) cachedJSON(ctx context.Context, key string, loader func(context.Context) ([]byte, error)) ([]byte, error) {
+	if h.Cache == nil {
+		return loader(ctx)
+	}
+	data, err := h.Cache.Get(ctx, key, loader)
+	if err != nil {
+		if errors.Is(err, errCacheDisabled) || errors.Is(err, errCacheStopped) || errors.Is(err, errNoLoader) {
+			return loader(ctx)
+		}
+		return nil, err
+	}
+	return data, nil
+}
+
+func (h *Handler) handleCacheError(w http.ResponseWriter, label string, err error) {
+	if err == nil {
+		return
+	}
+	if apiErr, ok := err.(*apiError); ok {
+		h.respondAPIError(w, apiErr)
+		return
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		http.Error(w, "request cancelled", http.StatusRequestTimeout)
+		return
+	}
+	http.Error(w, "internal error", http.StatusInternalServerError)
+	if h.Logf != nil {
+		h.Logf("%s: %v", label, err)
+	}
+}
+
+func (h *Handler) respondAPIError(w http.ResponseWriter, apiErr *apiError) {
+	if apiErr == nil {
+		return
+	}
+	http.Error(w, apiErr.Message, apiErr.Status)
+	if h.Logf != nil && apiErr.Err != nil {
+		if strings.TrimSpace(apiErr.LogMessage) != "" {
+			h.Logf("%s: %v", apiErr.LogMessage, apiErr.Err)
+		}
+	}
+}
+
+func encodeJSON(payload any) ([]byte, error) {
+	buf, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(buf, '\n'), nil
+}
+
+func writeJSONBytes(w http.ResponseWriter, data []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
+}
+
+type apiError struct {
+	Status     int
+	Message    string
+	LogMessage string
+	Err        error
+}
+
+func (e *apiError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return e.Message
+}
+
+func newAPIError(status int, message, logMessage string, err error) *apiError {
+	return &apiError{Status: status, Message: message, LogMessage: logMessage, Err: err}
+}
+
+// =====================
 // Utility helpers
 // =====================
 
@@ -922,7 +924,11 @@ func collectTrackSummaries(
 	errCh <-chan error,
 	limit int,
 ) ([]database.TrackSummary, string, error) {
-	summaries := make([]database.TrackSummary, 0, limit)
+	capHint := limit
+	if capHint <= 0 {
+		capHint = 1024
+	}
+	summaries := make([]database.TrackSummary, 0, capHint)
 	var lastTrackID string
 
 	for stream != nil {
@@ -1010,10 +1016,15 @@ func (h *Handler) latestTrackInfo(ctx context.Context) (int64, string, error) {
 }
 
 func (h *Handler) respondJSON(w http.ResponseWriter, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(payload)
+	data, err := encodeJSON(payload)
+	if err != nil {
+		http.Error(w, "encode json", http.StatusInternalServerError)
+		if h.Logf != nil {
+			h.Logf("encode json: %v", err)
+		}
+		return
+	}
+	writeJSONBytes(w, data)
 }
 
 // requestScheme inspects headers and TLS state so generated URLs reuse the

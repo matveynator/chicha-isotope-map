@@ -56,12 +56,6 @@ func (db *Database) streamTrackSummaries(
 		defer close(results)
 		defer close(errs)
 
-		if limit <= 0 {
-			// Default to a conservative page so naive clients do not
-			// accidentally request millions of rows.
-			limit = 100
-		}
-
 		nextPlaceholder := newPlaceholderGenerator(dbType)
 		conditions := []string{fmt.Sprintf("trackID > %s", nextPlaceholder())}
 		args := []any{startAfter}
@@ -75,15 +69,17 @@ func (db *Database) streamTrackSummaries(
 			args = append(args, to)
 		}
 
-		limitPlaceholder := nextPlaceholder()
-		args = append(args, limit)
+		limitClause := ""
+		if limit > 0 {
+			limitClause = fmt.Sprintf(" LIMIT %s", nextPlaceholder())
+			args = append(args, limit)
+		}
 
 		query := fmt.Sprintf(`SELECT trackID, MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
 FROM markers
 WHERE %s
 GROUP BY trackID
-ORDER BY trackID
-LIMIT %s;`, strings.Join(conditions, " AND "), limitPlaceholder)
+ORDER BY trackID%s;`, strings.Join(conditions, " AND "), limitClause)
 
 		rows, err := db.DB.QueryContext(ctx, query, args...)
 		if err != nil {
@@ -97,7 +93,11 @@ LIMIT %s;`, strings.Join(conditions, " AND "), limitPlaceholder)
 		// calls for every single track, which previously spiked CPU during archive
 		// creation. The buffered slice stays small because callers already cap
 		// page sizes.
-		summaries := make([]TrackSummary, 0, limit)
+		capHint := limit
+		if capHint <= 0 {
+			capHint = 1024
+		}
+		summaries := make([]TrackSummary, 0, capHint)
 		for rows.Next() {
 			var summary TrackSummary
 			if err := rows.Scan(&summary.TrackID, &summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
@@ -211,8 +211,8 @@ WHERE trackID = %s;`
 // =========================
 
 // StreamMarkersByTrackRange streams markers by track ID and ID range.
-// We limit the dataset inside SQL to keep the result bounded and forward
-// rows through a channel so callers can encode them progressively.
+// An optional LIMIT keeps the dataset bounded when callers request a
+// window; otherwise we stream the entire track.
 func (db *Database) StreamMarkersByTrackRange(
 	ctx context.Context,
 	trackID string,
@@ -228,14 +228,23 @@ func (db *Database) StreamMarkersByTrackRange(
 		defer close(out)
 		defer close(errs)
 
-		if limit <= 0 {
-			limit = 1000
-		}
 		if toID <= 0 || toID < fromID {
 			toID = math.MaxInt64
 		}
 
-		query := `SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+		nextPlaceholder := newPlaceholderGenerator(dbType)
+		trackPlaceholder := nextPlaceholder()
+		fromPlaceholder := nextPlaceholder()
+		toPlaceholder := nextPlaceholder()
+
+		limitClause := ""
+		args := []any{trackID, fromID, toID}
+		if limit > 0 {
+			limitClause = fmt.Sprintf(" LIMIT %s", nextPlaceholder())
+			args = append(args, limit)
+		}
+
+		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
        altitude,
        COALESCE(detector, '') AS detector,
        COALESCE(radiation, '') AS radiation,
@@ -243,17 +252,9 @@ func (db *Database) StreamMarkersByTrackRange(
        humidity
 FROM markers
 WHERE trackID = %s AND id >= %s AND id <= %s
-ORDER BY id
-LIMIT %s;`
+ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
 
-		placeholders := []string{"?", "?", "?", "?"}
-		if strings.ToLower(dbType) == "pgx" {
-			placeholders = []string{"$1", "$2", "$3", "$4"}
-		}
-
-		query = fmt.Sprintf(query, placeholders[0], placeholders[1], placeholders[2], placeholders[3])
-
-		rows, err := db.DB.QueryContext(ctx, query, trackID, fromID, toID, limit)
+		rows, err := db.DB.QueryContext(ctx, query, args...)
 		if err != nil {
 			errs <- fmt.Errorf("stream markers: %w", err)
 			return

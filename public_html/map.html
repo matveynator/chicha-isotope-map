@@ -987,6 +987,10 @@ body, html {
       };
     </script>
     <script>
+      // Surface the configured support e-mail so the legal dialog can show a contact when available.
+      window.supportEmail = {{if .SupportEmail}}{{printf "%q" .SupportEmail}}{{else}}""{{end}};
+    </script>
+    <script>
       // Expose the realtime flag so the UI can hide controls when the backend keeps the feature off.
       window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
     </script>
@@ -3757,7 +3761,11 @@ function centerMapToLocation() {
       return;
     }
     var box = document.getElementById('infoText');
-    if (box) box.innerHTML = buildInfoHTML(translate(topic + '_full'));
+    var infoText = translate(topic + '_full');
+    if (topic === 'legal' && typeof window.supportEmail === 'string' && window.supportEmail.trim() !== '') {
+      infoText += '\n\n' + translate('legal_contact') + ' ' + window.supportEmail.trim();
+    }
+    if (box) box.innerHTML = buildInfoHTML(infoText);
     var head = document.getElementById('infoTitle');
     if (head) head.textContent = translate(topic + '_title');
     var modal = document.getElementById('infoModal');
