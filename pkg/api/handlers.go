@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -29,13 +31,14 @@ type Handler struct {
 	DB      *database.Database
 	DBType  string
 	Archive *jsonarchive.Generator
+	Limiter *RateLimiter
 	Logf    func(string, ...any)
 }
 
 // NewHandler constructs a Handler with sane defaults.
 // Logf is optional; pass nil if logging is not required.
-func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Generator, logf func(string, ...any)) *Handler {
-	return &Handler{DB: db, DBType: dbType, Archive: archive, Logf: logf}
+func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Generator, limiter *RateLimiter, logf func(string, ...any)) *Handler {
+	return &Handler{DB: db, DBType: dbType, Archive: archive, Limiter: limiter, Logf: logf}
 }
 
 // Register attaches API routes to the provided mux. We keep the method tiny
@@ -56,9 +59,77 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	}
 }
 
+// acquirePermit enforces the per-IP rate limiter and writes an informative
+// response if the caller exceeded their allowance. Returning false means the
+// handler should stop processing because a response was already sent.
+func (h *Handler) acquirePermit(w http.ResponseWriter, r *http.Request, kind RequestKind) (*Permit, bool) {
+	if h.Limiter == nil {
+		return nil, true
+	}
+
+	ip := clientIP(r)
+	permit, err := h.Limiter.Acquire(r.Context(), ip, kind)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "request cancelled", http.StatusRequestTimeout)
+			return nil, false
+		}
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+		if h.Logf != nil {
+			h.Logf("rate limiter rejected %s %s: %v", ip, r.URL.Path, err)
+		}
+		return nil, false
+	}
+
+	if permit != nil && permit.WaitNotice {
+		delay := permit.WaitDuration
+		if delay <= 0 {
+			delay = time.Millisecond
+		}
+		w.Header().Set("X-RateLimit-Notice", fmt.Sprintf("Delayed %s to protect the API", delay))
+		w.Header().Set("X-RateLimit-Delay", fmt.Sprintf("%.3f", permit.WaitDuration.Seconds()))
+		if h.Logf != nil {
+			h.Logf("rate limiter delayed %s %s by %s", ip, r.URL.Path, delay)
+		}
+	}
+
+	return permit, true
+}
+
+// clientIP extracts the best-effort caller IP address from HTTP headers so the
+// limiter can group requests. We prefer the first X-Forwarded-For value because
+// many deployments sit behind a reverse proxy.
+func clientIP(r *http.Request) string {
+	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		candidate := strings.TrimSpace(parts[0])
+		if candidate != "" {
+			return candidate
+		}
+	}
+
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && strings.TrimSpace(host) != "" {
+		return host
+	}
+	if trimmed := strings.TrimSpace(r.RemoteAddr); trimmed != "" {
+		return trimmed
+	}
+	return "unknown"
+}
+
 // handleOverview publishes machine-readable docs so developers understand
 // which endpoints to call and how to iterate through data sets.
 func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
+	permit, ok := h.acquirePermit(w, r, RequestGeneral)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
+
 	ctx := r.Context()
 
 	totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
@@ -128,6 +199,14 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 
 // handleTracksList exposes paginated track summaries.
 func (h *Handler) handleTracksList(w http.ResponseWriter, r *http.Request) {
+	permit, ok := h.acquirePermit(w, r, RequestGeneral)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
+
 	ctx := r.Context()
 	q := r.URL.Query()
 	startAfter := q.Get("startAfter")
@@ -217,12 +296,27 @@ func (h *Handler) handleTrackData(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	permit, ok := h.acquirePermit(w, r, RequestHeavy)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
 	h.serveTrackData(w, r, decoded)
 }
 
 // handleTrackDataByIndex resolves a numeric track number and reuses the
 // standard track handler so consumers can iterate sequentially.
 func (h *Handler) handleTrackDataByIndex(w http.ResponseWriter, r *http.Request) {
+	permit, ok := h.acquirePermit(w, r, RequestHeavy)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
+
 	ctx := r.Context()
 	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/tracks/index/"), "/")
 	if raw == "" {
@@ -254,6 +348,14 @@ func (h *Handler) handleTrackDataByIndex(w http.ResponseWriter, r *http.Request)
 
 // handleTracksByYear lists tracks that contain markers within a specific year.
 func (h *Handler) handleTracksByYear(w http.ResponseWriter, r *http.Request) {
+	permit, ok := h.acquirePermit(w, r, RequestGeneral)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
+
 	ctx := r.Context()
 	trimmed := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/tracks/years/"), "/")
 	if trimmed == "" {
@@ -348,6 +450,14 @@ func (h *Handler) handleTracksByYear(w http.ResponseWriter, r *http.Request) {
 
 // handleTracksByMonth narrows track summaries to a calendar month.
 func (h *Handler) handleTracksByMonth(w http.ResponseWriter, r *http.Request) {
+	permit, ok := h.acquirePermit(w, r, RequestGeneral)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
+
 	ctx := r.Context()
 	trimmed := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/tracks/months/"), "/")
 	if trimmed == "" {
@@ -565,11 +675,29 @@ func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID
 	h.respondJSON(w, resp)
 }
 
+const (
+	// archiveThrottleRateBytes limits archive downloads to 5 MiB per second
+	// so a single client cannot saturate the network.
+	archiveThrottleRateBytes int64 = 5 * 1024 * 1024
+	// archiveThrottleTick breaks the throttle into smaller intervals so we
+	// can react to cancellations promptly instead of sleeping for a full
+	// second.
+	archiveThrottleTick = 200 * time.Millisecond
+)
+
 // handleArchiveDownload streams the daily tar.gz bundle of .cim JSON tracks produced by the generator.
 func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) {
 	if h.Archive == nil {
 		http.Error(w, "archive disabled", http.StatusServiceUnavailable)
 		return
+	}
+
+	permit, ok := h.acquirePermit(w, r, RequestHeavy)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -599,7 +727,68 @@ func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(info.Path)))
-	http.ServeContent(w, r, filepath.Base(info.Path), stat.ModTime(), file)
+	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
+	w.Header().Set("Last-Modified", stat.ModTime().UTC().Format(http.TimeFormat))
+
+	bytesPerTick := archiveThrottleRateBytes * int64(archiveThrottleTick) / int64(time.Second)
+	if bytesPerTick <= 0 {
+		bytesPerTick = archiveThrottleRateBytes
+	}
+	ticker := time.NewTicker(archiveThrottleTick)
+	defer ticker.Stop()
+
+	allowed := bytesPerTick
+	buf := make([]byte, 64*1024)
+	flusher, _ := w.(http.Flusher)
+
+	for {
+		if allowed <= 0 {
+			select {
+			case <-ctx.Done():
+				if h.Logf != nil {
+					h.Logf("archive stream cancelled for %s", r.URL.Path)
+				}
+				return
+			case <-ticker.C:
+				allowed = bytesPerTick
+			}
+		}
+
+		chunk := len(buf)
+		if int64(chunk) > allowed {
+			chunk = int(allowed)
+		}
+		n, readErr := file.Read(buf[:chunk])
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				if h.Logf != nil {
+					h.Logf("archive write error: %v", writeErr)
+				}
+				return
+			}
+			allowed -= int64(n)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			if h.Logf != nil {
+				h.Logf("archive read error: %v", readErr)
+			}
+			return
+		}
+		select {
+		case <-ctx.Done():
+			if h.Logf != nil {
+				h.Logf("archive stream context done: %v", ctx.Err())
+			}
+			return
+		default:
+		}
+	}
 }
 
 // =====================

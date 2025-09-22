@@ -3326,7 +3326,8 @@ func main() {
 
 	// API endpoints ship JSON/archives. Keeping registration close to other
 	// routes avoids surprises for operators scanning main() for handlers.
-	apiHandler := api.NewHandler(db, *dbType, archiveGen, log.Printf)
+	limiter := api.NewRateLimiter(time.Minute)
+	apiHandler := api.NewHandler(db, *dbType, archiveGen, limiter, log.Printf)
 	apiHandler.Register(http.DefaultServeMux)
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
