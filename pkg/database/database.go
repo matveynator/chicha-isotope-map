@@ -16,6 +16,7 @@ import (
 type Database struct {
 	DB          *sql.DB    // The underlying SQL database connection
 	idGenerator chan int64 // Channel for generating unique IDs
+	Driver      string     // Normalized driver name so SQL builders can stay declarative
 }
 
 // realtimeConverter is configured by the safecastrealtime package to translate
@@ -154,6 +155,7 @@ func NewDatabase(config Config) (*Database, error) {
 	return &Database{
 		DB:          db,
 		idGenerator: idChannel,
+		Driver:      driverName,
 	}, nil
 }
 
@@ -531,7 +533,18 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   fetched_at  BIGINT,
   extra       TEXT,
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
-);`
+);
+
+CREATE TABLE IF NOT EXISTS short_links (
+  id         BIGSERIAL PRIMARY KEY,
+  code       TEXT UNIQUE NOT NULL,
+  target     TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_short_links_created
+  ON short_links (created_at);
+`
 
 	case "sqlite", "chai":
 		// Portable SQLite/Chai side — explicit INTEGER PK
@@ -571,7 +584,17 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   extra       TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_realtime_unique
-  ON realtime_measurements (device_id,measured_at);`
+  ON realtime_measurements (device_id,measured_at);
+
+CREATE TABLE IF NOT EXISTS short_links (
+  id         INTEGER PRIMARY KEY,
+  code       TEXT NOT NULL UNIQUE,
+  target     TEXT NOT NULL UNIQUE,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_short_links_created
+  ON short_links (created_at);
+`
 
 	case "duckdb":
 		// DuckDB — no SERIAL/AUTOINCREMENT; use a sequence + DEFAULT nextval(...).
@@ -614,7 +637,18 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   fetched_at  BIGINT,
   extra       TEXT,
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
-);`
+);
+
+CREATE SEQUENCE IF NOT EXISTS short_links_id_seq START 1;
+CREATE TABLE IF NOT EXISTS short_links (
+  id         BIGINT PRIMARY KEY DEFAULT nextval('short_links_id_seq'),
+  code       TEXT UNIQUE NOT NULL,
+  target     TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_short_links_created
+  ON short_links (created_at);
+`
 
 	default:
 		return fmt.Errorf("unsupported database type: %s", cfg.DBType)

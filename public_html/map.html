@@ -173,6 +173,37 @@ body, html {
           color: var(--modal-text);
         }
 
+        /* Small centered pill that surfaces the shareable short link */
+        #shortLinkDisplay {
+          position: absolute;
+          top: 12px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: var(--overlay-bg);
+          border: var(--legend-border);
+          border-radius: 999px;
+          padding: 4px 10px;
+          font-size: var(--font-size-xs);
+          color: var(--modal-text);
+          opacity: 0.75;
+          z-index: 1200;
+          cursor: pointer;
+          display: none;
+          user-select: none;
+          transition: opacity 0.2s ease;
+        }
+
+        #shortLinkDisplay:hover,
+        #shortLinkDisplay:focus,
+        #shortLinkDisplay.copied {
+          opacity: 1;
+          outline: none;
+        }
+
+        #shortLinkDisplay.copied {
+          background: var(--control-bg-hover);
+        }
+
         .theme-icon {
           font-size: var(--font-size-base);
           line-height: 1;
@@ -1041,6 +1072,15 @@ body, html {
       <img src="/static/images/chicha-isotope-map-round-logo.png" alt="{{translate "description"}} (version: {{ .Version }})" title="{{translate "description"}} (version: {{ .Version }})" class="github-icon">
     </a>
 
+    <!-- Short link pill shows the shareable URL and copies it on click -->
+    <div
+      id="shortLinkDisplay"
+      role="button"
+      tabindex="0"
+      aria-live="polite"
+      aria-label="{{translate "short_link_tooltip"}}"
+      title="{{translate "short_link_tooltip"}}"></div>
+
     <!-- Map container -->
     <div id="map"></div>
 
@@ -1677,6 +1717,11 @@ var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
 var currentTrackID = null;
+const shortLinkBox = document.getElementById('shortLinkDisplay');
+let shortLinkTimer = null;
+let shortLinkAbort = null;
+let lastShortLinkFull = '';
+let pendingShortLinkFull = '';
 
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
@@ -3177,6 +3222,127 @@ function setBaseLayer(layerName) {
   }
 }
 
+function scheduleShortLinkRefresh() {
+  if (!shortLinkBox) return;
+  if (shortLinkTimer) {
+    clearTimeout(shortLinkTimer);
+  }
+  shortLinkTimer = setTimeout(() => {
+    shortLinkTimer = null;
+    const full = window.location.href;
+    if (!full || full === lastShortLinkFull) {
+      return;
+    }
+    requestShortLink(full);
+  }, 500);
+}
+
+function requestShortLink(fullURL) {
+  if (!shortLinkBox) return;
+  pendingShortLinkFull = fullURL;
+
+  let controller = null;
+  if (typeof AbortController !== 'undefined') {
+    if (shortLinkAbort) {
+      shortLinkAbort.abort();
+    }
+    controller = new AbortController();
+    shortLinkAbort = controller;
+  }
+
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: fullURL })
+  };
+  if (controller) {
+    options.signal = controller.signal;
+  }
+
+  fetch('/api/shorten', options)
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('shorten failed: ' + response.status);
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (pendingShortLinkFull !== fullURL) {
+        return;
+      }
+      if (!data || !data.short) {
+        throw new Error('shorten response missing URL');
+      }
+      lastShortLinkFull = fullURL;
+      pendingShortLinkFull = '';
+      if (controller === shortLinkAbort) {
+        shortLinkAbort = null;
+      }
+      applyShortLink(data.short);
+    })
+    .catch(err => {
+      if (err && err.name === 'AbortError') {
+        return;
+      }
+      if (pendingShortLinkFull === fullURL) {
+        pendingShortLinkFull = '';
+        hideShortLink();
+      }
+      if (controller === shortLinkAbort) {
+        shortLinkAbort = null;
+      }
+      console.error('short link fetch failed', err);
+    });
+}
+
+function applyShortLink(shortURL) {
+  if (!shortLinkBox) return;
+  shortLinkBox.style.display = 'block';
+  shortLinkBox.textContent = shortURL;
+  shortLinkBox.dataset.href = shortURL;
+}
+
+function hideShortLink() {
+  if (!shortLinkBox) return;
+  shortLinkBox.style.display = 'none';
+  delete shortLinkBox.dataset.href;
+}
+
+function copyShortLinkToClipboard(link) {
+  const signalSuccess = () => {
+    if (!shortLinkBox) return;
+    shortLinkBox.classList.add('copied');
+    setTimeout(() => shortLinkBox.classList.remove('copied'), 600);
+  };
+
+  const fallbackCopy = () => {
+    const textarea = document.createElement('textarea');
+    textarea.value = link;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-1000px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      if (document.execCommand('copy')) {
+        signalSuccess();
+      }
+    } catch (err) {
+      console.error('copy failed', err);
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link)
+      .then(signalSuccess)
+      .catch(() => fallbackCopy());
+  } else {
+    fallbackCopy();
+  }
+}
+
 function loadMapFromUrl() {
   const params = new URLSearchParams(window.location.search);
 
@@ -3212,6 +3378,7 @@ function updateUrl() {
   var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
 
   window.history.replaceState({}, '', newUrl);
+  scheduleShortLinkRefresh();
 }
 
 function openServerPoster() {
@@ -3241,6 +3408,27 @@ function initializeUIElements() {
   // Keep the download button aligned with the current track state even if
   // the DOM was injected before listeners finished binding.
   refreshDownloadLink();
+
+  if (shortLinkBox) {
+    const hint = translate('short_link_tooltip');
+    shortLinkBox.setAttribute('title', hint);
+    shortLinkBox.setAttribute('aria-label', hint);
+    shortLinkBox.addEventListener('click', () => {
+      const link = shortLinkBox.dataset.href;
+      if (!link) return;
+      copyShortLinkToClipboard(link);
+    });
+    shortLinkBox.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        const link = shortLinkBox.dataset.href;
+        if (!link) return;
+        copyShortLinkToClipboard(link);
+      }
+    });
+  }
+
+  scheduleShortLinkRefresh();
 }
 
 function centerMapToLocation() {
