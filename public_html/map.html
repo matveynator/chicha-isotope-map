@@ -51,7 +51,7 @@ body, html {
           --font-family-base: "Segoe UI", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; /* Shared font stack keeps every control aligned */
           --font-size-base: 12px; /* Main text size for buttons, menus, and labels */
           --font-size-sm: 10px; /* Secondary text such as helper descriptions */
-          --font-size-xs: 6px; /* Compact labels and metadata */
+          --font-size-xs: 8px; /* Compact labels and metadata */
           --font-size-lg: 14px; /* Slightly larger controls where extra emphasis helps */
           --font-size-xl: 20px; /* Section headings */
           --font-size-display: 28px; /* Prominent readings inside tooltips */
@@ -110,11 +110,16 @@ body, html {
         }
 
         .leaflet-container,
-        .leaflet-container .leaflet-control,
+				.leaflet-container .leaflet-control,
         .leaflet-container .leaflet-popup,
         .leaflet-container .leaflet-tooltip {
           font-family: var(--font-family-base);
           font-size: var(--font-size-base);
+        }
+
+        .leaflet-container .leaflet-control-attribution {
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-xs);
         }
 
         /* Manual theme overrides */
