@@ -77,8 +77,8 @@
     "attr_legal": "Правовые сведения",
     "attr_sources": "Источники данных",
     "attr_license": "Лицензия",
-    "legal_title": "Правовые сведения",
-    "legal_full": "Дорогие друзья, эта карта рождена общими усилиями и живёт открытым трудом. Все показания приходят анонимно и в автоматическом порядке из множества приборов и источников. Проверить или верифицировать каждое значение мы никак не можем, потому воспринимайте карту как набросок, а не как точный чертёж. Авторы не несут никакой ответственности за последствия, что могут последовать из пользования этими данными.\n\nВо имя удобства посещения сайт ставит лишь короткий технический cookie для сессии. Он гаснет, как только вы покидаете карту; иных следов мы не оставляем.\n\nЕсли вам близка цель нашего труда, будем рады вашей помощи и доброму участию.",
+    "legal_title": "Правовые правила",
+    "legal_full": "Преамбула. Мы с вами создаём открытую карту, где люди по всему миру делятся показаниями дозиметров ради общей пользы — науки, экологии, образования и безопасности. Публикуя данные, вы помогаете многим. Просим бережного отношения к общему делу.\n\n1) Ответственность. Точность и содержание передаваемых сведений — на ответственности автора. Данные публикуются и используются «как есть». Сервис не подтверждает и не гарантирует их корректность, полноту или пригодность для какой-либо цели и не несёт никакой ответственности за любой возможный результат их использования.\n\n2) Открытость и лицензия. Передавая дозиметрические данные, даты, ориентировочную геопозицию, модель прибора и иные сведения, вы понимаете, что они становятся доступными всем и могут свободно использоваться на условиях лицензии GPL. Авторство сохраняется; вознаграждение не предусмотрено; дальнейшее распространение третьими лицами сервис не контролирует.\n\n3) «Как есть» и отсутствие верификации. Публикация происходит без предварительной экспертизы. Мы не можем гарантировать калибровку приборов и отсутствие ошибок. Представленная информация носит исследовательский характер и не является профессиональной рекомендацией.\n\n4) Приватность и модерация. Для безопасности и доверия карта может обобщать время и координаты; технические метаданные могут удаляться или обезличиваться. Мы вправе скрывать или удалять материалы, если они, по нашему разумному усмотрению, являются спамом, подделкой, нарушают закон или мешают работе сервиса. Бережно относимся к добросовестным измерениям и стремимся их сохранять.\n\n5) Cookies. Для работы сайта используется краткоживущая техническая cookie сессии; она исчезает при завершении сеанса. Других следов мы не храним.\n\nДрузья, наша карта — плод общих усилий и открытых сердец. Просим относиться к ней как к наброску местности, а не к точному плану. Если наш труд вам близок — присоединяйтесь: вместе мы сможем сделать его лучше.",
     "sources_title": "Источники данных",
     "sources_full": "Мы благодарим каждого, кто делится измерениями.\n\nЛюдей кто анонимно загружает треки на наш сервис.\n<a href=\"https://safecast.org\" target=\"_blank\">Safecast</a> ведёт мировую летопись радиационных данных.\n<a href=\"https://atomfast.net\" target=\"_blank\">Atomfast</a> дозиметры AtomFast и облако Atomcloud.\n<a href=\"https://radiaverse.com\" target=\"_blank\">Radioverse</a> развивает линейку дозиметров-спектрометров Radiacode.\n\nКаждый вклад расширяет общую картину; присоединяйтесь и вы.",
     "license_title": "Лицензия",
@@ -164,8 +164,8 @@
     "attr_legal": "Legal",
     "attr_sources": "Data Sources",
     "attr_license": "License",
-    "legal_title": "Legal & Cookies",
-    "legal_full": "Dear friends, this map springs from shared effort and open hearts. Every reading arrives anonymously and automatically from many devices and sources. We have no means to verify or validate each value, so please regard the map as a sketch rather than an exact plan. The authors accept no responsibility whatsoever for any outcome that may arise from using these data.\n\nFor your convenience, the site sets only a brief technical cookie for the session. It fades as soon as you leave; no other traces are kept.\n\nIf our work speaks to you, you are warmly invited to lend a hand and help it flourish.",
+    "legal_title": "Legal",
+    "legal_full": "Preamble. We are building an open map where people around the globe share dosimeter readings for the common good — science, ecology, education, and safety. By publishing your data you help many. Please treat this shared work with care.\n\n1) Responsibility. The accuracy and content of any information you submit remain your responsibility. Data are published and used “as is”. The service does not confirm or guarantee their correctness, completeness, or suitability for any purpose and bears no responsibility for any possible outcome of their use.\n\n2) Openness and license. By sharing dosimetry readings, dates, approximate locations, device models, or other facts, you understand they become available to everyone and may be used freely under the GPL license. Authorship stays with you; no compensation is provided; further redistribution by third parties is beyond our control.\n\n3) “As is” and no verification. Publications appear without prior review. We cannot guarantee instrument calibration or the absence of mistakes. The information is shared for research and is not a professional recommendation.\n\n4) Privacy and moderation. To keep the map safe and trustworthy, timestamps and coordinates may be generalized, and technical metadata may be removed or anonymized. We may hide or delete materials that, in our reasonable opinion, are spam, falsified, unlawful, or disruptive. We handle bona fide measurements with care and strive to preserve them.\n\n5) Cookies. The site relies on a short-lived technical session cookie; it disappears when your visit ends. We do not keep any other traces.\n\nFriends, this map is the result of shared effort and open hearts. Please treat it as a sketch of the terrain, not a precise blueprint. If our work resonates with you, join in — together we can make it better.",
     "sources_title": "Data Sources",
     "sources_full": "We thank all who share measurements.\n\nAnonymous uploads trace quiet paths on the map.\n<a href=\"https://safecast.org\" target=\"_blank\">Safecast</a> fosters a global archive of readings.\n<a href=\"https://atomfast.net\" target=\"_blank\">Atomfast</a> keeps the Atomcloud alight.\n<a href=\"https://radiaverse.com\" target=\"_blank\">Radioverse</a> gathers insights from Radiacode.\n\nEach contribution widens the common picture; you are warmly invited to add your own.",
     "license_title": "License",
@@ -252,7 +252,9 @@
     "attr_sources": "Fuentes de datos",
     "attr_license": "Licencia",
     "attr_api": "API",
-    "download_track_cim": "Descargar recorrido (.cim)"
+    "download_track_cim": "Descargar recorrido (.cim)",
+    "legal_title": "Aviso legal",
+    "legal_full": "Preámbulo. Construimos un mapa abierto donde personas de todo el mundo comparten lecturas de dosímetros para el bien común: la ciencia, la ecología, la educación y la seguridad. Al publicar tus datos ayudas a muchos. Te pedimos cuidar este esfuerzo colectivo.\n\n1) Responsabilidad. La exactitud y el contenido de la información que envías dependen de ti. Los datos se publican y se usan “tal cual”. El servicio no confirma ni garantiza su corrección, integridad o idoneidad para ningún fin y no asume responsabilidad por los posibles resultados de su uso.\n\n2) Apertura y licencia. Al compartir lecturas, fechas, localizaciones aproximadas, modelo del dispositivo u otros detalles, comprendes que pasan a estar disponibles para todos y pueden usarse libremente bajo la licencia GPL. La autoría se mantiene; no hay remuneración; la redistribución posterior por terceros queda fuera de nuestro control.\n\n3) “Tal cual” y sin verificación. Las publicaciones aparecen sin revisión previa. No podemos garantizar la calibración de los instrumentos ni la ausencia de errores. La información se ofrece con fines de investigación y no constituye una recomendación profesional.\n\n4) Privacidad y moderación. Para mantener la seguridad y la confianza, el mapa puede generalizar horas y coordenadas; los metadatos técnicos pueden eliminarse o anonimizarse. Podemos ocultar o borrar materiales que, a nuestro juicio razonable, sean spam, falsificaciones, ilegales o que dificulten el servicio. Cuidamos las mediciones de buena fe y procuramos conservarlas.\n\n5) Cookies. El sitio usa una cookie técnica de sesión de corta duración; desaparece al terminar tu visita. No guardamos otros rastros.\n\nAmigas y amigos, nuestro mapa es fruto de un esfuerzo compartido y de corazones abiertos. Tómenlo como un boceto del terreno, no como un plano exacto. Si nuestro trabajo te inspira, súmate: juntos podremos mejorarlo."
   },
   "fr": {
     "title": "Carte des isotopes de Chicha — Carte radiologique de la planète Terre",
@@ -333,7 +335,9 @@
     "attr_sources": "Sources de données",
     "attr_license": "Licence",
     "attr_api": "API",
-    "download_track_cim": "Télécharger la piste (.cim)"
+    "download_track_cim": "Télécharger la piste (.cim)",
+    "legal_title": "Mentions légales",
+    "legal_full": "Préambule. Nous créons une carte ouverte où des personnes du monde entier partagent les mesures de leurs dosimètres pour le bien commun — science, écologie, éducation et sécurité. En publiant vos données, vous rendez service à beaucoup. Prenez soin de ce projet collectif.\n\n1) Responsabilité. L’exactitude et le contenu des informations transmises relèvent de votre responsabilité. Les données sont publiées et utilisées « en l’état ». Le service ne confirme ni ne garantit leur exactitude, leur exhaustivité ou leur adéquation à quelque usage que ce soit et décline toute responsabilité quant aux conséquences possibles de leur utilisation.\n\n2) Ouverture et licence. En partageant des mesures, des dates, une localisation approximative, le modèle de l’appareil ou d’autres informations, vous comprenez qu’elles deviennent accessibles à tous et peuvent être utilisées librement sous licence GPL. Vous conservez votre paternité; aucune rémunération n’est prévue; la redistribution ultérieure par des tiers n’est pas contrôlée par le service.\n\n3) « En l’état » et sans vérification. Les publications paraissent sans expertise préalable. Nous ne pouvons garantir la calibration des appareils ni l’absence d’erreurs. Les informations sont proposées à des fins de recherche et ne constituent pas une recommandation professionnelle.\n\n4) Confidentialité et modération. Pour assurer sécurité et confiance, la carte peut généraliser heures et coordonnées; certains métadonnées techniques peuvent être supprimées ou anonymisées. Nous pouvons masquer ou supprimer les contenus qui, selon notre appréciation raisonnable, relèvent du spam, sont falsifiés, illégaux ou nuisent au service. Nous traitons avec soin les mesures de bonne foi et cherchons à les préserver.\n\n5) Cookies. Le site utilise un cookie technique de session à courte durée; il disparaît à la fin de votre visite. Aucun autre traceur n’est conservé.\n\nAmies et amis, cette carte est le fruit d’efforts partagés et de cœurs ouverts. Considérez-la comme un croquis du terrain plutôt que comme un plan exact. Si notre travail vous parle, rejoignez-nous : ensemble nous pourrons l’améliorer."
   },
   "de": {
     "title": "Chichas Isotopenkarte — Radiologische Karte des Planeten Erde",
@@ -414,7 +418,9 @@
     "attr_sources": "Datenquellen",
     "attr_license": "Lizenz",
     "attr_api": "API",
-    "download_track_cim": "Track herunterladen (.cim)"
+    "download_track_cim": "Track herunterladen (.cim)",
+    "legal_title": "Rechtliches",
+    "legal_full": "Präambel. Wir bauen eine offene Karte, auf der Menschen weltweit Dosimeterwerte zum Wohle aller teilen — für Wissenschaft, Umwelt, Bildung und Sicherheit. Mit jeder Veröffentlichung hilfst du vielen. Bitte geh sorgsam mit diesem Gemeinschaftsprojekt um.\n\n1) Verantwortung. Für Richtigkeit und Inhalt der übermittelten Angaben bist du selbst verantwortlich. Die Daten werden „wie gesehen“ veröffentlicht und genutzt. Der Dienst bestätigt oder garantiert weder Korrektheit noch Vollständigkeit oder Eignung für irgendeinen Zweck und übernimmt keinerlei Haftung für Folgen ihrer Verwendung.\n\n2) Offenheit und Lizenz. Wenn du Messwerte, Daten, ungefähre Positionen, Gerätemodelle oder andere Angaben teilst, verstehst du, dass sie allen offenstehen und frei unter der GPL-Lizenz genutzt werden dürfen. Die Urheberschaft bleibt bei dir; eine Vergütung ist nicht vorgesehen; eine Weiterverbreitung durch Dritte entzieht sich unserer Kontrolle.\n\n3) „Wie gesehen“ und ohne Verifizierung. Veröffentlichungen erscheinen ohne vorherige Prüfung. Wir können weder Gerätekalibrierung noch Fehlerfreiheit garantieren. Die Informationen dienen Forschungszwecken und stellen keine professionelle Empfehlung dar.\n\n4) Privatsphäre und Moderation. Für Sicherheit und Vertrauen können Zeiten und Koordinaten verallgemeinert sowie technische Metadaten entfernt oder anonymisiert werden. Wir dürfen Inhalte ausblenden oder löschen, die nach unserem vernünftigen Ermessen Spam, Fälschungen, Rechtsverstöße oder Störungen darstellen. Auf ehrliche Messungen achten wir besonders und bewahren sie nach Möglichkeit.\n\n5) Cookies. Die Website verwendet ein kurzlebiges technisches Sitzungs-Cookie; es verschwindet mit dem Ende deines Besuchs. Weitere Spuren speichern wir nicht.\n\nFreundinnen und Freunde, unsere Karte ist das Ergebnis gemeinsamer Arbeit und offener Herzen. Betrachtet sie als Skizze der Landschaft, nicht als exakten Plan. Wenn euch unser Einsatz bewegt, macht mit — gemeinsam können wir ihn verbessern."
   },
   "zh": {
     "title": "Chicha 同位素地图——地球辐射地图",
@@ -495,7 +501,9 @@
     "attr_sources": "数据来源",
     "attr_license": "许可",
     "attr_api": "API",
-    "download_track_cim": "下载轨迹 (.cim)"
+    "download_track_cim": "下载轨迹 (.cim)",
+    "legal_title": "法律须知",
+    "legal_full": "前言：我们正在共同搭建一张开放地图，让世界各地的人分享剂量计读数，服务于科学、生态、教育和安全等公共利益。分享数据就是在帮助许多人，请善待这份集体心血。\n\n1) 责任。提交信息的准确性和内容由作者自行承担。所有数据按“原样”发布和使用。本服务不确认也不保证其正确性、完整性或适用于任何目的，对于使用数据可能产生的结果概不负责。\n\n2) 开放与许可。提交剂量数据、日期、约略位置、设备型号等信息时，你理解这些内容将向所有人公开，并可按照 GPL 许可自由使用。作者身份仍归你所有；不提供任何报酬；第三方后续的再分发不受我们控制。\n\n3) “原样”与未验证。所有发布均未经预先审查。我们无法保证仪器校准或无误。所提供的信息用于研究参考，并非专业建议。\n\n4) 隐私与管理。为保障安全与信任，地图可能对时间与坐标进行模糊处理，技术元数据可能被删除或匿名化。若内容在我们合理判断下属于垃圾信息、伪造、违法或妨碍服务，我们有权隐藏或删除。我们珍视善意的测量并尽力保留。\n\n5) Cookies。网站仅使用一个短期的会话技术 Cookie，访问结束后即消失。我们不保留其他痕迹。\n\n朋友们，这张地图源自大家的共同努力与赤诚之心。请把它当作地形草图，而非精准蓝图。若你认同我们的工作，欢迎加入，我们可以一起做得更好。"
   },
   "ja": {
     "title": "チチャの同位体マップ — 地球の放射線マップ",
@@ -576,7 +584,9 @@
     "attr_sources": "データソース",
     "attr_license": "ライセンス",
     "attr_api": "API",
-    "download_track_cim": "トラックをダウンロード (.cim)"
+    "download_track_cim": "トラックをダウンロード (.cim)",
+    "legal_title": "リーガル情報",
+    "legal_full": "前書き：私たちは、世界中の人たちが線量計の測定値を共有し、科学・環境・教育・安全といった共通の利益に役立てられるよう、オープンな地図をつくっています。データを公開してくれることが多くの人の助けになります。この共同プロジェクトを大切に扱ってください。\n\n1) 責任。投稿する情報の正確さと内容は投稿者の責任です。データは「現状のまま」で公開・利用されます。本サービスは正確性・完全性・目的適合性を保証せず、利用によるいかなる結果についても責任を負いません。\n\n2) オープン性とライセンス。測定値、日付、おおよその位置、機器の型式などを共有するとき、それらがすべての人に公開され、GPL ライセンスのもとで自由に利用できることを理解してください。著作権はあなたに残ります。報酬はありません。第三者による再配布は当サービスの管理外です。\n\n3) 「現状のまま」と未検証。投稿は事前審査なしで掲載されます。機器の校正や誤りの有無は保証できません。提供する情報は研究目的の参考であり、専門的な助言ではありません。\n\n4) プライバシーとモデレーション。安全と信頼を守るため、地図上の時間や座標は丸められ、技術的なメタデータは削除または匿名化される場合があります。当サービスの合理的な判断でスパム、偽造、違法、または運営の妨げになる投稿は非表示または削除することがあります。まじめな測定については丁寧に扱い、可能な限り保存します。\n\n5) クッキー。サイトでは短期間のセッション用技術クッキーのみを使用し、閲覧終了とともに消えます。その他の痕跡は保存しません。\n\nみなさん、この地図はみんなでつくり上げた温かなプロジェクトです。正確な設計図ではなく、地形のスケッチとして受け止めてください。私たちの取り組みに共感していただけたら、ぜひ参加してください。一緒ならもっと良くできます。"
   },
   "ko": {
     "title": "치차 동위원소 지도 — 지구 방사선 지도",
@@ -657,7 +667,9 @@
     "attr_sources": "데이터 출처",
     "attr_license": "라이선스",
     "attr_api": "API",
-    "download_track_cim": "트랙 다운로드 (.cim)"
+    "download_track_cim": "트랙 다운로드 (.cim)",
+    "legal_title": "법적 안내",
+    "legal_full": "머리말. 우리는 전 세계 사람들이 선량계 측정값을 나누어 과학, 환경, 교육, 안전이라는 공동의 선을 이루는 열린 지도를 함께 만들고 있습니다. 데이터를 공개하면 많은 이들에게 도움이 됩니다. 이 공동 작업을 소중히 다뤄 주세요.\n\n1) 책임. 제공하는 정보의 정확성과 내용은 작성자 본인의 책임입니다. 데이터는 “있는 그대로” 게시되고 사용됩니다. 서비스는 그 정확성, 완전성, 어떤 목적에의 적합성도 보증하지 않으며 사용으로 인한 결과에 대해 책임지지 않습니다.\n\n2) 개방성과 라이선스. 측정값, 날짜, 대략적인 위치, 기기 모델 및 기타 정보를 공유하면, 그것들이 모두에게 공개되고 GPL 라이선스에 따라 자유롭게 사용될 수 있음을 이해해야 합니다. 저작권은 유지되지만 보상은 제공되지 않으며, 제3자가 다시 배포하는 일은 우리가 통제하지 않습니다.\n\n3) “있는 그대로”와 비검증. 게시물은 사전 심사 없이 공개됩니다. 기기 보정이나 오류가 없음을 보장할 수 없습니다. 제공 정보는 연구 목적의 참고용이며 전문적인 조언이 아닙니다.\n\n4) 프라이버시와 조정. 안전과 신뢰를 위해 지도는 시간과 좌표를 범위화할 수 있고, 기술적 메타데이터는 삭제되거나 익명화될 수 있습니다. 우리의 합리적 판단으로 스팸, 위조, 불법이거나 서비스 운영을 방해하는 자료는 숨기거나 삭제할 수 있습니다. 성실한 측정은 정성껏 다루고 가능한 한 보존합니다.\n\n5) 쿠키. 사이트는 짧은 기간 동안 유지되는 세션용 기술 쿠키만 사용하며 방문이 끝나면 사라집니다. 다른 흔적은 보관하지 않습니다.\n\n친구 여러분, 이 지도는 함께한 노력과 열린 마음이 만들어 낸 결과입니다. 정확한 설계도가 아니라 지형 스케치로 여겨 주세요. 이 작업에 마음이 닿는다면 함께해 주세요. 다 함께라면 더 나은 지도를 만들 수 있습니다."
   },
   "pt": {
     "title": "Mapa de Isótopos da Chicha — Mapa radiológico do planeta Terra",
@@ -738,7 +750,9 @@
     "attr_sources": "Fontes de dados",
     "attr_license": "Licença",
     "attr_api": "API",
-    "download_track_cim": "Baixar trilha (.cim)"
+    "download_track_cim": "Baixar trilha (.cim)",
+    "legal_title": "Informações legais",
+    "legal_full": "Preâmbulo. Estamos a construir um mapa aberto onde pessoas do mundo inteiro partilham leituras de dosímetros para o bem comum — ciência, ecologia, educação e segurança. Ao publicar os seus dados, ajuda muita gente. Pedimos cuidado com este trabalho coletivo.\n\n1) Responsabilidade. A exatidão e o conteúdo das informações enviadas são da responsabilidade do autor. Os dados são publicados e utilizados “tal como estão”. O serviço não confirma nem garante a correção, a completude ou a adequação para qualquer fim e não assume responsabilidade pelos resultados do seu uso.\n\n2) Abertura e licença. Ao partilhar leituras, datas, localização aproximada, modelo do aparelho ou outros dados, compreende que tudo ficará acessível a todos e poderá ser usado livremente sob a licença GPL. A autoria permanece consigo; não há remuneração; uma redistribuição posterior por terceiros foge ao nosso controlo.\n\n3) “Tal como está” e sem verificação. As publicações são colocadas no ar sem análise prévia. Não podemos garantir a calibração dos aparelhos nem a ausência de erros. A informação é partilhada para fins de investigação e não constitui recomendação profissional.\n\n4) Privacidade e moderação. Para manter a segurança e a confiança, o mapa pode generalizar horários e coordenadas; metadados técnicos podem ser removidos ou anonimizados. Podemos ocultar ou apagar materiais que, a nosso critério razoável, sejam spam, falsificações, ilegais ou perturbadores. Tratamos medições de boa-fé com carinho e procuramos preservá-las.\n\n5) Cookies. O site usa apenas uma cookie técnica de sessão de curta duração; ela desaparece quando termina a visita. Não guardamos outros rastros.\n\nAmigas e amigos, o nosso mapa é fruto de esforços partilhados e de corações abertos. Considere-o como um esboço do terreno, não como um plano exato. Se este trabalho lhe diz algo, junte-se a nós: juntos podemos torná-lo melhor."
   },
   "it": {
     "title": "Mappa degli isotopi di Chicha — Mappa radiologica del pianeta Terra",
@@ -819,7 +833,9 @@
     "attr_sources": "Fonti dati",
     "attr_license": "Licenza",
     "attr_api": "API",
-    "download_track_cim": "Scarica traccia (.cim)"
+    "download_track_cim": "Scarica traccia (.cim)",
+    "legal_title": "Informazioni legali",
+    "legal_full": "Preludio. Stiamo costruendo una mappa aperta in cui persone di tutto il mondo condividono le letture dei dosimetri per il bene comune — scienza, ecologia, educazione e sicurezza. Pubblicando i tuoi dati aiuti molte persone. Ti chiediamo di aver cura di questo lavoro collettivo.\n\n1) Responsabilità. L’esattezza e il contenuto delle informazioni inviate restano sotto la responsabilità dell’autore. I dati vengono pubblicati e utilizzati “così come sono”. Il servizio non conferma né garantisce la loro correttezza, completezza o idoneità a qualsiasi scopo e non si assume responsabilità per gli eventuali risultati del loro uso.\n\n2) Apertura e licenza. Condividendo misurazioni, date, posizione approssimativa, modello dello strumento o altri dettagli, comprendi che tutto diventa accessibile a chiunque e può essere usato liberamente secondo la licenza GPL. L’autorialità rimane tua; non è previsto alcun compenso; l’eventuale redistribuzione da parte di terzi non è sotto il nostro controllo.\n\n3) “Così com’è” e senza verifica. Le pubblicazioni compaiono senza revisione preventiva. Non possiamo garantire la calibrazione degli strumenti né l’assenza di errori. Le informazioni sono offerte per finalità di ricerca e non costituiscono una raccomandazione professionale.\n\n4) Privacy e moderazione. Per mantenere sicurezza e fiducia, la mappa può generalizzare orari e coordinate; i metadati tecnici possono essere rimossi o resi anonimi. Possiamo nascondere o eliminare materiali che, secondo il nostro ragionevole giudizio, siano spam, falsificazioni, illeciti o d’intralcio al servizio. Trattiamo con cura le misurazioni in buona fede e ci impegniamo a conservarle.\n\n5) Cookie. Il sito usa solo un cookie tecnico di sessione di breve durata; scompare al termine della visita. Non conserviamo altre tracce.\n\nAmiche e amici, la nostra mappa è frutto di impegno condiviso e di cuori aperti. Consideratela come uno schizzo del territorio, non come un progetto preciso. Se il nostro lavoro ti sta a cuore, unisciti a noi: insieme possiamo renderlo migliore."
   },
   "ar": {
     "title": "خريطة نظائر تشيتشا — خريطة إشعاعية لكوكب الأرض",
@@ -900,7 +916,9 @@
     "attr_sources": "مصادر البيانات",
     "attr_license": "الترخيص",
     "attr_api": "واجهة API",
-    "download_track_cim": "تحميل المسار (.cim)"
+    "download_track_cim": "تحميل المسار (.cim)",
+    "legal_title": "الشروط القانونية",
+    "legal_full": "التمهيد. نبني خريطة مفتوحة يشارك فيها الناس حول العالم قراءات مقاييس الجرعات لخدمة الصالح العام — للعلم والبيئة والتعليم والسلامة. من خلال نشر بياناتك تساعد الكثيرين، ونرجو التعامل مع هذا الجهد المشترك بكل عناية.\n\n1) المسؤولية. دقة ومحتوى المعلومات التي ترسلها تقع على عاتقك. تُنشر البيانات وتُستخدم \"كما هي\". الخدمة لا تؤكد ولا تضمن صحتها أو اكتمالها أو ملاءمتها لأي غرض، ولا تتحمل مسؤولية أي نتائج قد تنجم عن استخدامها.\n\n2) الانفتاح والترخيص. عند مشاركة القراءات، والتواريخ، والموقع التقريبي، وطراز الجهاز أو أي تفاصيل أخرى، فأنت تدرك أنها ستصبح متاحة للجميع ويمكن استخدامها بحرية بموجب رخصة GPL. يبقى حقك في النسبة محفوظًا، ولا يوجد أي تعويض، وإعادة التوزيع اللاحقة من قبل أطراف ثالثة خارج نطاق سيطرتنا.\n\n3) \"كما هي\" ومن دون تحقق. تُنشر المواد من دون مراجعة مسبقة. لا يمكننا ضمان معايرة الأجهزة أو خلوها من الأخطاء. المعلومات المقدمة لأغراض بحثية وليست توصية مهنية.\n\n4) الخصوصية والإشراف. للحفاظ على الأمان والثقة قد تُعمم الخريطة الأوقات والإحداثيات، وقد تُزال البيانات الوصفية التقنية أو تُزال هويتها. يحق لنا إخفاء أو حذف المواد التي نرى بعقلانية أنها بريد عشوائي أو مزيفة أو مخالفة للقانون أو تعيق الخدمة. نحن نحافظ على القياسات الموثوقة ونسعى لحمايتها.\n\n5) ملفات تعريف الارتباط. يستخدم الموقع ملف تعريف ارتباط تقنيًا قصير الأجل للجلسة؛ يختفي عند انتهاء الزيارة. لا نحتفظ بأي آثار أخرى.\n\nأصدقاؤنا، هذه الخريطة ثمرة جهود مشتركة وقلوب منفتحة. رجاءً اعتبروها مسودة للتضاريس وليست مخططًا دقيقًا. إن لامس عملنا قلوبكم فانضموا إلينا، فمعًا نستطيع تحسينه."
   },
   "hi": {
     "title": "चिचा समस्थानिक मानचित्र — पृथ्वी ग्रह का विकिरण मानचित्र",
@@ -981,7 +999,9 @@
     "attr_sources": "डेटा स्रोत",
     "attr_license": "लाइसेंस",
     "attr_api": "API",
-    "download_track_cim": "ट्रैक डाउनलोड करें (.cim)"
+    "download_track_cim": "ट्रैक डाउनलोड करें (.cim)",
+    "legal_title": "कानूनी जानकारी",
+    "legal_full": "भूमिका. हम एक खुला मानचित्र बना रहे हैं जहाँ दुनिया भर के लोग डोज़ीमीटर रीडिंग साझा करते हैं ताकि विज्ञान, पर्यावरण, शिक्षा और सुरक्षा जैसे सामूहिक हितों को लाभ मिले। अपने आँकड़े प्रकाशित करके आप बहुतों की मदद करते हैं। कृपया इस साझा प्रयास का आदर करें।\n\n1) जिम्मेदारी. आप जो जानकारी भेजते हैं उसकी सटीकता और सामग्री आपकी ज़िम्मेदारी है। डेटा “जैसा है” वैसा ही प्रकाशित और उपयोग किया जाता है। सेवा उनकी शुद्धता, पूर्णता या किसी उद्देश्य के लिए उपयुक्तता की पुष्टि या गारंटी नहीं देती और उनके उपयोग से होने वाले परिणामों के लिए उत्तरदायी नहीं है।\n\n2) खुलापन और लाइसेंस. जब आप माप, तिथियाँ, अनुमानित स्थान, उपकरण मॉडल या अन्य विवरण साझा करते हैं, तो आप समझते हैं कि वे सबके लिए उपलब्ध हो जाते हैं और GPL लाइसेंस के तहत स्वतंत्र रूप से उपयोग किए जा सकते हैं। लेखकत्व आपका ही रहता है; कोई पारिश्रमिक नहीं है; तृतीय पक्ष द्वारा आगे का प्रसार हमारे नियंत्रण से बाहर है।\n\n3) “जैसा है” और बिना सत्यापन के. प्रकाशन पूर्व समीक्षा के बिना दिखाई देते हैं। हम उपकरणों की कैलिब्रेशन या त्रुटियों की अनुपस्थिति की गारंटी नहीं दे सकते। दी गई जानकारी अनुसंधान हेतु है और इसे पेशेवर सलाह न मानें।\n\n4) गोपनीयता और संयम. सुरक्षा और भरोसा बनाए रखने के लिए मानचित्र समय और निर्देशांकों को सामान्यीकृत कर सकता है; तकनीकी मेटाडेटा हटाया या अनाम किया जा सकता है। हम अपनी विवेकपूर्ण राय में स्पैम, नकली, अवैध या सेवा में बाधा बनने वाली सामग्री को छिपा या हटा सकते हैं। हम ईमानदार मापों का ध्यान रखते हैं और उन्हें सुरक्षित रखने की कोशिश करते हैं।\n\n5) कुकीज़. वेबसाइट केवल एक अल्पकालिक सत्र तकनीकी कुकी का उपयोग करती है; आपकी यात्रा समाप्त होते ही वह गायब हो जाती है। हम अन्य कोई निशान संग्रहित नहीं करते।\n\nदोस्तों, यह मानचित्र संयुक्त प्रयास और खुले दिलों का परिणाम है। इसे सटीक नक्शे की बजाय इलाके की रूपरेखा समझें। यदि हमारा काम आपको प्रिय लगे तो हमारे साथ जुड़ें — मिलकर हम इसे बेहतर बना सकते हैं।"
   },
   "tr": {
     "title": "Chicha İzotop Haritası — Dünya gezegeninin radyolojik haritası",
@@ -1062,7 +1082,9 @@
     "attr_sources": "Veri kaynakları",
     "attr_license": "Lisans",
     "attr_api": "API",
-    "download_track_cim": "Parkuru indir (.cim)"
+    "download_track_cim": "Parkuru indir (.cim)",
+    "legal_title": "Yasal bilgiler",
+    "legal_full": "Önsöz. Dünyanın dört bir yanından insanlar dozimetre ölçümlerini bilim, ekoloji, eğitim ve güvenlik gibi ortak faydalar için paylaştığı açık bir harita kuruyoruz. Verilerini yayımlayarak pek çok kişiye yardım ediyorsun. Bu ortak emeğe özen göstermenizi rica ederiz.\n\n1) Sorumluluk. Gönderdiğin bilgilerin doğruluğu ve içeriği sana aittir. Veriler “olduğu gibi” yayımlanır ve kullanılır. Hizmet, bunların doğruluğunu, tamlığını veya herhangi bir amaca uygunluğunu teyit etmez ya da garanti etmez ve kullanımından doğabilecek sonuçlardan sorumlu değildir.\n\n2) Açıklık ve lisans. Ölçümleri, tarihleri, yaklaşık konumu, cihaz modelini veya diğer bilgileri paylaştığında, bunların herkesin erişimine açıldığını ve GPL lisansı kapsamında serbestçe kullanılabileceğini kabul edersin. Eser sahipliği sende kalır; ücret ödenmez; üçüncü kişilerce yeniden dağıtım kontrolümüz dışındadır.\n\n3) “Olduğu gibi” ve doğrulama yoktur. Paylaşımlar ön inceleme olmadan yayınlanır. Cihaz kalibrasyonunu veya hatasızlığı garanti edemeyiz. Sunulan bilgiler araştırma amaçlıdır ve profesyonel tavsiye sayılmamalıdır.\n\n4) Gizlilik ve moderasyon. Güvenliği ve güvenilirliği korumak için harita zaman ve koordinatları yuvarlayabilir; teknik meta veriler silinebilir ya da anonimleştirilebilir. Makûl kanaatimizle spam, sahte, yasa dışı veya hizmete engel olduğunu düşündüğümüz içerikleri gizleyebilir ya da silebiliriz. Dürüst ölçümlere özen gösterir ve korumaya çalışırız.\n\n5) Çerezler. Site yalnızca kısa ömürlü bir oturum amaçlı teknik çerez kullanır; ziyaretin bittiğinde kaybolur. Başka izler tutmayız.\n\nDostlar, bu harita ortak emeğin ve açık yüreklerin ürünüdür. Lütfen onu kusursuz bir plan değil, arazinin bir eskizi olarak görün. Çalışmamız size hitap ediyorsa bize katılın — birlikte daha da iyisini yapabiliriz."
   },
   "nl": {
     "title": "Chicha Isotopenkaart — Radiologische kaart van planeet Aarde",
@@ -1143,7 +1165,9 @@
     "attr_sources": "Gegevensbronnen",
     "attr_license": "Licentie",
     "attr_api": "API",
-    "download_track_cim": "Track downloaden (.cim)"
+    "download_track_cim": "Track downloaden (.cim)",
+    "legal_title": "Juridische informatie",
+    "legal_full": "Vooraf. We bouwen samen aan een open kaart waarop mensen overal ter wereld dosismetergegevens delen voor het algemeen belang — voor wetenschap, ecologie, onderwijs en veiligheid. Door jouw gegevens te publiceren help je velen. We vragen je zorgvuldig om te gaan met dit gezamenlijke werk.\n\n1) Verantwoordelijkheid. Jij bent verantwoordelijk voor de juistheid en inhoud van de gegevens die je aanlevert. De data worden “zoals ze zijn” gepubliceerd en gebruikt. De dienst bevestigt of garandeert hun correctheid, volledigheid of geschiktheid voor enig doel niet en aanvaardt geen aansprakelijkheid voor mogelijke gevolgen van het gebruik ervan.\n\n2) Openheid en licentie. Door metingen, data, een globale locatie, het apparaatmodel of andere details te delen, begrijp je dat alles voor iedereen beschikbaar wordt en vrij gebruikt mag worden onder de GPL-licentie. Het auteurschap blijft bij jou; er is geen vergoeding; verdere verspreiding door derden valt buiten onze controle.\n\n3) “Zoals het is” en zonder verificatie. Publicaties verschijnen zonder voorafgaande beoordeling. We kunnen kalibratie of foutloosheid van apparaten niet garanderen. De informatie is bedoeld voor onderzoek en vormt geen professioneel advies.\n\n4) Privacy en moderatie. Om veiligheid en vertrouwen te bewaren kan de kaart tijden en coördinaten afronden; technische metadata kunnen worden verwijderd of geanonimiseerd. We mogen materiaal verbergen of verwijderen dat naar ons redelijk oordeel spam, vervalst, onwettig of storend is. Met oprechte metingen gaan we zorgvuldig om en we proberen ze te behouden.\n\n5) Cookies. De site gebruikt alleen een kortlevende technische sessiecookie; die verdwijnt zodra je bezoek eindigt. We bewaren geen andere sporen.\n\nVrienden, deze kaart is het resultaat van gedeelde inzet en open harten. Zie haar als een schets van het landschap, niet als een exacte blauwdruk. Spreekt ons werk je aan, doe dan mee — samen kunnen we het nog beter maken."
   },
   "el": {
     "title": "Χάρτης ισοτόπων της Chicha — Ραδιολογικός χάρτης του πλανήτη Γη",
@@ -1224,7 +1248,9 @@
     "attr_sources": "Πηγές δεδομένων",
     "attr_license": "Άδεια",
     "attr_api": "API",
-    "download_track_cim": "Λήψη διαδρομής (.cim)"
+    "download_track_cim": "Λήψη διαδρομής (.cim)",
+    "legal_title": "Νομικές πληροφορίες",
+    "legal_full": "Προοίμιο. Δημιουργούμε έναν ανοιχτό χάρτη όπου άνθρωποι από όλο τον κόσμο μοιράζονται μετρήσεις δοσίμετρων για το κοινό καλό — την επιστήμη, την οικολογία, την εκπαίδευση και την ασφάλεια. Δημοσιεύοντας τα δεδομένα σας βοηθάτε πολλούς. Σας ζητούμε να φροντίζετε αυτό το συλλογικό έργο.\n\n1) Ευθύνη. Η ακρίβεια και το περιεχόμενο των πληροφοριών που στέλνετε βαραίνουν εσάς. Τα δεδομένα δημοσιεύονται και χρησιμοποιούνται “ως έχουν”. Η υπηρεσία δεν επιβεβαιώνει ούτε εγγυάται την ορθότητά τους, την πληρότητα ή την καταλληλότητά τους για οποιονδήποτε σκοπό και δεν φέρει ευθύνη για τυχόν συνέπειες από τη χρήση τους.\n\n2) Ανοιχτότητα και άδεια. Με το να μοιράζεστε μετρήσεις, ημερομηνίες, προσεγγιστικές συντεταγμένες, μοντέλο συσκευής ή άλλα στοιχεία, κατανοείτε ότι γίνονται διαθέσιμα σε όλους και μπορούν να χρησιμοποιηθούν ελεύθερα σύμφωνα με την άδεια GPL. Η πατρότητα παραμένει σε εσάς· δεν προβλέπεται αποζημίωση· η περαιτέρω διάδοση από τρίτους δεν ελέγχεται από την υπηρεσία.\n\n3) “Ως έχουν” και χωρίς επαλήθευση. Οι δημοσιεύσεις εμφανίζονται χωρίς προγενέστερο έλεγχο. Δεν μπορούμε να εγγυηθούμε τη βαθμονόμηση των συσκευών ή την απουσία σφαλμάτων. Οι πληροφορίες παρέχονται για ερευνητικούς σκοπούς και δεν αποτελούν επαγγελματική σύσταση.\n\n4) Ιδιωτικότητα και εποπτεία. Για την ασφάλεια και την εμπιστοσύνη, ο χάρτης μπορεί να γενικεύει χρόνους και συντεταγμένες· τεχνικά μεταδεδομένα μπορεί να αφαιρούνται ή να ανωνυμοποιούνται. Διατηρούμε το δικαίωμα να αποκρύπτουμε ή να διαγράφουμε υλικό που, κατά τη λογική μας κρίση, αποτελεί ανεπιθύμητη αλληλογραφία, πλαστογραφία, παραβίαση νόμου ή εμπόδιο στη λειτουργία της υπηρεσίας. Με τις καλοπροαίρετες μετρήσεις είμαστε προσεκτικοί και προσπαθούμε να τις διαφυλάσσουμε.\n\n5) Cookies. Ο ιστότοπος χρησιμοποιεί ένα τεχνικό cookie συνεδρίας μικρής διάρκειας· εξαφανίζεται με τη λήξη της επίσκεψής σας. Δεν διατηρούμε άλλα ίχνη.\n\nΦίλοι μας, ο χάρτης αυτός είναι καρπός συλλογικής προσπάθειας και ανοιχτών καρδιών. Θεωρήστε τον ένα περίγραμμα του τοπίου, όχι ένα ακριβές σχέδιο. Αν σας αγγίζει η δουλειά μας, ελάτε μαζί μας — μαζί μπορούμε να την κάνουμε ακόμη καλύτερη."
   },
   "pl": {
     "title": "Mapa izotopów Chichy — Radiologiczna mapa Ziemi",
@@ -1305,7 +1331,9 @@
     "attr_sources": "Źródła danych",
     "attr_license": "Licencja",
     "attr_api": "API",
-    "download_track_cim": "Pobierz trasę (.cim)"
+    "download_track_cim": "Pobierz trasę (.cim)",
+    "legal_title": "Informacje prawne",
+    "legal_full": "Preambuła. Wspólnie tworzymy otwartą mapę, na której ludzie z całego świata dzielą się odczytami z dozymetrów dla wspólnego dobra — nauki, ekologii, edukacji i bezpieczeństwa. Publikując dane, pomagasz wielu osobom. Prosimy o troskę o to wspólne dzieło.\n\n1) Odpowiedzialność. Za dokładność i treść przekazywanych informacji odpowiada autor. Dane są publikowane i używane “tak jak są”. Serwis nie potwierdza ani nie gwarantuje ich poprawności, kompletności czy przydatności do jakiegokolwiek celu i nie ponosi odpowiedzialności za możliwe skutki ich wykorzystania.\n\n2) Otwartość i licencja. Udostępniając pomiary, daty, przybliżoną lokalizację, model urządzenia czy inne dane, rozumiesz, że stają się dostępne dla wszystkich i mogą być swobodnie używane na warunkach licencji GPL. Autorstwo pozostaje przy tobie; wynagrodzenie nie jest przewidziane; dalsza dystrybucja przez osoby trzecie wymyka się spod naszej kontroli.\n\n3) “Tak jak jest” i brak weryfikacji. Publikacje pojawiają się bez wcześniejszej ekspertyzy. Nie możemy zagwarantować kalibracji urządzeń ani braku błędów. Przekazywane informacje mają charakter badawczy i nie stanowią profesjonalnej rekomendacji.\n\n4) Prywatność i moderacja. Dla bezpieczeństwa i zaufania mapa może uogólniać czas i współrzędne; techniczne metadane mogą być usuwane lub anonimizowane. Możemy ukrywać lub usuwać materiały, które według naszego rozsądnego uznania są spamem, fałszywkami, naruszają prawo lub utrudniają działanie serwisu. Z życzliwością traktujemy rzetelne pomiary i staramy się je zachować.\n\n5) Cookies. Strona korzysta wyłącznie z krótkotrwałego technicznego cookie sesyjnego; znika po zakończeniu wizyty. Nie przechowujemy innych śladów.\n\nPrzyjaciele, ta mapa jest owocem wspólnego wysiłku i otwartych serc. Traktujcie ją jak szkic terenu, a nie dokładny plan. Jeśli nasze dzieło jest wam bliskie, dołączcie — razem możemy je udoskonalić."
   },
   "uk": {
     "title": "Карта ізотопів Чічі — Радіологічна карта планети Земля",
@@ -1386,7 +1414,9 @@
     "attr_sources": "Джерела даних",
     "attr_license": "Ліцензія",
     "attr_api": "API",
-    "download_track_cim": "Завантажити трек (.cim)"
+    "download_track_cim": "Завантажити трек (.cim)",
+    "legal_title": "Правова інформація",
+    "legal_full": "Преамбула. Ми разом створюємо відкриту карту, де люди з усього світу діляться показами дозиметрів заради спільного блага — науки, екології, освіти та безпеки. Публікуючи дані, ви допомагаєте багатьом. Просимо дбайливо ставитися до цієї спільної справи.\n\n1) Відповідальність. Точність і зміст переданих відомостей лежать на авторі. Дані публікуються й використовуються “як є”. Сервіс не підтверджує і не гарантує їхню коректність, повноту чи придатність для будь-якої мети й не несе відповідальності за можливі наслідки їх використання.\n\n2) Відкритість і ліцензія. Передаючи дозиметричні дані, дати, приблизну геопозицію, модель приладу чи інші відомості, ви розумієте, що вони стають доступними для всіх і можуть вільно використовуватися на умовах ліцензії GPL. Авторство зберігається; винагорода не передбачена; подальше поширення третіми сторонами сервіс не контролює.\n\n3) “Як є” та відсутність верифікації. Публікація відбувається без попередньої експертизи. Ми не можемо гарантувати калібрування приладів і відсутність помилок. Надана інформація має дослідницький характер і не є професійною рекомендацією.\n\n4) Приватність і модерація. Для безпеки та довіри карта може узагальнювати час і координати; технічні метадані можуть видалятися або знеособлюватися. Ми маємо право приховувати чи видаляти матеріали, які, на нашу розумну думку, є спамом, підробкою, порушують закон або заважають роботі сервісу. До сумлінних вимірювань ставимося дбайливо й прагнемо їх зберігати.\n\n5) Cookies. Для роботи сайту використовується короткочасна технічна cookie сесії; вона зникає після завершення сеансу. Інших слідів ми не зберігаємо.\n\nДрузі, наша карта — плід спільних зусиль і відкритих сердець. Сприймайте її як ескіз місцевості, а не як точний план. Якщо наша праця вам близька — долучайтеся: разом ми зможемо зробити її ще кращою."
   },
   "cs": {
     "title": "Chichina mapa izotopů — Radiologická mapa planety Země",
@@ -1462,7 +1492,9 @@
     "attr_sources": "Zdroje dat",
     "attr_license": "Licence",
     "attr_api": "API",
-    "download_track_cim": "Stáhnout trasu (.cim)"
+    "download_track_cim": "Stáhnout trasu (.cim)",
+    "legal_title": "Právní informace",
+    "legal_full": "Preambule. Společně vytváříme otevřenou mapu, na níž lidé z celého světa sdílejí údaje z dozimetrů pro dobro všech — pro vědu, ekologii, vzdělávání i bezpečnost. Zveřejněním svých dat pomáháte mnoha lidem. Prosíme o ohleduplnost k této společné práci.\n\n1) Odpovědnost. Za přesnost a obsah předaných informací nese odpovědnost autor. Data jsou zveřejňována a používána „tak, jak jsou“. Služba nepotvrzuje ani negarantuje jejich správnost, úplnost či vhodnost pro jakýkoli účel a neodpovídá za možné následky jejich použití.\n\n2) Otevřenost a licence. Sdílením měření, dat, přibližné polohy, modelu zařízení nebo dalších údajů chápete, že se stávají dostupnými všem a mohou být volně používány podle licence GPL. Autorství zůstává vám; odměna není poskytována; další šíření třetími stranami nemáme pod kontrolou.\n\n3) „Tak jak jsou“ a bez ověření. Příspěvky se zveřejňují bez předchozího posouzení. Nemůžeme zaručit kalibraci přístrojů ani nepřítomnost chyb. Poskytnuté informace slouží k výzkumným účelům a nepředstavují odborné doporučení.\n\n4) Soukromí a moderace. Kvůli bezpečnosti a důvěře může mapa zobecnit čas i souřadnice; technická metadata mohou být odstraněna nebo anonymizována. Můžeme skrývat či mazat materiály, které jsou podle našeho rozumného uvážení spamem, padělkem, porušují zákon nebo narušují službu. Poctivá měření si vážíme a snažíme se je uchovat.\n\n5) Cookies. Web používá pouze krátkodobé technické session cookie; po ukončení návštěvy mizí. Žádné další stopy neuchováváme.\n\nPřátelé, tato mapa je plodem společného úsilí a otevřených srdcí. Vnímejte ji jako náčrt krajiny, nikoli jako přesný plán. Pokud vám naše práce dává smysl, přidejte se — společně ji můžeme vylepšit."
   },
   "fi": {
     "title": "Chichan isotooppikartta — Maapallon radiologinen kartta",
@@ -1543,7 +1575,9 @@
     "attr_sources": "Tietolähteet",
     "attr_license": "Lisenssi",
     "attr_api": "API",
-    "download_track_cim": "Lataa reitti (.cim)"
+    "download_track_cim": "Lataa reitti (.cim)",
+    "legal_title": "Lakiasiat",
+    "legal_full": "Esipuhe. Rakennamme avointa karttaa, jossa ihmiset kaikkialta maailmasta jakavat dosimetritietoja yhteiseksi hyväksi — tieteen, ympäristön, koulutuksen ja turvallisuuden tueksi. Julkaisemalla tietosi autat monia. Pyydämme vaalimaan tätä yhteistä työtä.\n\n1) Vastuu. Lähettämiesi tietojen oikeellisuus ja sisältö ovat lähettäjän vastuulla. Tiedot julkaistaan ja niitä käytetään “sellaisinaan”. Palvelu ei vahvista tai takaa niiden paikkansapitävyyttä, täydellisyyttä tai soveltuvuutta mihinkään tarkoitukseen eikä vastaa niiden käytöstä mahdollisesti aiheutuvista seurauksista.\n\n2) Avoimuus ja lisenssi. Kun jaat mittauksia, päivämääriä, likimääräisiä sijainteja, laitteen mallin tai muita tietoja, ymmärrät, että ne tulevat kaikkien saataville ja niitä voidaan käyttää vapaasti GPL-lisenssin mukaisesti. Tekijyys säilyy sinulla; korvausta ei makseta; kolmansien osapuolten jatkolevitys ei ole hallinnassamme.\n\n3) “Sellaisinaan” ilman varmistusta. Julkaisut ilmestyvät ilman ennakkotarkistusta. Emme voi taata laitteiden kalibrointia tai virheettömyyttä. Tiedot jaetaan tutkimuskäyttöön, eivätkä ne ole ammatillisia suosituksia.\n\n4) Yksityisyys ja moderointi. Turvallisuuden ja luottamuksen vuoksi kartta voi yleistää aikoja ja koordinaatteja; tekniset metatiedot voidaan poistaa tai anonymisoida. Voimme piilottaa tai poistaa aineistoa, joka kohtuullisen arviomme mukaan on roskapostia, väärennöstä, lainvastaista tai palvelua häiritsevää. Rehellisiä mittauksia käsittelemme huolella ja pyrimme säilyttämään ne.\n\n5) Evästeet. Sivusto käyttää vain lyhytikäistä teknistä istuntoevästettä; se katoaa vierailun päättyessä. Emme tallenna muita jälkiä.\n\nYstävät, tämä kartta on yhteisen ponnistelun ja avoimien sydänten tulos. Kohdelkaa sitä maaston luonnoksena, ei tarkkana piirustuksena. Jos työ puhuttelee sinua, liity mukaan — yhdessä voimme tehdä siitä vielä paremman."
   },
   "sv": {
     "title": "Chichas isotopkarta — Radiologisk karta över planeten Jorden",
@@ -1624,7 +1658,9 @@
     "attr_sources": "Datakällor",
     "attr_license": "Licens",
     "attr_api": "API",
-    "download_track_cim": "Ladda ned spår (.cim)"
+    "download_track_cim": "Ladda ned spår (.cim)",
+    "legal_title": "Juridisk information",
+    "legal_full": "Förord. Vi bygger en öppen karta där människor över hela världen delar dosimetermätningar för det gemensamma bästa — för vetenskap, ekologi, utbildning och säkerhet. När du publicerar dina data hjälper du många. Var rädd om det här gemensamma arbetet.\n\n1) Ansvar. Noggrannheten och innehållet i informationen du skickar är ditt ansvar. Uppgifterna publiceras och används “i befintligt skick”. Tjänsten bekräftar eller garanterar inte deras korrekthet, fullständighet eller lämplighet för något syfte och tar inget ansvar för möjliga följder av deras användning.\n\n2) Öppenhet och licens. När du delar mätningar, datum, ungefärliga positioner, enhetsmodeller eller andra uppgifter förstår du att de blir tillgängliga för alla och får användas fritt enligt GPL-licensen. Du behåller upphovsrätten; någon ersättning utgår inte; vidare spridning av tredje part ligger utanför vår kontroll.\n\n3) “I befintligt skick” och utan verifiering. Publicering sker utan förhandsgranskning. Vi kan inte garantera kalibrering eller felfrihet hos instrumenten. Informationen delas för forskningsändamål och är inte professionella råd.\n\n4) Integritet och moderering. För säkerhet och tillit kan kartan generalisera tider och koordinater; tekniska metadata kan tas bort eller anonymiseras. Vi kan dölja eller ta bort material som enligt vår rimliga bedömning är spam, förfalskat, olagligt eller stör tjänsten. Vi vårdar ärliga mätningar och försöker bevara dem.\n\n5) Cookies. Webbplatsen använder bara en kortlivad teknisk sessionscookie; den försvinner när besöket är slut. Inga andra spår sparas.\n\nVänner, kartan är resultatet av gemensamma ansträngningar och öppna hjärtan. Se den som en skiss av landskapet, inte som en exakt ritning. Om vårt arbete berör dig, var med — tillsammans kan vi göra det ännu bättre."
   },
   "no": {
     "title": "Chichas isotopkart — Radiologisk kart over planeten Jorden",
@@ -1705,7 +1741,9 @@
     "attr_sources": "Datakilder",
     "attr_license": "Lisens",
     "attr_api": "API",
-    "download_track_cim": "Last ned spor (.cim)"
+    "download_track_cim": "Last ned spor (.cim)",
+    "legal_title": "Juridisk informasjon",
+    "legal_full": "Forord. Vi bygger et åpent kart der folk over hele verden deler dosimetermålinger til fellesskapets beste — for vitenskap, miljø, utdanning og sikkerhet. Når du publiserer dataene dine, hjelper du mange. Ta godt vare på dette felles arbeidet.\n\n1) Ansvar. Du er selv ansvarlig for nøyaktigheten og innholdet i informasjonen du sender inn. Dataene publiseres og brukes “som de er”. Tjenesten bekrefter eller garanterer ikke riktighet, fullstendighet eller egnethet for noe formål og tar ikke ansvar for mulige følger av bruken.\n\n2) Åpenhet og lisens. Når du deler målinger, datoer, omtrentlige posisjoner, enhetsmodeller eller andre detaljer, forstår du at de blir tilgjengelige for alle og kan brukes fritt under GPL-lisensen. Opphavsretten forblir hos deg; ingen godtgjørelse gis; videre distribusjon fra tredjeparter er utenfor vår kontroll.\n\n3) “Som de er” og uten verifisering. Publisering skjer uten forhåndsgodkjenning. Vi kan ikke garantere kalibrering av instrumenter eller fravær av feil. Informasjonen deles for forskningsformål og er ikke profesjonelle råd.\n\n4) Personvern og moderering. For å bevare trygghet og tillit kan kartet generalisere tidsstempler og koordinater; tekniske metadata kan fjernes eller anonymiseres. Vi kan skjule eller slette materiale som etter vårt rimelige skjønn er spam, forfalsket, ulovlig eller forstyrrer tjenesten. Ærlige målinger behandles med omtanke og vi forsøker å bevare dem.\n\n5) Informasjonskapsler. Nettstedet bruker bare en kortlivet teknisk sesjonskapsel; den forsvinner når besøket avsluttes. Vi lagrer ingen andre spor.\n\nVenner, kartet vårt er resultatet av felles innsats og åpne hjerter. Se det som en skisse av terrenget, ikke en nøyaktig plan. Hvis arbeidet vårt betyr noe for deg, bli med — sammen kan vi gjøre det bedre."
   },
   "da": {
     "title": "Chichas isotopkort — Radiologisk kort over planeten Jorden",
@@ -1786,7 +1824,9 @@
     "attr_sources": "Datakilder",
     "attr_license": "Licens",
     "attr_api": "API",
-    "download_track_cim": "Hent spor (.cim)"
+    "download_track_cim": "Hent spor (.cim)",
+    "legal_title": "Juridisk information",
+    "legal_full": "Forord. Vi bygger et åbent kort, hvor folk over hele verden deler dosimetermålinger til gavn for alle — for videnskab, miljø, uddannelse og sikkerhed. Når du offentliggør dine data, hjælper du mange. Vi beder dig værne om dette fælles projekt.\n\n1) Ansvar. Du har selv ansvaret for nøjagtighed og indhold i de oplysninger, du indsender. Data offentliggøres og bruges “som de er”. Tjenesten bekræfter eller garanterer ikke deres korrekthed, fuldstændighed eller egnethed til noget formål og påtager sig ikke ansvar for mulige følger af brugen.\n\n2) Åbenhed og licens. Når du deler målinger, datoer, omtrentlige positioner, enhedsmodeller eller andre oplysninger, forstår du, at de bliver tilgængelige for alle og kan bruges frit under GPL-licensen. Ophavsretten forbliver hos dig; der ydes ingen betaling; videre distribution fra tredjepart ligger uden for vores kontrol.\n\n3) “Som de er” og uden verifikation. Offentliggørelse sker uden forhåndstjek. Vi kan ikke garantere kalibrering af udstyr eller fravær af fejl. Oplysningerne deles til forskningsformål og udgør ikke professionel rådgivning.\n\n4) Privatliv og moderation. For at bevare sikkerhed og tillid kan kortet generalisere tider og koordinater; tekniske metadata kan fjernes eller anonymiseres. Vi kan skjule eller slette materiale, der efter vores rimelige vurdering er spam, forfalsket, ulovligt eller forstyrrer tjenesten. Vi behandler hæderlige målinger med omtanke og forsøger at bevare dem.\n\n5) Cookies. Webstedet anvender kun en kortlivet teknisk sessionscookie; den forsvinder, når besøget er slut. Vi gemmer ingen andre spor.\n\nVenner, vores kort er resultatet af fælles indsats og åbne hjerter. Betragt det som en skitse af landskabet, ikke en nøjagtig plan. Hvis arbejdet taler til dig, så vær med — sammen kan vi gøre det endnu bedre."
   },
   "hu": {
     "title": "Chicha izotóptérképe — A Föld radiológiai térképe",
@@ -1867,7 +1907,9 @@
     "attr_sources": "Adatforrások",
     "attr_license": "Licenc",
     "attr_api": "API",
-    "download_track_cim": "Pálya letöltése (.cim)"
+    "download_track_cim": "Pálya letöltése (.cim)",
+    "legal_title": "Jogi tudnivalók",
+    "legal_full": "Előszó. Egy nyitott térképet építünk, ahol a világ minden tájáról megosztják az emberek a dózismérők adatait a közjó érdekében — a tudomány, az ökológia, az oktatás és a biztonság támogatására. Az adataid közzétételével sokaknak segítesz. Kérjük, bánj gondosan ezzel a közös munkával.\n\n1) Felelősség. Az általad beküldött információk pontosságáért és tartalmáért te felelsz. Az adatok „ahogy vannak” kerülnek közzétételre és felhasználásra. A szolgáltatás nem erősíti meg és nem garantálja azok helyességét, teljességét vagy alkalmasságát bármilyen célra, és nem vállal felelősséget a felhasználás esetleges következményeiért.\n\n2) Nyitottság és licenc. Amikor megosztod a méréseket, dátumokat, hozzávetőleges helyeket, az eszköz típusát vagy egyéb adatokat, megérted, hogy ezek mindenki számára elérhetővé válnak, és szabadon felhasználhatók a GPL licenc szerint. A szerzői jog nálad marad; díjazás nincs; a harmadik felek általi további terjesztést nem áll módunkban ellenőrizni.\n\n3) „Ahogy van” és ellenőrzés nélkül. A közzététel előzetes vizsgálat nélkül történik. Nem tudjuk garantálni a műszerek kalibrálását vagy a hibátlanságot. Az információ kutatási célokat szolgál, és nem minősül szakmai tanácsnak.\n\n4) Adatvédelem és moderálás. A biztonság és a bizalom érdekében a térkép általánosíthatja az időpontokat és koordinátákat; a technikai metaadatokat eltávolíthatjuk vagy anonimizálhatjuk. Jogunkban áll elrejteni vagy törölni azokat az anyagokat, amelyek józan megítélésünk szerint spamnek, hamisítványnak, jogsértőnek minősülnek, vagy akadályozzák a szolgáltatást. A jóhiszemű méréseket gondosan kezeljük, és igyekszünk megőrizni őket.\n\n5) Sütik. A webhely csak egy rövid életű, technikai munkamenet-sütit használ, amely a látogatás végén eltűnik. Egyéb nyomot nem tárolunk.\n\nBarátaink, a térképünk közös erőfeszítés és nyitott szívek gyümölcse. Tekintsétek vázlatnak, nem pedig pontos tervrajznak. Ha közel áll hozzátok a munkánk, csatlakozzatok — együtt még jobbá tehetjük."
   },
   "th": {
     "title": "แผนที่ไอโซโทปของ Chicha — แผนที่รังสีของโลก",
@@ -1948,7 +1990,9 @@
     "attr_sources": "แหล่งข้อมูล",
     "attr_license": "สัญญาอนุญาต",
     "attr_api": "API",
-    "download_track_cim": "ดาวน์โหลดเส้นทาง (.cim)"
+    "download_track_cim": "ดาวน์โหลดเส้นทาง (.cim)",
+    "legal_title": "ข้อมูลทางกฎหมาย",
+    "legal_full": "คำนำ เรากำลังร่วมกันสร้างแผนที่เปิดที่ผู้คนทั่วโลกแบ่งปันค่าที่วัดได้จากโดซิเมตรเพื่อประโยชน์ส่วนรวม ทั้งด้านวิทยาศาสตร์ สิ่งแวดล้อม การศึกษา และความปลอดภัย เมื่อคุณเผยแพร่ข้อมูล คุณได้ช่วยเหลือหลายคน โปรดดูแลสิ่งที่เราสร้างร่วมกันนี้ด้วยความระมัดระวัง\n\n1) ความรับผิดชอบ ความถูกต้องและเนื้อหาของข้อมูลที่คุณส่งเป็นความรับผิดชอบของคุณ ข้อมูลถูกเผยแพร่และใช้งาน “ตามสภาพ” บริการไม่ได้ยืนยันหรือรับประกันความถูกต้อง ความสมบูรณ์ หรือความเหมาะสมต่อวัตถุประสงค์ใดๆ และไม่รับผิดชอบต่อผลลัพธ์ใดๆ จากการใช้งาน\n\n2) ความเปิดกว้างและสัญญาอนุญาต เมื่อคุณแบ่งปันค่าที่วัดได้ วันที่ ตำแหน่งโดยประมาณ รุ่นอุปกรณ์ หรือรายละเอียดอื่นๆ คุณเข้าใจว่าข้อมูลเหล่านี้จะเปิดให้ทุกคนเข้าถึงและใช้ได้อย่างเสรีภายใต้สัญญาอนุญาต GPL สิทธิในผลงานยังเป็นของคุณ ไม่มีค่าตอบแทน การเผยแพร่ต่อโดยบุคคลที่สามอยู่นอกเหนือการควบคุมของเรา\n\n3) “ตามสภาพ” และไม่มีการตรวจสอบ ข้อมูลถูกเผยแพร่โดยไม่มีการตรวจสอบล่วงหน้า เราไม่สามารถรับประกันการสอบเทียบของอุปกรณ์หรือการปราศจากข้อผิดพลาด ข้อมูลนี้นำเสนอเพื่อการวิจัยและไม่ใช่คำแนะนำจากผู้เชี่ยวชาญ\n\n4) ความเป็นส่วนตัวและการกลั่นกรอง เพื่อรักษาความปลอดภัยและความไว้วางใจ แผนที่อาจปรับเวลาและพิกัดให้กว้างขึ้น และข้อมูลเมตาทางเทคนิคอาจถูกลบหรือทำให้ไม่ระบุตัวตน เราอาจซ่อนหรือลบเนื้อหาที่ตามดุลยพินิจอย่างสมเหตุสมผลของเราเป็นสแปม ปลอมแปลง ผิดกฎหมาย หรือรบกวนการให้บริการ เราใส่ใจข้อมูลการวัดที่ทำโดยสุจริตและพยายามเก็บรักษาไว้\n\n5) คุกกี้ เว็บไซต์ใช้คุกกี้ทางเทคนิคสำหรับเซสชันที่มีอายุสั้นเท่านั้น และจะหายไปเมื่อคุณออกจากเว็บไซต์ เราไม่เก็บร่องรอยอื่นใด\n\nเพื่อนๆ แผนที่นี้เป็นผลจากความพยายามร่วมกันและหัวใจที่เปิดกว้าง โปรดมองว่าเป็นภาพร่างภูมิประเทศ ไม่ใช่แบบแปลนที่แม่นยำ หากงานของเราโดนใจคุณ เชิญมาร่วมกัน — เราจะช่วยกันทำให้ดียิ่งขึ้นได้"
   },
   "vi": {
     "title": "Bản đồ đồng vị của Chicha — Bản đồ phóng xạ của Trái Đất",
@@ -2029,7 +2073,9 @@
     "attr_sources": "Nguồn dữ liệu",
     "attr_license": "Giấy phép",
     "attr_api": "API",
-    "download_track_cim": "Tải bản ghi (.cim)"
+    "download_track_cim": "Tải bản ghi (.cim)",
+    "legal_title": "Thông tin pháp lý",
+    "legal_full": "Lời mở đầu. Chúng ta đang xây dựng một bản đồ mở nơi mọi người khắp thế giới cùng chia sẻ số đo từ máy đo liều để phục vụ lợi ích chung — khoa học, môi trường, giáo dục và an toàn. Khi bạn công bố dữ liệu, bạn đang giúp đỡ rất nhiều người. Xin hãy trân trọng công trình tập thể này.\n\n1) Trách nhiệm. Độ chính xác và nội dung thông tin bạn gửi thuộc trách nhiệm của bạn. Dữ liệu được công bố và sử dụng “nguyên trạng”. Dịch vụ không xác nhận hay bảo đảm tính chính xác, đầy đủ hoặc sự phù hợp cho bất kỳ mục đích nào và không chịu trách nhiệm cho mọi hệ quả có thể phát sinh từ việc sử dụng dữ liệu.\n\n2) Tính mở và giấy phép. Khi chia sẻ số đo, ngày tháng, vị trí ước lượng, kiểu thiết bị hay thông tin khác, bạn hiểu rằng tất cả sẽ được công khai và có thể được sử dụng tự do theo giấy phép GPL. Quyền tác giả vẫn thuộc về bạn; không có thù lao; việc phân phối lại bởi bên thứ ba nằm ngoài tầm kiểm soát của chúng tôi.\n\n3) “Nguyên trạng” và không kiểm chứng. Dữ liệu được đăng tải mà không qua thẩm định trước. Chúng tôi không thể bảo đảm thiết bị được hiệu chuẩn hay không có sai sót. Thông tin chỉ nhằm mục đích nghiên cứu và không phải khuyến nghị chuyên môn.\n\n4) Quyền riêng tư và kiểm duyệt. Để giữ an toàn và sự tin cậy, bản đồ có thể làm tròn thời gian và tọa độ; siêu dữ liệu kỹ thuật có thể bị xóa hoặc ẩn danh. Chúng tôi có thể ẩn hoặc xóa nội dung mà theo đánh giá hợp lý của mình là spam, giả mạo, bất hợp pháp hoặc gây cản trở dịch vụ. Chúng tôi trân trọng những số đo thiện chí và cố gắng lưu giữ chúng.\n\n5) Cookie. Trang web chỉ dùng một cookie kỹ thuật phiên ngắn hạn; nó biến mất khi bạn kết thúc lượt truy cập. Chúng tôi không lưu lại dấu vết nào khác.\n\nBạn bè thân mến, bản đồ này là kết quả của nỗ lực chung và tấm lòng rộng mở. Hãy coi đây như bản phác họa địa hình chứ không phải bản vẽ chính xác. Nếu công việc của chúng tôi chạm tới bạn, hãy cùng tham gia — chúng ta sẽ làm cho nó tốt hơn nữa."
   },
   "id": {
     "title": "Peta Isotop Chicha — Peta radiologi Planet Bumi",
@@ -2110,7 +2156,9 @@
     "attr_sources": "Sumber data",
     "attr_license": "Lisensi",
     "attr_api": "API",
-    "download_track_cim": "Unduh trek (.cim)"
+    "download_track_cim": "Unduh trek (.cim)",
+    "legal_title": "Informasi hukum",
+    "legal_full": "Prakata. Kami membangun peta terbuka tempat orang-orang di seluruh dunia berbagi pembacaan dosimeter demi kebaikan bersama — ilmu pengetahuan, ekologi, pendidikan, dan keselamatan. Dengan memublikasikan data, Anda membantu banyak orang. Tolong jaga karya bersama ini dengan penuh perhatian.\n\n1) Tanggung jawab. Ketepatan dan isi informasi yang Anda kirimkan menjadi tanggung jawab Anda. Data diterbitkan dan digunakan “apa adanya”. Layanan tidak mengonfirmasi atau menjamin kebenaran, kelengkapan, atau kesesuaiannya untuk tujuan apa pun dan tidak bertanggung jawab atas akibat apa pun dari penggunaannya.\n\n2) Keterbukaan dan lisensi. Saat Anda membagikan hasil ukur, tanggal, perkiraan lokasi, model perangkat, atau detail lain, Anda memahami bahwa semuanya akan tersedia bagi semua orang dan dapat digunakan secara bebas di bawah lisensi GPL. Hak cipta tetap milik Anda; tidak ada kompensasi; distribusi lebih lanjut oleh pihak ketiga berada di luar kendali kami.\n\n3) “Apa adanya” dan tanpa verifikasi. Publikasi muncul tanpa peninjauan awal. Kami tidak dapat menjamin kalibrasi instrumen atau bebas dari kesalahan. Informasi dibagikan untuk tujuan riset dan bukan merupakan rekomendasi profesional.\n\n4) Privasi dan moderasi. Demi keamanan dan kepercayaan, peta dapat menggeneralisasi waktu dan koordinat; metadata teknis dapat dihapus atau dianonimkan. Kami dapat menyembunyikan atau menghapus materi yang menurut penilaian wajar kami adalah spam, palsu, melanggar hukum, atau mengganggu layanan. Kami merawat pengukuran yang dilakukan dengan itikad baik dan berupaya menjaganya.\n\n5) Cookie. Situs ini hanya menggunakan cookie sesi teknis berumur pendek; cookie tersebut hilang saat kunjungan berakhir. Kami tidak menyimpan jejak lain.\n\nSahabat-sahabat, peta ini adalah buah dari upaya bersama dan hati yang terbuka. Anggaplah sebagai sketsa bentang alam, bukan cetak biru yang presisi. Jika pekerjaan kami menyentuh Anda, bergabunglah — bersama kita dapat menjadikannya lebih baik."
   },
   "ms": {
     "title": "Peta Isotop Chicha — Peta radiologi Planet Bumi",
@@ -2191,7 +2239,9 @@
     "attr_sources": "Sumber data",
     "attr_license": "Lesen",
     "attr_api": "API",
-    "download_track_cim": "Muat turun trek (.cim)"
+    "download_track_cim": "Muat turun trek (.cim)",
+    "legal_title": "Maklumat undang-undang",
+    "legal_full": "Prakata. Kami sedang membina peta terbuka di mana orang dari seluruh dunia berkongsi bacaan dosimeter demi kebaikan bersama — sains, ekologi, pendidikan dan keselamatan. Dengan menerbitkan data, anda membantu ramai orang. Tolong hargai usaha bersama ini.\n\n1) Tanggungjawab. Ketepatan dan kandungan maklumat yang anda hantar adalah tanggungjawab anda. Data diterbitkan dan digunakan “seadanya”. Perkhidmatan tidak mengesahkan atau menjamin ketepatan, kelengkapan atau kesesuaiannya untuk apa-apa tujuan dan tidak bertanggungjawab atas sebarang kesan daripada penggunaannya.\n\n2) Keterbukaan dan lesen. Apabila anda berkongsi bacaan, tarikh, anggaran lokasi, model peranti atau maklumat lain, anda memahami bahawa semuanya menjadi tersedia untuk semua orang dan boleh digunakan secara bebas di bawah lesen GPL. Hak cipta kekal milik anda; tiada ganjaran; pengedaran lanjut oleh pihak ketiga berada di luar kawalan kami.\n\n3) “Seadanya” dan tanpa pengesahan. Penerbitan berlaku tanpa semakan awal. Kami tidak dapat menjamin penentukuran peranti atau ketiadaan ralat. Maklumat ini dikongsi untuk tujuan penyelidikan dan bukan nasihat profesional.\n\n4) Privasi dan moderasi. Demi keselamatan dan kepercayaan, peta boleh menggeneralisasi masa dan koordinat; metadata teknikal boleh dialih keluar atau dianonimkan. Kami mungkin menyembunyikan atau memadam bahan yang pada pertimbangan munasabah kami adalah spam, palsu, menyalahi undang-undang atau mengganggu perkhidmatan. Kami menjaga pengukuran yang dibuat dengan niat baik dan berusaha memeliharanya.\n\n5) Kuki. Laman ini hanya menggunakan kuki sesi teknikal yang singkat; ia hilang apabila lawatan anda berakhir. Kami tidak menyimpan jejak lain.\n\nRakan-rakan, peta ini ialah hasil usaha bersama dan hati yang terbuka. Anggaplah ia sebagai lakaran rupa bumi, bukan pelan yang tepat. Jika kerja kami menyentuh hati anda, sertailah kami — bersama kita boleh menjadikannya lebih baik."
   },
   "fa": {
     "title": "نقشه ایزوتوپ‌های چیچا — نقشهٔ رادیولوژیِ سیارهٔ زمین",
@@ -2272,7 +2322,9 @@
     "attr_sources": "منابع داده",
     "attr_license": "مجوز",
     "attr_api": "رابط API",
-    "download_track_cim": "دانلود مسیر (.cim)"
+    "download_track_cim": "دانلود مسیر (.cim)",
+    "legal_title": "اطلاعات حقوقی",
+    "legal_full": "پیشگفتار. ما در حال ساختن نقشه‌ای باز هستیم که در آن مردم سراسر جهان قرائت دوزیمترهای خود را برای خیر عمومی — علم، محیط زیست، آموزش و ایمنی — به اشتراک می‌گذارند. با انتشار داده‌های خود به بسیاری کمک می‌کنید. لطفاً با این تلاش جمعی با دلسوزی برخورد کنید.\n\n1) مسئولیت. دقت و محتوای اطلاعاتی که ارسال می‌کنید بر عهده شماست. داده‌ها «همان‌گونه که هستند» منتشر و استفاده می‌شوند. سرویس صحت، کامل بودن یا مناسب بودن آن‌ها را برای هر هدفی تأیید یا تضمین نمی‌کند و مسئولیتی در قبال نتایج احتمالی استفاده از آن‌ها ندارد.\n\n2) گشودگی و مجوز. با به اشتراک گذاشتن اندازه‌گیری‌ها، تاریخ‌ها، موقعیت تقریبی، مدل دستگاه یا دیگر جزئیات، می‌پذیرید که این اطلاعات در دسترس همه قرار می‌گیرد و می‌تواند تحت مجوز GPL آزادانه استفاده شود. حق مؤلف برای شما باقی می‌ماند؛ پاداشی در کار نیست؛ بازنشر بعدی توسط اشخاص ثالث خارج از کنترل ماست.\n\n3) «همان‌گونه که هست» و بدون راستی‌آزمایی. محتوا بدون بررسی قبلی منتشر می‌شود. ما نمی‌توانیم کالیبراسیون ابزارها یا نبود خطا را تضمین کنیم. اطلاعات ارائه‌شده برای اهداف پژوهشی است و توصیه حرفه‌ای محسوب نمی‌شود.\n\n4) حریم خصوصی و تعدیل. برای حفظ امنیت و اعتماد، نقشه ممکن است زمان‌ها و مختصات را کلی‌سازی کند؛ فراداده‌های فنی می‌توانند حذف یا ناشناس شوند. ما می‌توانیم موادی را که به تشخیص منطقی ما اسپم، جعلی، غیرقانونی یا مزاحم سرویس هستند مخفی یا حذف کنیم. اندازه‌گیری‌های حسن‌نیت را با دقت نگه‌داری می‌کنیم و در صیانت از آن‌ها می‌کوشیم.\n\n5) کوکی‌ها. وب‌سایت تنها از یک کوکی فنی کوتاه‌مدت برای نشست استفاده می‌کند؛ با پایان بازدید شما ناپدید می‌شود. اثر دیگری ذخیره نمی‌کنیم.\n\nدوستان عزیز، این نقشه حاصل تلاش مشترک و دل‌های گشوده است. آن را همچون طرحی از زمین ببینید، نه نقشه‌ای کاملاً دقیق. اگر کار ما برایتان الهام‌بخش است، به ما بپیوندید — با هم می‌توانیم آن را بهتر کنیم."
   },
   "he": {
     "title": "מפת האיזוטופים של Chicha — מפת קרינה של כוכב הלכת הארץ",
@@ -2353,6 +2405,8 @@
     "attr_sources": "מקורות נתונים",
     "attr_license": "רישיון",
     "attr_api": "ממשק API",
-    "download_track_cim": "הורדת מסלול (.cim)"
+    "download_track_cim": "הורדת מסלול (.cim)",
+    "legal_title": "מידע משפטי",
+    "legal_full": "פתיח. אנחנו בונים מפה פתוחה שבה אנשים מכל רחבי העולם משתפים את קריאות הדוזימטרים לטובת הכלל — מדע, אקולוגיה, חינוך ובטיחות. כשאתם מפרסמים נתונים אתם מסייעים לרבים. אנא התייחסו למיזם המשותף הזה ברגישות.\n\n1) אחריות. הדיוק והתוכן של המידע שאתם מוסרים באחריותכם. הנתונים מתפרסמים ומשמשים “כפי שהם”. השירות אינו מאשר או מבטיח את נכונותם, שלמותם או התאמתם לכל מטרה שהיא, ואינו נושא באחריות לכל תוצאה אפשרית משימוש בהם.\n\n2) פתיחות ורישיון. כאשר אתם משתפים מדידות, תאריכים, מיקום משוער, דגם מכשיר או פרטים אחרים, אתם מבינים שהמידע הופך זמין לכול וניתן לשימוש חופשי תחת רישיון GPL. היצירה נותרת על שמכם; אין תגמול; הפצה נוספת בידי צדדים שלישיים אינה בשליטתנו.\n\n3) “כפי שהם” וללא אימות. הפרסומים מופיעים ללא בדיקה מוקדמת. איננו יכולים להבטיח כיול מכשירים או היעדר טעויות. המידע מוצג למטרות מחקר ואינו מהווה המלצה מקצועית.\n\n4) פרטיות וניהול. כדי לשמור על ביטחון ואמון, המפה עשויה לעגל זמנים וקואורדינטות; מטא־נתונים טכניים עשויים להימחק או להיות מונכרים. אנו רשאים להסתיר או למחוק חומרים שלדעתנו הסבירה הם דואר זבל, זיופים, הפרת חוק או פוגעים בשירות. למדידות הנעשות בתום לב אנו ניגשים בזהירות ושואפים לשמרן.\n\n5) עוגיות. האתר משתמש רק בעוגיית סשן טכנית קצרה; היא נעלמת עם סיום הביקור. איננו שומרים עקבות נוספים.\n\nחברים יקרים, המפה הזו היא פרי מאמץ משותף ולבבות פתוחים. התייחסו אליה כאל סקיצה של הנוף ולא כתבנית מדויקת. אם עבודתנו מדברת אליכם, הצטרפו — יחד נוכל לשפר אותה עוד."
   }
 }
