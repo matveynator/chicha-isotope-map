@@ -74,6 +74,7 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated daily JSON archive tarball")
+var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 
 var CompileVersion = "dev"
 
@@ -2335,6 +2336,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultZoom       int
 		DefaultLayer      string
 		RealtimeAvailable bool
+		SupportEmail      string
 	}{
 		Markers:           doseData.Markers,
 		Version:           CompileVersion,
@@ -2345,6 +2347,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultZoom:       *defaultZoom,
 		DefaultLayer:      *defaultLayer,
 		RealtimeAvailable: *safecastRealtimeEnabled,
+		SupportEmail:      strings.TrimSpace(*supportEmail),
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader
@@ -2438,6 +2441,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultZoom       int
 		DefaultLayer      string
 		RealtimeAvailable bool
+		SupportEmail      string
 	}{
 		Markers:           nil, // ← ключевое изменение
 		Version:           CompileVersion,
@@ -2448,6 +2452,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultZoom:       *defaultZoom,
 		DefaultLayer:      *defaultLayer,
 		RealtimeAvailable: *safecastRealtimeEnabled,
+		SupportEmail:      strings.TrimSpace(*supportEmail),
 	}
 
 	var buf bytes.Buffer
