@@ -81,6 +81,9 @@ func Start(
 		destPath = normalisedPath
 	}
 	archiveDir := filepath.Dir(destPath)
+	if err := purgeStaleArchiveTemps(archiveDir, destPath, logf); err != nil && logf != nil {
+		logf("json archive stale temp cleanup warning: %v", err)
+	}
 	if logf != nil {
 		logf("json archive writer targeting %s (work dir %s)", destPath, archiveDir)
 	}
@@ -613,6 +616,46 @@ func replaceFile(tmpPath, destPath string) error {
 		}
 		if err := os.Rename(tmpPath, destPath); err != nil {
 			return fmt.Errorf("replace archive: %w", err)
+		}
+	}
+	return nil
+}
+
+// purgeStaleArchiveTemps removes leftover json-*.tar.gz files that remain when
+// the process crashes mid-build. Cleaning these early keeps restarts tidy and
+// follows "Simplicity is complicated" by preferring a deterministic reset over
+// attempting to resume partially written tarballs.
+func purgeStaleArchiveTemps(dir, destPath string, logf func(string, ...any)) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("scan archive dir: %w", err)
+	}
+
+	destBase := filepath.Base(destPath)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == destBase {
+			continue
+		}
+		if !strings.HasPrefix(name, "json-") || !strings.HasSuffix(name, ".tar.gz") {
+			continue
+		}
+		full := filepath.Join(dir, name)
+		if removeErr := os.Remove(full); removeErr != nil {
+			if os.IsNotExist(removeErr) {
+				continue
+			}
+			if logf != nil {
+				logf("json archive temp removal warning: %s: %v", full, removeErr)
+			}
+		} else if logf != nil {
+			logf("json archive removed stale temp: %s", full)
 		}
 	}
 	return nil
