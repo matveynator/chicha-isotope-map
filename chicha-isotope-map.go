@@ -87,6 +87,21 @@ func init() {
 	drivers.Ready()
 }
 
+// =====================
+// WEB — API docs page
+// =====================
+func apiDocsHandler(w http.ResponseWriter, r *http.Request) {
+    // Serve a static, embedded HTML with API usage instructions.
+    // Keep it simple and cacheable by default; clients can refresh as needed.
+    b, err := content.ReadFile("public_html/api-usage.html")
+    if err != nil {
+        http.NotFound(w, r)
+        return
+    }
+    w.Header().Set("Content-Type", "text/html; charset=utf-8")
+    _, _ = w.Write(b)
+}
+
 // resolveArchivePath decides where the JSON archive tarball should live.
 // We prefer explicit destinations from flags, otherwise fall back to the user's
 // home directory so long-running services do not clutter the repository tree.
@@ -2305,9 +2320,9 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 // WEB  — главная карта
 // =====================
 func mapHandler(w http.ResponseWriter, r *http.Request) {
-	lang := getPreferredLanguage(r)
+    lang := getPreferredLanguage(r)
 
-	// Готовим шаблон
+    // Готовим шаблон
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
 		"translate": func(key string) string {
 			if val, ok := translations[lang][key]; ok {
@@ -2475,10 +2490,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Track page %s rendered.", trackID)
 }
 
-// import "image/color"
-// import "os" (если будешь читать логотип с диска)
-// import "chicha-isotope-map/pkg/qrlogoext"
-
+// qrPngHandler generates a QR code image for a given URL.
 func qrPngHandler(w http.ResponseWriter, r *http.Request) {
 	u := r.URL.Query().Get("u")
 	if u == "" {
@@ -3361,6 +3373,7 @@ func main() {
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
 	http.HandleFunc("/s/", shortRedirectHandler)
+	http.HandleFunc("/api/docs", apiDocsHandler)
 
 	// API endpoints ship JSON/archives. Keeping registration close to other
 	// routes avoids surprises for operators scanning main() for handlers.

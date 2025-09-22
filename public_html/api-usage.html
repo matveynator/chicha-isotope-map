@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chicha Isotope Map API — Usage</title>
+  <link rel="icon" href="/static/images/android-chrome-192x192.png" />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --fg: #1b1f23; --bg: #fff; --muted: #6a737d; --code: #0b7285;
+      --card: #f6f8fa; --border: #d0d7de; --accent: #0366d6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg: #e6edf3; --bg: #0d1117; --muted: #8b949e; --card: #161b22; --border: #30363d; --accent: #58a6ff; --code:#7dd3fc; }
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--fg); background: var(--bg);
+    }
+    .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+    header { margin-bottom: 24px; }
+    h1 { font-size: 1.8rem; margin: 0 0 8px; }
+    h2 { margin-top: 28px; font-size: 1.3rem; }
+    p.lead { color: var(--muted); margin: 0; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 16px 0; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    code { color: var(--code); }
+    pre { background: var(--bg); border: 1px dashed var(--border); padding: 12px; border-radius: 6px; overflow: auto; }
+    .endpoint { display: grid; grid-template-columns: 120px 1fr; gap: 8px 16px; align-items: baseline; }
+    .method { font-weight: 700; color: var(--accent); }
+    .path { font-family: ui-monospace, Menlo, Monaco, Consolas, monospace; }
+    .small { color: var(--muted); font-size: 0.9em; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    footer { margin-top: 32px; color: var(--muted); font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Chicha Isotope Map — API Usage</h1>
+      <p class="lead">Human‑readable guide to the JSON endpoints exposed under <code>/api</code>.</p>
+    </header>
+
+    <section class="card">
+      <h2>Base URL</h2>
+      <p>Assuming your server runs on <code>http://localhost:8765</code> (default), the API is served under <code>/api</code>. In production with TLS, use <code>https://&lt;your-domain&gt;/api</code>.</p>
+    </section>
+
+    <section class="card">
+      <h2>Overview</h2>
+      <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="path">/api</div>
+        <div class="small">Returns machine‑readable documentation including available endpoints and stats (total tracks, latest track).</div>
+      </div>
+      <pre><code>curl -s http://localhost:8765/api | jq</code></pre>
+    </section>
+
+    <section class="card">
+      <h2>Track Listings</h2>
+      <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="path">/api/tracks</div>
+        <div class="small">List all track summaries (includes index and API URL).</div>
+      </div>
+      <pre><code>curl -s http://localhost:8765/api/tracks | jq '.tracks[0]'</code></pre>
+
+      <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="path">/api/tracks/index/{number}</div>
+        <div class="small">Resolve by 1‑based numeric index and stream markers like <code>/api/track/{trackID}.cim</code>.</div>
+      </div>
+      <pre><code>curl -L -o sample.cim http://localhost:8765/api/tracks/index/1</code></pre>
+
+      <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="path">/api/tracks/years/{year}</div>
+        <div class="small">List all tracks containing markers in a calendar year.</div>
+      </div>
+      <pre><code>curl -s http://localhost:8765/api/tracks/years/2024 | jq</code></pre>
+
+      <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="path">/api/tracks/months/{year}/{month}</div>
+        <div class="small">List all tracks in a specific month (1‑12).</div>
+      </div>
+      <pre><code>curl -s http://localhost:8765/api/tracks/months/2024/09 | jq</code></pre>
+    </section>
+
+    <section class="card">
+      <h2>Track Data</h2>
+      <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="path">/api/track/{trackID}.cim</div>
+        <div class="small">Download full JSON for a single track. The <code>.cim</code> extension hints browsers to save the file.</div>
+      </div>
+      <pre><code>curl -L -o ABC123.cim http://localhost:8765/api/track/ABC123.cim</code></pre>
+    </section>
+
+    <section class="card">
+      <h2>Daily JSON Archive</h2>
+      <p class="small">Available when the server is started with <code>-json-archive-path</code>.</p>
+      <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="path">/api/json/daily.tar.gz</div>
+        <div class="small">Download a tar.gz bundle of all published <code>.cim</code> tracks. Throttled to protect the server.</div>
+      </div>
+      <pre><code>curl -L -o daily.tar.gz http://localhost:8765/api/json/daily.tar.gz</code></pre>
+    </section>
+
+    <section class="card">
+      <h2>Short Links</h2>
+      <div class="endpoint">
+        <div class="method">POST</div>
+        <div class="path">/api/shorten</div>
+        <div class="small">Issue or finalize short URLs for current map views. Accepts JSON with <code>url</code>, optional <code>code</code>, and <code>commit</code>.</div>
+      </div>
+      <pre><code>curl -s -X POST http://localhost:8765/api/shorten \
+  -H 'content-type: application/json' \
+  -d '{"url":"/", "commit":false}' | jq</code></pre>
+    </section>
+
+    <section class="card">
+      <h2>Rate Limiting</h2>
+      <p>The server applies a per‑IP rate limiter for fairness. Responses may include headers like <code>X-RateLimit-Notice</code> and <code>X-RateLimit-Delay</code> indicating a brief delay. Heavy endpoints (e.g., large track downloads or archive) have stricter limits.</p>
+    </section>
+
+    <section class="card">
+      <h2>Notes</h2>
+      <ul>
+        <li>All timestamps are Unix seconds; some track sources are normalized internally.</li>
+        <li>Units: dose rates are in <code>µSv/h</code>; count rates are in <code>CPS</code>.</li>
+        <li>Responses include a <code>disclaimers</code> object for reuse in clients.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>Server: <code>chicha-isotope-map</code>. See also the machine‑readable root at <a href="/api">/api</a> and the web map at <a href="/">/</a>.</p>
+    </footer>
+  </div>
+</body>
+</html>
