@@ -19,6 +19,7 @@ type cacheRequest struct {
 	ctx    context.Context
 	key    string
 	loader func(context.Context) ([]byte, error)
+	ttl    time.Duration // Optional per-request TTL so callers can shorten cache windows.
 	reply  chan cacheResponse
 }
 
@@ -83,6 +84,11 @@ func (c *ResponseCache) Close() {
 // produce them. We copy the stored slice before returning so callers
 // can safely modify the result without affecting future hits.
 func (c *ResponseCache) Get(ctx context.Context, key string, loader func(context.Context) ([]byte, error)) ([]byte, error) {
+	return c.GetWithTTL(ctx, key, 0, loader)
+}
+
+// GetWithTTL behaves like Get but allows callers to override the cache TTL for a single lookup.
+func (c *ResponseCache) GetWithTTL(ctx context.Context, key string, ttl time.Duration, loader func(context.Context) ([]byte, error)) ([]byte, error) {
 	if c == nil {
 		return nil, errCacheDisabled
 	}
@@ -90,6 +96,7 @@ func (c *ResponseCache) Get(ctx context.Context, key string, loader func(context
 		ctx:    ctx,
 		key:    key,
 		loader: loader,
+		ttl:    ttl,
 		reply:  make(chan cacheResponse, 1),
 	}
 	select {
@@ -136,10 +143,16 @@ func (c *ResponseCache) loop() {
 				continue
 			}
 			data, err := req.loader(req.ctx)
+			entryTTL := c.ttl
+			if req.ttl > 0 {
+				entryTTL = req.ttl
+			}
 			if err == nil && data != nil {
-				buf := make([]byte, len(data))
-				copy(buf, data)
-				store[req.key] = cacheEntry{data: buf, expires: now.Add(c.ttl)}
+				if entryTTL > 0 {
+					buf := make([]byte, len(data))
+					copy(buf, data)
+					store[req.key] = cacheEntry{data: buf, expires: now.Add(entryTTL)}
+				}
 			} else if err != nil {
 				delete(store, req.key)
 			}
