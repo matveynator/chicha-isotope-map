@@ -2365,6 +2365,38 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// shortRedirectHandler resolves a short code and redirects visitors to the
+// stored long URL. We lean on context timeouts instead of bespoke timers,
+// echoing "The bigger the interface, the weaker the abstraction" by keeping
+// the signature small.
+func shortRedirectHandler(w http.ResponseWriter, r *http.Request) {
+	code := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/s/"))
+	if code == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if db == nil || db.DB == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	target, err := db.ResolveShortLink(ctx, code)
+	if err != nil {
+		log.Printf("short link lookup for %q failed: %v", code, err)
+		http.Error(w, "short link lookup failed", http.StatusInternalServerError)
+		return
+	}
+	if strings.TrimSpace(target) == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
 // =====================
 // WEB  — страница трека
 // =====================
@@ -3323,6 +3355,7 @@ func main() {
 	http.HandleFunc("/realtime_history", realtimeHistoryHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
+	http.HandleFunc("/s/", shortRedirectHandler)
 
 	// API endpoints ship JSON/archives. Keeping registration close to other
 	// routes avoids surprises for operators scanning main() for handlers.

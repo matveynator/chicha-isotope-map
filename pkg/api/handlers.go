@@ -52,6 +52,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tracks/months/", h.handleTracksByMonth)
 	mux.HandleFunc("/api/track/", h.handleTrackData)
 	mux.HandleFunc("/api/tracks/", h.handleTrackData) // legacy alias for older clients
+	mux.HandleFunc("/api/shorten", h.handleShorten)
 	if h.Archive != nil {
 		// Expose the tarball endpoint only when archive generation is enabled
 		// so clients do not see a dangling route that always fails.
@@ -94,6 +95,123 @@ func (h *Handler) acquirePermit(w http.ResponseWriter, r *http.Request, kind Req
 	}
 
 	return permit, true
+}
+
+// handleShorten issues or finalizes short URLs for the current map view. We
+// keep the logic explicit instead of clever so operators can audit it easily,
+// following the proverb "Clear is better than clever".
+func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.DB == nil || h.DB.DB == nil {
+		http.Error(w, "short links unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	permit, ok := h.acquirePermit(w, r, RequestGeneral)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
+
+	defer r.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4096))
+	if err != nil {
+		http.Error(w, "read body", http.StatusBadRequest)
+		return
+	}
+
+	var payload struct {
+		URL    string `json:"url"`
+		Code   string `json:"code"`
+		Commit bool   `json:"commit"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	raw := strings.TrimSpace(payload.URL)
+	if raw == "" {
+		http.Error(w, "missing url", http.StatusBadRequest)
+		return
+	}
+
+	scheme := requestScheme(r)
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		http.Error(w, "missing host", http.StatusBadRequest)
+		return
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		http.Error(w, "invalid url", http.StatusBadRequest)
+		return
+	}
+	parsed.Fragment = ""
+
+	var target string
+	if parsed.Scheme == "" && parsed.Host == "" {
+		if !strings.HasPrefix(parsed.Path, "/") {
+			http.Error(w, "relative path must start with /", http.StatusBadRequest)
+			return
+		}
+		base := &url.URL{Scheme: scheme, Host: host}
+		target = base.ResolveReference(parsed).String()
+	} else {
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			http.Error(w, "unsupported scheme", http.StatusBadRequest)
+			return
+		}
+		if !strings.EqualFold(strings.TrimSpace(parsed.Host), host) {
+			http.Error(w, "foreign host rejected", http.StatusBadRequest)
+			return
+		}
+		target = parsed.String()
+	}
+
+	if len(target) > 4096 {
+		http.Error(w, "url too long", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+        var (
+                code   string
+                stored bool
+        )
+
+        if payload.Commit {
+                code, err = h.DB.PersistShortLink(ctx, target, payload.Code, time.Now().UTC(), 0)
+                stored = (err == nil)
+        } else {
+		code, stored, err = h.DB.PreviewShortLink(ctx, target, 0)
+	}
+	if err != nil {
+		http.Error(w, "short link unavailable", http.StatusInternalServerError)
+		if h.Logf != nil {
+			h.Logf("shorten failed for %q: %v", target, err)
+		}
+		return
+	}
+
+	shortURL := fmt.Sprintf("%s://%s/s/%s", scheme, host, code)
+
+	w.Header().Set("Cache-Control", "no-store")
+	h.respondJSON(w, map[string]any{
+		"code":   code,
+		"short":  shortURL,
+		"target": target,
+		"stored": stored,
+	})
 }
 
 // clientIP extracts the best-effort caller IP address from HTTP headers so the
@@ -896,6 +1014,19 @@ func (h *Handler) respondJSON(w http.ResponseWriter, payload any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(payload)
+}
+
+// requestScheme inspects headers and TLS state so generated URLs reuse the
+// scheme the client used to reach us.
+func requestScheme(r *http.Request) string {
+	proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
+	if proto != "" {
+		return strings.ToLower(proto)
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
 }
 
 func parseIntDefault(v string, def int) int {
