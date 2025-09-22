@@ -257,67 +257,79 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+	// Cache the overview briefly so COUNT(DISTINCT) queries are avoided on every request while keeping data fresh.
+	data, err := h.cachedJSONWithTTL(ctx, "overview", time.Minute, func(ctx context.Context) ([]byte, error) {
+		totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, newAPIError(http.StatusRequestTimeout, "request cancelled", "overview latest track info", err)
+			}
+			return nil, newAPIError(http.StatusInternalServerError, "count tracks", "overview latest track info", err)
+		}
 
-	totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
+		endpoints := map[string]any{
+			"listTracks": map[string]any{
+				"method":      "GET",
+				"path":        "/api/tracks",
+				"description": "Returns all track summaries sorted alphabetically. Each summary exposes an index and api URL.",
+			},
+			"trackByNumber": map[string]any{
+				"method":      "GET",
+				"path":        "/api/tracks/index/{number}",
+				"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/track/{trackID}.cim.",
+			},
+			"trackMarkers": map[string]any{
+				"method":      "GET",
+				"path":        "/api/track/{trackID}.cim",
+				"query":       []string{"from", "to"},
+				"description": "Downloads the full track as JSON with a .cim extension so browsers save it as a file. Optional 'from'/'to' IDs can narrow the range.",
+			},
+			"tracksByYear": map[string]any{
+				"method":      "GET",
+				"path":        "/api/tracks/years/{year}",
+				"description": "Lists all tracks that contain markers within the given year.",
+			},
+			"tracksByMonth": map[string]any{
+				"method":      "GET",
+				"path":        "/api/tracks/months/{year}/{month}",
+				"description": "Lists all tracks for a calendar month without pagination.",
+			},
+		}
+		if h.Archive != nil {
+			endpoints["dailyJSON"] = map[string]any{
+				"method":      "GET",
+				"path":        "/api/json/daily.tar.gz",
+				"description": "Downloads the current tar.gz bundle of all published .cim JSON tracks.",
+				"frequency":   "Updated once per day",
+			}
+		}
+
+		overview := struct {
+			Disclaimers      map[string]string `json:"disclaimers"`
+			Endpoints        map[string]any    `json:"endpoints"`
+			TotalTracks      int64             `json:"totalTracks"`
+			LatestTrackIndex int64             `json:"latestTrackIndex"`
+			LatestTrackID    string            `json:"latestTrackID,omitempty"`
+		}{
+			Disclaimers:      trackjson.Disclaimers,
+			TotalTracks:      totalTracks,
+			LatestTrackIndex: totalTracks,
+			LatestTrackID:    latestTrackID,
+			Endpoints:        endpoints,
+		}
+
+		payload, encErr := encodeJSON(overview)
+		if encErr != nil {
+			return nil, newAPIError(http.StatusInternalServerError, "encode json", "encode overview response", encErr)
+		}
+		return payload, nil
+	})
 	if err != nil {
-		http.Error(w, "count tracks", http.StatusInternalServerError)
+		h.handleCacheError(w, "overview", err)
 		return
 	}
 
-	endpoints := map[string]any{
-		"listTracks": map[string]any{
-			"method":      "GET",
-			"path":        "/api/tracks",
-			"description": "Returns all track summaries sorted alphabetically. Each summary exposes an index and apiURL.",
-		},
-		"trackByNumber": map[string]any{
-			"method":      "GET",
-			"path":        "/api/tracks/index/{number}",
-			"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/track/{trackID}.cim.",
-		},
-		"trackMarkers": map[string]any{
-			"method":      "GET",
-			"path":        "/api/track/{trackID}.cim",
-			"query":       []string{"from", "to"},
-			"description": "Downloads the full track as JSON with a .cim extension so browsers save it as a file. Optional 'from'/'to' IDs can narrow the range.",
-		},
-		"tracksByYear": map[string]any{
-			"method":      "GET",
-			"path":        "/api/tracks/years/{year}",
-			"description": "Lists all tracks that contain markers within the given year.",
-		},
-		"tracksByMonth": map[string]any{
-			"method":      "GET",
-			"path":        "/api/tracks/months/{year}/{month}",
-			"description": "Lists all tracks for a calendar month without pagination.",
-		},
-	}
-	if h.Archive != nil {
-		// Advertise the archive only when generation is active to keep the
-		// machine-readable docs truthful.
-		endpoints["dailyJSON"] = map[string]any{
-			"method":      "GET",
-			"path":        "/api/json/daily.tar.gz",
-			"description": "Downloads the current tar.gz bundle of all published .cim JSON tracks.",
-			"frequency":   "Updated once per day",
-		}
-	}
-
-	overview := struct {
-		Disclaimers      map[string]string `json:"disclaimers"`
-		Endpoints        map[string]any    `json:"endpoints"`
-		TotalTracks      int64             `json:"totalTracks"`
-		LatestTrackIndex int64             `json:"latestTrackIndex"`
-		LatestTrackID    string            `json:"latestTrackID,omitempty"`
-	}{
-		Disclaimers:      trackjson.Disclaimers,
-		TotalTracks:      totalTracks,
-		LatestTrackIndex: totalTracks,
-		LatestTrackID:    latestTrackID,
-		Endpoints:        endpoints,
-	}
-
-	h.respondJSON(w, overview)
+	writeJSONBytes(w, data)
 }
 
 // handleTracksList exposes paginated track summaries.
@@ -545,10 +557,11 @@ func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) 
 		defer permit.Release()
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
+	// Allow extra headroom so archive discovery keeps working even when large builds take longer than 30 seconds.
+	fetchCtx, cancelFetch := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancelFetch()
 
-	info, err := h.Archive.Fetch(ctx)
+	info, err := h.Archive.Fetch(fetchCtx)
 	if err != nil {
 		http.Error(w, "archive unavailable", http.StatusServiceUnavailable)
 		if h.Logf != nil {
@@ -570,6 +583,19 @@ func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	streamCtx := r.Context()
+	var streamCancel context.CancelFunc
+	// Stretch the streaming deadline based on the on-disk size and throttle so downloads finish instead of aborting mid-transfer.
+	if stat.Size() > 0 && archiveThrottleRateBytes > 0 {
+		estimated := time.Duration(stat.Size()) * time.Second / time.Duration(archiveThrottleRateBytes)
+		if estimated < time.Minute {
+			estimated = time.Minute
+		}
+		estimated += 30 * time.Second
+		streamCtx, streamCancel = context.WithTimeout(streamCtx, estimated)
+		defer streamCancel()
+	}
+
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(info.Path)))
 	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
@@ -589,7 +615,7 @@ func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) 
 	for {
 		if allowed <= 0 {
 			select {
-			case <-ctx.Done():
+			case <-streamCtx.Done():
 				if h.Logf != nil {
 					h.Logf("archive stream cancelled for %s", r.URL.Path)
 				}
@@ -626,9 +652,9 @@ func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		select {
-		case <-ctx.Done():
+		case <-streamCtx.Done():
 			if h.Logf != nil {
-				h.Logf("archive stream context done: %v", ctx.Err())
+				h.Logf("archive stream context done: %v", streamCtx.Err())
 			}
 			return
 		default:
@@ -833,11 +859,12 @@ func (h *Handler) buildTrackDataJSON(ctx context.Context, trackID string) ([]byt
 	return data, nil
 }
 
-func (h *Handler) cachedJSON(ctx context.Context, key string, loader func(context.Context) ([]byte, error)) ([]byte, error) {
+// cachedJSONWithTTL lets handlers fine-tune cache freshness without spawning additional goroutines.
+func (h *Handler) cachedJSONWithTTL(ctx context.Context, key string, ttl time.Duration, loader func(context.Context) ([]byte, error)) ([]byte, error) {
 	if h.Cache == nil {
 		return loader(ctx)
 	}
-	data, err := h.Cache.Get(ctx, key, loader)
+	data, err := h.Cache.GetWithTTL(ctx, key, ttl, loader)
 	if err != nil {
 		if errors.Is(err, errCacheDisabled) || errors.Is(err, errCacheStopped) || errors.Is(err, errNoLoader) {
 			return loader(ctx)
@@ -845,6 +872,10 @@ func (h *Handler) cachedJSON(ctx context.Context, key string, loader func(contex
 		return nil, err
 	}
 	return data, nil
+}
+
+func (h *Handler) cachedJSON(ctx context.Context, key string, loader func(context.Context) ([]byte, error)) ([]byte, error) {
+	return h.cachedJSONWithTTL(ctx, key, 0, loader)
 }
 
 func (h *Handler) handleCacheError(w http.ResponseWriter, label string, err error) {

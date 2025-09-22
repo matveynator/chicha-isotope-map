@@ -137,33 +137,114 @@ func Start(
 		}
 	}()
 
-	// Kick off the first build asynchronously so the main goroutine keeps
-	// starting up quickly even on very large databases. We still log the
-	// scheduling step so operators understand why Fetch may briefly wait.
-	triggerBuild()
-	if logf != nil {
-		logf("json archive initial build scheduled: %s", destPath)
+	// Decide whether we need a fresh build right now. Reusing recent snapshots
+	// avoids unnecessary disk and database work after restarts, following the Go
+	// proverb "A little copying is better than a little dependency" by keeping
+	// the logic self-contained here.
+	buildImmediately := false
+	if !haveInitial {
+		buildImmediately = true
+		if logf != nil {
+			logf("json archive initial build scheduled: %s", destPath)
+		}
+	} else if refreshInterval > 0 {
+		age := time.Since(initialResult.info.ModTime)
+		if age >= refreshInterval {
+			buildImmediately = true
+			if logf != nil {
+				logf("json archive snapshot stale (%s old, interval %s); queuing rebuild", age.Round(time.Second), refreshInterval)
+			}
+		} else if logf != nil {
+			wait := refreshInterval - age
+			logf("json archive snapshot fresh (%s old); next refresh in %s", age.Round(time.Second), wait.Round(time.Second))
+		}
+	} else if logf != nil {
+		logf("json archive reuse: automatic refresh disabled; current snapshot age %s", time.Since(initialResult.info.ModTime).Round(time.Second))
 	}
 
-	// Coordinator goroutine multiplexes ticker events and HTTP requests.
+	if buildImmediately {
+		triggerBuild()
+	}
+
+	// Coordinator goroutine multiplexes timer events and HTTP requests.
 	go func() {
 		defer close(done)
 
-		ticker := time.NewTicker(refreshInterval)
-		defer ticker.Stop()
-
 		current := initialResult
 		haveResult := haveInitial
+		var timer *time.Timer
+
+		startTimer := func(d time.Duration) {
+			if refreshInterval <= 0 {
+				return
+			}
+			if d <= 0 {
+				d = refreshInterval
+			}
+			if timer == nil {
+				timer = time.NewTimer(d)
+				return
+			}
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(d)
+		}
+
+		// Align the next refresh with the snapshot timestamp so restarts honour the configured cadence.
+		scheduleFromMod := func(mod time.Time) {
+			if refreshInterval <= 0 {
+				return
+			}
+			wait := refreshInterval
+			if !mod.IsZero() {
+				wait = time.Until(mod.Add(refreshInterval))
+				if wait <= 0 {
+					wait = refreshInterval
+				}
+			}
+			startTimer(wait)
+		}
+
+		if refreshInterval > 0 {
+			if haveResult {
+				scheduleFromMod(current.info.ModTime)
+			} else {
+				scheduleFromMod(time.Time{})
+			}
+		}
 
 		for {
+			var timerC <-chan time.Time
+			if timer != nil {
+				timerC = timer.C
+			}
+
 			select {
 			case <-ctx.Done():
+				if timer != nil {
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+				}
 				return
-			case <-ticker.C:
+			case <-timerC:
 				triggerBuild()
+				timer = nil
 			case res := <-buildResults:
 				current = res
 				haveResult = true
+				if res.err == nil {
+					scheduleFromMod(res.info.ModTime)
+				} else {
+					scheduleFromMod(time.Time{})
+				}
 			case ch := <-requests:
 				if !haveResult || (current.info.Path == "" && current.err == nil) || current.err != nil {
 					triggerBuild()
@@ -175,7 +256,15 @@ func Start(
 					case res := <-buildResults:
 						current = res
 						haveResult = true
+						if res.err == nil {
+							scheduleFromMod(res.info.ModTime)
+						} else {
+							scheduleFromMod(time.Time{})
+						}
 					}
+					// Trigger a rebuild if callers observe an outdated snapshot while the timer is still waiting.
+				} else if refreshInterval > 0 && current.err == nil && !current.info.ModTime.IsZero() && time.Since(current.info.ModTime) >= refreshInterval {
+					triggerBuild()
 				}
 				ch <- current
 				close(ch)
