@@ -47,6 +47,10 @@ body, html {
           --modal-text: #333333;
           --modal-border: 1px solid #888;
           --link-color: #007bff;
+          --info-card-bg: rgba(255, 255, 255, 0.9);
+          --info-card-border: 1px solid rgba(0, 0, 0, 0.08);
+          --api-method-bg: rgba(0, 123, 255, 0.1);
+          --api-method-text: #0056b3;
           color-scheme: light; /* Default to light scheme */
           --font-family-base: "Segoe UI", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; /* Shared font stack keeps every control aligned */
           --font-size-base: 12px; /* Main text size for buttons, menus, and labels */
@@ -74,6 +78,10 @@ body, html {
             --modal-text: #eee;
             --modal-border: 1px solid #444;
             --link-color: #90caf9;
+            --info-card-bg: rgba(43, 43, 43, 0.9);
+            --info-card-border: 1px solid rgba(255, 255, 255, 0.08);
+            --api-method-bg: rgba(144, 202, 249, 0.2);
+            --api-method-text: #90caf9;
             color-scheme: dark; /* Match system dark scheme */
           }
         }
@@ -139,6 +147,10 @@ body, html {
           --modal-text: #333333;
           --modal-border: 1px solid #888;
           --link-color: #007bff;
+          --info-card-bg: rgba(255, 255, 255, 0.9);
+          --info-card-border: 1px solid rgba(0, 0, 0, 0.08);
+          --api-method-bg: rgba(0, 123, 255, 0.1);
+          --api-method-text: #0056b3;
           color-scheme: light; /* Force light scheme when manually selected */
         }
 
@@ -157,6 +169,10 @@ body, html {
           --modal-text: #eee;
           --modal-border: 1px solid #444;
           --link-color: #90caf9;
+          --info-card-bg: rgba(43, 43, 43, 0.9);
+          --info-card-border: 1px solid rgba(255, 255, 255, 0.08);
+          --api-method-bg: rgba(144, 202, 249, 0.2);
+          --api-method-text: #90caf9;
           color-scheme: dark; /* Force dark scheme when manually selected */
         }
 
@@ -208,6 +224,100 @@ body, html {
 
         #shortLinkDisplay.copied {
           background: var(--control-bg-hover);
+        }
+
+        /* API quickstart cards inside the info modal stay theme aware through shared variables. */
+        #infoModal .api-heading {
+          font-size: var(--font-size-xl);
+          margin: 0 0 0.5em;
+        }
+
+        #infoModal .api-intro {
+          margin: 0 0 0.75em;
+        }
+
+        #infoModal .api-note {
+          margin: 0 0 1.25em;
+          font-size: var(--font-size-sm);
+          opacity: 0.75;
+        }
+
+        #infoModal .api-grid {
+          display: grid;
+          gap: 12px;
+        }
+
+        @media (min-width: 640px) {
+          #infoModal .api-grid {
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          }
+        }
+
+        #infoModal .api-card {
+          background: var(--info-card-bg);
+          border: var(--info-card-border);
+          border-radius: 10px;
+          padding: 12px 14px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        #infoModal .api-card-head {
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        #infoModal .api-method {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: var(--api-method-bg);
+          color: var(--api-method-text);
+          font-size: var(--font-size-xs);
+          font-weight: 700;
+          letter-spacing: 0.06em;
+        }
+
+        #infoModal .api-path {
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-sm);
+          opacity: 0.8;
+        }
+
+        #infoModal .api-card-title {
+          margin: 0 0 6px;
+          font-size: var(--font-size-lg);
+        }
+
+        #infoModal .api-card-desc {
+          margin: 0 0 10px;
+          font-size: var(--font-size-sm);
+        }
+
+        #infoModal .api-card-link {
+          display: inline-block;
+          margin-bottom: 6px;
+          color: var(--link-color);
+          font-weight: 600;
+          text-decoration: none;
+        }
+
+        #infoModal .api-card-link:hover,
+        #infoModal .api-card-link:focus {
+          text-decoration: underline;
+        }
+
+        #infoModal .api-card-note {
+          margin: 0;
+          font-size: var(--font-size-xs);
+          opacity: 0.75;
+        }
+
+        #infoModal .api-more {
+          margin-top: 16px;
+          font-size: var(--font-size-sm);
         }
 
         .theme-icon {
@@ -4166,15 +4276,90 @@ function centerMapToLocation() {
     }).join('');
   }
 
+  // Example definitions stay in code so translations only supply human text.
+  const apiExamples = [
+    { key: 'root', method: 'api_method_get', methodFallback: 'GET', path: '/api', url: '/api' },
+    { key: 'latest', method: 'api_method_get', methodFallback: 'GET', path: '/api/latest', url: '/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=20' },
+    { key: 'tracks', method: 'api_method_get', methodFallback: 'GET', path: '/api/tracks', url: '/api/tracks?limit=25' },
+    { key: 'track_index', method: 'api_method_get', methodFallback: 'GET', path: '/api/tracks/index/{number}', url: '/api/tracks/index/1' },
+    { key: 'archive', method: 'api_method_get', methodFallback: 'GET', path: '/api/json/{frequency}.tgz', url: '/api/json/weekly.tgz' }
+  ];
+
+  // Build the localized API quickstart cards so the modal keeps site styling.
+  function buildApiHTML() {
+    var html = [];
+    var intro = translate('api_intro');
+    if (intro && intro !== 'api_intro') {
+      html.push('<p class="api-intro">' + intro + '</p>');
+    }
+    var note = translate('api_examples_note');
+    if (note && note !== 'api_examples_note') {
+      html.push('<p class="api-note">' + note + '</p>');
+    }
+    var heading = translate('api_examples_heading');
+    if (heading && heading !== 'api_examples_heading') {
+      html.push('<h4 class="api-heading">' + heading + '</h4>');
+    }
+    html.push('<div class="api-grid">');
+    apiExamples.forEach(function(example) {
+      var title = translate('api_example_' + example.key + '_title');
+      var desc = translate('api_example_' + example.key + '_desc');
+      var linkText = translate('api_example_' + example.key + '_link');
+      var noteText = translate('api_example_' + example.key + '_note');
+      var methodLabel = translate(example.method);
+      if (typeof methodLabel !== 'string' || methodLabel === example.method) {
+        methodLabel = example.methodFallback;
+      }
+      html.push('<article class="api-card">');
+      html.push('<div class="api-card-head">');
+      html.push('<span class="api-method">' + methodLabel + '</span>');
+      html.push('<span class="api-path">' + example.path + '</span>');
+      html.push('</div>');
+      if (title && title !== 'api_example_' + example.key + '_title') {
+        html.push('<h5 class="api-card-title">' + title + '</h5>');
+      }
+      if (desc && desc !== 'api_example_' + example.key + '_desc') {
+        html.push('<p class="api-card-desc">' + desc + '</p>');
+      }
+      if (linkText && linkText !== 'api_example_' + example.key + '_link') {
+        html.push('<a class="api-card-link" href="' + example.url + '" target="_blank" rel="noopener">' + linkText + '</a>');
+      }
+      if (noteText && noteText !== 'api_example_' + example.key + '_note') {
+        html.push('<p class="api-card-note">' + noteText + '</p>');
+      }
+      html.push('</article>');
+    });
+    html.push('</div>');
+    var more = translate('api_more_docs');
+    var moreLink = translate('api_more_docs_link_label');
+    if (more && more !== 'api_more_docs') {
+      var suffix = '';
+      if (moreLink && moreLink !== 'api_more_docs_link_label') {
+        suffix = ' <a href="/api/docs" target="_blank" rel="noopener">' + moreLink + '</a>';
+      }
+      html.push('<p class="api-more">' + more + suffix + '</p>');
+    }
+    return html.join('');
+  }
+
   // Open modal with legal, source or license text
   function openInfoModal(topic) {
     if (window.__hideLegendHint) {
       window.__hideLegendHint();
     }
     if (topic === 'api') {
-      // Direct users to the machine-readable API docs in a new tab so the
-      // attribution footer doubles as an entry point for developers.
-      window.open('/api', '_blank', 'noopener');
+      var boxApi = document.getElementById('infoText');
+      if (boxApi) {
+        boxApi.innerHTML = buildApiHTML();
+      }
+      var headApi = document.getElementById('infoTitle');
+      if (headApi) {
+        headApi.textContent = translate('api_title');
+      }
+      var modalApi = document.getElementById('infoModal');
+      if (modalApi) {
+        modalApi.style.display = 'flex';
+      }
       return;
     }
     var box = document.getElementById('infoText');
