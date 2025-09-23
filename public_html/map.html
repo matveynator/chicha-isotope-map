@@ -126,10 +126,18 @@ body, html {
           font-size: var(--font-size-base);
         }
 
-        .leaflet-container .leaflet-control-attribution {
-          font-family: var(--font-family-base);
-          font-size: var(--font-size-xs);
-        }
+				/* Base style – applies to all phones (old and new) */
+				.leaflet-container .leaflet-control-attribution {
+					font-family: var(--font-family-base);
+					font-size: var(--font-size-xxs);
+				}
+
+				/* Increase font size only on screens wider than 768px (tablets, laptops, desktops) */
+				@media (min-width: 768px) {
+					.leaflet-container .leaflet-control-attribution {
+						font-size: var(--font-size-xs);
+					}
+				}
 
         /* Manual theme overrides */
         :root[data-theme='light'] {
