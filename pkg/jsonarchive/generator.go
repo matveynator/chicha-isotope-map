@@ -29,7 +29,7 @@ type Info struct {
 	ModTime time.Time
 }
 
-// Generator continuously maintains a tar.gz bundle of JSON .cim exports for all
+// Generator continuously maintains a tgz bundle of JSON .cim exports for all
 // tracks stored in the database. Synchronisation happens via channels so we rely
 // on message passing instead of mutexes.
 type Generator struct {
@@ -55,7 +55,7 @@ type progressUpdate struct {
 
 // Start launches the background worker.
 // The worker exports every known track into temporary .cim JSON files, packs
-// them into a tar.gz archive, and atomically replaces the destination file once
+// them into a tgz archive, and atomically replaces the destination file once
 // the build succeeds. The initial build happens in the background so startup
 // remains responsive even on large databases while HTTP handlers can still
 // block until the first snapshot is ready if they need the data immediately.
@@ -64,6 +64,7 @@ func Start(
 	db *database.Database,
 	dbType string,
 	destPath string,
+	defaultFileName string,
 	refreshInterval time.Duration,
 	logf func(string, ...any),
 ) *Generator {
@@ -73,7 +74,7 @@ func Start(
 	buildResults := make(chan result, 1)
 
 	destPath = filepath.Clean(destPath)
-	normalisedPath, err := normaliseArchiveDestination(destPath)
+	normalisedPath, err := normaliseArchiveDestination(destPath, defaultFileName)
 	if err != nil && logf != nil {
 		logf("json archive destination normalisation warning for %q: %v", destPath, err)
 	}
@@ -311,7 +312,7 @@ func runBuild(ctx context.Context, db *database.Database, dbType, destPath strin
 }
 
 // buildArchive streams track summaries from the database, exports each track to
-// a temporary JSON file, and writes them into a tar.gz bundle. We only replace
+// a temporary JSON file, and writes them into a tgz bundle. We only replace
 // the destination after the build succeeds so clients never observe a partial
 // archive.
 func buildArchive(ctx context.Context, db *database.Database, dbType, destPath string, logf func(string, ...any)) (string, time.Time, error) {
@@ -331,7 +332,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		return "", time.Time{}, err
 	}
 
-	tmpFile, err := os.CreateTemp(destDir, "json-*.tar.gz")
+	tmpFile, err := os.CreateTemp(destDir, "json-*.tgz")
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("tmp archive: %w", err)
 	}
@@ -710,7 +711,7 @@ func replaceFile(tmpPath, destPath string) error {
 	return nil
 }
 
-// purgeStaleArchiveTemps removes leftover json-*.tar.gz files that remain when
+// purgeStaleArchiveTemps removes leftover json-*.tgz files that remain when
 // the process crashes mid-build. Cleaning these early keeps restarts tidy and
 // follows "Simplicity is complicated" by preferring a deterministic reset over
 // attempting to resume partially written tarballs.
@@ -732,7 +733,7 @@ func purgeStaleArchiveTemps(dir, destPath string, logf func(string, ...any)) err
 		if name == destBase {
 			continue
 		}
-		if !strings.HasPrefix(name, "json-") || !strings.HasSuffix(name, ".tar.gz") {
+		if !strings.HasPrefix(name, "json-") || !strings.HasSuffix(name, ".tgz") {
 			continue
 		}
 		full := filepath.Join(dir, name)
@@ -752,10 +753,18 @@ func purgeStaleArchiveTemps(dir, destPath string, logf func(string, ...any)) err
 
 // normaliseArchiveDestination ensures we have a concrete file path even when the
 // operator supplied a directory. This avoids surprising os.Rename failures and
-// keeps configuration simple and explicit.
-func normaliseArchiveDestination(path string) (string, error) {
+// keeps configuration simple and explicit. The fallback name propagates the
+// configured cadence and domain specific filename.
+func normaliseArchiveDestination(path, fallbackName string) (string, error) {
 	cleaned := filepath.Clean(path)
+	fallback := strings.TrimSpace(fallbackName)
+	if fallback == "" {
+		fallback = "weekly-json.tgz"
+	}
 	if cleaned == "." {
+		if fallback != "" {
+			return filepath.Join(cleaned, fallback), nil
+		}
 		return cleaned, nil
 	}
 
@@ -763,13 +772,13 @@ func normaliseArchiveDestination(path string) (string, error) {
 	switch {
 	case err == nil:
 		if info.IsDir() {
-			return filepath.Join(cleaned, "daily-json.tar.gz"), nil
+			return filepath.Join(cleaned, fallback), nil
 		}
 		return cleaned, nil
 	case os.IsNotExist(err):
 		if strings.HasSuffix(path, string(os.PathSeparator)) {
 			dir := filepath.Clean(path)
-			return filepath.Join(dir, "daily-json.tar.gz"), nil
+			return filepath.Join(dir, fallback), nil
 		}
 		return cleaned, nil
 	default:
