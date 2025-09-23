@@ -35,6 +35,7 @@ type Handler struct {
 	Limiter          *RateLimiter
 	Logf             func(string, ...any)
 	Cache            *ResponseCache
+	TrackInfo        *TrackInfoCache // Cache expensive COUNT(DISTINCT) metadata so /api stays fast even on huge datasets.
 }
 
 // NewHandler constructs a Handler with sane defaults.
@@ -48,6 +49,7 @@ func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Gener
 		Limiter:          limiter,
 		Logf:             logf,
 		Cache:            NewResponseCache(24 * time.Hour),
+		TrackInfo:        NewTrackInfoCache(db, dbType, 30*time.Minute, 5*time.Minute, 2*time.Minute, logf),
 	}
 }
 
@@ -1041,6 +1043,16 @@ func (h *Handler) finalizeSummaries(
 // latestTrackInfo reports the highest known track index and its ID so API
 // callers know when they reached the end of the catalogue.
 func (h *Handler) latestTrackInfo(ctx context.Context) (int64, string, error) {
+	if h.TrackInfo != nil {
+		total, latest, err := h.TrackInfo.Get(ctx)
+		if err == nil {
+			return total, latest, nil
+		}
+		if h.Logf != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			h.Logf("track info cache fallback: %v", err)
+		}
+	}
+
 	total, err := h.DB.CountTracks(ctx)
 	if err != nil {
 		return 0, "", err
