@@ -316,6 +316,20 @@ body, html {
           margin-top: 6px;
         }
 
+        /* Lightweight list styling keeps multi-line tooltip content readable without extra markup. */
+        .control-tooltip__list {
+          margin: 6px 0 0;
+          padding-left: 16px;
+        }
+
+        .control-tooltip__list li {
+          margin-bottom: 4px;
+        }
+
+        .control-tooltip__list li:last-child {
+          margin-bottom: 0;
+        }
+
         /* Link inside popups pointing to full legend */
         .risk-link {
           color: var(--link-color);
@@ -2232,6 +2246,32 @@ document.addEventListener('DOMContentLoaded', function () {
         );
         div.innerHTML = pieces.join('');
 
+        // Attach an explanatory tooltip so visitors understand how each checkbox slices the dataset by speed.
+        const speedTooltipHandle = attachControlTooltip(div, {
+          placement: 'right',
+          html: true,
+          maxWidth: 340,
+          content: function () {
+            const title = translate('speed_filter_tooltip_title');
+            const intro = translate('speed_filter_tooltip_intro');
+            const accuracy = translate('speed_filter_tooltip_accuracy');
+            const lines = [];
+            if (window.safecastRealtimeEnabled) {
+              lines.push(translate('speed_filter_tooltip_live'));
+            }
+            lines.push(translate('speed_filter_tooltip_plane'));
+            lines.push(translate('speed_filter_tooltip_car'));
+            lines.push(translate('speed_filter_tooltip_ped'));
+            const listHtml = lines.map(function (line) {
+              return '<li>' + line + '</li>';
+            }).join('');
+            return '<div class="control-tooltip__title">' + title + '</div>' +
+              '<div>' + intro + '</div>' +
+              '<ul class="control-tooltip__list">' + listHtml + '</ul>' +
+              '<div class="control-tooltip__meta">' + accuracy + '</div>';
+          },
+        });
+
         // If realtime is available, add a hover tooltip to the live toggle
         // with the same styling as other popups/tooltips.
         if (window.safecastRealtimeEnabled) {
@@ -2307,6 +2347,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const onMouseMove = (e) => positionTipAt(e.clientX, e.clientY);
 
             const onEnter = (e) => {
+              if (speedTooltipHandle && typeof speedTooltipHandle.hide === 'function') {
+                speedTooltipHandle.hide();
+              }
               showTip(e);
               window.addEventListener('scroll', onReposition, true);
               window.addEventListener('resize', onReposition, true);

@@ -88,7 +88,14 @@
     "upload_button_tooltip": "أضف مسار القياسات الخاص بك إلى الخريطة. الصيغ المدعومة: .kml، .kmz، .gpx، .csv، .rctrk، .json، .log. يمكنك رفع عدة ملفات، وبعد الرفع ستفتح صفحة المسار.",
     "upload_error": "خطأ",
     "waiting_for_server": "بانتظار الخادم...",
-    "your_location": "موقعك"
+    "your_location": "موقعك",
+    "speed_filter_tooltip_title": "مرشحات السرعة",
+    "speed_filter_tooltip_intro": "اختر القياسات التي تظهر بحسب سرعة الحركة.",
+    "speed_filter_tooltip_live": "قلب Safecast: بيانات فورية من safecast.org.",
+    "speed_filter_tooltip_plane": "طائرة: من 70 إلى 500 كم/س لعمليات المسح الجوية.",
+    "speed_filter_tooltip_car": "سيارة: من 7 إلى 70 كم/س للقيادة والمسوح المتنقلة.",
+    "speed_filter_tooltip_ped": "مشاة: أقل من 7 كم/س للقياسات أثناء المشي أو التوقف.",
+    "speed_filter_tooltip_accuracy": "القياسات الأبطأ تبقى أقرب إلى الأرض، لذا بيانات المشاة هي الأدق."
   },
   "cs": {
     "attr_api": "API",
@@ -174,7 +181,14 @@
     "upload_button_tooltip": "Přidejte svou měřicí trasu do mapy. Podporované formáty: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Můžete nahrát více souborů a po nahrání se otevře stránka trasy.",
     "upload_error": "Chyba",
     "waiting_for_server": "Čekání na server...",
-    "your_location": "Vaše poloha"
+    "your_location": "Vaše poloha",
+    "speed_filter_tooltip_title": "Filtry rychlosti",
+    "speed_filter_tooltip_intro": "Vyberte, která měření se mají zobrazit podle cestovní rychlosti.",
+    "speed_filter_tooltip_live": "Srdce Safecast: údaje v reálném čase ze safecast.org.",
+    "speed_filter_tooltip_plane": "Letadlo: 70–500 km/h pro letecké průzkumy.",
+    "speed_filter_tooltip_car": "Auto: 7–70 km/h pro jízdy a mobilní průzkumy.",
+    "speed_filter_tooltip_ped": "Pěší: pod 7 km/h pro pěší nebo stojící měření.",
+    "speed_filter_tooltip_accuracy": "Pomalejší měření zůstávají nejblíže zemi, proto jsou pěší data nejpřesnější."
   },
   "da": {
     "attr_api": "API",
@@ -265,7 +279,14 @@
     "upload_button_tooltip": "Tilføj din målerute til kortet. Understøttede formater: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Du kan uploade flere filer, og efter upload åbnes sporesiden.",
     "upload_error": "Fejl",
     "waiting_for_server": "Venter på serveren...",
-    "your_location": "Din placering"
+    "your_location": "Din placering",
+    "speed_filter_tooltip_title": "Hastighedsfiltre",
+    "speed_filter_tooltip_intro": "Vælg hvilke målinger der vises efter bevægelseshastighed.",
+    "speed_filter_tooltip_live": "Safecast-hjerte: realtidsdata fra safecast.org.",
+    "speed_filter_tooltip_plane": "Fly: 70–500 km/t til målinger fra luften.",
+    "speed_filter_tooltip_car": "Bil: 7–70 km/t til kørsler og mobile målinger.",
+    "speed_filter_tooltip_ped": "Fodgænger: under 7 km/t til gang eller stationære målinger.",
+    "speed_filter_tooltip_accuracy": "Langsommere målinger ligger tættest på jorden, så fodgængerdata er mest præcise."
   },
   "de": {
     "attr_api": "API",
@@ -356,7 +377,14 @@
     "upload_button_tooltip": "Fügen Sie Ihre Messstrecke zur Karte hinzu. Unterstützte Formate: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Sie können mehrere Dateien hochladen, danach öffnet sich die Track-Seite.",
     "upload_error": "Fehler",
     "waiting_for_server": "Warten auf den Server...",
-    "your_location": "Ihr Standort"
+    "your_location": "Ihr Standort",
+    "speed_filter_tooltip_title": "Geschwindigkeitsfilter",
+    "speed_filter_tooltip_intro": "Wählen Sie, welche Messungen nach Reisegeschwindigkeit angezeigt werden.",
+    "speed_filter_tooltip_live": "Safecast-Herz: Echtzeitdaten von safecast.org.",
+    "speed_filter_tooltip_plane": "Flugzeug: 70–500 km/h für Luftmessungen.",
+    "speed_filter_tooltip_car": "Auto: 7–70 km/h für Fahrten und mobile Messungen.",
+    "speed_filter_tooltip_ped": "Zu Fuß: unter 7 km/h für Geh- oder stationäre Messungen.",
+    "speed_filter_tooltip_accuracy": "Langsamere Messungen bleiben näher am Boden, daher sind Fußgängerdaten am genauesten."
   },
   "el": {
     "attr_api": "API",
@@ -447,7 +475,14 @@
     "upload_button_tooltip": "Προσθέστε τη διαδρομή μετρήσεών σας στον χάρτη. Υποστηριζόμενες μορφές: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Μπορείτε να μεταφορτώσετε πολλά αρχεία· μετά τη μεταφόρτωση θα ανοίξει η σελίδα της διαδρομής.",
     "upload_error": "Σφάλμα",
     "waiting_for_server": "Αναμονή για τον διακομιστή...",
-    "your_location": "Η τοποθεσία σας"
+    "your_location": "Η τοποθεσία σας",
+    "speed_filter_tooltip_title": "Φίλτρα ταχύτητας",
+    "speed_filter_tooltip_intro": "Επιλέξτε ποιες μετρήσεις εμφανίζονται ανάλογα με την ταχύτητα κίνησης.",
+    "speed_filter_tooltip_live": "Καρδιά Safecast: δεδομένα σε πραγματικό χρόνο από το safecast.org.",
+    "speed_filter_tooltip_plane": "Αεροπλάνο: 70–500 χλμ./ώρα για εναέριες καταγραφές.",
+    "speed_filter_tooltip_car": "Αυτοκίνητο: 7–70 χλμ./ώρα για διαδρομές και κινητές μετρήσεις.",
+    "speed_filter_tooltip_ped": "Πεζός: κάτω από 7 χλμ./ώρα για μετρήσεις σε περπάτημα ή στάση.",
+    "speed_filter_tooltip_accuracy": "Οι πιο αργές μετρήσεις παραμένουν πιο κοντά στο έδαφος, οπότε τα δεδομένα πεζών είναι τα πιο ακριβή."
   },
   "en": {
     "attr_api": "API",
@@ -542,7 +577,14 @@
     "upload_button_tooltip": "Add your measurement track to the map. Supported formats: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. You can upload multiple files, and after uploading you'll be taken to the track page.",
     "upload_error": "Error",
     "waiting_for_server": "Waiting for server...",
-    "your_location": "Your location"
+    "your_location": "Your location",
+    "speed_filter_tooltip_title": "Speed filters",
+    "speed_filter_tooltip_intro": "Choose which measurements appear by travel speed.",
+    "speed_filter_tooltip_live": "Safecast heart: realtime data streaming from safecast.org.",
+    "speed_filter_tooltip_plane": "Plane: 70–500 km/h for airborne surveys.",
+    "speed_filter_tooltip_car": "Car: 7–70 km/h for drives and mobile surveys.",
+    "speed_filter_tooltip_ped": "Pedestrian: below 7 km/h for walking or stationary readings.",
+    "speed_filter_tooltip_accuracy": "Slower measurements stay closest to the ground, so pedestrian data is the most precise."
   },
   "es": {
     "attr_api": "API",
@@ -633,7 +675,14 @@
     "upload_button_tooltip": "Agregue su recorrido de mediciones al mapa. Formatos compatibles: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Puede subir varios archivos y, después de la carga, se abrirá la página del recorrido.",
     "upload_error": "Error",
     "waiting_for_server": "Esperando al servidor...",
-    "your_location": "Tu ubicación"
+    "your_location": "Tu ubicación",
+    "speed_filter_tooltip_title": "Filtros de velocidad",
+    "speed_filter_tooltip_intro": "Elige qué mediciones se muestran según la velocidad de desplazamiento.",
+    "speed_filter_tooltip_live": "Corazón de Safecast: datos en tiempo real de safecast.org.",
+    "speed_filter_tooltip_plane": "Avión: 70–500 km/h para mediciones aéreas.",
+    "speed_filter_tooltip_car": "Auto: 7–70 km/h para recorridos y mediciones móviles.",
+    "speed_filter_tooltip_ped": "Peatón: menos de 7 km/h para lecturas caminando o en reposo.",
+    "speed_filter_tooltip_accuracy": "Las mediciones más lentas se mantienen más cerca del suelo, por eso los datos de peatón son los más precisos."
   },
   "fa": {
     "attr_api": "رابط API",
@@ -724,7 +773,14 @@
     "upload_button_tooltip": "مسیر اندازه‌گیری خود را به نقشه اضافه کنید. قالب‌های پشتیبانی‌شده: ‎.kml, .kmz, .gpx, .csv, .rctrk, .json, .log‎. می‌توانید چندین فایل بارگذاری کنید و پس از بارگذاری، صفحهٔ مسیر باز می‌شود.",
     "upload_error": "خطا",
     "waiting_for_server": "در انتظار سرور...",
-    "your_location": "موقعیت شما"
+    "your_location": "موقعیت شما",
+    "speed_filter_tooltip_title": "فیلترهای سرعت",
+    "speed_filter_tooltip_intro": "انتخاب کنید کدام اندازه‌گیری‌ها بر اساس سرعت حرکت نمایش داده شوند.",
+    "speed_filter_tooltip_live": "قلب Safecast: داده‌های لحظه‌ای از safecast.org.",
+    "speed_filter_tooltip_plane": "هواپیما: ۷۰ تا ۵۰۰ کیلومتر بر ساعت برای پایش هوایی.",
+    "speed_filter_tooltip_car": "خودرو: ۷ تا ۷۰ کیلومتر بر ساعت برای رانندگی و پایش سیار.",
+    "speed_filter_tooltip_ped": "پیاده: کمتر از ۷ کیلومتر بر ساعت برای اندازه‌گیری در حالت پیاده یا ثابت.",
+    "speed_filter_tooltip_accuracy": "اندازه‌گیری‌های آهسته‌تر نزدیک‌تر به سطح زمین می‌مانند، بنابراین داده‌های پیاده دقیق‌ترین هستند."
   },
   "fi": {
     "attr_api": "API",
@@ -815,7 +871,14 @@
     "upload_button_tooltip": "Lisää mittausreittisi kartalle. Tuetut muodot: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Voit lähettää useita tiedostoja; lähetyksen jälkeen avautuu reittisivu.",
     "upload_error": "Virhe",
     "waiting_for_server": "Odotetaan palvelinta...",
-    "your_location": "Sijaintisi"
+    "your_location": "Sijaintisi",
+    "speed_filter_tooltip_title": "Nopeussuodattimet",
+    "speed_filter_tooltip_intro": "Valitse, mitkä mittaukset näytetään liikkumisnopeuden perusteella.",
+    "speed_filter_tooltip_live": "Safecast-sydän: reaaliaikaiset tiedot safecast.orgista.",
+    "speed_filter_tooltip_plane": "Lentokone: 70–500 km/h ilmamittauksiin.",
+    "speed_filter_tooltip_car": "Auto: 7–70 km/h ajomittauksiin ja liikkuviin keräyksiin.",
+    "speed_filter_tooltip_ped": "Jalankulkija: alle 7 km/h kävellessä tai paikallaan mitattaessa.",
+    "speed_filter_tooltip_accuracy": "Hitaammat mittaukset pysyvät lähimpänä maanpintaa, joten jalankulkijatiedot ovat tarkimpia."
   },
   "fr": {
     "attr_api": "API",
@@ -906,7 +969,14 @@
     "upload_button_tooltip": "Ajoutez votre parcours de mesures à la carte. Formats pris en charge : .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Vous pouvez téléverser plusieurs fichiers et, après le téléversement, la page du parcours s’ouvrira.",
     "upload_error": "Erreur",
     "waiting_for_server": "En attente du serveur...",
-    "your_location": "Votre position"
+    "your_location": "Votre position",
+    "speed_filter_tooltip_title": "Filtres de vitesse",
+    "speed_filter_tooltip_intro": "Choisissez quelles mesures afficher selon la vitesse de déplacement.",
+    "speed_filter_tooltip_live": "Cœur Safecast : données en temps réel depuis safecast.org.",
+    "speed_filter_tooltip_plane": "Avion : 70 à 500 km/h pour les relevés aériens.",
+    "speed_filter_tooltip_car": "Voiture : 7 à 70 km/h pour les trajets et relevés mobiles.",
+    "speed_filter_tooltip_ped": "Piéton : moins de 7 km/h pour les mesures à pied ou à l'arrêt.",
+    "speed_filter_tooltip_accuracy": "Les mesures plus lentes restent proches du sol ; les données à pied sont donc les plus précises."
   },
   "he": {
     "attr_api": "ממשק API",
@@ -997,7 +1067,14 @@
     "upload_button_tooltip": "הוסף את מסלול המדידות שלך למפה. פורמטים נתמכים: ‎.kml, .kmz, .gpx, .csv, .rctrk, .json, .log‎. ניתן להעלות מספר קבצים, ולאחר ההעלאה תיפתח עמודת המסלול.",
     "upload_error": "שגיאה",
     "waiting_for_server": "ממתין לשרת...",
-    "your_location": "המיקום שלך"
+    "your_location": "המיקום שלך",
+    "speed_filter_tooltip_title": "מסנני מהירות",
+    "speed_filter_tooltip_intro": "בחרו אילו מדידות יוצגו לפי מהירות התנועה.",
+    "speed_filter_tooltip_live": "לב Safecast: נתוני זמן אמת מ־safecast.org.",
+    "speed_filter_tooltip_plane": "מטוס: 70–500 קמ״ש למדידות מהאוויר.",
+    "speed_filter_tooltip_car": "רכב: 7–70 קמ״ש לנסיעות ומדידות ניידות.",
+    "speed_filter_tooltip_ped": "הולך רגל: פחות מ־7 קמ״ש למדידות בהליכה או בעמידה.",
+    "speed_filter_tooltip_accuracy": "מדידות איטיות נשארות קרובות יותר לקרקע, ולכן נתוני הולכי הרגל מדויקים ביותר."
   },
   "hi": {
     "attr_api": "API",
@@ -1088,7 +1165,14 @@
     "upload_button_tooltip": "अपना माप ट्रैक मानचित्र में जोड़ें। समर्थित प्रारूप: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log। आप कई फ़ाइलें अपलोड कर सकते हैं और अपलोड के बाद ट्रैक पेज खुलेगा।",
     "upload_error": "त्रुटि",
     "waiting_for_server": "सर्वर की प्रतीक्षा कर रहे हैं...",
-    "your_location": "आपका स्थान"
+    "your_location": "आपका स्थान",
+    "speed_filter_tooltip_title": "गति फ़िल्टर",
+    "speed_filter_tooltip_intro": "यात्रा गति के आधार पर कौन सी माप दिखेंगी, चुनें।",
+    "speed_filter_tooltip_live": "Safecast हृदय: safecast.org से वास्तविक समय के आँकड़े।",
+    "speed_filter_tooltip_plane": "विमान: हवाई सर्वेक्षण के लिए 70–500 किमी/घंटा।",
+    "speed_filter_tooltip_car": "कार: ड्राइव और मोबाइल मापों के लिए 7–70 किमी/घंटा।",
+    "speed_filter_tooltip_ped": "पैदल: 7 किमी/घंटा से कम पैदल या स्थिर मापों के लिए।",
+    "speed_filter_tooltip_accuracy": "धीमी माप ज़मीन के सबसे करीब रहती हैं, इसलिए पैदल डेटा सबसे सटीक होता है।"
   },
   "hu": {
     "attr_api": "API",
@@ -1179,7 +1263,14 @@
     "upload_button_tooltip": "Add hozzá a mérési útvonaladat a térképhez. Támogatott formátumok: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Több fájlt is feltölthetsz, és a feltöltés után megnyílik az útvonal oldala.",
     "upload_error": "Hiba",
     "waiting_for_server": "Várakozás a szerverre...",
-    "your_location": "A te helyzeted"
+    "your_location": "A te helyzeted",
+    "speed_filter_tooltip_title": "Sebességszűrők",
+    "speed_filter_tooltip_intro": "Válassza ki, mely mérések jelenjenek meg az utazási sebesség alapján.",
+    "speed_filter_tooltip_live": "Safecast-szív: valós idejű adatok a safecast.org-ról.",
+    "speed_filter_tooltip_plane": "Repülő: 70–500 km/h a légi felmérésekhez.",
+    "speed_filter_tooltip_car": "Autó: 7–70 km/h az utakhoz és mobil mérésekhez.",
+    "speed_filter_tooltip_ped": "Gyalogos: 7 km/h alatti értékek gyalogos vagy álló mérésekhez.",
+    "speed_filter_tooltip_accuracy": "A lassabb mérések maradnak legközelebb a talajhoz, ezért a gyalogos adatok a legpontosabbak."
   },
   "id": {
     "attr_api": "API",
@@ -1270,7 +1361,14 @@
     "upload_button_tooltip": "Tambahkan lintasan pengukuran Anda ke peta. Format yang didukung: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Anda bisa mengunggah beberapa berkas; setelah unggah, halaman lintasan akan terbuka.",
     "upload_error": "Kesalahan",
     "waiting_for_server": "Menunggu server...",
-    "your_location": "Lokasimu"
+    "your_location": "Lokasimu",
+    "speed_filter_tooltip_title": "Filter kecepatan",
+    "speed_filter_tooltip_intro": "Pilih pengukuran yang ditampilkan berdasarkan kecepatan perjalanan.",
+    "speed_filter_tooltip_live": "Hati Safecast: data waktu nyata dari safecast.org.",
+    "speed_filter_tooltip_plane": "Pesawat: 70–500 km/jam untuk survei udara.",
+    "speed_filter_tooltip_car": "Mobil: 7–70 km/jam untuk perjalanan dan pengukuran bergerak.",
+    "speed_filter_tooltip_ped": "Pejalan kaki: di bawah 7 km/jam untuk pengukuran saat berjalan atau berhenti.",
+    "speed_filter_tooltip_accuracy": "Pengukuran yang lebih lambat tetap paling dekat dengan tanah, sehingga data pejalan kaki paling akurat."
   },
   "it": {
     "attr_api": "API",
@@ -1361,7 +1459,14 @@
     "upload_button_tooltip": "Aggiungi il tuo percorso di misurazioni alla mappa. Formati supportati: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Puoi caricare più file e, al termine, si aprirà la pagina del percorso.",
     "upload_error": "Errore",
     "waiting_for_server": "In attesa del server...",
-    "your_location": "La tua posizione"
+    "your_location": "La tua posizione",
+    "speed_filter_tooltip_title": "Filtri di velocità",
+    "speed_filter_tooltip_intro": "Scegli quali misurazioni mostrare in base alla velocità di spostamento.",
+    "speed_filter_tooltip_live": "Cuore Safecast: dati in tempo reale da safecast.org.",
+    "speed_filter_tooltip_plane": "Aereo: 70–500 km/h per rilievi aerei.",
+    "speed_filter_tooltip_car": "Auto: 7–70 km/h per percorsi e rilevazioni mobili.",
+    "speed_filter_tooltip_ped": "Pedone: meno di 7 km/h per misure a piedi o da fermi.",
+    "speed_filter_tooltip_accuracy": "Le misurazioni più lente restano più vicine al suolo, quindi i dati a piedi sono i più precisi."
   },
   "ja": {
     "attr_api": "API",
@@ -1452,7 +1557,14 @@
     "upload_button_tooltip": "測定したトラックを地図に追加します。対応形式：.kml、.kmz、.gpx、.csv、.rctrk、.json、.log。複数のファイルをアップロードでき、完了後にトラックページが開きます。",
     "upload_error": "エラー",
     "waiting_for_server": "サーバーを待機中...",
-    "your_location": "あなたの位置"
+    "your_location": "あなたの位置",
+    "speed_filter_tooltip_title": "速度フィルター",
+    "speed_filter_tooltip_intro": "移動速度ごとに表示する測定値を選択します。",
+    "speed_filter_tooltip_live": "Safecastハート：safecast.orgからのリアルタイムデータ。",
+    "speed_filter_tooltip_plane": "航空機：空からの測定用に70～500km/h。",
+    "speed_filter_tooltip_car": "車：走行や移動測定用に7～70km/h。",
+    "speed_filter_tooltip_ped": "徒歩：歩行や停止中の測定用に7km/h未満。",
+    "speed_filter_tooltip_accuracy": "ゆっくりした測定ほど地表に近く、徒歩データが最も精度が高くなります。"
   },
   "ko": {
     "attr_api": "API",
@@ -1543,7 +1655,14 @@
     "upload_button_tooltip": "측정 트랙을 지도에 추가하세요. 지원 형식: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. 여러 파일을 업로드할 수 있으며, 업로드가 완료되면 트랙 페이지가 열립니다.",
     "upload_error": "오류",
     "waiting_for_server": "서버 대기 중...",
-    "your_location": "내 위치"
+    "your_location": "내 위치",
+    "speed_filter_tooltip_title": "속도 필터",
+    "speed_filter_tooltip_intro": "이동 속도에 따라 표시할 측정을 선택하세요.",
+    "speed_filter_tooltip_live": "Safecast 하트: safecast.org의 실시간 데이터.",
+    "speed_filter_tooltip_plane": "비행기: 항공 탐사용 70–500km/h.",
+    "speed_filter_tooltip_car": "자동차: 주행 및 이동 측정을 위한 7–70km/h.",
+    "speed_filter_tooltip_ped": "보행: 보행 또는 정지 측정을 위한 7km/h 미만.",
+    "speed_filter_tooltip_accuracy": "속도가 느릴수록 지면과 가까이 유지되므로 보행 데이터가 가장 정확합니다."
   },
   "ms": {
     "attr_api": "API",
@@ -1634,7 +1753,14 @@
     "upload_button_tooltip": "Tambahkan jejak pengukuran anda pada peta. Format yang disokong: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Anda boleh memuat naik berbilang fail; selepas muat naik, halaman jejak akan dibuka.",
     "upload_error": "Ralat",
     "waiting_for_server": "Menunggu pelayan...",
-    "your_location": "Lokasi anda"
+    "your_location": "Lokasi anda",
+    "speed_filter_tooltip_title": "Penapis kelajuan",
+    "speed_filter_tooltip_intro": "Pilih ukuran yang dipaparkan mengikut kelajuan pergerakan.",
+    "speed_filter_tooltip_live": "Hati Safecast: data masa nyata dari safecast.org.",
+    "speed_filter_tooltip_plane": "Pesawat: 70–500 km/j untuk tinjauan udara.",
+    "speed_filter_tooltip_car": "Kereta: 7–70 km/j untuk pemanduan dan tinjauan bergerak.",
+    "speed_filter_tooltip_ped": "Pejalan kaki: kurang daripada 7 km/j untuk bacaan ketika berjalan atau berhenti.",
+    "speed_filter_tooltip_accuracy": "Pengukuran yang lebih perlahan kekal paling hampir dengan tanah, jadi data pejalan kaki paling tepat."
   },
   "nl": {
     "attr_api": "API",
@@ -1725,7 +1851,14 @@
     "upload_button_tooltip": "Voeg uw meettraject toe aan de kaart. Ondersteunde formaten: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. U kunt meerdere bestanden uploaden en na het uploaden wordt de trajectpagina geopend.",
     "upload_error": "Fout",
     "waiting_for_server": "Wachten op server...",
-    "your_location": "Uw locatie"
+    "your_location": "Uw locatie",
+    "speed_filter_tooltip_title": "Snelheidsfilters",
+    "speed_filter_tooltip_intro": "Kies welke metingen worden getoond op basis van de snelheid.",
+    "speed_filter_tooltip_live": "Safecast-hart: realtime gegevens van safecast.org.",
+    "speed_filter_tooltip_plane": "Vliegtuig: 70–500 km/u voor metingen vanuit de lucht.",
+    "speed_filter_tooltip_car": "Auto: 7–70 km/u voor ritten en mobiele metingen.",
+    "speed_filter_tooltip_ped": "Voetganger: onder 7 km/u voor metingen te voet of stilstaand.",
+    "speed_filter_tooltip_accuracy": "Langzamere metingen blijven het dichtst bij de grond; voetgangersgegevens zijn dus het nauwkeurigst."
   },
   "no": {
     "attr_api": "API",
@@ -1816,7 +1949,14 @@
     "upload_button_tooltip": "Legg til måleruten din på kartet. Støttede formater: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Du kan laste opp flere filer, og etter opplasting åpnes sporsiden.",
     "upload_error": "Feil",
     "waiting_for_server": "Venter på serveren...",
-    "your_location": "Din posisjon"
+    "your_location": "Din posisjon",
+    "speed_filter_tooltip_title": "Fartsfiltre",
+    "speed_filter_tooltip_intro": "Velg hvilke målinger som vises etter bevegelseshastighet.",
+    "speed_filter_tooltip_live": "Safecast-hjerte: sanntidsdata fra safecast.org.",
+    "speed_filter_tooltip_plane": "Fly: 70–500 km/t for målinger fra luften.",
+    "speed_filter_tooltip_car": "Bil: 7–70 km/t for kjøreturer og mobile målinger.",
+    "speed_filter_tooltip_ped": "Til fots: under 7 km/t for målinger i gangfart eller i ro.",
+    "speed_filter_tooltip_accuracy": "Saktere målinger holder seg nærmest bakken, derfor er data til fots mest presise."
   },
   "pl": {
     "attr_api": "API",
@@ -1907,7 +2047,14 @@
     "upload_button_tooltip": "Dodaj swoją trasę pomiarów do mapy. Obsługiwane formaty: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Możesz przesłać wiele plików, a po przesłaniu otworzy się strona trasy.",
     "upload_error": "Błąd",
     "waiting_for_server": "Oczekiwanie na serwer...",
-    "your_location": "Twoja lokalizacja"
+    "your_location": "Twoja lokalizacja",
+    "speed_filter_tooltip_title": "Filtry prędkości",
+    "speed_filter_tooltip_intro": "Wybierz, które pomiary pokazywać według prędkości przemieszczania.",
+    "speed_filter_tooltip_live": "Serce Safecast: dane w czasie rzeczywistym z safecast.org.",
+    "speed_filter_tooltip_plane": "Samolot: 70–500 km/h dla pomiarów lotniczych.",
+    "speed_filter_tooltip_car": "Samochód: 7–70 km/h dla przejazdów i mobilnych pomiarów.",
+    "speed_filter_tooltip_ped": "Pieszy: poniżej 7 km/h dla pomiarów pieszych lub statycznych.",
+    "speed_filter_tooltip_accuracy": "Bardziej powolne pomiary pozostają najbliżej ziemi, dlatego dane piesze są najdokładniejsze."
   },
   "pt": {
     "attr_api": "API",
@@ -1998,7 +2145,14 @@
     "upload_button_tooltip": "Adicione a sua rota de medições ao mapa. Formatos suportados: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. É possível enviar vários ficheiros e, após o envio, abrirá a página da rota.",
     "upload_error": "Erro",
     "waiting_for_server": "Aguardando o servidor...",
-    "your_location": "Sua localização"
+    "your_location": "Sua localização",
+    "speed_filter_tooltip_title": "Filtros de velocidade",
+    "speed_filter_tooltip_intro": "Escolha quais medições mostrar de acordo com a velocidade de deslocamento.",
+    "speed_filter_tooltip_live": "Coração Safecast: dados em tempo real do safecast.org.",
+    "speed_filter_tooltip_plane": "Avião: 70–500 km/h para medições aéreas.",
+    "speed_filter_tooltip_car": "Carro: 7–70 km/h para deslocamentos e medições móveis.",
+    "speed_filter_tooltip_ped": "Pedestre: abaixo de 7 km/h para leituras a pé ou parado.",
+    "speed_filter_tooltip_accuracy": "Medições mais lentas ficam mais próximas do solo; por isso os dados de pedestres são os mais precisos."
   },
   "ru": {
     "attr_api": "API",
@@ -2093,7 +2247,14 @@
     "upload_button_tooltip": "Добавьте свой трек замеров на карту. Поддерживаются форматы: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Можно загрузить несколько файлов, после чего откроется страница трека.",
     "upload_error": "Ошибка",
     "waiting_for_server": "Ожидание сервера...",
-    "your_location": "Ваше местоположение"
+    "your_location": "Ваше местоположение",
+    "speed_filter_tooltip_title": "Фильтры скорости",
+    "speed_filter_tooltip_intro": "Выберите, какие измерения показывать в зависимости от скорости движения.",
+    "speed_filter_tooltip_live": "Сердце Safecast: данные в реальном времени с safecast.org.",
+    "speed_filter_tooltip_plane": "Самолёт: 70–500 км/ч для воздушных обследований.",
+    "speed_filter_tooltip_car": "Авто: 7–70 км/ч для поездок и мобильных измерений.",
+    "speed_filter_tooltip_ped": "Пешком: менее 7 км/ч для пешеходных или стационарных измерений.",
+    "speed_filter_tooltip_accuracy": "Более медленные измерения остаются ближе к земле, поэтому данные пешком самые точные."
   },
   "sv": {
     "attr_api": "API",
@@ -2184,7 +2345,14 @@
     "upload_button_tooltip": "Lägg till din mätspårning på kartan. Format som stöds: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Du kan ladda upp flera filer och efter överföringen öppnas spårsidan.",
     "upload_error": "Fel",
     "waiting_for_server": "Väntar på servern...",
-    "your_location": "Din plats"
+    "your_location": "Din plats",
+    "speed_filter_tooltip_title": "Hastighetsfilter",
+    "speed_filter_tooltip_intro": "Välj vilka mätningar som ska visas efter rörelsehastighet.",
+    "speed_filter_tooltip_live": "Safecast-hjärta: realtidsdata från safecast.org.",
+    "speed_filter_tooltip_plane": "Flyg: 70–500 km/h för mätningar från luften.",
+    "speed_filter_tooltip_car": "Bil: 7–70 km/h för körningar och mobila mätningar.",
+    "speed_filter_tooltip_ped": "Till fots: under 7 km/h för mätningar vid gång eller stillastående.",
+    "speed_filter_tooltip_accuracy": "Långsammare mätningar ligger närmast marken, därför är data till fots mest precisa."
   },
   "th": {
     "attr_api": "API",
@@ -2275,7 +2443,14 @@
     "upload_button_tooltip": "เพิ่มเส้นทางการวัดของคุณลงในแผนที่ รูปแบบที่รองรับ: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log คุณสามารถอัปโหลดหลายไฟล์ได้ หลังจากอัปโหลดแล้วจะเปิดหน้าของเส้นทาง",
     "upload_error": "ข้อผิดพลาด",
     "waiting_for_server": "กำลังรอเซิร์ฟเวอร์...",
-    "your_location": "ตำแหน่งของคุณ"
+    "your_location": "ตำแหน่งของคุณ",
+    "speed_filter_tooltip_title": "ตัวกรองความเร็ว",
+    "speed_filter_tooltip_intro": "เลือกการวัดที่จะให้แสดงตามความเร็วในการเคลื่อนที่.",
+    "speed_filter_tooltip_live": "หัวใจ Safecast: ข้อมูลเรียลไทม์จาก safecast.org.",
+    "speed_filter_tooltip_plane": "เครื่องบิน: 70–500 กม./ชม. สำหรับการสำรวจทางอากาศ.",
+    "speed_filter_tooltip_car": "รถยนต์: 7–70 กม./ชม. สำหรับการขับขี่และการวัดแบบเคลื่อนที่.",
+    "speed_filter_tooltip_ped": "เดินเท้า: ต่ำกว่า 7 กม./ชม. สำหรับการวัดขณะเดินหรือหยุดนิ่ง.",
+    "speed_filter_tooltip_accuracy": "การวัดที่ช้ากว่าจะอยู่ใกล้พื้นที่สุด ดังนั้นข้อมูลการเดินเท้าจึงแม่นยำที่สุด."
   },
   "tr": {
     "attr_api": "API",
@@ -2366,7 +2541,14 @@
     "upload_button_tooltip": "Ölçüm rotanızı haritaya ekleyin. Desteklenen formatlar: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Birden fazla dosya yükleyebilir, yükleme sonrası rota sayfası açılır.",
     "upload_error": "Hata",
     "waiting_for_server": "Sunucu bekleniyor...",
-    "your_location": "Konumunuz"
+    "your_location": "Konumunuz",
+    "speed_filter_tooltip_title": "Hız filtreleri",
+    "speed_filter_tooltip_intro": "Hangi ölçümlerin hareket hızına göre gösterileceğini seçin.",
+    "speed_filter_tooltip_live": "Safecast kalbi: safecast.org'dan gerçek zamanlı veriler.",
+    "speed_filter_tooltip_plane": "Uçak: hava ölçümleri için 70–500 km/s.",
+    "speed_filter_tooltip_car": "Araba: sürüşler ve mobil ölçümler için 7–70 km/s.",
+    "speed_filter_tooltip_ped": "Yaya: yürürken veya dururken yapılan ölçümler için 7 km/s altı.",
+    "speed_filter_tooltip_accuracy": "Daha yavaş ölçümler zemine en yakın kalır; bu yüzden yaya verileri en doğrusudur."
   },
   "uk": {
     "attr_api": "API",
@@ -2457,7 +2639,14 @@
     "upload_button_tooltip": "Додайте свій трек вимірювань на карту. Підтримувані формати: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Можна завантажити кілька файлів, після чого відкриється сторінка треку.",
     "upload_error": "Помилка",
     "waiting_for_server": "Очікування сервера...",
-    "your_location": "Ваше розташування"
+    "your_location": "Ваше розташування",
+    "speed_filter_tooltip_title": "Фільтри швидкості",
+    "speed_filter_tooltip_intro": "Виберіть, які вимірювання показувати за швидкістю руху.",
+    "speed_filter_tooltip_live": "Серце Safecast: дані в реальному часі з safecast.org.",
+    "speed_filter_tooltip_plane": "Літак: 70–500 км/год для аерозйомок.",
+    "speed_filter_tooltip_car": "Авто: 7–70 км/год для поїздок і мобільних вимірювань.",
+    "speed_filter_tooltip_ped": "Пішки: менше 7 км/год для пішохідних чи стаціонарних вимірювань.",
+    "speed_filter_tooltip_accuracy": "Повільніші вимірювання залишаються найближче до землі, тому пішохідні дані найточніші."
   },
   "vi": {
     "attr_api": "API",
@@ -2548,7 +2737,14 @@
     "upload_button_tooltip": "Thêm hành trình đo đạc của bạn vào bản đồ. Định dạng hỗ trợ: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Bạn có thể tải lên nhiều tệp; sau khi tải lên sẽ mở trang hành trình.",
     "upload_error": "Lỗi",
     "waiting_for_server": "Đang chờ máy chủ...",
-    "your_location": "Vị trí của bạn"
+    "your_location": "Vị trí của bạn",
+    "speed_filter_tooltip_title": "Bộ lọc tốc độ",
+    "speed_filter_tooltip_intro": "Chọn phép đo được hiển thị theo tốc độ di chuyển.",
+    "speed_filter_tooltip_live": "Trái tim Safecast: dữ liệu thời gian thực từ safecast.org.",
+    "speed_filter_tooltip_plane": "Máy bay: 70–500 km/h cho khảo sát trên không.",
+    "speed_filter_tooltip_car": "Ô tô: 7–70 km/h cho các chuyến đi và phép đo di động.",
+    "speed_filter_tooltip_ped": "Đi bộ: dưới 7 km/h cho phép đo khi đi bộ hoặc đứng yên.",
+    "speed_filter_tooltip_accuracy": "Các phép đo chậm sát mặt đất hơn, vì vậy dữ liệu đi bộ là chính xác nhất."
   },
   "zh": {
     "attr_api": "API",
@@ -2639,6 +2835,13 @@
     "upload_button_tooltip": "将您的测量轨迹添加到地图。支持的格式：.kml、.kmz、.gpx、.csv、.rctrk、.json、.log。您可以上传多个文件，上传完成后将打开轨迹页面。",
     "upload_error": "错误",
     "waiting_for_server": "正在等待服务器...",
-    "your_location": "您的位置"
+    "your_location": "您的位置",
+    "speed_filter_tooltip_title": "速度筛选",
+    "speed_filter_tooltip_intro": "根据移动速度选择要显示的测量数据。",
+    "speed_filter_tooltip_live": "Safecast 心形：来自 safecast.org 的实时数据。",
+    "speed_filter_tooltip_plane": "飞机：70–500 公里/小时，用于空中测量。",
+    "speed_filter_tooltip_car": "汽车：7–70 公里/小时，用于驾车和移动测量。",
+    "speed_filter_tooltip_ped": "步行：低于 7 公里/小时，用于步行或静止测量。",
+    "speed_filter_tooltip_accuracy": "速度越慢的测量越贴近地面，因此步行数据最精确。"
   }
 }
