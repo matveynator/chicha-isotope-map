@@ -1997,7 +1997,7 @@ function saveSpeedFilterState(state) {
 
 /**
  * Attach a lightweight tooltip to a control so every hint shares one theme-aware renderer.
- * We return hide/destroy handlers to let callers dismiss the tooltip when controls collapse.
+ * We return show/hide/destroy handlers to let callers reuse a single tooltip while controls collapse.
  */
 function attachControlTooltip(target, options) {
   if (!target) {
@@ -2138,6 +2138,7 @@ function attachControlTooltip(target, options) {
   target.addEventListener('keydown', onKeyDown);
 
   return {
+    show: showTooltip,
     hide: hideTooltip,
     destroy: destroyTooltip,
   };
@@ -2364,6 +2365,9 @@ document.addEventListener('DOMContentLoaded', function () {
         );
         div.innerHTML = pieces.join('');
 
+        // We collect all checkboxes so keyboard focus and pointer use can share a single tooltip instance.
+        const checkboxes = Array.from(div.querySelectorAll('input[type=checkbox]'));
+
         // Attach an explanatory tooltip so visitors understand how each checkbox slices the dataset by speed.
         const speedTooltipHandle = attachControlTooltip(div, {
           placement: 'right',
@@ -2390,111 +2394,25 @@ document.addEventListener('DOMContentLoaded', function () {
           },
         });
 
-        // If realtime is available, add a hover tooltip to the live toggle
-        // with the same styling as other popups/tooltips.
-        if (window.safecastRealtimeEnabled) {
-          const liveInput = div.querySelector('#sfLive');
-          if (liveInput) {
-            const liveLabel = liveInput.closest('label');
-            const iconSpan = liveLabel ? liveLabel.querySelector('.speed-filter-icon') : null;
-            let hoverTip;
-            const defaultTip = 'Show or hide realtime measurements from safecast.org. Click to toggle the live layer.';
-            let tipText = defaultTip;
-            if (typeof translate === 'function') {
-              try {
-                const maybe = translate('live_toggle_help');
-                if (maybe && typeof maybe === 'string' && maybe.trim() !== '' && maybe !== 'live_toggle_help') {
-                  tipText = maybe;
-                }
-              } catch (_) {
-                tipText = defaultTip;
-              }
+        // Keyboard users focus the individual checkboxes, so we mirror the combined tooltip when inputs gain focus.
+        checkboxes.forEach(cb => {
+          cb.addEventListener('focus', () => {
+            if (speedTooltipHandle && typeof speedTooltipHandle.show === 'function') {
+              speedTooltipHandle.show();
             }
-            // Ensure no native title is present to avoid double tooltips
-            if (liveLabel && liveLabel.hasAttribute('title')) {
-              liveLabel.removeAttribute('title');
+          });
+          cb.addEventListener('blur', () => {
+            if (speedTooltipHandle && typeof speedTooltipHandle.hide === 'function') {
+              speedTooltipHandle.hide();
             }
-            if (iconSpan && iconSpan.hasAttribute('title')) {
-              iconSpan.removeAttribute('title');
-            }
-
-            const positionTipAt = (x, y) => {
-              if (!hoverTip) return;
-              const pad = 12;
-              let left = x + pad;
-              let top  = y + 8;
-              const maxLeft = window.innerWidth - hoverTip.offsetWidth - 8;
-              const maxTop  = window.innerHeight - hoverTip.offsetHeight - 8;
-              if (left > maxLeft) left = Math.max(8, x - hoverTip.offsetWidth - pad);
-              if (top > maxTop) top = Math.max(8, y - hoverTip.offsetHeight - 8);
-              hoverTip.style.left = left + 'px';
-              hoverTip.style.top  = top + 'px';
-            };
-
-            const showTip = (evt) => {
-              if (hoverTip) return;
-              hoverTip = document.createElement('div');
-              hoverTip.className = 'custom-tooltip live-tooltip';
-              hoverTip.style.position = 'fixed';
-              hoverTip.style.zIndex = '3000';
-              hoverTip.style.pointerEvents = 'none';
-              hoverTip.innerHTML = `
-                <div style="max-width: var(--tooltip-max); min-inline-size: var(--tooltip-min);">
-                  <strong>Safecast Realtime</strong><br/>
-                  ${tipText}
-                </div>`;
-              document.body.appendChild(hoverTip);
-              if (evt && evt.clientX) {
-                positionTipAt(evt.clientX, evt.clientY);
-              } else {
-                const r = liveLabel.getBoundingClientRect();
-                positionTipAt(r.right, r.top);
-              }
-            };
-            const hideTip = () => {
-              if (hoverTip && hoverTip.parentNode) hoverTip.parentNode.removeChild(hoverTip);
-              hoverTip = null;
-              window.removeEventListener('scroll', onReposition, true);
-              window.removeEventListener('resize', onReposition, true);
-              liveLabel.removeEventListener('mousemove', onMouseMove, true);
-            };
-            const onReposition = () => {
-              const r = liveLabel.getBoundingClientRect();
-              positionTipAt(r.right, r.top);
-            };
-            const onMouseMove = (e) => positionTipAt(e.clientX, e.clientY);
-
-            const onEnter = (e) => {
-              if (speedTooltipHandle && typeof speedTooltipHandle.hide === 'function') {
-                speedTooltipHandle.hide();
-              }
-              showTip(e);
-              window.addEventListener('scroll', onReposition, true);
-              window.addEventListener('resize', onReposition, true);
-              liveLabel.addEventListener('mousemove', onMouseMove, true);
-            };
-            const onLeave = () => hideTip();
-
-            liveLabel.addEventListener('mouseenter', onEnter);
-            liveLabel.addEventListener('mouseleave', onLeave);
-            if (iconSpan) {
-              iconSpan.addEventListener('mouseenter', onEnter);
-              iconSpan.addEventListener('mouseleave', onLeave);
-            }
-            liveLabel.addEventListener('focusin', (e) => {
-              showTip(e);
-              window.addEventListener('scroll', onReposition, true);
-              window.addEventListener('resize', onReposition, true);
-            });
-            liveLabel.addEventListener('focusout', hideTip);
-          }
-        }
+          });
+        });
 
         // prevent map drag/zoom while clicking inside the control
         L.DomEvent.disableClickPropagation(div);
 
         // attach change-handlers
-        div.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        checkboxes.forEach(cb => {
           cb.addEventListener('change', () => {
             if (window.safecastRealtimeEnabled) {
               state.live = div.querySelector('#sfLive').checked;
