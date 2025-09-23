@@ -278,6 +278,58 @@ body, html {
           box-shadow: 0px 0px 3px rgba(0,0,0,0.3);
         }
 
+        /* Consistent hover/focus hints for interactive controls */
+        .control-tooltip {
+          position: fixed;
+          z-index: 1400;
+          pointer-events: none;
+          background: var(--modal-bg);
+          color: var(--modal-text);
+          border: var(--legend-border);
+          border-radius: 8px;
+          padding: 10px 12px;
+          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+          font-size: var(--font-size-sm);
+          line-height: 1.4;
+          max-width: 280px;
+          opacity: 0;
+          transform: scale(0.96);
+          transform-origin: center;
+          transition: opacity 120ms ease, transform 120ms ease;
+          text-align: left;
+        }
+
+        .control-tooltip--visible {
+          opacity: 1;
+          transform: scale(1);
+        }
+
+        .control-tooltip__title {
+          font-weight: 600;
+          margin-bottom: 4px;
+          font-size: var(--font-size-base);
+        }
+
+        .control-tooltip__meta {
+          font-size: var(--font-size-xs);
+          opacity: 0.75;
+          margin-top: 6px;
+        }
+
+        /* Lightweight list styling keeps multi-line tooltip content readable without extra markup. */
+        .control-tooltip__list {
+          margin: 6px 0 0;
+          padding-left: 16px;
+        }
+
+        .control-tooltip__list li {
+          margin-bottom: 4px;
+        }
+
+        .control-tooltip__list li:last-child {
+          margin-bottom: 0;
+        }
+
         /* Link inside popups pointing to full legend */
         .risk-link {
           color: var(--link-color);
@@ -1014,7 +1066,6 @@ body, html {
       <label
         for="fileInput"
         class="upload-btn"
-        title="{{translate "upload_button_tooltip"}}"
         aria-label="{{translate "upload_button_tooltip"}}">
         {{translate "upload_button"}}
       </label>
@@ -1030,12 +1081,12 @@ body, html {
 
     <!-- Container for geolocation button -->
     <div class="locate-btn-container leaflet-control">
-      <button id="locateButton" class="locate-btn" title="{{translate "locate_button_tooltip"}}">
+      <button id="locateButton" class="locate-btn" aria-label="{{translate "locate_button_tooltip"}}">
         <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width:20px;">
       </button>
       <br>
       <!-- Small QR button under geolocate -->
-      <button id="qrButton" class="qr-btn" title="{{translate "qr_button_tooltip"}}" aria-label="QR code">
+      <button id="qrButton" class="qr-btn" aria-label="{{translate "qr_button_tooltip"}}">
         <svg viewBox="0 0 100 100" role="img" aria-hidden="true">
           <rect x="0" y="0" width="100" height="100" fill="#fff"/>
           <rect x="8" y="8" width="28" height="28" fill="#000"/>
@@ -1078,8 +1129,8 @@ body, html {
     </div>
 
     <!-- GitHub link and program info -->
-    <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank">
-      <img src="/static/images/chicha-isotope-map-round-logo.png" alt="{{translate "description"}} (version: {{ .Version }})" title="{{translate "description"}} (version: {{ .Version }})" class="github-icon">
+    <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{translate "github_link_tooltip_desc"}}">
+      <img src="/static/images/chicha-isotope-map-round-logo.png" alt="{{translate "description"}} (version: {{ .Version }})" class="github-icon">
     </a>
 
     <!-- Short link pill shows the shareable URL and copies it on click -->
@@ -1088,8 +1139,7 @@ body, html {
       role="button"
       tabindex="0"
       aria-live="polite"
-      aria-label="{{translate "short_link_tooltip"}}"
-      title="{{translate "short_link_tooltip"}}"></div>
+      aria-label="{{translate "short_link_tooltip"}}"></div>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -1099,7 +1149,7 @@ body, html {
     </div>
 
     <!-- Theme toggle -->
-    <div id="themeToggle">
+    <div id="themeToggle" role="button" tabindex="0" aria-label="{{translate "theme_toggle_tooltip"}}">
       <span class="theme-icon">☀️</span>
       <label class="theme-switch">
         <input type="checkbox" id="themeSwitch">
@@ -1109,7 +1159,7 @@ body, html {
     </div>
 
 <!-- Compact Legend (clickable) -->
-<div id="legend" style="
+<div id="legend" role="button" tabindex="0" aria-label="{{translate "legend_button_tooltip"}}" style="
   position: absolute;
   bottom: 20px;
   right: 20px;
@@ -1137,7 +1187,6 @@ body, html {
    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
   </div>
 </div>
-<div id="legendTooltip" class="custom-tooltip" style="display:none; position:fixed; max-width:500px; padding:10px; font-size: var(--font-size-xs); line-height:1.4em; z-index:1001;"></div>
 <!--
   Compact 4-bin legend (µR/h) with vertical gradient bar (green→yellow→orange→red→black).
   White labels mark safe at the bottom and danger at the top.
@@ -1828,6 +1877,154 @@ function saveSpeedFilterState(state) {
   sessionStorage.setItem('speedFilterState', JSON.stringify(toSave));
 }
 
+/**
+ * Attach a lightweight tooltip to a control so every hint shares one theme-aware renderer.
+ * We return hide/destroy handlers to let callers dismiss the tooltip when controls collapse.
+ */
+function attachControlTooltip(target, options) {
+  if (!target) {
+    return {
+      hide: function noopHide() {},
+      destroy: function noopDestroy() {},
+    };
+  }
+
+  const opts = Object.assign({
+    placement: 'top',
+    html: false,
+    maxWidth: 280,
+  }, options || {});
+
+  let tooltipEl = null;
+
+  function resolveContent() {
+    const content = typeof opts.content === 'function' ? opts.content() : opts.content;
+    return content || '';
+  }
+
+  function positionTooltip() {
+    if (!tooltipEl || !target) {
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      return;
+    }
+    const tipRect = tooltipEl.getBoundingClientRect();
+    const margin = 10;
+    let left = rect.left + (rect.width / 2) - (tipRect.width / 2);
+    let top = rect.top - tipRect.height - margin;
+
+    switch (opts.placement) {
+      case 'bottom':
+        top = rect.bottom + margin;
+        left = rect.left + (rect.width / 2) - (tipRect.width / 2);
+        break;
+      case 'left':
+        left = rect.left - tipRect.width - margin;
+        top = rect.top + (rect.height / 2) - (tipRect.height / 2);
+        break;
+      case 'right':
+        left = rect.right + margin;
+        top = rect.top + (rect.height / 2) - (tipRect.height / 2);
+        break;
+      default:
+        // keep default top placement
+        break;
+    }
+
+    const viewportPadding = 8;
+    left = Math.max(viewportPadding, Math.min(left, window.innerWidth - tipRect.width - viewportPadding));
+    top = Math.max(viewportPadding, Math.min(top, window.innerHeight - tipRect.height - viewportPadding));
+    tooltipEl.style.left = left + 'px';
+    tooltipEl.style.top = top + 'px';
+  }
+
+  function showTooltip() {
+    if (!target || !target.isConnected) {
+      return;
+    }
+    const rects = target.getClientRects();
+    if (!rects || rects.length === 0) {
+      return;
+    }
+    const content = resolveContent();
+    if (!content) {
+      return;
+    }
+    if (tooltipEl) {
+      if (opts.html) {
+        tooltipEl.innerHTML = content;
+      } else {
+        tooltipEl.textContent = content;
+      }
+      positionTooltip();
+      return;
+    }
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'control-tooltip';
+    tooltipEl.setAttribute('role', 'tooltip');
+    const maxWidth = typeof opts.maxWidth === 'number' ? opts.maxWidth + 'px' : opts.maxWidth;
+    tooltipEl.style.maxWidth = maxWidth;
+    if (opts.html) {
+      tooltipEl.innerHTML = content;
+    } else {
+      tooltipEl.textContent = content;
+    }
+    document.body.appendChild(tooltipEl);
+    positionTooltip();
+    window.addEventListener('scroll', positionTooltip, true);
+    window.addEventListener('resize', positionTooltip);
+    requestAnimationFrame(function () {
+      if (tooltipEl) {
+        tooltipEl.classList.add('control-tooltip--visible');
+      }
+    });
+  }
+
+  function hideTooltip() {
+    if (!tooltipEl) {
+      return;
+    }
+    window.removeEventListener('scroll', positionTooltip, true);
+    window.removeEventListener('resize', positionTooltip);
+    const el = tooltipEl;
+    tooltipEl = null;
+    el.classList.remove('control-tooltip--visible');
+    setTimeout(function () {
+      if (el.parentNode) {
+        el.parentNode.removeChild(el);
+      }
+    }, 150);
+  }
+
+  function destroyTooltip() {
+    hideTooltip();
+    target.removeEventListener('mouseenter', showTooltip);
+    target.removeEventListener('mouseleave', hideTooltip);
+    target.removeEventListener('focus', showTooltip);
+    target.removeEventListener('blur', hideTooltip);
+    target.removeEventListener('keydown', onKeyDown);
+  }
+
+  function onKeyDown(ev) {
+    if (ev.key === 'Escape') {
+      hideTooltip();
+    }
+  }
+
+  target.addEventListener('mouseenter', showTooltip);
+  target.addEventListener('mouseleave', hideTooltip);
+  target.addEventListener('focus', showTooltip);
+  target.addEventListener('blur', hideTooltip);
+  target.addEventListener('keydown', onKeyDown);
+
+  return {
+    hide: hideTooltip,
+    destroy: destroyTooltip,
+  };
+}
+
 
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -1841,6 +2038,85 @@ document.addEventListener('DOMContentLoaded', function () {
     if (backBox) backBox.style.display = 'block';
   }
   refreshDownloadLink();
+
+  // Theme-aware hover hints keep visitors oriented without repeating markup titles.
+  var uploadLabel = document.querySelector('.upload-btn');
+  attachControlTooltip(uploadLabel, {
+    placement: 'left',
+    content: function () { return translate('upload_button_tooltip'); },
+    maxWidth: 320,
+  });
+
+  var locateBtn = document.getElementById('locateButton');
+  attachControlTooltip(locateBtn, {
+    placement: 'left',
+    content: function () { return translate('locate_button_tooltip'); },
+  });
+
+  var qrBtn = document.getElementById('qrButton');
+  attachControlTooltip(qrBtn, {
+    placement: 'left',
+    content: function () { return translate('qr_button_tooltip'); },
+  });
+
+  var themeToggle = document.getElementById('themeToggle');
+  attachControlTooltip(themeToggle, {
+    placement: 'left',
+    content: function () { return translate('theme_toggle_tooltip'); },
+    maxWidth: 260,
+  });
+
+  var shortLink = document.getElementById('shortLinkDisplay');
+  if (shortLink) {
+    var shortLinkHandle = attachControlTooltip(shortLink, {
+      placement: 'bottom',
+      content: function () { return translate('short_link_tooltip'); },
+      maxWidth: 260,
+    });
+    window.__hideShortLinkHint = shortLinkHandle.hide;
+  }
+
+  var legendBox = document.getElementById('legend');
+  if (legendBox) {
+    var legendHandle = attachControlTooltip(legendBox, {
+      placement: 'left',
+      content: function () { return translate('legend_button_tooltip'); },
+      maxWidth: 300,
+    });
+    window.__hideLegendHint = legendHandle.hide;
+    legendBox.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        openLegendModal();
+      }
+    });
+  }
+
+  var githubLink = document.querySelector('.github-link');
+  if (githubLink) {
+    var githubHandle = attachControlTooltip(githubLink, {
+      placement: 'top',
+      html: true,
+      maxWidth: 320,
+      content: function () {
+        var version = '{{ .Version }}';
+        var title = translate('github_link_tooltip_title');
+        var desc = translate('github_link_tooltip_desc');
+        var versionText = translate('github_link_tooltip_version');
+        if (typeof versionText === 'string' && versionText.indexOf('{version}') !== -1) {
+          versionText = versionText.replace('{version}', version);
+        }
+        return '<div class="control-tooltip__title">' + title + '</div>' +
+          '<div>' + desc + '</div>' +
+          '<div class="control-tooltip__meta">' + versionText + '</div>';
+      },
+    });
+    window.__hideGithubHint = githubHandle.hide;
+    githubLink.addEventListener('click', function () {
+      githubHandle.hide();
+    });
+  }
+
   // Initialize layers and auto theme switch
   const media = window.matchMedia('(prefers-color-scheme: dark)');
   const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -1970,117 +2246,131 @@ document.addEventListener('DOMContentLoaded', function () {
         );
         div.innerHTML = pieces.join('');
 
-        // Helper to attach a styled hover tooltip to a checkbox label.
-        function attachHoverTooltip(inputEl, heading, text) {
-          if (!inputEl) return;
-          const label = inputEl.closest('label');
-          const iconSpan = label ? label.querySelector('.speed-filter-icon') : null;
-          if (!label) return;
-
-          // Remove native titles to avoid duplicate tooltips
-          if (label.hasAttribute('title')) label.removeAttribute('title');
-          if (iconSpan && iconSpan.hasAttribute('title')) iconSpan.removeAttribute('title');
-
-          let hoverTip;
-          const positionTipAt = (x, y) => {
-            if (!hoverTip) return;
-            const pad = 12;
-            let left = x + pad;
-            let top  = y + 8;
-            const maxLeft = window.innerWidth - hoverTip.offsetWidth - 8;
-            const maxTop  = window.innerHeight - hoverTip.offsetHeight - 8;
-            if (left > maxLeft) left = Math.max(8, x - hoverTip.offsetWidth - pad);
-            if (top > maxTop) top = Math.max(8, y - hoverTip.offsetHeight - 8);
-            hoverTip.style.left = left + 'px';
-            hoverTip.style.top  = top + 'px';
-          };
-
-          const showTip = (evt) => {
-            if (hoverTip) return;
-            hoverTip = document.createElement('div');
-            hoverTip.className = 'custom-tooltip live-tooltip';
-            hoverTip.style.position = 'fixed';
-            hoverTip.style.zIndex = '3000';
-            hoverTip.style.pointerEvents = 'none';
-            hoverTip.innerHTML = `
-              <div style="max-width: var(--tooltip-max); min-inline-size: var(--tooltip-min);">
-                <strong>${heading}</strong><br/>
-                ${text}
-              </div>`;
-            document.body.appendChild(hoverTip);
-            if (evt && evt.clientX) {
-              positionTipAt(evt.clientX, evt.clientY);
-            } else {
-              const r = label.getBoundingClientRect();
-              positionTipAt(r.right, r.top);
+        // Attach an explanatory tooltip so visitors understand how each checkbox slices the dataset by speed.
+        const speedTooltipHandle = attachControlTooltip(div, {
+          placement: 'right',
+          html: true,
+          maxWidth: 340,
+          content: function () {
+            const title = translate('speed_filter_tooltip_title');
+            const intro = translate('speed_filter_tooltip_intro');
+            const accuracy = translate('speed_filter_tooltip_accuracy');
+            const lines = [];
+            if (window.safecastRealtimeEnabled) {
+              lines.push(translate('speed_filter_tooltip_live'));
             }
-          };
-          const hideTip = () => {
-            if (hoverTip && hoverTip.parentNode) hoverTip.parentNode.removeChild(hoverTip);
-            hoverTip = null;
-            window.removeEventListener('scroll', onReposition, true);
-            window.removeEventListener('resize', onReposition, true);
-            label.removeEventListener('mousemove', onMouseMove, true);
-          };
-          const onReposition = () => {
-            const r = label.getBoundingClientRect();
-            positionTipAt(r.right, r.top);
-          };
-          const onMouseMove = (e) => positionTipAt(e.clientX, e.clientY);
-          const onEnter = (e) => {
-            showTip(e);
-            window.addEventListener('scroll', onReposition, true);
-            window.addEventListener('resize', onReposition, true);
-            label.addEventListener('mousemove', onMouseMove, true);
-          };
-          const onLeave = () => hideTip();
-          label.addEventListener('mouseenter', onEnter);
-          label.addEventListener('mouseleave', onLeave);
-          if (iconSpan) {
-            iconSpan.addEventListener('mouseenter', onEnter);
-            iconSpan.addEventListener('mouseleave', onLeave);
-          }
-          label.addEventListener('focusin', (e) => {
-            showTip(e);
-            window.addEventListener('scroll', onReposition, true);
-            window.addEventListener('resize', onReposition, true);
-          });
-          label.addEventListener('focusout', hideTip);
-        }
+            lines.push(translate('speed_filter_tooltip_plane'));
+            lines.push(translate('speed_filter_tooltip_car'));
+            lines.push(translate('speed_filter_tooltip_ped'));
+            const listHtml = lines.map(function (line) {
+              return '<li>' + line + '</li>';
+            }).join('');
+            return '<div class="control-tooltip__title">' + title + '</div>' +
+              '<div>' + intro + '</div>' +
+              '<ul class="control-tooltip__list">' + listHtml + '</ul>' +
+              '<div class="control-tooltip__meta">' + accuracy + '</div>';
+          },
+        });
 
-        // Attach tooltip for realtime when enabled
+        // If realtime is available, add a hover tooltip to the live toggle
+        // with the same styling as other popups/tooltips.
         if (window.safecastRealtimeEnabled) {
           const liveInput = div.querySelector('#sfLive');
-          const defaultTip = 'Show or hide realtime measurements from safecast.org. Click to toggle the live layer.';
-          let tipText = defaultTip;
-          if (typeof translate === 'function') {
-            try {
-              const maybe = translate('live_toggle_help');
-              if (maybe && typeof maybe === 'string' && maybe.trim() !== '' && maybe !== 'live_toggle_help') {
-                tipText = maybe;
+          if (liveInput) {
+            const liveLabel = liveInput.closest('label');
+            const iconSpan = liveLabel ? liveLabel.querySelector('.speed-filter-icon') : null;
+            let hoverTip;
+            const defaultTip = 'Show or hide realtime measurements from safecast.org. Click to toggle the live layer.';
+            let tipText = defaultTip;
+            if (typeof translate === 'function') {
+              try {
+                const maybe = translate('live_toggle_help');
+                if (maybe && typeof maybe === 'string' && maybe.trim() !== '' && maybe !== 'live_toggle_help') {
+                  tipText = maybe;
+                }
+              } catch (_) {
+                tipText = defaultTip;
               }
-            } catch (_) { /* ignore */ }
+            }
+            // Ensure no native title is present to avoid double tooltips
+            if (liveLabel && liveLabel.hasAttribute('title')) {
+              liveLabel.removeAttribute('title');
+            }
+            if (iconSpan && iconSpan.hasAttribute('title')) {
+              iconSpan.removeAttribute('title');
+            }
+
+            const positionTipAt = (x, y) => {
+              if (!hoverTip) return;
+              const pad = 12;
+              let left = x + pad;
+              let top  = y + 8;
+              const maxLeft = window.innerWidth - hoverTip.offsetWidth - 8;
+              const maxTop  = window.innerHeight - hoverTip.offsetHeight - 8;
+              if (left > maxLeft) left = Math.max(8, x - hoverTip.offsetWidth - pad);
+              if (top > maxTop) top = Math.max(8, y - hoverTip.offsetHeight - 8);
+              hoverTip.style.left = left + 'px';
+              hoverTip.style.top  = top + 'px';
+            };
+
+            const showTip = (evt) => {
+              if (hoverTip) return;
+              hoverTip = document.createElement('div');
+              hoverTip.className = 'custom-tooltip live-tooltip';
+              hoverTip.style.position = 'fixed';
+              hoverTip.style.zIndex = '3000';
+              hoverTip.style.pointerEvents = 'none';
+              hoverTip.innerHTML = `
+                <div style="max-width: var(--tooltip-max); min-inline-size: var(--tooltip-min);">
+                  <strong>Safecast Realtime</strong><br/>
+                  ${tipText}
+                </div>`;
+              document.body.appendChild(hoverTip);
+              if (evt && evt.clientX) {
+                positionTipAt(evt.clientX, evt.clientY);
+              } else {
+                const r = liveLabel.getBoundingClientRect();
+                positionTipAt(r.right, r.top);
+              }
+            };
+            const hideTip = () => {
+              if (hoverTip && hoverTip.parentNode) hoverTip.parentNode.removeChild(hoverTip);
+              hoverTip = null;
+              window.removeEventListener('scroll', onReposition, true);
+              window.removeEventListener('resize', onReposition, true);
+              liveLabel.removeEventListener('mousemove', onMouseMove, true);
+            };
+            const onReposition = () => {
+              const r = liveLabel.getBoundingClientRect();
+              positionTipAt(r.right, r.top);
+            };
+            const onMouseMove = (e) => positionTipAt(e.clientX, e.clientY);
+
+            const onEnter = (e) => {
+              if (speedTooltipHandle && typeof speedTooltipHandle.hide === 'function') {
+                speedTooltipHandle.hide();
+              }
+              showTip(e);
+              window.addEventListener('scroll', onReposition, true);
+              window.addEventListener('resize', onReposition, true);
+              liveLabel.addEventListener('mousemove', onMouseMove, true);
+            };
+            const onLeave = () => hideTip();
+
+            liveLabel.addEventListener('mouseenter', onEnter);
+            liveLabel.addEventListener('mouseleave', onLeave);
+            if (iconSpan) {
+              iconSpan.addEventListener('mouseenter', onEnter);
+              iconSpan.addEventListener('mouseleave', onLeave);
+            }
+            liveLabel.addEventListener('focusin', (e) => {
+              showTip(e);
+              window.addEventListener('scroll', onReposition, true);
+              window.addEventListener('resize', onReposition, true);
+            });
+            liveLabel.addEventListener('focusout', hideTip);
           }
-          attachHoverTooltip(liveInput, 'Safecast Realtime', tipText);
         }
-
-        // Attach tooltips for plane, car, and pedestrian filters
-        const planeInput = div.querySelector('#sfPlane');
-        const carInput   = div.querySelector('#sfCar');
-        const pedInput   = div.querySelector('#sfPed');
-
-        const t = (key, fallback) => {
-          if (typeof translate !== 'function') return fallback;
-          try {
-            const s = translate(key);
-            if (s && typeof s === 'string' && s.trim() !== '' && s !== key) return s;
-          } catch (_) {}
-          return fallback;
-        };
-
-        attachHoverTooltip(planeInput, t('speed_filter_plane_heading','Aircraft measurements'), t('speed_filter_plane_help','Show or hide measurements recorded while flying.'));
-        attachHoverTooltip(carInput,   t('speed_filter_car_heading','Car measurements'),      t('speed_filter_car_help','Show or hide measurements recorded while travelling by car.'));
-        attachHoverTooltip(pedInput,   t('speed_filter_ped_heading','On-foot measurements'),  t('speed_filter_ped_help','Show or hide measurements recorded while travelling on foot.'));
 
         // prevent map drag/zoom while clicking inside the control
         L.DomEvent.disableClickPropagation(div);
@@ -2141,6 +2431,7 @@ function createDateRangeSlider(){
   let sliderBox, yearSlider, monthSlider;
   let mode  = 'year';                // 'year' | 'month'
   let initY = false, initM = false;  // lazy init flags
+  let sliderTooltipHandle = null;    // tooltip helper for hover hints
 
   // We store the "full range" of current viewport to detect
   // whether a saved filter is actually "show all".
@@ -2161,6 +2452,14 @@ function createDateRangeSlider(){
         <div id="lblMin" class="slider-label"></div>
         <button id="btnReset" class="slider-reset-btn" title="Reset"> ⟲ </button>
       `;
+      sliderBox.setAttribute('role', 'group');
+      sliderBox.setAttribute('tabindex', '0');
+      sliderBox.setAttribute('aria-label', translate('date_slider_tooltip'));
+      sliderTooltipHandle = attachControlTooltip(sliderBox, {
+        placement: 'right',
+        content: function () { return translate('date_slider_tooltip'); },
+        maxWidth: 300,
+      });
       return sliderBox;
     }
   });
@@ -2179,6 +2478,9 @@ function createDateRangeSlider(){
   window.__setDateSliderVisibility = (show)=>{
     sliderBox.style.display = show ? 'block' : 'none';
     if(!show) sessionStorage.removeItem('dateRangeState');
+    if (!show && sliderTooltipHandle) {
+      sliderTooltipHandle.hide();
+    }
   };
 
   // One-time creation of both sliders using initial bounds
@@ -3438,6 +3740,9 @@ function applyShortLink(details) {
 
 function hideShortLink() {
   if (!shortLinkBox) return;
+  if (window.__hideShortLinkHint) {
+    window.__hideShortLinkHint();
+  }
   shortLinkBox.style.display = 'none';
   delete shortLinkBox.dataset.href;
   delete shortLinkBox.dataset.code;
@@ -3790,6 +4095,17 @@ function centerMapToLocation() {
           sessionStorage.setItem('themePreference', newTheme);
         });
 
+        var toggleBox = document.getElementById('themeToggle');
+        if (toggleBox) {
+          toggleBox.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              sw.checked = !sw.checked;
+              sw.dispatchEvent(new Event('change'));
+            }
+          });
+        }
+
         media.addEventListener('change', function (e) {
           var newTheme = e.matches ? 'dark' : 'light';
           applyTheme(newTheme);
@@ -3832,34 +4148,15 @@ function centerMapToLocation() {
   // Display the full legend text in current language.
   // Exposed so marker popups reuse the same modal.
   function openLegendModal() {
-    hideLegendTooltip(); // avoid overlap
+    if (window.__hideLegendHint) {
+      window.__hideLegendHint();
+    }
     var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
     var html = buildLegendHTML(lang);
     var box = document.getElementById('legendText');
     if (box) box.innerHTML = html;
     var modal = document.getElementById('legendModal');
     if (modal) modal.style.display = 'flex';
-  }
-
-  // Show legend explanation on hover using same HTML as modal
-  function showLegendTooltip() {
-    var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
-    var tip = document.getElementById('legendTooltip');
-    if (!tip) return;
-    tip.innerHTML = buildLegendHTML(lang);
-    tip.style.display = 'block';
-    var leg = document.getElementById('legend');
-    if (leg) {
-      var rect = leg.getBoundingClientRect();
-      tip.style.left = rect.left + 'px';
-      tip.style.top = (rect.top - tip.offsetHeight - 8) + 'px';
-    }
-  }
-
-  // Hide the hover tooltip
-  function hideLegendTooltip() {
-    var tip = document.getElementById('legendTooltip');
-    if (tip) tip.style.display = 'none';
   }
 
   // Build HTML for info modal from translation text
@@ -3871,7 +4168,9 @@ function centerMapToLocation() {
 
   // Open modal with legal, source or license text
   function openInfoModal(topic) {
-    hideLegendTooltip(); // avoid overlap with legend tooltip
+    if (window.__hideLegendHint) {
+      window.__hideLegendHint();
+    }
     if (topic === 'api') {
       // Direct users to the machine-readable API docs in a new tab so the
       // attribution footer doubles as an entry point for developers.
@@ -3928,8 +4227,6 @@ function centerMapToLocation() {
     var el = document.getElementById('legend');
     if (el) {
       el.addEventListener('click', openLegendModal);
-      el.addEventListener('mouseenter', showLegendTooltip);
-      el.addEventListener('mouseleave', hideLegendTooltip);
     }
     // Close on backdrop click (UX nicety)
     var modal = document.getElementById('legendModal');
