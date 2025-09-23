@@ -28,24 +28,26 @@ import (
 // can stay small and focused on translating query parameters into the
 // asynchronous building blocks behind the scenes.
 type Handler struct {
-	DB      *database.Database
-	DBType  string
-	Archive *jsonarchive.Generator
-	Limiter *RateLimiter
-	Logf    func(string, ...any)
-	Cache   *ResponseCache
+	DB               *database.Database
+	DBType           string
+	Archive          *jsonarchive.Generator
+	ArchiveFrequency jsonarchive.Frequency
+	Limiter          *RateLimiter
+	Logf             func(string, ...any)
+	Cache            *ResponseCache
 }
 
 // NewHandler constructs a Handler with sane defaults.
 // Logf is optional; pass nil if logging is not required.
-func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Generator, limiter *RateLimiter, logf func(string, ...any)) *Handler {
+func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Generator, limiter *RateLimiter, logf func(string, ...any), freq jsonarchive.Frequency) *Handler {
 	return &Handler{
-		DB:      db,
-		DBType:  dbType,
-		Archive: archive,
-		Limiter: limiter,
-		Logf:    logf,
-		Cache:   NewResponseCache(24 * time.Hour),
+		DB:               db,
+		DBType:           dbType,
+		Archive:          archive,
+		ArchiveFrequency: freq,
+		Limiter:          limiter,
+		Logf:             logf,
+		Cache:            NewResponseCache(24 * time.Hour),
 	}
 }
 
@@ -64,7 +66,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	if h.Archive != nil {
 		// Expose the tarball endpoint only when archive generation is enabled
 		// so clients do not see a dangling route that always fails.
-		mux.HandleFunc("/api/json/daily.tar.gz", h.handleArchiveDownload)
+		route := h.ArchiveFrequency.RoutePath()
+		if strings.TrimSpace(route) == "" {
+			route = "/api/json/weekly.tgz"
+		}
+		mux.HandleFunc(route, h.handleArchiveDownload)
 	}
 }
 
@@ -296,11 +302,15 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 		if h.Archive != nil {
-			endpoints["dailyJSON"] = map[string]any{
+			route := h.ArchiveFrequency.RoutePath()
+			if strings.TrimSpace(route) == "" {
+				route = "/api/json/weekly.tgz"
+			}
+			endpoints["jsonArchive"] = map[string]any{
 				"method":      "GET",
-				"path":        "/api/json/daily.tar.gz",
-				"description": "Downloads the current tar.gz bundle of all published .cim JSON tracks.",
-				"frequency":   "Updated once per day",
+				"path":        route,
+				"description": "Downloads the current tgz bundle of all published .cim JSON tracks.",
+				"frequency":   h.ArchiveFrequency.Description(),
 			}
 		}
 
@@ -542,7 +552,7 @@ const (
 	archiveThrottleTick = 200 * time.Millisecond
 )
 
-// handleArchiveDownload streams the daily tar.gz bundle of .cim JSON tracks produced by the generator.
+// handleArchiveDownload streams the configured tgz bundle of .cim JSON tracks produced by the generator.
 func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) {
 	if h.Archive == nil {
 		http.Error(w, "archive disabled", http.StatusServiceUnavailable)

@@ -101,14 +101,14 @@
     </section>
 
     <section class="card">
-      <h2>Daily JSON Archive</h2>
-      <p class="small">Available when the server is started with <code>-json-archive-path</code>.</p>
+      <h2>JSON Archive</h2>
+      <p class="small">Available when the server is started with <code>-json-archive-path</code>. The frequency comes from <code>-json-archive-frequency</code> (daily, weekly, monthly, yearly).</p>
       <div class="endpoint">
         <div class="method">GET</div>
-        <div class="path">/api/json/daily.tar.gz</div>
-        <div class="small">Download a tar.gz bundle of all published <code>.cim</code> tracks. Throttled to protect the server.</div>
+        <div class="path">/api/json/weekly.tgz (default)</div>
+        <div class="small">Download a tgz bundle of all published <code>.cim</code> tracks. Use the configured frequency slug in the URL, e.g. <code>/api/json/daily.tgz</code>.</div>
       </div>
-      <pre><code>curl -L -o daily.tar.gz http://localhost:8765/api/json/daily.tar.gz</code></pre>
+      <pre><code>curl -L -o weekly-json.tgz http://localhost:8765/api/json/weekly.tgz</code></pre>
     </section>
 
     <section class="card">
