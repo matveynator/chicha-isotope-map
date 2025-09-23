@@ -526,6 +526,10 @@ CREATE TABLE IF NOT EXISTS markers (
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
+CREATE TABLE IF NOT EXISTS track_catalog (
+  trackID TEXT PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGSERIAL PRIMARY KEY,
   device_id   TEXT,
@@ -577,6 +581,10 @@ CREATE TABLE IF NOT EXISTS markers (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
   ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
+
+CREATE TABLE IF NOT EXISTS track_catalog (
+  trackID TEXT PRIMARY KEY
+);
 
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          INTEGER PRIMARY KEY,
@@ -633,6 +641,10 @@ CREATE TABLE IF NOT EXISTS markers (
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
+CREATE TABLE IF NOT EXISTS track_catalog (
+  trackID TEXT PRIMARY KEY
+);
+
 CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
@@ -678,6 +690,10 @@ CREATE INDEX IF NOT EXISTS idx_short_links_created
 	}
 	if err := db.ensureRealtimeMetadataColumns(cfg.DBType); err != nil {
 		return fmt.Errorf("add realtime metadata column: %w", err)
+	}
+
+	if err := db.ensureTrackCatalogSeed(cfg.DBType); err != nil {
+		return fmt.Errorf("seed track catalog: %w", err)
 	}
 
 	return nil
@@ -814,6 +830,53 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 	}
 }
 
+// ensureTrackCatalogSeed backfills the track_catalog table so modern handlers
+// can serve counts quickly. We gate the heavy INSERT behind a fast COUNT to
+// honour "Clear is better than clever" — the simple branch avoids touching the
+// markers table once the catalogue exists.
+func (db *Database) ensureTrackCatalogSeed(dbType string) error {
+	row := db.DB.QueryRow(`SELECT COUNT(*) FROM track_catalog;`)
+	var count sql.NullInt64
+	if err := row.Scan(&count); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "track_catalog") {
+			return db.populateTrackCatalog(nil, dbType)
+		}
+		return err
+	}
+	if count.Valid && count.Int64 > 0 {
+		return nil
+	}
+	return db.populateTrackCatalog(nil, dbType)
+}
+
+// populateTrackCatalog inserts distinct track IDs into track_catalog. We keep
+// the SQL portable and lean on the database to deduplicate rows, following the
+// proverb "A little copying is better than a little dependency" by avoiding
+// extra in-memory sets here.
+func (db *Database) populateTrackCatalog(ctx context.Context, dbType string) error {
+	base := `SELECT DISTINCT trackID FROM markers WHERE trackID IS NOT NULL AND LENGTH(TRIM(trackID)) > 0`
+	low := strings.ToLower(dbType)
+
+	var stmt string
+	switch low {
+	case "sqlite", "chai":
+		stmt = "INSERT OR IGNORE INTO track_catalog (trackID) " + base
+	default:
+		stmt = "INSERT INTO track_catalog (trackID) " + base + " ON CONFLICT DO NOTHING"
+	}
+
+	var err error
+	if ctx != nil {
+		_, err = db.DB.ExecContext(ctx, stmt)
+	} else {
+		_, err = db.DB.Exec(stmt)
+	}
+	if err != nil {
+		return fmt.Errorf("populate track catalog: %w", err)
+	}
+	return nil
+}
+
 // InsertMarkersBulk inserts markers in batches using multi-row VALUES.
 // - Portable: only standard SQL and database/sql, no vendor extensions.
 // - Fast: far fewer statements, WAL and B-Tree updates coalesce better.
@@ -916,6 +979,54 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 		if _, err := tx.Exec(sb.String(), args...); err != nil {
 			return fmt.Errorf("bulk exec: %w", err)
 		}
+
+		catalog := make(map[string]struct{})
+		for _, m := range chunk {
+			track := strings.TrimSpace(m.TrackID)
+			if track == "" {
+				continue
+			}
+			catalog[track] = struct{}{}
+		}
+
+		if len(catalog) > 0 {
+			trackIDs := make([]string, 0, len(catalog))
+			for track := range catalog {
+				trackIDs = append(trackIDs, track)
+			}
+			sort.Strings(trackIDs)
+
+			var trackSB strings.Builder
+			var trackArgs []any
+
+			switch strings.ToLower(dbType) {
+			case "sqlite", "chai":
+				trackSB.WriteString("INSERT OR IGNORE INTO track_catalog (trackID) VALUES ")
+			default:
+				trackSB.WriteString("INSERT INTO track_catalog (trackID) VALUES ")
+			}
+
+			argn := 0
+			for idx, track := range trackIDs {
+				if idx > 0 {
+					trackSB.WriteString(",")
+				}
+				trackSB.WriteString("(")
+				argn++
+				trackSB.WriteString(ph(argn))
+				trackSB.WriteString(")")
+				trackArgs = append(trackArgs, track)
+			}
+
+			if strings.EqualFold(dbType, "pgx") || strings.EqualFold(dbType, "duckdb") {
+				trackSB.WriteString(" ON CONFLICT DO NOTHING")
+			}
+
+			if _, err := tx.Exec(trackSB.String(), trackArgs...); err != nil {
+				return fmt.Errorf("catalog insert: %w", err)
+			}
+		}
+
 		i = end
 	}
 	return nil

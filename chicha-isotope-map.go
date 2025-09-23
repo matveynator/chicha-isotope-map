@@ -73,7 +73,7 @@ var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
-var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated daily JSON archive tarball")
+var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated weekly JSON archive tgz")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 
 var CompileVersion = "dev"
@@ -91,22 +91,22 @@ func init() {
 // WEB — API docs page
 // =====================
 func apiDocsHandler(w http.ResponseWriter, r *http.Request) {
-    // Serve a static, embedded HTML with API usage instructions.
-    // Keep it simple and cacheable by default; clients can refresh as needed.
-    b, err := content.ReadFile("public_html/api-usage.html")
-    if err != nil {
-        http.NotFound(w, r)
-        return
-    }
-    w.Header().Set("Content-Type", "text/html; charset=utf-8")
-    _, _ = w.Write(b)
+	// Serve a static, embedded HTML with API usage instructions.
+	// Keep it simple and cacheable by default; clients can refresh as needed.
+	b, err := content.ReadFile("public_html/api-usage.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(b)
 }
 
-// resolveArchivePath decides where the JSON archive tarball should live.
+// resolveArchivePath decides where the JSON archive tgz should live.
 // We prefer explicit destinations from flags, otherwise fall back to the user's
 // home directory so long-running services do not clutter the repository tree.
 // We log resolution failures so operators notice and can correct their setup.
-func resolveArchivePath(flagValue string, logf func(string, ...any)) string {
+func resolveArchivePath(flagValue, baseName string, logf func(string, ...any)) string {
 	cleaned := strings.TrimSpace(flagValue)
 	if cleaned != "" {
 		abs, err := filepath.Abs(cleaned)
@@ -121,7 +121,7 @@ func resolveArchivePath(flagValue string, logf func(string, ...any)) string {
 
 	home, err := os.UserHomeDir()
 	if err == nil && strings.TrimSpace(home) != "" {
-		return filepath.Join(home, "daily-json.tar.gz")
+		return filepath.Join(home, baseName)
 	}
 
 	// Falling back to the working directory keeps the archive predictable even
@@ -129,11 +129,11 @@ func resolveArchivePath(flagValue string, logf func(string, ...any)) string {
 	// clarity per the Go proverbs.
 	wd, wdErr := os.Getwd()
 	if wdErr == nil && strings.TrimSpace(wd) != "" {
-		return filepath.Join(wd, "daily-json.tar.gz")
+		return filepath.Join(wd, baseName)
 	}
 
 	// As a last resort return a relative filename so the generator can still run.
-	return "daily-json.tar.gz"
+	return baseName
 }
 
 // ==========
@@ -2320,9 +2320,9 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 // WEB  — главная карта
 // =====================
 func mapHandler(w http.ResponseWriter, r *http.Request) {
-    lang := getPreferredLanguage(r)
+	lang := getPreferredLanguage(r)
 
-    // Готовим шаблон
+	// Готовим шаблон
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
 		"translate": func(key string) string {
 			if val, ok := translations[lang][key]; ok {
@@ -3331,7 +3331,7 @@ func main() {
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
-	// Build a weekly tar.gz with all known JSON .cim files only when operators
+	// Build a weekly .tgz with all known JSON .cim files only when operators
 	// explicitly opt in via -json-archive-path. Stretching the cadence keeps
 	// IO predictable while still letting deployments opt in when they need a
 	// fresh bundle.
@@ -3344,12 +3344,13 @@ func main() {
 	if archiveEnabled {
 		ctxArchive, cancelArchive := context.WithCancel(context.Background())
 		archiveCancel = cancelArchive
-		archivePath = resolveArchivePath(*jsonArchivePathFlag, log.Printf)
+		archiveFileName := jsonarchive.DefaultFileName(*domain)
+		archivePath = resolveArchivePath(*jsonArchivePathFlag, archiveFileName, log.Printf)
 		if abs, err := filepath.Abs(archivePath); err == nil {
 			archivePath = abs
 		}
 		log.Printf("json archive destination resolved: %s", archivePath)
-		archiveGen = jsonarchive.Start(ctxArchive, db, *dbType, archivePath, 7*24*time.Hour, log.Printf)
+		archiveGen = jsonarchive.Start(ctxArchive, db, *dbType, archivePath, archiveFileName, 7*24*time.Hour, log.Printf)
 	} else {
 		log.Printf("json archive disabled: set -json-archive-path to enable tarball generation")
 	}

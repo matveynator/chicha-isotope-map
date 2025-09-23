@@ -62,9 +62,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tracks/", h.handleTrackData) // legacy alias for older clients
 	mux.HandleFunc("/api/shorten", h.handleShorten)
 	if h.Archive != nil {
-		// Expose the tarball endpoint only when archive generation is enabled
+		// Expose the tgz endpoint only when archive generation is enabled
 		// so clients do not see a dangling route that always fails.
-		mux.HandleFunc("/api/json/daily.tar.gz", h.handleArchiveDownload)
+		mux.HandleFunc("/api/json/weekly.tgz", h.handleArchiveDownload)
 	}
 }
 
@@ -259,63 +259,50 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// Cache the overview briefly so COUNT(DISTINCT) queries are avoided on every request while keeping data fresh.
 	data, err := h.cachedJSONWithTTL(ctx, "overview", time.Minute, func(ctx context.Context) ([]byte, error) {
-		totalTracks, latestTrackID, err := h.latestTrackInfo(ctx)
+		totalTracks, err := h.DB.CountTracks(ctx, h.DBType)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, newAPIError(http.StatusRequestTimeout, "request cancelled", "overview latest track info", err)
+				return nil, newAPIError(http.StatusRequestTimeout, "request cancelled", "overview track count", err)
 			}
-			return nil, newAPIError(http.StatusInternalServerError, "count tracks", "overview latest track info", err)
+			return nil, newAPIError(http.StatusInternalServerError, "count tracks", "overview track count", err)
 		}
 
-		endpoints := map[string]any{
-			"listTracks": map[string]any{
-				"method":      "GET",
-				"path":        "/api/tracks",
-				"description": "Returns all track summaries sorted alphabetically. Each summary exposes an index and api URL.",
+		endpoints := map[string]map[string]any{
+			"listTracks": {
+				"method": "GET",
+				"path":   "/api/tracks",
 			},
-			"trackByNumber": map[string]any{
-				"method":      "GET",
-				"path":        "/api/tracks/index/{number}",
-				"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/track/{trackID}.cim.",
+			"trackByNumber": {
+				"method": "GET",
+				"path":   "/api/tracks/index/{number}",
 			},
-			"trackMarkers": map[string]any{
-				"method":      "GET",
-				"path":        "/api/track/{trackID}.cim",
-				"query":       []string{"from", "to"},
-				"description": "Downloads the full track as JSON with a .cim extension so browsers save it as a file. Optional 'from'/'to' IDs can narrow the range.",
+			"trackMarkers": {
+				"method": "GET",
+				"path":   "/api/track/{trackID}.cim",
+				"query":  []string{"from", "to"},
 			},
-			"tracksByYear": map[string]any{
-				"method":      "GET",
-				"path":        "/api/tracks/years/{year}",
-				"description": "Lists all tracks that contain markers within the given year.",
+			"tracksByYear": {
+				"method": "GET",
+				"path":   "/api/tracks/years/{year}",
 			},
-			"tracksByMonth": map[string]any{
-				"method":      "GET",
-				"path":        "/api/tracks/months/{year}/{month}",
-				"description": "Lists all tracks for a calendar month without pagination.",
+			"tracksByMonth": {
+				"method": "GET",
+				"path":   "/api/tracks/months/{year}/{month}",
 			},
 		}
 		if h.Archive != nil {
-			endpoints["dailyJSON"] = map[string]any{
-				"method":      "GET",
-				"path":        "/api/json/daily.tar.gz",
-				"description": "Downloads the current tar.gz bundle of all published .cim JSON tracks.",
-				"frequency":   "Updated once per day",
+			endpoints["weeklyJSON"] = map[string]any{
+				"method": "GET",
+				"path":   "/api/json/weekly.tgz",
 			}
 		}
 
 		overview := struct {
-			Disclaimers      map[string]string `json:"disclaimers"`
-			Endpoints        map[string]any    `json:"endpoints"`
-			TotalTracks      int64             `json:"totalTracks"`
-			LatestTrackIndex int64             `json:"latestTrackIndex"`
-			LatestTrackID    string            `json:"latestTrackID,omitempty"`
+			Endpoints   map[string]map[string]any `json:"endpoints"`
+			TotalTracks int64                     `json:"totalTracks"`
 		}{
-			Disclaimers:      trackjson.Disclaimers,
-			TotalTracks:      totalTracks,
-			LatestTrackIndex: totalTracks,
-			LatestTrackID:    latestTrackID,
-			Endpoints:        endpoints,
+			TotalTracks: totalTracks,
+			Endpoints:   endpoints,
 		}
 
 		payload, encErr := encodeJSON(overview)
@@ -542,7 +529,7 @@ const (
 	archiveThrottleTick = 200 * time.Millisecond
 )
 
-// handleArchiveDownload streams the daily tar.gz bundle of .cim JSON tracks produced by the generator.
+// handleArchiveDownload streams the weekly .tgz bundle of .cim JSON tracks produced by the generator.
 func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) {
 	if h.Archive == nil {
 		http.Error(w, "archive disabled", http.StatusServiceUnavailable)
@@ -1031,7 +1018,7 @@ func (h *Handler) finalizeSummaries(
 // latestTrackInfo reports the highest known track index and its ID so API
 // callers know when they reached the end of the catalogue.
 func (h *Handler) latestTrackInfo(ctx context.Context) (int64, string, error) {
-	total, err := h.DB.CountTracks(ctx)
+	total, err := h.DB.CountTracks(ctx, h.DBType)
 	if err != nil {
 		return 0, "", err
 	}

@@ -168,16 +168,37 @@ ORDER BY trackID%s;`, strings.Join(conditions, " AND "), limitClause)
 // CountTracks returns the total number of distinct track IDs.
 // The API layer uses this to hint clients about the upper bound of the
 // pagination sequence so they can plan how many requests to issue.
-func (db *Database) CountTracks(ctx context.Context) (int64, error) {
-	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers`)
-	var count sql.NullInt64
-	if err := row.Scan(&count); err != nil {
-		return 0, fmt.Errorf("count tracks: %w", err)
+func (db *Database) CountTracks(ctx context.Context, dbType string) (int64, error) {
+	count, err := db.countTracksFromCatalog(ctx)
+	if err != nil {
+		if isTrackCatalogError(err) {
+			if seedErr := db.populateTrackCatalog(ctx, dbType); seedErr != nil && !isTrackCatalogError(seedErr) {
+				return 0, seedErr
+			}
+			count, err = db.countTracksFromCatalog(ctx)
+		}
+		if err != nil && !isTrackCatalogError(err) {
+			return 0, err
+		}
 	}
-	if !count.Valid {
-		return 0, nil
+
+	if count > 0 {
+		return count, nil
 	}
-	return count.Int64, nil
+
+	if seedErr := db.populateTrackCatalog(ctx, dbType); seedErr != nil && !isTrackCatalogError(seedErr) {
+		return 0, seedErr
+	}
+
+	if refreshed, err := db.countTracksFromCatalog(ctx); err == nil && refreshed >= 0 {
+		return refreshed, nil
+	}
+
+	legacy, legacyErr := db.countTracksLegacy(ctx)
+	if legacyErr != nil {
+		return 0, legacyErr
+	}
+	return legacy, nil
 }
 
 // GetTrackSummary returns metadata for a single track.
@@ -311,13 +332,25 @@ func (db *Database) CountTrackIDsUpTo(ctx context.Context, trackID, dbType strin
 	}
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
-	where := fmt.Sprintf("trackID <= %s", nextPlaceholder())
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT DISTINCT trackID FROM markers WHERE %s) AS sub;`, where)
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM track_catalog WHERE trackID <= %s;`, nextPlaceholder())
 
 	row := db.DB.QueryRowContext(ctx, query, trackID)
 	var count sql.NullInt64
 	if err := row.Scan(&count); err != nil {
-		return 0, fmt.Errorf("count track ids up to: %w", err)
+		if isTrackCatalogError(err) {
+			if seedErr := db.populateTrackCatalog(ctx, dbType); seedErr != nil && !isTrackCatalogError(seedErr) {
+				return 0, seedErr
+			}
+			row = db.DB.QueryRowContext(ctx, query, trackID)
+			if scanErr := row.Scan(&count); scanErr != nil {
+				if isTrackCatalogError(scanErr) {
+					return db.countTrackIDsUpToLegacy(ctx, trackID, dbType)
+				}
+				return 0, fmt.Errorf("count track ids up to: %w", scanErr)
+			}
+		} else {
+			return 0, fmt.Errorf("count track ids up to: %w", err)
+		}
 	}
 	if !count.Valid {
 		return 0, nil
@@ -335,13 +368,29 @@ func (db *Database) GetTrackIDByIndex(ctx context.Context, index int64, dbType s
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
 	offsetPlaceholder := nextPlaceholder()
-	query := fmt.Sprintf(`SELECT trackID FROM (SELECT DISTINCT trackID FROM markers ORDER BY trackID LIMIT 1 OFFSET %s) AS sub;`, offsetPlaceholder)
+	query := fmt.Sprintf(`SELECT trackID FROM track_catalog ORDER BY trackID LIMIT 1 OFFSET %s;`, offsetPlaceholder)
 
 	row := db.DB.QueryRowContext(ctx, query, index-1)
 	var trackID string
 	if err := row.Scan(&trackID); err != nil {
 		if err == sql.ErrNoRows {
 			return "", nil
+		}
+		if isTrackCatalogError(err) {
+			if seedErr := db.populateTrackCatalog(ctx, dbType); seedErr != nil && !isTrackCatalogError(seedErr) {
+				return "", seedErr
+			}
+			row = db.DB.QueryRowContext(ctx, query, index-1)
+			if scanErr := row.Scan(&trackID); scanErr != nil {
+				if scanErr == sql.ErrNoRows {
+					return "", nil
+				}
+				if isTrackCatalogError(scanErr) {
+					return db.getTrackIDByIndexLegacy(ctx, index, dbType)
+				}
+				return "", fmt.Errorf("track id by index: %w", scanErr)
+			}
+			return trackID, nil
 		}
 		return "", fmt.Errorf("track id by index: %w", err)
 	}
@@ -366,6 +415,78 @@ func (db *Database) CountTracksInRange(ctx context.Context, from, to int64, dbTy
 		return 0, nil
 	}
 	return count.Int64, nil
+}
+
+// countTracksFromCatalog reads the cached track count without touching the markers table.
+// Keeping the helper tiny mirrors "Clear is better than clever" so callers can reason about fallbacks.
+func (db *Database) countTracksFromCatalog(ctx context.Context) (int64, error) {
+	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM track_catalog;`)
+	var count sql.NullInt64
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count track catalog: %w", err)
+	}
+	if !count.Valid {
+		return 0, nil
+	}
+	return count.Int64, nil
+}
+
+// countTracksLegacy computes the distinct track count directly from markers as a fallback.
+// We call it only when the catalogue is missing so PostgreSQL is not hammered on every request.
+func (db *Database) countTracksLegacy(ctx context.Context) (int64, error) {
+	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers;`)
+	var count sql.NullInt64
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count tracks legacy: %w", err)
+	}
+	if !count.Valid {
+		return 0, nil
+	}
+	return count.Int64, nil
+}
+
+// countTrackIDsUpToLegacy mirrors the previous DISTINCT query when the catalogue is unavailable.
+func (db *Database) countTrackIDsUpToLegacy(ctx context.Context, trackID, dbType string) (int64, error) {
+	nextPlaceholder := newPlaceholderGenerator(dbType)
+	where := fmt.Sprintf("trackID <= %s", nextPlaceholder())
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT DISTINCT trackID FROM markers WHERE %s) AS sub;`, where)
+
+	row := db.DB.QueryRowContext(ctx, query, trackID)
+	var count sql.NullInt64
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count track ids legacy: %w", err)
+	}
+	if !count.Valid {
+		return 0, nil
+	}
+	return count.Int64, nil
+}
+
+// getTrackIDByIndexLegacy falls back to the DISTINCT plan so API consumers still succeed during migrations.
+func (db *Database) getTrackIDByIndexLegacy(ctx context.Context, index int64, dbType string) (string, error) {
+	nextPlaceholder := newPlaceholderGenerator(dbType)
+	offsetPlaceholder := nextPlaceholder()
+	query := fmt.Sprintf(`SELECT trackID FROM (SELECT DISTINCT trackID FROM markers ORDER BY trackID LIMIT 1 OFFSET %s) AS sub;`, offsetPlaceholder)
+
+	row := db.DB.QueryRowContext(ctx, query, index-1)
+	var trackID string
+	if err := row.Scan(&trackID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("track id legacy: %w", err)
+	}
+	return trackID, nil
+}
+
+// isTrackCatalogError checks whether an error suggests the track_catalog table is missing or unreadable.
+// We treat it loosely — if the catalogue is unavailable we rebuild it, embracing "Simplicity is complicated".
+func isTrackCatalogError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "track_catalog") || strings.Contains(msg, "track catalog") || strings.Contains(msg, "no such table")
 }
 
 // newPlaceholderGenerator returns a closure that produces the correct
