@@ -307,6 +307,26 @@ curl -s -F 'files[]=@/path/to/your_bgeigie.log' \
 
 This endpoint does not change the regular `/upload` behavior; it just returns JSON with bounds, detected format, and parsing statistics for each file.
 
+### API: latest measurements near a location
+
+The `/api/latest` endpoint streams the freshest markers around a coordinate window. Provide decimal degrees for latitude and longitude, a radius in metres, and (optionally) a limit:
+
+```bash
+curl -s "http://localhost:8765/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=20" | jq '.returned'
+```
+
+For another quick check, compare Tokyo to Chernobyl by adjusting the coordinates:
+
+```bash
+curl -s "http://localhost:8765/api/latest?lat=51.3890&lon=30.0990&radius_m=2200&limit=15" | jq '.markers[0]' | jq '{timeUTC, doseRateMicroSvH}'
+```
+
+Parameters:
+
+- `lat`, `lon` — decimal degrees (`-90…90`, `-180…180`).
+- `radius_m` — search radius in metres (defaults to 1500; clamps to 25–50000).
+- `limit` — number of markers to return (defaults to 25; up to 200).
+
 ---
 
 ### 📸 **Screenshots**

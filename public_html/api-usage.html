@@ -3,143 +3,352 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Chicha Isotope Map API — Usage</title>
+  <title>Chicha Isotope Map — API Guide</title>
   <link rel="icon" href="/static/images/android-chrome-192x192.png" />
   <style>
     :root {
       color-scheme: light dark;
-      --fg: #1b1f23; --bg: #fff; --muted: #6a737d; --code: #0b7285;
-      --card: #f6f8fa; --border: #d0d7de; --accent: #0366d6;
+      --page-bg: #f2f5f8;
+      --card-bg: rgba(255, 255, 255, 0.92);
+      --card-border: 1px solid rgba(15, 23, 42, 0.08);
+      --fg: #101828;
+      --muted: rgba(15, 23, 42, 0.65);
+      --accent: #2563eb;
+      --code-bg: rgba(15, 23, 42, 0.06);
+      --code-border: 1px solid rgba(15, 23, 42, 0.08);
+      --font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --info-card-bg: rgba(255, 255, 255, 0.92);
+      --info-card-border: 1px solid rgba(15, 23, 42, 0.08);
+      --api-method-bg: rgba(37, 99, 235, 0.12);
+      --api-method-text: #1d4ed8;
     }
+
     @media (prefers-color-scheme: dark) {
-      :root { --fg: #e6edf3; --bg: #0d1117; --muted: #8b949e; --card: #161b22; --border: #30363d; --accent: #58a6ff; --code:#7dd3fc; }
+      :root {
+        --page-bg: #0b1120;
+        --card-bg: rgba(15, 23, 42, 0.85);
+        --card-border: 1px solid rgba(148, 163, 184, 0.12);
+        --fg: #e2e8f0;
+        --muted: rgba(226, 232, 240, 0.72);
+        --accent: #60a5fa;
+        --code-bg: rgba(30, 41, 59, 0.8);
+        --code-border: 1px solid rgba(148, 163, 184, 0.18);
+        --info-card-bg: rgba(15, 23, 42, 0.85);
+        --info-card-border: 1px solid rgba(148, 163, 184, 0.18);
+        --api-method-bg: rgba(96, 165, 250, 0.18);
+        --api-method-text: #bfdbfe;
+      }
     }
-    html, body { height: 100%; }
+
+    * { box-sizing: border-box; }
+
     body {
-      margin: 0; font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      color: var(--fg); background: var(--bg);
+      margin: 0;
+      font-family: var(--font-family);
+      color: var(--fg);
+      background: radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.14), transparent 45%),
+                  radial-gradient(circle at 80% 0%, rgba(192, 38, 211, 0.12), transparent 55%),
+                  var(--page-bg);
     }
-    .container { max-width: 900px; margin: 0 auto; padding: 24px; }
-    header { margin-bottom: 24px; }
-    h1 { font-size: 1.8rem; margin: 0 0 8px; }
-    h2 { margin-top: 28px; font-size: 1.3rem; }
-    p.lead { color: var(--muted); margin: 0; }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 16px 0; }
-    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-    code { color: var(--code); }
-    pre { background: var(--bg); border: 1px dashed var(--border); padding: 12px; border-radius: 6px; overflow: auto; }
-    .endpoint { display: grid; grid-template-columns: 120px 1fr; gap: 8px 16px; align-items: baseline; }
-    .method { font-weight: 700; color: var(--accent); }
-    .path { font-family: ui-monospace, Menlo, Monaco, Consolas, monospace; }
-    .small { color: var(--muted); font-size: 0.9em; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    footer { margin-top: 32px; color: var(--muted); font-size: 0.9em; }
+
+    main.shell {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 24px 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    header.hero {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(6, 182, 212, 0.12));
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+    }
+
+    header.hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 3vw, 2.4rem);
+      letter-spacing: -0.01em;
+    }
+
+    header.hero p {
+      margin: 0;
+      font-size: 1.02rem;
+      color: rgba(15, 23, 42, 0.75);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      header.hero p {
+        color: rgba(226, 232, 240, 0.78);
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 14px 28px rgba(15, 23, 42, 0.05);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 1.4rem;
+    }
+
+    .card p {
+      margin-top: 0;
+      margin-bottom: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .card p:last-child {
+      margin-bottom: 0;
+    }
+
+    code, pre {
+      font-family: var(--font-mono);
+    }
+
+    pre {
+      margin: 12px 0 0;
+      padding: 14px 16px;
+      background: var(--code-bg);
+      border: var(--code-border);
+      border-radius: 12px;
+      overflow: auto;
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover,
+    a:focus {
+      text-decoration: underline;
+    }
+
+    .api-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    @media (min-width: 640px) {
+      .api-grid {
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+    }
+
+    .api-card {
+      background: var(--info-card-bg);
+      border: var(--info-card-border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+    }
+
+    .api-card-head {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .api-method {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: var(--api-method-bg);
+      color: var(--api-method-text);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .api-path {
+      font-size: 0.9rem;
+      font-weight: 500;
+      opacity: 0.85;
+    }
+
+    .api-card-title {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+
+    .api-card-desc {
+      margin: 0;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .api-card-link {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .api-card-link + .api-card-link {
+      margin-top: -4px;
+    }
+
+    .api-card-note {
+      margin: 0;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    ul {
+      padding-left: 20px;
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding-bottom: 12px;
+    }
+
+    body[data-archive-enabled="false"] [data-requires-archive] {
+      display: none;
+    }
   </style>
 </head>
-<body>
-  <div class="container">
-    <header>
-      <h1>Chicha Isotope Map — API Usage</h1>
-      <p class="lead">Human‑readable guide to the JSON endpoints exposed under <code>/api</code>.</p>
+<body data-archive-enabled="__ARCHIVE_ENABLED__">
+  <main class="shell">
+    <header class="hero">
+      <h1>Chicha Isotope Map — API Guide</h1>
+      <p>Detailed documentation for the JSON endpoints served from <code>__API_ROOT__</code> on <code>__DISPLAY_HOST__</code>.</p>
     </header>
 
     <section class="card">
       <h2>Base URL</h2>
-      <p>Assuming your server runs on <code>http://localhost:8765</code> (default), the API is served under <code>/api</code>. In production with TLS, use <code>https://&lt;your-domain&gt;/api</code>.</p>
+      <p>All requests begin with <code>__API_ROOT__</code>. When the server runs with a configured domain the same endpoint is available over HTTPS.</p>
+      <p>The examples below assume <code>__BASE_URL__</code>; replace it with your preferred host or short-link.</p>
     </section>
 
     <section class="card">
-      <h2>Overview</h2>
-      <div class="endpoint">
-        <div class="method">GET</div>
-        <div class="path">/api</div>
-        <div class="small">Returns machine‑readable documentation including available endpoints and stats (total tracks, latest track).</div>
+      <h2>Quickstart endpoints</h2>
+      <p>Each card mirrors the API quickstart modal on the map. Links open the live JSON payload in a new tab.</p>
+      <div class="api-grid">
+        <article class="api-card">
+          <div class="api-card-head">
+            <span class="api-method">GET</span>
+            <span class="api-path">/api</span>
+          </div>
+          <h3 class="api-card-title">Machine-readable index</h3>
+          <p class="api-card-desc">Lists metadata, dataset statistics, and hyperlinks to every other endpoint.</p>
+          <a class="api-card-link" href="__BASE_URL__/api" target="_blank" rel="noopener">Open /api</a>
+          <p class="api-card-note">Start here to discover collections and server status.</p>
+        </article>
+
+        <article class="api-card">
+          <div class="api-card-head">
+            <span class="api-method">GET</span>
+            <span class="api-path">/api/latest</span>
+          </div>
+          <h3 class="api-card-title">Latest nearby measurements</h3>
+          <p class="api-card-desc">Returns the newest markers near the supplied latitude, longitude, and radius in metres.</p>
+          <a class="api-card-link" href="__BASE_URL__/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=20" target="_blank" rel="noopener">Latest near Tokyo</a>
+          <a class="api-card-link" href="__BASE_URL__/api/latest?lat=51.3890&lon=30.0990&radius_m=2200&limit=20" target="_blank" rel="noopener">Latest near Chernobyl</a>
+          <p class="api-card-note">Adjust <code>lat</code>, <code>lon</code>, and <code>radius_m</code> to focus on your own area.</p>
+        </article>
+
+        <article class="api-card">
+          <div class="api-card-head">
+            <span class="api-method">GET</span>
+            <span class="api-path">/api/tracks</span>
+          </div>
+          <h3 class="api-card-title">All track summaries</h3>
+          <p class="api-card-desc">Streams a catalog of published tracks including indices, counts, and download URLs.</p>
+          <a class="api-card-link" href="__BASE_URL__/api/tracks?limit=25" target="_blank" rel="noopener">List first tracks</a>
+          <p class="api-card-note">Paginate with <code>limit</code> and <code>offset</code>.</p>
+        </article>
+
+        <article class="api-card">
+          <div class="api-card-head">
+            <span class="api-method">GET</span>
+            <span class="api-path">/api/tracks/index/{number}</span>
+          </div>
+          <h3 class="api-card-title">Download track by index</h3>
+          <p class="api-card-desc">Resolves the Nth track and returns the same JSON document as <code>/api/track/{id}.cim</code>.</p>
+          <a class="api-card-link" href="__BASE_URL__/api/tracks/index/1" target="_blank" rel="noopener">Fetch index 1</a>
+          <p class="api-card-note">Replace the number to pick a different entry.</p>
+        </article>
+
+        <article class="api-card" data-requires-archive>
+          <div class="api-card-head">
+            <span class="api-method">GET</span>
+            <span class="api-path">/api/json/{frequency}.tgz</span>
+          </div>
+          <h3 class="api-card-title">JSON archive bundle</h3>
+          <p class="api-card-desc">Downloads a tgz archive with every published <code>.cim</code> file. Updated once per __ARCHIVE_FREQUENCY__.</p>
+          <a class="api-card-link" href="__BASE_URL____ARCHIVE_ROUTE__" target="_blank" rel="noopener">Download archive</a>
+          <p class="api-card-note">Enabled when the node starts with <code>-json-archive-path</code>.</p>
+        </article>
       </div>
-      <pre><code>curl -s http://localhost:8765/api | jq</code></pre>
     </section>
 
     <section class="card">
-      <h2>Track Listings</h2>
-      <div class="endpoint">
-        <div class="method">GET</div>
-        <div class="path">/api/tracks</div>
-        <div class="small">List all track summaries (includes index and API URL).</div>
-      </div>
-      <pre><code>curl -s http://localhost:8765/api/tracks | jq '.tracks[0]'</code></pre>
-
-      <div class="endpoint">
-        <div class="method">GET</div>
-        <div class="path">/api/tracks/index/{number}</div>
-        <div class="small">Resolve by 1‑based numeric index and stream markers like <code>/api/track/{trackID}.cim</code>.</div>
-      </div>
-      <pre><code>curl -L -o sample.cim http://localhost:8765/api/tracks/index/1</code></pre>
-
-      <div class="endpoint">
-        <div class="method">GET</div>
-        <div class="path">/api/tracks/years/{year}</div>
-        <div class="small">List all tracks containing markers in a calendar year.</div>
-      </div>
-      <pre><code>curl -s http://localhost:8765/api/tracks/years/2024 | jq</code></pre>
-
-      <div class="endpoint">
-        <div class="method">GET</div>
-        <div class="path">/api/tracks/months/{year}/{month}</div>
-        <div class="small">List all tracks in a specific month (1‑12).</div>
-      </div>
-      <pre><code>curl -s http://localhost:8765/api/tracks/months/2024/09 | jq</code></pre>
+      <h2>Working with /api/latest</h2>
+      <p>The endpoint accepts decimal degrees for <code>lat</code> and <code>lon</code>, a search radius in metres (<code>radius_m</code>), and an optional <code>limit</code> (default 25, max 200). Results are sorted from newest to oldest.</p>
+      <pre>curl -s "__BASE_URL__/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=10" | jq '.markers[0]'</pre>
+      <pre>curl -s "__BASE_URL__/api/latest?lat=51.3890&lon=30.0990&radius_m=2200&limit=15" | jq '.returned'</pre>
     </section>
 
     <section class="card">
-      <h2>Track Data</h2>
-      <div class="endpoint">
-        <div class="method">GET</div>
-        <div class="path">/api/track/{trackID}.cim</div>
-        <div class="small">Download full JSON for a single track. The <code>.cim</code> extension hints browsers to save the file.</div>
-      </div>
-      <pre><code>curl -L -o ABC123.cim http://localhost:8765/api/track/ABC123.cim</code></pre>
+      <h2>Track catalog</h2>
+      <p>Use <code>/api/tracks</code> for alphabetic listings, <code>/api/tracks/years/{year}</code> or <code>/api/tracks/months/{year}/{month}</code> for time windows, and <code>/api/tracks/index/{n}</code> for deterministic downloads.</p>
+      <pre>curl -s "__BASE_URL__/api/tracks?limit=25" | jq '.tracks[0].apiURL'</pre>
+      <pre>curl -s "__BASE_URL__/api/tracks/years/2024" | jq '.tracks | length'</pre>
     </section>
 
     <section class="card">
-      <h2>JSON Archive</h2>
-      <p class="small">Available when the server is started with <code>-json-archive-path</code>. The frequency comes from <code>-json-archive-frequency</code> (daily, weekly, monthly, yearly).</p>
-      <div class="endpoint">
-        <div class="method">GET</div>
-        <div class="path">/api/json/weekly.tgz (default)</div>
-        <div class="small">Download a tgz bundle of all published <code>.cim</code> tracks. Use the configured frequency slug in the URL, e.g. <code>/api/json/daily.tgz</code>.</div>
-      </div>
-      <pre><code>curl -L -o weekly-json.tgz http://localhost:8765/api/json/weekly.tgz</code></pre>
+      <h2>Track payloads</h2>
+      <p>Each track streams as newline-delimited JSON with the <code>.cim</code> suffix so browsers save the file. Optional <code>from</code> and <code>to</code> parameters filter the marker ID range.</p>
+      <pre>curl -L -o sample.cim "__BASE_URL__/api/track/ABC123.cim"</pre>
+    </section>
+
+    <section class="card" data-requires-archive>
+      <h2>JSON archive</h2>
+      <p>When <code>-json-archive-path</code> is set, the node builds a tgz bundle on a schedule (daily, weekly, monthly, or yearly). Download it at <code>__BASE_URL____ARCHIVE_ROUTE__</code>.</p>
+      <pre>curl -L -o archive.tgz "__BASE_URL____ARCHIVE_ROUTE__"</pre>
     </section>
 
     <section class="card">
-      <h2>Short Links</h2>
-      <div class="endpoint">
-        <div class="method">POST</div>
-        <div class="path">/api/shorten</div>
-        <div class="small">Issue or finalize short URLs for current map views. Accepts JSON with <code>url</code>, optional <code>code</code>, and <code>commit</code>.</div>
-      </div>
-      <pre><code>curl -s -X POST http://localhost:8765/api/shorten \
+      <h2>Short links</h2>
+      <p>The <code>/api/shorten</code> endpoint issues and finalises shareable URLs for map views. Submit JSON with <code>url</code>, optional <code>code</code>, and <code>commit</code>.</p>
+      <pre>curl -s -X POST "__BASE_URL__/api/shorten" \
   -H 'content-type: application/json' \
-  -d '{"url":"/", "commit":false}' | jq</code></pre>
+  -d '{"url":"/", "commit":false}' | jq</pre>
     </section>
 
     <section class="card">
-      <h2>Rate Limiting</h2>
-      <p>The server applies a per‑IP rate limiter for fairness. Responses may include headers like <code>X-RateLimit-Notice</code> and <code>X-RateLimit-Delay</code> indicating a brief delay. Heavy endpoints (e.g., large track downloads or archive) have stricter limits.</p>
-    </section>
-
-    <section class="card">
-      <h2>Notes</h2>
+      <h2>Rate limiting &amp; conventions</h2>
       <ul>
-        <li>All timestamps are Unix seconds; some track sources are normalized internally.</li>
-        <li>Units: dose rates are in <code>µSv/h</code>; count rates are in <code>CPS</code>.</li>
-        <li>Responses include a <code>disclaimers</code> object for reuse in clients.</li>
+        <li>Responses may include <code>X-RateLimit-Notice</code> and <code>X-RateLimit-Delay</code> headers when the per-IP queue slows requests for fairness.</li>
+        <li>Timestamps are Unix seconds. Some sources ship millisecond precision and are normalised automatically.</li>
+        <li>Dose rates are in <code>µSv/h</code>; count rates are in <code>CPS</code>. Every payload includes a <code>disclaimers</code> map to surface the licence notice in your app.</li>
       </ul>
     </section>
 
     <footer>
-      <p>Server: <code>chicha-isotope-map</code>. See also the machine‑readable root at <a href="/api">/api</a> and the web map at <a href="/">/</a>.</p>
+      Server: <code>chicha-isotope-map</code>. Explore the web map at <a href="/" target="_blank" rel="noopener">/</a>.
     </footer>
-  </div>
+  </main>
 </body>
 </html>

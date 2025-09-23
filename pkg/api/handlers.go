@@ -58,6 +58,7 @@ func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Gener
 // that could obscure how pages are served.
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api", h.handleOverview)
+	mux.HandleFunc("/api/latest", h.handleLatestNearby)
 	mux.HandleFunc("/api/tracks", h.handleTracksList)
 	mux.HandleFunc("/api/tracks/index/", h.handleTrackDataByIndex)
 	mux.HandleFunc("/api/tracks/years/", h.handleTracksByYear)
@@ -276,6 +277,12 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 
 		endpoints := map[string]any{
+			"latestNearby": map[string]any{
+				"method":      "GET",
+				"path":        "/api/latest",
+				"query":       []string{"lat", "lon", "radius_m", "limit"},
+				"description": "Returns the newest measurements near the provided coordinates within the requested radius in metres.",
+			},
 			"listTracks": map[string]any{
 				"method":      "GET",
 				"path":        "/api/tracks",
@@ -338,6 +345,130 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		h.handleCacheError(w, "overview", err)
+		return
+	}
+
+	writeJSONBytes(w, data)
+}
+
+// handleLatestNearby exposes the /api/latest endpoint. We keep validation
+// explicit so operators can reason about boundary conditions without guessing
+// defaults, following "Clear is better than clever".
+func (h *Handler) handleLatestNearby(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.DB == nil || h.DB.DB == nil {
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	permit, ok := h.acquirePermit(w, r, RequestGeneral)
+	if !ok {
+		return
+	}
+	if permit != nil {
+		defer permit.Release()
+	}
+
+	query := r.URL.Query()
+	latRaw := strings.TrimSpace(query.Get("lat"))
+	lonRaw := strings.TrimSpace(query.Get("lon"))
+	if latRaw == "" || lonRaw == "" {
+		http.Error(w, "lat and lon are required", http.StatusBadRequest)
+		return
+	}
+
+	lat, err := strconv.ParseFloat(latRaw, 64)
+	if err != nil {
+		http.Error(w, "invalid lat", http.StatusBadRequest)
+		return
+	}
+	if lat < -90 || lat > 90 {
+		http.Error(w, "lat out of range", http.StatusBadRequest)
+		return
+	}
+
+	lon, err := strconv.ParseFloat(lonRaw, 64)
+	if err != nil {
+		http.Error(w, "invalid lon", http.StatusBadRequest)
+		return
+	}
+	if lon < -180 || lon > 180 {
+		http.Error(w, "lon out of range", http.StatusBadRequest)
+		return
+	}
+
+	radiusMeters := parseFloatDefault(strings.TrimSpace(query.Get("radius_m")), 1500)
+	if radiusMeters <= 0 {
+		http.Error(w, "radius_m must be positive", http.StatusBadRequest)
+		return
+	}
+	radiusMeters = clampFloat(radiusMeters, 25, 50000)
+
+	limit := clampInt(parseIntDefault(strings.TrimSpace(query.Get("limit")), 25), 1, 200)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	markersCh, errCh := h.DB.StreamLatestMarkersNear(ctx, lat, lon, radiusMeters, limit, h.DBType)
+	markers := make([]trackjson.MarkerPayload, 0, limit)
+	var newest time.Time
+
+	for marker := range markersCh {
+		payload, ts := trackjson.MakeMarkerPayload(marker)
+		markers = append(markers, payload)
+		if newest.IsZero() || ts.After(newest) {
+			newest = ts
+		}
+	}
+
+	if err := <-errCh; err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "request cancelled", http.StatusRequestTimeout)
+			return
+		}
+		http.Error(w, "latest lookup failed", http.StatusInternalServerError)
+		if h.Logf != nil {
+			h.Logf("latest nearby error: %v", err)
+		}
+		return
+	}
+
+	resp := struct {
+		Center struct {
+			Lat float64 `json:"lat"`
+			Lon float64 `json:"lon"`
+		} `json:"center"`
+		RadiusMeters float64                   `json:"radiusMeters"`
+		Limit        int                       `json:"limit"`
+		Returned     int                       `json:"returned"`
+		NewestUnix   int64                     `json:"newestUnix,omitempty"`
+		NewestUTC    string                    `json:"newestUTC,omitempty"`
+		Markers      []trackjson.MarkerPayload `json:"markers"`
+		Disclaimers  map[string]string         `json:"disclaimers"`
+	}{
+		RadiusMeters: radiusMeters,
+		Limit:        limit,
+		Returned:     len(markers),
+		Markers:      markers,
+		Disclaimers:  trackjson.CopyDisclaimers(),
+	}
+	resp.Center.Lat = lat
+	resp.Center.Lon = lon
+	if !newest.IsZero() {
+		resp.NewestUnix = newest.Unix()
+		resp.NewestUTC = newest.UTC().Format(time.RFC3339)
+	}
+
+	data, err := encodeJSON(resp)
+	if err != nil {
+		http.Error(w, "encode json", http.StatusInternalServerError)
+		if h.Logf != nil {
+			h.Logf("latest nearby encode: %v", err)
+		}
 		return
 	}
 
@@ -1123,4 +1254,25 @@ func clampInt(v, min, max int) int {
 		return max
 	}
 	return v
+}
+
+func clampFloat(v, min, max float64) float64 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+func parseFloatDefault(v string, def float64) float64 {
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return def
+	}
+	return f
 }
