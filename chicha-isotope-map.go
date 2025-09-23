@@ -79,6 +79,12 @@ var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the
 
 var CompileVersion = "dev"
 
+var (
+	apiDocsArchiveEnabled   bool
+	apiDocsArchiveRoute     string
+	apiDocsArchiveFrequency string
+)
+
 var db *database.Database
 
 func init() {
@@ -99,8 +105,46 @@ func apiDocsHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+
+	scheme := "http"
+	if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+		scheme = strings.ToLower(proto)
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		if strings.TrimSpace(*domain) != "" {
+			host = strings.TrimSpace(*domain)
+		} else {
+			host = fmt.Sprintf("localhost:%d", *port)
+		}
+	}
+
+	baseURL := fmt.Sprintf("%s://%s", scheme, host)
+	apiRoot := strings.TrimRight(baseURL, "/") + "/api"
+
+	page := string(b)
+	page = strings.ReplaceAll(page, "__BASE_URL__", baseURL)
+	page = strings.ReplaceAll(page, "__API_ROOT__", apiRoot)
+	page = strings.ReplaceAll(page, "__DISPLAY_HOST__", host)
+	page = strings.ReplaceAll(page, "__ARCHIVE_ENABLED__", strconv.FormatBool(apiDocsArchiveEnabled))
+
+	route := strings.TrimSpace(apiDocsArchiveRoute)
+	if route == "" {
+		route = "/api/json/weekly.tgz"
+	}
+	page = strings.ReplaceAll(page, "__ARCHIVE_ROUTE__", route)
+
+	freq := strings.TrimSpace(apiDocsArchiveFrequency)
+	if freq == "" {
+		freq = "weekly"
+	}
+	page = strings.ReplaceAll(page, "__ARCHIVE_FREQUENCY__", freq)
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(b)
+	_, _ = w.Write([]byte(page))
 }
 
 // resolveArchivePath decides where the JSON archive tgz should live.
@@ -3369,6 +3413,14 @@ func main() {
 	if archiveCancel != nil {
 		defer archiveCancel()
 	}
+
+	apiDocsArchiveEnabled = archiveEnabled
+	route := archiveFrequency.RoutePath()
+	if strings.TrimSpace(route) == "" {
+		route = "/api/json/weekly.tgz"
+	}
+	apiDocsArchiveRoute = route
+	apiDocsArchiveFrequency = archiveFrequency.HumanInterval()
 
 	// 4. Маршруты и статика
 	staticFS, err := fs.Sub(content, "public_html")
