@@ -81,7 +81,11 @@
     "upload_button_tooltip": "أضف مسار القياسات الخاص بك إلى الخريطة. الصيغ المدعومة: .kml، .kmz، .gpx، .csv، .rctrk، .json، .log. يمكنك رفع عدة ملفات، وبعد الرفع ستفتح صفحة المسار.",
     "upload_error": "خطأ",
     "waiting_for_server": "بانتظار الخادم...",
-    "your_location": "موقعك"
+    "your_location": "موقعك",
+    "short_link_tooltip": "انقر لنسخ رابط قصير للمشاركة.",
+    "legend_tooltip": "استعرض مفتاح السلامة، ثم انقر لفتح الإرشادات الكاملة.",
+    "theme_toggle_tooltip": "بدّل بين النسقين الفاتح والداكن؛ يتم تحديث الخريطة فورًا.",
+    "date_slider_tooltip": "رشّح القياسات حسب الوقت. استخدم زري Y/M للتبديل واسحب المقابض لتحديد النطاق."
   },
   "cs": {
     "attr_api": "API",
@@ -160,7 +164,11 @@
     "upload_button_tooltip": "Přidejte svou měřicí trasu do mapy. Podporované formáty: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Můžete nahrát více souborů a po nahrání se otevře stránka trasy.",
     "upload_error": "Chyba",
     "waiting_for_server": "Čekání na server...",
-    "your_location": "Vaše poloha"
+    "your_location": "Vaše poloha",
+    "short_link_tooltip": "Kliknutím zkopírujete zkrácený odkaz pro sdílení.",
+    "legend_tooltip": "Zobrazí se náhled legendy bezpečnosti; kliknutím otevřete celé vysvětlení.",
+    "theme_toggle_tooltip": "Přepínejte mezi světlým a tmavým motivem; mapové dlaždice se hned aktualizují.",
+    "date_slider_tooltip": "Filtrovat měření podle času. Přepínejte mezi Y/M a táhněte úchyty pro volbu rozsahu."
   },
   "da": {
     "attr_api": "API",
@@ -244,7 +252,11 @@
     "upload_button_tooltip": "Tilføj din målerute til kortet. Understøttede formater: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Du kan uploade flere filer, og efter upload åbnes sporesiden.",
     "upload_error": "Fejl",
     "waiting_for_server": "Venter på serveren...",
-    "your_location": "Din placering"
+    "your_location": "Din placering",
+    "short_link_tooltip": "Klik for at kopiere et kort delingslink.",
+    "legend_tooltip": "Vis et hurtigt overblik over sikkerhedslegenden; klik for at åbne den fulde vejledning.",
+    "theme_toggle_tooltip": "Skift mellem lyst og mørkt tema – kortet opdateres straks.",
+    "date_slider_tooltip": "Filtrer målinger efter tid. Brug Y/M til at skifte, og træk håndtagene for at vælge intervallet."
   },
   "de": {
     "attr_api": "API",
@@ -328,7 +340,11 @@
     "upload_button_tooltip": "Fügen Sie Ihre Messstrecke zur Karte hinzu. Unterstützte Formate: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Sie können mehrere Dateien hochladen, danach öffnet sich die Track-Seite.",
     "upload_error": "Fehler",
     "waiting_for_server": "Warten auf den Server...",
-    "your_location": "Ihr Standort"
+    "your_location": "Ihr Standort",
+    "short_link_tooltip": "Klicken, um einen kurzen Freigabelink zu kopieren.",
+    "legend_tooltip": "Zeigt eine Vorschau der Sicherheitsskala; zum vollständigen Leitfaden klicken.",
+    "theme_toggle_tooltip": "Zwischen hellem und dunklem Design umschalten; die Karte aktualisiert sich sofort.",
+    "date_slider_tooltip": "Messungen nach Zeit filtern. Mit Y/M wechseln und die Griffe ziehen, um den Bereich zu wählen."
   },
   "el": {
     "attr_api": "API",
@@ -412,7 +428,11 @@
     "upload_button_tooltip": "Προσθέστε τη διαδρομή μετρήσεών σας στον χάρτη. Υποστηριζόμενες μορφές: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Μπορείτε να μεταφορτώσετε πολλά αρχεία· μετά τη μεταφόρτωση θα ανοίξει η σελίδα της διαδρομής.",
     "upload_error": "Σφάλμα",
     "waiting_for_server": "Αναμονή για τον διακομιστή...",
-    "your_location": "Η τοποθεσία σας"
+    "your_location": "Η τοποθεσία σας",
+    "short_link_tooltip": "Κάντε κλικ για αντιγραφή σύντομου συνδέσμου κοινής χρήσης.",
+    "legend_tooltip": "Προεπισκόπηση του υπομνήματος ασφαλείας· κάντε κλικ για να ανοίξετε τις πλήρεις οδηγίες.",
+    "theme_toggle_tooltip": "Εναλλαγή μεταξύ φωτεινού και σκοτεινού θέματος — οι χάρτες ενημερώνονται αμέσως.",
+    "date_slider_tooltip": "Φιλτράρετε τις μετρήσεις κατά χρόνο. Χρησιμοποιήστε Y/M για εναλλαγή και σύρετε τα χειριστήρια για το εύρος."
   },
   "en": {
     "attr_api": "API",
@@ -501,7 +521,10 @@
     "upload_button_tooltip": "Add your measurement track to the map. Supported formats: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. You can upload multiple files, and after uploading you'll be taken to the track page.",
     "upload_error": "Error",
     "waiting_for_server": "Waiting for server...",
-    "your_location": "Your location"
+    "your_location": "Your location",
+    "legend_tooltip": "Preview the safety legend. Click to open the full guidance.",
+    "theme_toggle_tooltip": "Toggle between light and dark themes. Map tiles update immediately.",
+    "date_slider_tooltip": "Filter measurements by time. Use Y/M to switch sliders and drag the handles to choose a range."
   },
   "es": {
     "attr_api": "API",
@@ -585,7 +608,11 @@
     "upload_button_tooltip": "Agregue su recorrido de mediciones al mapa. Formatos compatibles: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Puede subir varios archivos y, después de la carga, se abrirá la página del recorrido.",
     "upload_error": "Error",
     "waiting_for_server": "Esperando al servidor...",
-    "your_location": "Tu ubicación"
+    "your_location": "Tu ubicación",
+    "short_link_tooltip": "Haz clic para copiar un enlace corto para compartir.",
+    "legend_tooltip": "Previsualiza la leyenda de seguridad; haz clic para ver la guía completa.",
+    "theme_toggle_tooltip": "Alterna entre temas claro y oscuro; el mapa se actualiza al instante.",
+    "date_slider_tooltip": "Filtra las mediciones por tiempo. Usa Y/M para cambiar y arrastra los controles para elegir el rango."
   },
   "fa": {
     "attr_api": "رابط API",
@@ -669,7 +696,11 @@
     "upload_button_tooltip": "مسیر اندازه‌گیری خود را به نقشه اضافه کنید. قالب‌های پشتیبانی‌شده: ‎.kml, .kmz, .gpx, .csv, .rctrk, .json, .log‎. می‌توانید چندین فایل بارگذاری کنید و پس از بارگذاری، صفحهٔ مسیر باز می‌شود.",
     "upload_error": "خطا",
     "waiting_for_server": "در انتظار سرور...",
-    "your_location": "موقعیت شما"
+    "your_location": "موقعیت شما",
+    "short_link_tooltip": "برای کپی پیوند کوتاهِ اشتراک کلیک کنید.",
+    "legend_tooltip": "نمایی از راهنمای ایمنی را ببینید؛ برای باز کردن توضیحات کامل کلیک کنید.",
+    "theme_toggle_tooltip": "میان پوسته روشن و تیره جابه‌جا شوید؛ نقشه بلافاصله به‌روزرسانی می‌شود.",
+    "date_slider_tooltip": "اندازه‌گیری‌ها را بر اساس زمان فیلتر کنید. با Y/M جابه‌جا شوید و دستگیره‌ها را برای انتخاب بازه بکشید."
   },
   "fi": {
     "attr_api": "API",
@@ -753,7 +784,11 @@
     "upload_button_tooltip": "Lisää mittausreittisi kartalle. Tuetut muodot: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Voit lähettää useita tiedostoja; lähetyksen jälkeen avautuu reittisivu.",
     "upload_error": "Virhe",
     "waiting_for_server": "Odotetaan palvelinta...",
-    "your_location": "Sijaintisi"
+    "your_location": "Sijaintisi",
+    "short_link_tooltip": "Napsauta kopioidaksesi lyhyen jakolinkin.",
+    "legend_tooltip": "Esikatsele turvallisuuslegendaa; napsauta avataksesi koko ohjeen.",
+    "theme_toggle_tooltip": "Vaihda vaalean ja tumman teeman välillä – kartta päivittyy heti.",
+    "date_slider_tooltip": "Suodata mittaukset ajan mukaan. Vaihda Y/M-painikkeilla ja vedä kahvoja valitaksesi alueen."
   },
   "fr": {
     "attr_api": "API",
@@ -837,7 +872,11 @@
     "upload_button_tooltip": "Ajoutez votre parcours de mesures à la carte. Formats pris en charge : .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Vous pouvez téléverser plusieurs fichiers et, après le téléversement, la page du parcours s’ouvrira.",
     "upload_error": "Erreur",
     "waiting_for_server": "En attente du serveur...",
-    "your_location": "Votre position"
+    "your_location": "Votre position",
+    "short_link_tooltip": "Cliquez pour copier un lien de partage court.",
+    "legend_tooltip": "Aperçu de la légende de sécurité ; cliquez pour ouvrir l’explication complète.",
+    "theme_toggle_tooltip": "Basculez entre les thèmes clair et sombre ; la carte se met à jour immédiatement.",
+    "date_slider_tooltip": "Filtrez les mesures dans le temps. Utilisez Y/M pour changer et faites glisser les poignées pour choisir la plage."
   },
   "he": {
     "attr_api": "ממשק API",
@@ -921,7 +960,11 @@
     "upload_button_tooltip": "הוסף את מסלול המדידות שלך למפה. פורמטים נתמכים: ‎.kml, .kmz, .gpx, .csv, .rctrk, .json, .log‎. ניתן להעלות מספר קבצים, ולאחר ההעלאה תיפתח עמודת המסלול.",
     "upload_error": "שגיאה",
     "waiting_for_server": "ממתין לשרת...",
-    "your_location": "המיקום שלך"
+    "your_location": "המיקום שלך",
+    "short_link_tooltip": "לחצו כדי להעתיק קישור קצר לשיתוף.",
+    "legend_tooltip": "תצוגה מוקדמת של מקרא הבטיחות; לחצו לפתיחת ההסבר המלא.",
+    "theme_toggle_tooltip": "החליפו בין מצב בהיר לכהה – האריחים במפה מתעדכנים מיד.",
+    "date_slider_tooltip": "סננו מדידות לפי זמן. השתמשו ב-Y/M להחלפה וגררו את הידיות כדי לבחור טווח."
   },
   "hi": {
     "attr_api": "API",
@@ -1005,7 +1048,11 @@
     "upload_button_tooltip": "अपना माप ट्रैक मानचित्र में जोड़ें। समर्थित प्रारूप: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log। आप कई फ़ाइलें अपलोड कर सकते हैं और अपलोड के बाद ट्रैक पेज खुलेगा।",
     "upload_error": "त्रुटि",
     "waiting_for_server": "सर्वर की प्रतीक्षा कर रहे हैं...",
-    "your_location": "आपका स्थान"
+    "your_location": "आपका स्थान",
+    "short_link_tooltip": "एक छोटा साझा लिंक कॉपी करने के लिए क्लिक करें।",
+    "legend_tooltip": "सुरक्षा संकेतक का पूर्वावलोकन देखें; पूरा मार्गदर्शन खोलने के लिए क्लिक करें।",
+    "theme_toggle_tooltip": "हल्के और गहरे थीम के बीच बदलें; मानचित्र तुरंत अपडेट होता है।",
+    "date_slider_tooltip": "समय के अनुसार मापों को फ़िल्टर करें। Y/M से मोड बदलें और श्रेणी चुनने के लिए हैंडल खींचें।"
   },
   "hu": {
     "attr_api": "API",
@@ -1089,7 +1136,11 @@
     "upload_button_tooltip": "Add hozzá a mérési útvonaladat a térképhez. Támogatott formátumok: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Több fájlt is feltölthetsz, és a feltöltés után megnyílik az útvonal oldala.",
     "upload_error": "Hiba",
     "waiting_for_server": "Várakozás a szerverre...",
-    "your_location": "A te helyzeted"
+    "your_location": "A te helyzeted",
+    "short_link_tooltip": "Kattintson a rövid megosztási hivatkozás másolásához.",
+    "legend_tooltip": "Tekintse meg a biztonsági jelmagyarázatot; kattintson a teljes útmutatóhoz.",
+    "theme_toggle_tooltip": "Váltson a világos és sötét téma között – a térkép azonnal frissül.",
+    "date_slider_tooltip": "Szűrje az adatokat idő szerint. Váltson Y/M gombbal, és húzza a fogantyúkat a tartományhoz."
   },
   "id": {
     "attr_api": "API",
@@ -1173,7 +1224,11 @@
     "upload_button_tooltip": "Tambahkan lintasan pengukuran Anda ke peta. Format yang didukung: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Anda bisa mengunggah beberapa berkas; setelah unggah, halaman lintasan akan terbuka.",
     "upload_error": "Kesalahan",
     "waiting_for_server": "Menunggu server...",
-    "your_location": "Lokasimu"
+    "your_location": "Lokasimu",
+    "short_link_tooltip": "Klik untuk menyalin tautan pendek berbagi.",
+    "legend_tooltip": "Pratinjau legenda keselamatan; klik untuk membuka panduan lengkap.",
+    "theme_toggle_tooltip": "Beralih antara tema terang dan gelap; ubin peta langsung diperbarui.",
+    "date_slider_tooltip": "Saring pengukuran berdasarkan waktu. Gunakan Y/M untuk berganti dan seret gagang untuk memilih rentang."
   },
   "it": {
     "attr_api": "API",
@@ -1257,7 +1312,11 @@
     "upload_button_tooltip": "Aggiungi il tuo percorso di misurazioni alla mappa. Formati supportati: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Puoi caricare più file e, al termine, si aprirà la pagina del percorso.",
     "upload_error": "Errore",
     "waiting_for_server": "In attesa del server...",
-    "your_location": "La tua posizione"
+    "your_location": "La tua posizione",
+    "short_link_tooltip": "Fai clic per copiare un link breve da condividere.",
+    "legend_tooltip": "Anteprima della legenda di sicurezza; fai clic per aprire la guida completa.",
+    "theme_toggle_tooltip": "Passa dal tema chiaro a quello scuro; la mappa si aggiorna subito.",
+    "date_slider_tooltip": "Filtra le misurazioni nel tempo. Usa Y/M per cambiare e trascina le maniglie per scegliere l’intervallo."
   },
   "ja": {
     "attr_api": "API",
@@ -1341,7 +1400,11 @@
     "upload_button_tooltip": "測定したトラックを地図に追加します。対応形式：.kml、.kmz、.gpx、.csv、.rctrk、.json、.log。複数のファイルをアップロードでき、完了後にトラックページが開きます。",
     "upload_error": "エラー",
     "waiting_for_server": "サーバーを待機中...",
-    "your_location": "あなたの位置"
+    "your_location": "あなたの位置",
+    "short_link_tooltip": "短い共有リンクをコピーするにはクリックしてください。",
+    "legend_tooltip": "安全レジェンドをプレビューし、クリックで詳しい説明を開きます。",
+    "theme_toggle_tooltip": "ライト／ダークテーマを切り替えます。地図タイルはすぐに更新されます。",
+    "date_slider_tooltip": "時刻で測定値を絞り込みます。Y/Mで切り替え、ハンドルをドラッグして範囲を選びます。"
   },
   "ko": {
     "attr_api": "API",
@@ -1425,7 +1488,11 @@
     "upload_button_tooltip": "측정 트랙을 지도에 추가하세요. 지원 형식: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. 여러 파일을 업로드할 수 있으며, 업로드가 완료되면 트랙 페이지가 열립니다.",
     "upload_error": "오류",
     "waiting_for_server": "서버 대기 중...",
-    "your_location": "내 위치"
+    "your_location": "내 위치",
+    "short_link_tooltip": "짧은 공유 링크를 복사하려면 클릭하세요.",
+    "legend_tooltip": "안전 범례를 미리 보고 전체 안내를 열려면 클릭하세요.",
+    "theme_toggle_tooltip": "밝은 테마와 어두운 테마를 전환하면 지도가 즉시 업데이트됩니다.",
+    "date_slider_tooltip": "시간별로 측정값을 필터링하세요. Y/M으로 모드를 바꾸고 핸들을 끌어 범위를 선택하세요."
   },
   "ms": {
     "attr_api": "API",
@@ -1509,7 +1576,11 @@
     "upload_button_tooltip": "Tambahkan jejak pengukuran anda pada peta. Format yang disokong: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Anda boleh memuat naik berbilang fail; selepas muat naik, halaman jejak akan dibuka.",
     "upload_error": "Ralat",
     "waiting_for_server": "Menunggu pelayan...",
-    "your_location": "Lokasi anda"
+    "your_location": "Lokasi anda",
+    "short_link_tooltip": "Klik untuk menyalin pautan pendek untuk dikongsi.",
+    "legend_tooltip": "Pratonton legenda keselamatan; klik untuk membuka panduan penuh.",
+    "theme_toggle_tooltip": "Tukar antara tema cerah dan gelap; jubin peta dikemas kini serta-merta.",
+    "date_slider_tooltip": "Tapis bacaan mengikut masa. Gunakan Y/M untuk bertukar dan seret pemegang bagi memilih julat."
   },
   "nl": {
     "attr_api": "API",
@@ -1593,7 +1664,11 @@
     "upload_button_tooltip": "Voeg uw meettraject toe aan de kaart. Ondersteunde formaten: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. U kunt meerdere bestanden uploaden en na het uploaden wordt de trajectpagina geopend.",
     "upload_error": "Fout",
     "waiting_for_server": "Wachten op server...",
-    "your_location": "Uw locatie"
+    "your_location": "Uw locatie",
+    "short_link_tooltip": "Klik om een korte deelbare link te kopiëren.",
+    "legend_tooltip": "Bekijk een voorvertoning van de veiligheidslegenda; klik voor de volledige uitleg.",
+    "theme_toggle_tooltip": "Schakel tussen lichte en donkere modus; de kaart werkt direct bij.",
+    "date_slider_tooltip": "Filter metingen op tijd. Gebruik Y/M om te wisselen en versleep de hendels om het bereik te kiezen."
   },
   "no": {
     "attr_api": "API",
@@ -1677,7 +1752,11 @@
     "upload_button_tooltip": "Legg til måleruten din på kartet. Støttede formater: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Du kan laste opp flere filer, og etter opplasting åpnes sporsiden.",
     "upload_error": "Feil",
     "waiting_for_server": "Venter på serveren...",
-    "your_location": "Din posisjon"
+    "your_location": "Din posisjon",
+    "short_link_tooltip": "Klikk for å kopiere en kort delingslenke.",
+    "legend_tooltip": "Forhåndsvis sikkerhetsforklaringen; klikk for å åpne full veiledning.",
+    "theme_toggle_tooltip": "Bytt mellom lyst og mørkt tema – kartet oppdateres med en gang.",
+    "date_slider_tooltip": "Filtrer målinger etter tid. Bruk Y/M for å bytte, og dra håndtakene for å velge området."
   },
   "pl": {
     "attr_api": "API",
@@ -1761,7 +1840,11 @@
     "upload_button_tooltip": "Dodaj swoją trasę pomiarów do mapy. Obsługiwane formaty: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Możesz przesłać wiele plików, a po przesłaniu otworzy się strona trasy.",
     "upload_error": "Błąd",
     "waiting_for_server": "Oczekiwanie na serwer...",
-    "your_location": "Twoja lokalizacja"
+    "your_location": "Twoja lokalizacja",
+    "short_link_tooltip": "Kliknij, aby skopiować krótki link do udostępnienia.",
+    "legend_tooltip": "Zobacz podgląd legendy bezpieczeństwa; kliknij, by otworzyć pełne wskazówki.",
+    "theme_toggle_tooltip": "Przełączaj między jasnym i ciemnym motywem — mapa od razu się odświeża.",
+    "date_slider_tooltip": "Filtruj pomiary według czasu. Użyj Y/M, aby przełączać tryby, i przeciągnij suwaki, by wybrać zakres."
   },
   "pt": {
     "attr_api": "API",
@@ -1845,7 +1928,11 @@
     "upload_button_tooltip": "Adicione a sua rota de medições ao mapa. Formatos suportados: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. É possível enviar vários ficheiros e, após o envio, abrirá a página da rota.",
     "upload_error": "Erro",
     "waiting_for_server": "Aguardando o servidor...",
-    "your_location": "Sua localização"
+    "your_location": "Sua localização",
+    "short_link_tooltip": "Clique para copiar um link curto para partilhar.",
+    "legend_tooltip": "Veja uma prévia da legenda de segurança; clique para abrir a orientação completa.",
+    "theme_toggle_tooltip": "Alterne entre temas claro e escuro — o mapa é atualizado de imediato.",
+    "date_slider_tooltip": "Filtre as medições por tempo. Use Y/M para alternar e arraste os manípulos para escolher o intervalo."
   },
   "ru": {
     "attr_api": "API",
@@ -1934,7 +2021,10 @@
     "upload_button_tooltip": "Добавьте свой трек замеров на карту. Поддерживаются форматы: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Можно загрузить несколько файлов, после чего откроется страница трека.",
     "upload_error": "Ошибка",
     "waiting_for_server": "Ожидание сервера...",
-    "your_location": "Ваше местоположение"
+    "your_location": "Ваше местоположение",
+    "legend_tooltip": "Просмотр шкалы безопасности; нажмите, чтобы открыть полное описание.",
+    "theme_toggle_tooltip": "Переключайте светлую и тёмную темы — карта обновляется сразу.",
+    "date_slider_tooltip": "Фильтруйте измерения по времени. Используйте Y/M для выбора режима и перетащите ползунки, чтобы задать диапазон."
   },
   "sv": {
     "attr_api": "API",
@@ -2018,7 +2108,11 @@
     "upload_button_tooltip": "Lägg till din mätspårning på kartan. Format som stöds: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Du kan ladda upp flera filer och efter överföringen öppnas spårsidan.",
     "upload_error": "Fel",
     "waiting_for_server": "Väntar på servern...",
-    "your_location": "Din plats"
+    "your_location": "Din plats",
+    "short_link_tooltip": "Klicka för att kopiera en kort delningslänk.",
+    "legend_tooltip": "Förhandsvisa säkerhetsförklaringen; klicka för att öppna hela guiden.",
+    "theme_toggle_tooltip": "Växla mellan ljust och mörkt tema – kartan uppdateras direkt.",
+    "date_slider_tooltip": "Filtrera mätningar efter tid. Använd Y/M för att byta och dra handtagen för att välja intervallet."
   },
   "th": {
     "attr_api": "API",
@@ -2102,7 +2196,11 @@
     "upload_button_tooltip": "เพิ่มเส้นทางการวัดของคุณลงในแผนที่ รูปแบบที่รองรับ: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log คุณสามารถอัปโหลดหลายไฟล์ได้ หลังจากอัปโหลดแล้วจะเปิดหน้าของเส้นทาง",
     "upload_error": "ข้อผิดพลาด",
     "waiting_for_server": "กำลังรอเซิร์ฟเวอร์...",
-    "your_location": "ตำแหน่งของคุณ"
+    "your_location": "ตำแหน่งของคุณ",
+    "short_link_tooltip": "คลิกเพื่อคัดลอกลิงก์สั้นสำหรับแชร์",
+    "legend_tooltip": "ดูกล่องคำอธิบายมาตรความปลอดภัย แล้วคลิกเพื่อเปิดคำแนะนำฉบับเต็ม",
+    "theme_toggle_tooltip": "สลับระหว่างธีมสว่างและมืด แผนที่จะอัปเดตทันที",
+    "date_slider_tooltip": "กรองค่าการวัดตามเวลา ใช้ Y/M เพื่อสลับและลากตัวเลื่อนเพื่อเลือกช่วง"
   },
   "tr": {
     "attr_api": "API",
@@ -2186,7 +2284,11 @@
     "upload_button_tooltip": "Ölçüm rotanızı haritaya ekleyin. Desteklenen formatlar: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Birden fazla dosya yükleyebilir, yükleme sonrası rota sayfası açılır.",
     "upload_error": "Hata",
     "waiting_for_server": "Sunucu bekleniyor...",
-    "your_location": "Konumunuz"
+    "your_location": "Konumunuz",
+    "short_link_tooltip": "Kısa bir paylaşım bağlantısını kopyalamak için tıklayın.",
+    "legend_tooltip": "Güvenlik lejantını önizleyin; tam açıklamayı açmak için tıklayın.",
+    "theme_toggle_tooltip": "Açık ve koyu tema arasında geçiş yapın; harita hemen güncellenir.",
+    "date_slider_tooltip": "Ölçümleri zamana göre filtreleyin. Y/M ile mod değiştirin ve aralığı seçmek için tutacakları sürükleyin."
   },
   "uk": {
     "attr_api": "API",
@@ -2270,7 +2372,11 @@
     "upload_button_tooltip": "Додайте свій трек вимірювань на карту. Підтримувані формати: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Можна завантажити кілька файлів, після чого відкриється сторінка треку.",
     "upload_error": "Помилка",
     "waiting_for_server": "Очікування сервера...",
-    "your_location": "Ваше розташування"
+    "your_location": "Ваше розташування",
+    "short_link_tooltip": "Натисніть, щоб скопіювати коротке посилання для поширення.",
+    "legend_tooltip": "Перегляньте шкалу безпеки; натисніть, щоб відкрити повну інструкцію.",
+    "theme_toggle_tooltip": "Перемикайте світлу та темну теми — карта оновлюється миттєво.",
+    "date_slider_tooltip": "Фільтруйте вимірювання за часом. Використовуйте Y/M для перемикання й перетягніть повзунки, щоб задати діапазон."
   },
   "vi": {
     "attr_api": "API",
@@ -2354,7 +2460,11 @@
     "upload_button_tooltip": "Thêm hành trình đo đạc của bạn vào bản đồ. Định dạng hỗ trợ: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Bạn có thể tải lên nhiều tệp; sau khi tải lên sẽ mở trang hành trình.",
     "upload_error": "Lỗi",
     "waiting_for_server": "Đang chờ máy chủ...",
-    "your_location": "Vị trí của bạn"
+    "your_location": "Vị trí của bạn",
+    "short_link_tooltip": "Nhấp để sao chép liên kết chia sẻ ngắn.",
+    "legend_tooltip": "Xem trước chú giải an toàn; nhấp để mở hướng dẫn đầy đủ.",
+    "theme_toggle_tooltip": "Chuyển đổi giữa giao diện sáng và tối; bản đồ được cập nhật ngay.",
+    "date_slider_tooltip": "Lọc các phép đo theo thời gian. Dùng Y/M để chuyển đổi và kéo tay cầm để chọn phạm vi."
   },
   "zh": {
     "attr_api": "API",
@@ -2438,6 +2548,10 @@
     "upload_button_tooltip": "将您的测量轨迹添加到地图。支持的格式：.kml、.kmz、.gpx、.csv、.rctrk、.json、.log。您可以上传多个文件，上传完成后将打开轨迹页面。",
     "upload_error": "错误",
     "waiting_for_server": "正在等待服务器...",
-    "your_location": "您的位置"
+    "your_location": "您的位置",
+    "short_link_tooltip": "点击复制用于分享的短链接。",
+    "legend_tooltip": "预览安全图例；点击查看完整说明。",
+    "theme_toggle_tooltip": "在亮色与深色主题之间切换，地图会立即更新。",
+    "date_slider_tooltip": "按时间筛选测量值。使用 Y/M 切换，并拖动手柄选择范围。"
   }
 }
