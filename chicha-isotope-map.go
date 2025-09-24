@@ -79,7 +79,7 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
-var autoDeployURL = flag.String("autodeploy-url", defaultAutoDeployURL(), "Remote binary URL for self-upgrade checks")
+var selfUpgradeURL = flag.String("selfupgrade-url", defaultSelfUpgradeURL(), "Remote binary URL for self-upgrade checks")
 var selfUpgradeNotify = flag.String("selfupgrade-notify", "", "E-mail address to receive self-upgrade approval links")
 
 var CompileVersion = "dev"
@@ -90,10 +90,10 @@ var (
 	apiDocsArchiveFrequency string
 )
 
-// defaultAutoDeployURL points to the latest GitHub release for the current
+// defaultSelfUpgradeURL points to the latest GitHub release for the current
 // runtime platform. The binary names follow the "-os_arch" convention so we can
 // build the URL deterministically without additional metadata fetches.
-func defaultAutoDeployURL() string {
+func defaultSelfUpgradeURL() string {
 	base := "https://github.com/matveynator/chicha-isotope-map/releases/download/latest"
 	binary := fmt.Sprintf("chicha-isotope-map_%s_%s", runtime.GOOS, runtime.GOARCH)
 	if runtime.GOOS == "windows" {
@@ -214,7 +214,7 @@ func startAutoDeploy(ctx context.Context, releaseURL, notifyEmail, dbFile string
 
 	releaseURL = strings.TrimSpace(releaseURL)
 	if releaseURL == "" {
-		log.Printf("autodeploy disabled: set -autodeploy-url to enable background checks")
+		log.Printf("autodeploy disabled: set -selfupgrade-url to enable background checks")
 		return nil
 	}
 
@@ -3661,9 +3661,9 @@ func main() {
 	apiHandler.Register(http.DefaultServeMux)
 
 	// Autodeploy stays optional; we only start the background goroutine when
-	// operators provide -autodeploy-url. The helper keeps startup readable
+	// operators provide -selfupgrade-url. The helper keeps startup readable
 	// while wiring the manifest watcher with context cancellation.
-	autoDeployCancel := startAutoDeploy(context.Background(), *autoDeployURL, *selfUpgradeNotify, dbCfg.DBPath, *port, *domain)
+	autoDeployCancel := startAutoDeploy(context.Background(), *selfUpgradeURL, *selfUpgradeNotify, dbCfg.DBPath, *port, *domain)
 	if autoDeployCancel != nil {
 		defer autoDeployCancel()
 	}
