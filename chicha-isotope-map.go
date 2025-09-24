@@ -77,15 +77,8 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
-var selfUpgradeEnabled = flag.Bool("selfupgrade", false, "Enable the background auto-deployment manager")
+var selfUpgradeEnabled = flag.Bool("selfupgrade", false, "Enable the background auto-deployment manager on linux/amd64 hosts")
 var selfUpgradeURL = flag.String("selfupgrade-url", "https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64", "Direct download URL for the linux/amd64 binary")
-var selfUpgradePoll = flag.Duration("selfupgrade-interval", 30*time.Minute, "How often to check for new releases")
-var selfUpgradeBinary = flag.String("selfupgrade-binary", "", "Path to the production binary that gets swapped during promotion")
-var selfUpgradeCanaryPort = flag.Int("selfupgrade-canary-port", 9876, "Port reserved for the canary process")
-var selfUpgradeWorkspace = flag.String("selfupgrade-dir", "selfupgrade-workspace", "Workspace directory for release artifacts and backups")
-var selfUpgradeService = flag.String("selfupgrade-service", "", "Optional systemd unit name to restart after promotion")
-var selfUpgradeHealthPath = flag.String("selfupgrade-health", "/healthz", "HTTP path used for canary health checks")
-var selfUpgradeCloneRetention = flag.Duration("selfupgrade-clone-retention", 0, "How long to keep database clones after promotion (0 removes immediately)")
 
 var CompileVersion = "dev"
 
@@ -231,6 +224,13 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 		ctx = context.Background()
 	}
 	if !*selfUpgradeEnabled {
+		// Operators opted out, so we avoid spawning background work.
+		return nil
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		// The binary swapping routine assumes linux/amd64 artefacts; we surface
+		// a clear log entry and skip the manager elsewhere to avoid partial upgrades.
+		log.Printf("selfupgrade disabled: supported only on linux/amd64 (current %s/%s)", runtime.GOOS, runtime.GOARCH)
 		return nil
 	}
 
@@ -239,23 +239,17 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 		downloadURL = "https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64"
 	}
 
-	binaryPath := strings.TrimSpace(*selfUpgradeBinary)
-	if binaryPath == "" {
-		if exe, err := os.Executable(); err == nil {
-			binaryPath = exe
-		}
+	exePath, err := os.Executable()
+	if err != nil {
+		// Without a deterministic binary path we cannot build rollback bundles, so we bail out early.
+		log.Printf("selfupgrade disabled: cannot resolve executable path: %v", err)
+		return nil
 	}
 
-	workspace := strings.TrimSpace(*selfUpgradeWorkspace)
-	if workspace == "" {
-		workspace = "selfupgrade-workspace"
-	}
-	if !filepath.IsAbs(workspace) {
-		if abs, err := filepath.Abs(workspace); err == nil {
-			workspace = abs
-		}
-	}
+	const canaryPort = 9876
+	workspace := filepath.Join(filepath.Dir(exePath), "selfupgrade-cache")
 	backupsDir := filepath.Join(workspace, "db_backups")
+
 	driverName, dsn := selfUpgradeDatabaseInfo(dbCfg)
 	var dbController selfupgrade.DatabaseController
 	switch driverName {
@@ -273,18 +267,14 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 	}
 
 	cfgAuto := selfupgrade.Config{
-		DownloadURL:     downloadURL,
-		CurrentVersion:  CompileVersion,
-		PollInterval:    *selfUpgradePoll,
-		BinaryPath:      binaryPath,
-		DeployDir:       workspace,
-		DBBackupsDir:    backupsDir,
-		CanaryPort:      *selfUpgradeCanaryPort,
-		HealthCheckPath: *selfUpgradeHealthPath,
-		ServiceName:     strings.TrimSpace(*selfUpgradeService),
-		CloneRetention:  *selfUpgradeCloneRetention,
-		Logf:            log.Printf,
-		Database:        dbController,
+		DownloadURL:    downloadURL,
+		CurrentVersion: CompileVersion,
+		BinaryPath:     exePath,
+		DeployDir:      workspace,
+		DBBackupsDir:   backupsDir,
+		CanaryPort:     canaryPort,
+		Logf:           log.Printf,
+		Database:       dbController,
 	}
 
 	manager, err := selfupgrade.NewManager(cfgAuto)
