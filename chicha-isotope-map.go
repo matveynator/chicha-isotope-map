@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/api"
+	"chicha-isotope-map/pkg/autodeploy"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
 	"chicha-isotope-map/pkg/jsonarchive"
@@ -76,6 +77,7 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
+var autoDeployURL = flag.String("autodeploy-url", "", "Remote manifest or checksum URL for the latest binary")
 
 var CompileVersion = "dev"
 
@@ -185,6 +187,66 @@ func resolveArchivePath(flagValue, defaultFile string, logf func(string, ...any)
 
 	// As a last resort return a relative filename so the generator can still run.
 	return fallback
+}
+
+// startAutoDeploy spins a background goroutine that watches a remote manifest
+// with the checksum of the latest binary. We rely on channels and context to
+// respect Go's preference for explicit cancellation instead of hidden globals.
+func startAutoDeploy(ctx context.Context, manifestURL string) context.CancelFunc {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	manifestURL = strings.TrimSpace(manifestURL)
+	if manifestURL == "" {
+		log.Printf("autodeploy disabled: set -autodeploy-url to enable background checks")
+		return nil
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		log.Printf("autodeploy disabled: resolve executable: %v", err)
+		return nil
+	}
+
+	workspace := filepath.Join(filepath.Dir(exe), "autodeploy-workspace")
+	cfgAuto := autodeploy.Config{
+		ManifestURL:  manifestURL,
+		LocalBinary:  exe,
+		Workspace:    workspace,
+		PollInterval: 30 * time.Minute,
+		Logf:         log.Printf,
+	}
+
+	manager, err := autodeploy.NewManager(cfgAuto)
+	if err != nil {
+		log.Printf("autodeploy disabled: %v", err)
+		return nil
+	}
+
+	ctxAuto, cancel := context.WithCancel(ctx)
+	events := manager.Run(ctxAuto)
+	go func() {
+		for ev := range events {
+			if ev.Err != nil {
+				log.Printf("autodeploy %s error: %v", ev.Stage, ev.Err)
+				continue
+			}
+			switch {
+			case ev.Path != "" && ev.Checksum != "":
+				log.Printf("autodeploy %s: %s (checksum=%s path=%s)", ev.Stage, ev.Message, ev.Checksum, ev.Path)
+			case ev.Path != "":
+				log.Printf("autodeploy %s: %s (path=%s)", ev.Stage, ev.Message, ev.Path)
+			case ev.Checksum != "":
+				log.Printf("autodeploy %s: %s (checksum=%s)", ev.Stage, ev.Message, ev.Checksum)
+			default:
+				log.Printf("autodeploy %s: %s", ev.Stage, ev.Message)
+			}
+		}
+	}()
+
+	log.Printf("autodeploy enabled: watching %s", manifestURL)
+	return cancel
 }
 
 // ==========
@@ -3445,6 +3507,14 @@ func main() {
 	limiter := api.NewRateLimiter(time.Minute)
 	apiHandler := api.NewHandler(db, *dbType, archiveGen, limiter, log.Printf, archiveFrequency)
 	apiHandler.Register(http.DefaultServeMux)
+
+	// Autodeploy stays optional; we only start the background goroutine when
+	// operators provide -autodeploy-url. The helper keeps startup readable
+	// while wiring the manifest watcher with context cancellation.
+	autoDeployCancel := startAutoDeploy(context.Background(), *autoDeployURL)
+	if autoDeployCancel != nil {
+		defer autoDeployCancel()
+	}
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
 
