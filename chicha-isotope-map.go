@@ -33,6 +33,8 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/smtp"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -77,7 +79,8 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
-var autoDeployURL = flag.String("autodeploy-url", "", "Remote manifest or checksum URL for the latest binary")
+var autoDeployURL = flag.String("autodeploy-url", defaultAutoDeployURL(), "Remote binary URL for self-upgrade checks")
+var selfUpgradeNotify = flag.String("selfupgrade-notify", "", "E-mail address to receive self-upgrade approval links")
 
 var CompileVersion = "dev"
 
@@ -86,6 +89,18 @@ var (
 	apiDocsArchiveRoute     string
 	apiDocsArchiveFrequency string
 )
+
+// defaultAutoDeployURL points to the latest GitHub release for the current
+// runtime platform. The binary names follow the "-os_arch" convention so we can
+// build the URL deterministically without additional metadata fetches.
+func defaultAutoDeployURL() string {
+	base := "https://github.com/matveynator/chicha-isotope-map/releases/download/latest"
+	binary := fmt.Sprintf("chicha-isotope-map_%s_%s", runtime.GOOS, runtime.GOARCH)
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	return fmt.Sprintf("%s/%s", base, binary)
+}
 
 var db *database.Database
 
@@ -192,13 +207,13 @@ func resolveArchivePath(flagValue, defaultFile string, logf func(string, ...any)
 // startAutoDeploy spins a background goroutine that watches a remote manifest
 // with the checksum of the latest binary. We rely on channels and context to
 // respect Go's preference for explicit cancellation instead of hidden globals.
-func startAutoDeploy(ctx context.Context, manifestURL string) context.CancelFunc {
+func startAutoDeploy(ctx context.Context, releaseURL, notifyEmail, dbFile string, serverPort int, domain string) context.CancelFunc {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	manifestURL = strings.TrimSpace(manifestURL)
-	if manifestURL == "" {
+	releaseURL = strings.TrimSpace(releaseURL)
+	if releaseURL == "" {
 		log.Printf("autodeploy disabled: set -autodeploy-url to enable background checks")
 		return nil
 	}
@@ -210,12 +225,31 @@ func startAutoDeploy(ctx context.Context, manifestURL string) context.CancelFunc
 	}
 
 	workspace := filepath.Join(filepath.Dir(exe), "autodeploy-workspace")
+	notifyEmail = strings.TrimSpace(notifyEmail)
+	baseURL := selfUpgradeBaseURL(domain, serverPort)
+	statusLink := func(token string) string {
+		return fmt.Sprintf("%s/selfupgrade/status?token=%s", baseURL, url.QueryEscape(token))
+	}
+	approveLink := func(token string) string {
+		return fmt.Sprintf("%s/selfupgrade/apply?token=%s", baseURL, url.QueryEscape(token))
+	}
+	rejectLink := func(token string) string {
+		return fmt.Sprintf("%s/selfupgrade/reject?token=%s", baseURL, url.QueryEscape(token))
+	}
+
 	cfgAuto := autodeploy.Config{
-		ManifestURL:  manifestURL,
+		ReleaseURL:   releaseURL,
 		LocalBinary:  exe,
 		Workspace:    workspace,
-		PollInterval: 30 * time.Minute,
+		PollInterval: 15 * time.Minute,
 		Logf:         log.Printf,
+		NotifyEmail:  notifyEmail,
+		StatusLink:   statusLink,
+		ApproveLink:  approveLink,
+		RejectLink:   rejectLink,
+		NotifyFunc:   sendSelfUpgradeMail(domain),
+		DBPath:       strings.TrimSpace(dbFile),
+		AutoApply:    notifyEmail == "",
 	}
 
 	manager, err := autodeploy.NewManager(cfgAuto)
@@ -223,6 +257,53 @@ func startAutoDeploy(ctx context.Context, manifestURL string) context.CancelFunc
 		log.Printf("autodeploy disabled: %v", err)
 		return nil
 	}
+
+	http.HandleFunc("/selfupgrade/status", func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimSpace(r.URL.Query().Get("token"))
+		if token == "" {
+			http.Error(w, "token required", http.StatusBadRequest)
+			return
+		}
+		info, err := manager.Pending(token)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(info); err != nil {
+			log.Printf("autodeploy status encode: %v", err)
+		}
+	})
+
+	http.HandleFunc("/selfupgrade/apply", func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimSpace(r.URL.Query().Get("token"))
+		if token == "" {
+			http.Error(w, "token required", http.StatusBadRequest)
+			return
+		}
+		res, err := manager.Promote(token)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(res); err != nil {
+			log.Printf("autodeploy apply encode: %v", err)
+		}
+	})
+
+	http.HandleFunc("/selfupgrade/reject", func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimSpace(r.URL.Query().Get("token"))
+		if token == "" {
+			http.Error(w, "token required", http.StatusBadRequest)
+			return
+		}
+		if err := manager.Reject(token); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 
 	ctxAuto, cancel := context.WithCancel(ctx)
 	events := manager.Run(ctxAuto)
@@ -245,8 +326,79 @@ func startAutoDeploy(ctx context.Context, manifestURL string) context.CancelFunc
 		}
 	}()
 
-	log.Printf("autodeploy enabled: watching %s", manifestURL)
+	if notifyEmail == "" {
+		log.Printf("autodeploy enabled: automatic mode using %s", releaseURL)
+	} else {
+		log.Printf("autodeploy enabled: manual approvals go to %s", notifyEmail)
+	}
 	return cancel
+}
+
+// selfUpgradeBaseURL resolves the externally reachable base URL for approval
+// links. We prefer HTTPS when a domain is configured and fall back to localhost
+// otherwise so operators can test the flow during development.
+func selfUpgradeBaseURL(domain string, port int) string {
+	host := strings.TrimSpace(domain)
+	if host != "" {
+		host = strings.TrimRight(host, "/")
+		if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+			return host
+		}
+		return "https://" + host
+	}
+	if port <= 0 {
+		port = 80
+	}
+	return fmt.Sprintf("http://localhost:%d", port)
+}
+
+// sendSelfUpgradeMail attempts to deliver notifications through localhost:25 so
+// operators can integrate the pipeline with their existing MTA. We surface any
+// network errors so the autodeployer logs actionable messages instead of hiding
+// delivery problems.
+func sendSelfUpgradeMail(domain string) func(context.Context, string, string, string) error {
+	host := strings.TrimSpace(domain)
+	if host == "" {
+		host = "localhost"
+	} else if colon := strings.Index(host, ":"); colon != -1 {
+		host = host[:colon]
+	}
+	from := fmt.Sprintf("selfupgrade@%s", host)
+	return func(ctx context.Context, to, subject, body string) error {
+		dialer := &net.Dialer{Timeout: 5 * time.Second}
+		conn, err := dialer.DialContext(ctx, "tcp", "localhost:25")
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		client, err := smtp.NewClient(conn, "localhost")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = client.Close() }()
+
+		if err := client.Mail(from); err != nil {
+			return err
+		}
+		if err := client.Rcpt(to); err != nil {
+			return err
+		}
+
+		wc, err := client.Data()
+		if err != nil {
+			return err
+		}
+		msg := fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", to, subject, body)
+		if _, err := wc.Write([]byte(msg)); err != nil {
+			_ = wc.Close()
+			return err
+		}
+		if err := wc.Close(); err != nil {
+			return err
+		}
+		return client.Quit()
+	}
 }
 
 // ==========
@@ -3511,7 +3663,7 @@ func main() {
 	// Autodeploy stays optional; we only start the background goroutine when
 	// operators provide -autodeploy-url. The helper keeps startup readable
 	// while wiring the manifest watcher with context cancellation.
-	autoDeployCancel := startAutoDeploy(context.Background(), *autoDeployURL)
+	autoDeployCancel := startAutoDeploy(context.Background(), *autoDeployURL, *selfUpgradeNotify, dbCfg.DBPath, *port, *domain)
 	if autoDeployCancel != nil {
 		defer autoDeployCancel()
 	}
