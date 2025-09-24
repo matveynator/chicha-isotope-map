@@ -82,12 +82,34 @@ type updatePipeline struct {
 	failedVersions   map[string]struct{}
 }
 
+// supportedPlatform centralises the OS/ARCH matrix we ship release artefacts
+// for so both CLI and manager agree on availability. Keeping it in code means we
+// fail fast when someone cross-compiles to an unsupported target.
+func supportedPlatform(osName, arch string) bool {
+	switch osName {
+	case "darwin":
+		return arch == "amd64" || arch == "arm64"
+	case "freebsd":
+		return arch == "amd64"
+	case "linux":
+		return arch == "386" || arch == "amd64" || arch == "arm64"
+	case "netbsd":
+		return arch == "amd64"
+	case "openbsd":
+		return arch == "amd64"
+	case "windows":
+		return arch == "amd64" || arch == "arm64"
+	default:
+		return false
+	}
+}
+
 // NewManager validates configuration and prepares collaborators. Directories
 // are created early so permission issues surface immediately instead of halfway
 // through a rollout.
 func NewManager(cfg Config) (*Manager, error) {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		return nil, errors.New("selfupgrade: updater supports only linux/amd64")
+	if !supportedPlatform(runtime.GOOS, runtime.GOARCH) {
+		return nil, fmt.Errorf("selfupgrade: updater supports only published platforms (current %s/%s)", runtime.GOOS, runtime.GOARCH)
 	}
 
 	if cfg.Logf == nil {

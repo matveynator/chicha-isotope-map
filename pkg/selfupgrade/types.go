@@ -12,7 +12,7 @@ import (
 // interface, the weaker the abstraction". Callers can plug in mocks or real
 // implementations to match their environment.
 type Config struct {
-	DownloadURL     string        // Direct URL pointing to the linux/amd64 binary
+	DownloadURL     string        // Direct URL pointing to the release binary for this platform
 	CurrentVersion  string        // Currently running version tag
 	PollInterval    time.Duration // How often to check for updates
 	BinaryPath      string        // Path to the production binary to swap
