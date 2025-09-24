@@ -50,6 +50,7 @@ import (
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
+	"chicha-isotope-map/pkg/selfupgrade"
 )
 
 //go:embed public_html/*
@@ -76,6 +77,15 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
+var selfUpgradeEnabled = flag.Bool("selfupgrade", false, "Enable the background auto-deployment manager")
+var selfUpgradeRepo = flag.String("selfupgrade-repo", "", "GitHub repository in owner/name form used for release polling")
+var selfUpgradePoll = flag.Duration("selfupgrade-interval", 30*time.Minute, "How often to check for new releases")
+var selfUpgradeBinary = flag.String("selfupgrade-binary", "", "Path to the production binary that gets swapped during promotion")
+var selfUpgradeCanaryPort = flag.Int("selfupgrade-canary-port", 9876, "Port reserved for the canary process")
+var selfUpgradeWorkspace = flag.String("selfupgrade-dir", "selfupgrade-workspace", "Workspace directory for release artifacts and backups")
+var selfUpgradeService = flag.String("selfupgrade-service", "", "Optional systemd unit name to restart after promotion")
+var selfUpgradeHealthPath = flag.String("selfupgrade-health", "/healthz", "HTTP path used for canary health checks")
+var selfUpgradeCloneRetention = flag.Duration("selfupgrade-clone-retention", 0, "How long to keep database clones after promotion (0 removes immediately)")
 
 var CompileVersion = "dev"
 
@@ -185,6 +195,128 @@ func resolveArchivePath(flagValue, defaultFile string, logf func(string, ...any)
 
 	// As a last resort return a relative filename so the generator can still run.
 	return fallback
+}
+
+// selfUpgradeDatabaseInfo recreates the DSN resolution logic so the deployment
+// manager knows how to back up the live database. We intentionally mirror the
+// database package defaults instead of importing internal helpers to avoid
+// circular dependencies.
+func selfUpgradeDatabaseInfo(cfg database.Config) (driver, dsn string) {
+	driver = strings.ToLower(strings.TrimSpace(cfg.DBType))
+	switch driver {
+	case "sqlite", "chai":
+		dsn = strings.TrimSpace(cfg.DBPath)
+		if dsn == "" {
+			dsn = fmt.Sprintf("database-%d.%s", cfg.Port, driver)
+		}
+	case "duckdb":
+		dsn = strings.TrimSpace(cfg.DBPath)
+		if dsn == "" {
+			dsn = fmt.Sprintf("database-%d.duckdb", cfg.Port)
+		}
+	case "pgx":
+		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+			cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.PGSSLMode)
+	}
+	return driver, dsn
+}
+
+// startSelfUpgrade wires up the background deployment manager when operators
+// pass -selfupgrade. We centralise the configuration assembly to keep main()
+// readable while still reusing the same channels and goroutines that make the
+// manager safe without mutexes, following "Don't communicate by sharing
+// memory".
+func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.CancelFunc {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !*selfUpgradeEnabled {
+		return nil
+	}
+
+	repo := strings.TrimSpace(*selfUpgradeRepo)
+	if repo == "" {
+		log.Printf("selfupgrade disabled: set -selfupgrade-repo to owner/repo")
+		return nil
+	}
+	parts := strings.SplitN(repo, "/", 2)
+	if len(parts) != 2 {
+		log.Printf("selfupgrade disabled: repository must be in owner/repo form")
+		return nil
+	}
+
+	binaryPath := strings.TrimSpace(*selfUpgradeBinary)
+	if binaryPath == "" {
+		if exe, err := os.Executable(); err == nil {
+			binaryPath = exe
+		}
+	}
+
+	workspace := strings.TrimSpace(*selfUpgradeWorkspace)
+	if workspace == "" {
+		workspace = "selfupgrade-workspace"
+	}
+	if !filepath.IsAbs(workspace) {
+		if abs, err := filepath.Abs(workspace); err == nil {
+			workspace = abs
+		}
+	}
+	backupsDir := filepath.Join(workspace, "db_backups")
+	lastGoodDir := filepath.Join(workspace, "last-good")
+
+	driverName, dsn := selfUpgradeDatabaseInfo(dbCfg)
+	var dbController selfupgrade.DatabaseController
+	switch driverName {
+	case "sqlite", "chai", "duckdb":
+		if dsn != "" {
+			dbController = &selfupgrade.FileDatabaseController{
+				Driver:       driverName,
+				OriginalPath: dsn,
+				BackupsDir:   backupsDir,
+				Logf:         log.Printf,
+			}
+		}
+	default:
+		log.Printf("selfupgrade database backups not configured for driver %s", driverName)
+	}
+
+	cfgAuto := selfupgrade.Config{
+		RepoOwner:       strings.TrimSpace(parts[0]),
+		RepoName:        strings.TrimSpace(parts[1]),
+		CurrentVersion:  CompileVersion,
+		PollInterval:    *selfUpgradePoll,
+		BinaryPath:      binaryPath,
+		DeployDir:       workspace,
+		LastGoodDir:     lastGoodDir,
+		DBBackupsDir:    backupsDir,
+		CanaryPort:      *selfUpgradeCanaryPort,
+		HealthCheckPath: *selfUpgradeHealthPath,
+		ServiceName:     strings.TrimSpace(*selfUpgradeService),
+		CloneRetention:  *selfUpgradeCloneRetention,
+		Logf:            log.Printf,
+		Database:        dbController,
+	}
+
+	manager, err := selfupgrade.NewManager(cfgAuto)
+	if err != nil {
+		log.Printf("selfupgrade disabled: %v", err)
+		return nil
+	}
+
+	ctxDeploy, cancel := context.WithCancel(ctx)
+	if err := manager.Start(ctxDeploy); err != nil {
+		log.Printf("selfupgrade start failed: %v", err)
+		cancel()
+		return nil
+	}
+
+	http.Handle("/selfupgrade/", manager.HTTPHandler())
+	go func() {
+		manager.Wait()
+	}()
+	log.Printf("selfupgrade manager running for %s/%s", cfgAuto.RepoOwner, cfgAuto.RepoName)
+
+	return cancel
 }
 
 // ==========
@@ -3445,6 +3577,15 @@ func main() {
 	limiter := api.NewRateLimiter(time.Minute)
 	apiHandler := api.NewHandler(db, *dbType, archiveGen, limiter, log.Printf, archiveFrequency)
 	apiHandler.Register(http.DefaultServeMux)
+
+	// Selfupgrade runs in the background only when explicitly enabled so existing
+	// installations keep their manual release cadence. We assemble the config
+	// near main() so filesystem paths, database settings, and HTTP handlers stay
+	// consistent with the rest of the binary.
+	selfUpgradeCancel := startSelfUpgrade(context.Background(), dbCfg)
+	if selfUpgradeCancel != nil {
+		defer selfUpgradeCancel()
+	}
 
 	rootHandler := withServerHeader(http.DefaultServeMux)
 
