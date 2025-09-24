@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ensureDir creates the directory tree when missing. We treat existing
@@ -79,19 +80,81 @@ func downloadToFile(ctx context.Context, client *http.Client, url, dest string) 
 		return "", err
 	}
 
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	// We stream into a temporary file so interrupted downloads never corrupt
+	// the last good artefact. The suffix mixes in time to keep retries unique.
+	tmp := fmt.Sprintf("%s.partial-%d", dest, time.Now().UnixNano())
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
 		return "", err
 	}
-	defer out.Close()
 
 	hash := sha256.New()
 	writer := io.MultiWriter(out, hash)
 	if _, err := io.Copy(writer, withContextReader(ctx, resp.Body)); err != nil {
+		out.Close()
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(tmp)
 		return "", err
 	}
 
+	checksum := hex.EncodeToString(hash.Sum(nil))
+	if err := os.Rename(tmp, dest); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+
+	return checksum, nil
+}
+
+// hashFile returns the SHA-256 of the provided file so callers can reuse cached
+// artefacts without downloading them again.
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return "", err
+	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// loadCachedChecksum inspects the neighbouring checksum file and confirms the
+// binary content still matches. We silently ignore missing artefacts so callers
+// can fall back to a fresh download.
+func loadCachedChecksum(path string) (string, bool, error) {
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+
+	data, err := os.ReadFile(path + ".sha256")
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	checksum := strings.TrimSpace(string(data))
+	if checksum == "" {
+		return "", false, nil
+	}
+	actual, err := hashFile(path)
+	if err != nil {
+		return "", false, err
+	}
+	if actual != checksum {
+		return "", false, nil
+	}
+	return checksum, true, nil
 }
 
 // writeChecksumFile places the checksum next to a binary so humans can verify
