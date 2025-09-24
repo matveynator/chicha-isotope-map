@@ -77,15 +77,20 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
-var selfUpgradeEnabled = flag.Bool("selfupgrade", false, "Enable the background auto-deployment manager")
-var selfUpgradeRepo = flag.String("selfupgrade-repo", "", "GitHub repository in owner/name form used for release polling")
-var selfUpgradePoll = flag.Duration("selfupgrade-interval", 30*time.Minute, "How often to check for new releases")
-var selfUpgradeBinary = flag.String("selfupgrade-binary", "", "Path to the production binary that gets swapped during promotion")
-var selfUpgradeCanaryPort = flag.Int("selfupgrade-canary-port", 9876, "Port reserved for the canary process")
-var selfUpgradeWorkspace = flag.String("selfupgrade-dir", "selfupgrade-workspace", "Workspace directory for release artifacts and backups")
-var selfUpgradeService = flag.String("selfupgrade-service", "", "Optional systemd unit name to restart after promotion")
-var selfUpgradeHealthPath = flag.String("selfupgrade-health", "/healthz", "HTTP path used for canary health checks")
-var selfUpgradeCloneRetention = flag.Duration("selfupgrade-clone-retention", 0, "How long to keep database clones after promotion (0 removes immediately)")
+
+// selfUpgradeFlagSet keeps the flag pointers optional so unsupported platforms
+// never register a -selfupgrade flag, following the "Make the zero value useful"
+// proverb. We also carry the default URLs so runtime decisions can fall back to
+// platform-specific release assets without extra state.
+type selfUpgradeFlagSet struct {
+	enabled    *bool
+	url        *string
+	supported  bool
+	defaultURL string
+	duckDBURL  string
+}
+
+var selfUpgradeFlags = registerSelfUpgradeFlags()
 
 var CompileVersion = "dev"
 
@@ -230,41 +235,45 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if !*selfUpgradeEnabled {
+	if !selfUpgradeFlags.supported {
+		// Unsupported platforms skip registration entirely, staying silent because no
+		// CLI flag is present and there is nothing to configure for operators.
+		return nil
+	}
+	if selfUpgradeFlags.enabled == nil || !*selfUpgradeFlags.enabled {
+		// Operators opted out, so we avoid spawning background work.
 		return nil
 	}
 
-	repo := strings.TrimSpace(*selfUpgradeRepo)
-	if repo == "" {
-		log.Printf("selfupgrade disabled: set -selfupgrade-repo to owner/repo")
+	exePath, err := os.Executable()
+	if err != nil {
+		// Without a deterministic binary path we cannot build rollback bundles, so we bail out early.
+		log.Printf("selfupgrade disabled: cannot resolve executable path: %v", err)
 		return nil
 	}
-	parts := strings.SplitN(repo, "/", 2)
-	if len(parts) != 2 {
-		log.Printf("selfupgrade disabled: repository must be in owner/repo form")
-		return nil
-	}
-
-	binaryPath := strings.TrimSpace(*selfUpgradeBinary)
-	if binaryPath == "" {
-		if exe, err := os.Executable(); err == nil {
-			binaryPath = exe
-		}
-	}
-
-	workspace := strings.TrimSpace(*selfUpgradeWorkspace)
-	if workspace == "" {
-		workspace = "selfupgrade-workspace"
-	}
-	if !filepath.IsAbs(workspace) {
-		if abs, err := filepath.Abs(workspace); err == nil {
-			workspace = abs
-		}
-	}
-	backupsDir := filepath.Join(workspace, "db_backups")
-	lastGoodDir := filepath.Join(workspace, "last-good")
 
 	driverName, dsn := selfUpgradeDatabaseInfo(dbCfg)
+
+	downloadURL := ""
+	if selfUpgradeFlags.url != nil {
+		downloadURL = strings.TrimSpace(*selfUpgradeFlags.url)
+	}
+	if downloadURL == "" {
+		// We default to platform-specific artefacts and swap in DuckDB builds when requested.
+		downloadURL = strings.TrimSpace(selfUpgradeFlags.defaultURL)
+		if driverName == "duckdb" && strings.TrimSpace(selfUpgradeFlags.duckDBURL) != "" {
+			downloadURL = strings.TrimSpace(selfUpgradeFlags.duckDBURL)
+		}
+	}
+	if downloadURL == "" {
+		log.Printf("selfupgrade disabled: download URL not configured for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return nil
+	}
+
+	const canaryPort = 9876
+	workspace := filepath.Join(filepath.Dir(exePath), "selfupgrade-cache")
+	backupsDir := filepath.Join(workspace, "db_backups")
+
 	var dbController selfupgrade.DatabaseController
 	switch driverName {
 	case "sqlite", "chai", "duckdb":
@@ -281,20 +290,14 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 	}
 
 	cfgAuto := selfupgrade.Config{
-		RepoOwner:       strings.TrimSpace(parts[0]),
-		RepoName:        strings.TrimSpace(parts[1]),
-		CurrentVersion:  CompileVersion,
-		PollInterval:    *selfUpgradePoll,
-		BinaryPath:      binaryPath,
-		DeployDir:       workspace,
-		LastGoodDir:     lastGoodDir,
-		DBBackupsDir:    backupsDir,
-		CanaryPort:      *selfUpgradeCanaryPort,
-		HealthCheckPath: *selfUpgradeHealthPath,
-		ServiceName:     strings.TrimSpace(*selfUpgradeService),
-		CloneRetention:  *selfUpgradeCloneRetention,
-		Logf:            log.Printf,
-		Database:        dbController,
+		DownloadURL:    downloadURL,
+		CurrentVersion: CompileVersion,
+		BinaryPath:     exePath,
+		DeployDir:      workspace,
+		DBBackupsDir:   backupsDir,
+		CanaryPort:     canaryPort,
+		Logf:           log.Printf,
+		Database:       dbController,
 	}
 
 	manager, err := selfupgrade.NewManager(cfgAuto)
@@ -314,9 +317,79 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 	go func() {
 		manager.Wait()
 	}()
-	log.Printf("selfupgrade manager running for %s/%s", cfgAuto.RepoOwner, cfgAuto.RepoName)
+	log.Printf("selfupgrade manager polling %s", downloadURL)
 
 	return cancel
+}
+
+// registerSelfUpgradeFlags inspects the compilation target and only registers
+// self-upgrade flags for platforms where we publish release binaries. This keeps
+// unsupported builds free of dead flags while still allowing callers to override
+// the download location when needed.
+func registerSelfUpgradeFlags() selfUpgradeFlagSet {
+	const base = "https://github.com/matveynator/chicha-isotope-map/releases/download/latest/"
+
+	switch runtime.GOOS {
+	case "darwin":
+		switch runtime.GOARCH {
+		case "amd64":
+			return newSelfUpgradeFlagSet(base, "darwin/amd64", "chicha-isotope-map_darwin_amd64", "chicha-isotope-map_darwin_amd64_duckdb")
+		case "arm64":
+			return newSelfUpgradeFlagSet(base, "darwin/arm64", "chicha-isotope-map_darwin_arm64", "chicha-isotope-map_darwin_arm64_duckdb")
+		}
+	case "freebsd":
+		if runtime.GOARCH == "amd64" {
+			return newSelfUpgradeFlagSet(base, "freebsd/amd64", "chicha-isotope-map_freebsd_amd64", "")
+		}
+	case "linux":
+		switch runtime.GOARCH {
+		case "386":
+			return newSelfUpgradeFlagSet(base, "linux/386", "chicha-isotope-map_linux_386", "")
+		case "amd64":
+			return newSelfUpgradeFlagSet(base, "linux/amd64", "chicha-isotope-map_linux_amd64", "")
+		case "arm64":
+			return newSelfUpgradeFlagSet(base, "linux/arm64", "chicha-isotope-map_linux_arm64", "")
+		}
+	case "netbsd":
+		if runtime.GOARCH == "amd64" {
+			return newSelfUpgradeFlagSet(base, "netbsd/amd64", "chicha-isotope-map_netbsd_amd64", "")
+		}
+	case "openbsd":
+		if runtime.GOARCH == "amd64" {
+			return newSelfUpgradeFlagSet(base, "openbsd/amd64", "chicha-isotope-map_openbsd_amd64", "")
+		}
+	case "windows":
+		switch runtime.GOARCH {
+		case "amd64":
+			return newSelfUpgradeFlagSet(base, "windows/amd64", "chicha-isotope-map_windows_amd64.exe", "")
+		case "arm64":
+			return newSelfUpgradeFlagSet(base, "windows/arm64", "chicha-isotope-map_windows_arm64.exe", "")
+		}
+	}
+
+	return selfUpgradeFlagSet{supported: false}
+}
+
+// newSelfUpgradeFlagSet keeps the flag wiring compact while documenting the
+// release artefact associated with each platform. We bake descriptions into the
+// help text to reduce guesswork for operators invoking `-help`.
+func newSelfUpgradeFlagSet(base, platform, asset, duckAsset string) selfUpgradeFlagSet {
+	defaultURL := base + asset
+	duckURL := ""
+	if strings.TrimSpace(duckAsset) != "" {
+		duckURL = base + duckAsset
+	}
+
+	enabled := flag.Bool("selfupgrade", false, fmt.Sprintf("Enable the background auto-deployment manager on %s hosts", platform))
+	url := flag.String("selfupgrade-url", defaultURL, fmt.Sprintf("Direct download URL for the %s binary", platform))
+
+	return selfUpgradeFlagSet{
+		enabled:    enabled,
+		url:        url,
+		supported:  true,
+		defaultURL: defaultURL,
+		duckDBURL:  duckURL,
+	}
 }
 
 // ==========

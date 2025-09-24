@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -34,11 +35,12 @@ type Manager struct {
 	client   *http.Client
 	logf     func(string, ...any)
 
-	pollCh     chan struct{}
-	manualCh   chan manualRequest
-	decisionCh chan decisionRequest
-	statusCh   chan statusRequest
-	done       chan struct{}
+	pollCh         chan struct{}
+	manualCh       chan manualRequest
+	decisionCh     chan decisionRequest
+	statusCh       chan statusRequest
+	done           chan struct{}
+	failedVersions map[string]struct{}
 }
 
 type manualRequest struct {
@@ -64,6 +66,7 @@ type pipelineResult struct {
 	promoted  bool
 	candidate string
 	err       error
+	log       string
 }
 
 type updatePipeline struct {
@@ -74,12 +77,41 @@ type updatePipeline struct {
 	decisionCh       chan Decision
 	updates          chan pipelineEvent
 	result           chan pipelineResult
+	requiresDBBackup bool
+	logBuffer        *strings.Builder
+	failedVersions   map[string]struct{}
+}
+
+// supportedPlatform centralises the OS/ARCH matrix we ship release artefacts
+// for so both CLI and manager agree on availability. Keeping it in code means we
+// fail fast when someone cross-compiles to an unsupported target.
+func supportedPlatform(osName, arch string) bool {
+	switch osName {
+	case "darwin":
+		return arch == "amd64" || arch == "arm64"
+	case "freebsd":
+		return arch == "amd64"
+	case "linux":
+		return arch == "386" || arch == "amd64" || arch == "arm64"
+	case "netbsd":
+		return arch == "amd64"
+	case "openbsd":
+		return arch == "amd64"
+	case "windows":
+		return arch == "amd64" || arch == "arm64"
+	default:
+		return false
+	}
 }
 
 // NewManager validates configuration and prepares collaborators. Directories
 // are created early so permission issues surface immediately instead of halfway
 // through a rollout.
 func NewManager(cfg Config) (*Manager, error) {
+	if !supportedPlatform(runtime.GOOS, runtime.GOARCH) {
+		return nil, fmt.Errorf("selfupgrade: updater supports only published platforms (current %s/%s)", runtime.GOOS, runtime.GOARCH)
+	}
+
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {}
 	}
@@ -89,11 +121,26 @@ func NewManager(cfg Config) (*Manager, error) {
 	if strings.TrimSpace(cfg.HealthCheckPath) == "" {
 		cfg.HealthCheckPath = "/healthz"
 	}
+	if strings.TrimSpace(cfg.DownloadURL) == "" {
+		return nil, errors.New("selfupgrade: download URL must be configured")
+	}
+
+	if strings.TrimSpace(cfg.BinaryPath) == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("selfupgrade: cannot determine binary path: %w", err)
+		}
+		cfg.BinaryPath = exe
+	}
+
+	if strings.TrimSpace(cfg.DeployDir) == "" {
+		cfg.DeployDir = filepath.Join(filepath.Dir(cfg.BinaryPath), "selfupgrade-cache")
+	}
 	if err := ensureDir(cfg.DeployDir); err != nil {
 		return nil, err
 	}
-	if err := ensureDir(cfg.LastGoodDir); err != nil {
-		return nil, err
+	if strings.TrimSpace(cfg.DBBackupsDir) == "" {
+		cfg.DBBackupsDir = filepath.Join(cfg.DeployDir, "db_backups")
 	}
 	if err := ensureDir(cfg.DBBackupsDir); err != nil {
 		return nil, err
@@ -104,7 +151,7 @@ func NewManager(cfg Config) (*Manager, error) {
 	}
 	fetcher := cfg.ReleaseFetcher
 	if fetcher == nil {
-		fetcher = &GitHubReleaseFetcher{Owner: cfg.RepoOwner, Repo: cfg.RepoName, Client: client}
+		fetcher = StaticFetcher{URL: cfg.DownloadURL, Client: client}
 	}
 	notifier := cfg.Notifier
 	if notifier == nil {
@@ -116,18 +163,19 @@ func NewManager(cfg Config) (*Manager, error) {
 	}
 
 	m := &Manager{
-		cfg:        cfg,
-		fetcher:    fetcher,
-		notifier:   notifier,
-		runner:     runner,
-		database:   cfg.Database,
-		client:     client,
-		logf:       cfg.Logf,
-		pollCh:     make(chan struct{}, 1),
-		manualCh:   make(chan manualRequest),
-		decisionCh: make(chan decisionRequest),
-		statusCh:   make(chan statusRequest),
-		done:       make(chan struct{}),
+		cfg:            cfg,
+		fetcher:        fetcher,
+		notifier:       notifier,
+		runner:         runner,
+		database:       cfg.Database,
+		client:         client,
+		logf:           cfg.Logf,
+		pollCh:         make(chan struct{}, 1),
+		manualCh:       make(chan manualRequest),
+		decisionCh:     make(chan decisionRequest),
+		statusCh:       make(chan statusRequest),
+		done:           make(chan struct{}),
+		failedVersions: make(map[string]struct{}),
 	}
 	return m, nil
 }
@@ -300,6 +348,10 @@ func (m *Manager) run(ctx context.Context) {
 		case res := <-results:
 			if res.err != nil {
 				status.LastError = res.err.Error()
+				if strings.TrimSpace(res.candidate) != "" {
+					m.failedVersions[sanitize(res.candidate)] = struct{}{}
+					m.recordFailureLog(res.candidate, res.log, res.err)
+				}
 			} else {
 				status.LastError = ""
 			}
@@ -318,6 +370,10 @@ func (m *Manager) run(ctx context.Context) {
 
 func (m *Manager) startPipeline(ctx context.Context, currentVersion string) *updatePipeline {
 	pctx, cancel := context.WithCancel(ctx)
+	failedCopy := make(map[string]struct{}, len(m.failedVersions))
+	for k := range m.failedVersions {
+		failedCopy[k] = struct{}{}
+	}
 	p := &updatePipeline{
 		ctx:            pctx,
 		cancel:         cancel,
@@ -325,15 +381,18 @@ func (m *Manager) startPipeline(ctx context.Context, currentVersion string) *upd
 		decisionCh:     make(chan Decision),
 		updates:        make(chan pipelineEvent, 8),
 		result:         make(chan pipelineResult, 1),
+		logBuffer:      &strings.Builder{},
+		failedVersions: failedCopy,
 	}
 	go m.executePipeline(p)
 	return p
 }
 
 type releaseStageResult struct {
-	release   Release
-	hasUpdate bool
-	err       error
+	release     Release
+	hasUpdate   bool
+	needsBackup bool
+	err         error
 }
 
 type downloadStageResult struct {
@@ -361,6 +420,20 @@ func (m *Manager) executePipeline(p *updatePipeline) {
 
 	ctx := p.ctx
 	send := func(stage, message, candidate string) {
+		if p.logBuffer != nil && strings.TrimSpace(message) != "" {
+			timestamp := time.Now().UTC().Format(time.RFC3339)
+			p.logBuffer.WriteString(timestamp)
+			p.logBuffer.WriteString(" ")
+			if strings.TrimSpace(stage) != "" {
+				p.logBuffer.WriteString(stage)
+				p.logBuffer.WriteString(": ")
+			}
+			p.logBuffer.WriteString(message)
+			if strings.TrimSpace(candidate) != "" {
+				p.logBuffer.WriteString(" (candidate=" + candidate + ")")
+			}
+			p.logBuffer.WriteString("\n")
+		}
 		evt := pipelineEvent{stage: stage, message: message, candidate: candidate}
 		select {
 		case p.updates <- evt:
@@ -368,25 +441,48 @@ func (m *Manager) executePipeline(p *updatePipeline) {
 		}
 	}
 
-	send("checking-release", "[selfupgrade] checking GitHub releases", "")
+	finish := func(res pipelineResult) {
+		if p.logBuffer != nil {
+			res.log = p.logBuffer.String()
+		}
+		p.result <- res
+	}
+
+	recordError := func(err error) {
+		if err != nil && p.logBuffer != nil {
+			p.logBuffer.WriteString(fmt.Sprintf("ERROR: %v\n", err))
+		}
+	}
+
+	send("checking-release", "[selfupgrade] checking remote binary availability", "")
 	releaseRes := <-m.stageRelease(ctx, p.currentVersion)
 	if releaseRes.err != nil {
-		p.result <- pipelineResult{err: releaseRes.err}
+		recordError(releaseRes.err)
+		finish(pipelineResult{err: releaseRes.err})
 		return
 	}
 	if !releaseRes.hasUpdate {
-		p.result <- pipelineResult{promoted: false, candidate: p.currentVersion, err: nil}
+		finish(pipelineResult{promoted: false, candidate: p.currentVersion, err: nil})
 		return
 	}
 	candidateVersion := strings.TrimSpace(releaseRes.release.Tag)
 	if candidateVersion == "" {
-		p.result <- pipelineResult{err: errors.New("selfupgrade: release tag empty")}
+		err := errors.New("selfupgrade: release tag empty")
+		recordError(err)
+		finish(pipelineResult{err: err})
 		return
 	}
+	if _, blocked := p.failedVersions[sanitize(candidateVersion)]; blocked {
+		send("skipping", fmt.Sprintf("[selfupgrade] version %s previously failed, waiting for a new release", candidateVersion), candidateVersion)
+		finish(pipelineResult{promoted: false, candidate: p.currentVersion, err: nil})
+		return
+	}
+	p.requiresDBBackup = releaseRes.needsBackup
 	send("downloading", fmt.Sprintf("[selfupgrade] downloading release %s", candidateVersion), candidateVersion)
 	downloadRes := <-m.stageDownload(ctx, releaseRes.release, p.currentVersion)
 	if downloadRes.err != nil {
-		p.result <- pipelineResult{candidate: candidateVersion, err: downloadRes.err}
+		recordError(downloadRes.err)
+		finish(pipelineResult{candidate: candidateVersion, err: downloadRes.err})
 		return
 	}
 	candidate := CandidateBuild{
@@ -394,11 +490,17 @@ func (m *Manager) executePipeline(p *updatePipeline) {
 		BinaryPath:     downloadRes.candidatePath,
 		ChecksumSHA256: downloadRes.candidateChecksum,
 	}
-	send("backing-up", "[selfupgrade] creating database backup and clone", candidateVersion)
-	dbRes := <-m.stageDatabase(ctx, candidateVersion)
-	if dbRes.err != nil {
-		p.result <- pipelineResult{candidate: candidateVersion, err: dbRes.err}
-		return
+	var dbRes databaseStageResult
+	if p.requiresDBBackup {
+		send("backing-up", "[selfupgrade] creating database backup and clone", candidateVersion)
+		dbRes = <-m.stageDatabase(ctx, candidateVersion, true)
+		if dbRes.err != nil {
+			recordError(dbRes.err)
+			finish(pipelineResult{candidate: candidateVersion, err: dbRes.err})
+			return
+		}
+	} else {
+		send("backing-up", "[selfupgrade] skipping database backup (no migrations detected)", candidateVersion)
 	}
 
 	var (
@@ -442,7 +544,8 @@ func (m *Manager) executePipeline(p *updatePipeline) {
 	send("canary", "[selfupgrade] launching canary instance", candidateVersion)
 	canaryRes := <-m.stageCanary(ctx, candidate, activeClone)
 	if canaryRes.err != nil {
-		p.result <- pipelineResult{candidate: candidateVersion, err: canaryRes.err}
+		recordError(canaryRes.err)
+		finish(pipelineResult{candidate: candidateVersion, err: canaryRes.err})
 		return
 	}
 	instance := canaryRes.instance
@@ -455,7 +558,8 @@ func (m *Manager) executePipeline(p *updatePipeline) {
 	}()
 
 	if err := m.verifyCanary(ctx); err != nil {
-		p.result <- pipelineResult{candidate: candidateVersion, err: err}
+		recordError(err)
+		finish(pipelineResult{candidate: candidateVersion, err: err})
 		return
 	}
 
@@ -465,7 +569,8 @@ func (m *Manager) executePipeline(p *updatePipeline) {
 
 	decision, err := m.awaitDecision(ctx, p.decisionCh)
 	if err != nil {
-		p.result <- pipelineResult{candidate: candidateVersion, err: err}
+		recordError(err)
+		finish(pipelineResult{candidate: candidateVersion, err: err})
 		return
 	}
 	if !decision.Approve {
@@ -474,37 +579,48 @@ func (m *Manager) executePipeline(p *updatePipeline) {
 			reason = "tester rejected candidate"
 		}
 		_ = m.notifier.Notify(ctx, "Canary rejected", fmt.Sprintf("Candidate %s rejected: %s", candidateVersion, reason))
-		p.result <- pipelineResult{candidate: candidateVersion, promoted: false, err: errors.New(reason)}
+		err := errors.New(reason)
+		recordError(err)
+		finish(pipelineResult{candidate: candidateVersion, promoted: false, err: err})
 		return
 	}
 
 	send("promoting", "[selfupgrade] promoting candidate", candidateVersion)
 	if err := m.applyBinary(ctx, candidate.BinaryPath); err != nil {
-		p.result <- pipelineResult{candidate: candidateVersion, err: err}
+		recordError(err)
+		finish(pipelineResult{candidate: candidateVersion, err: err})
 		return
 	}
 	if err := m.runner.RestartService(ctx); err != nil {
 		rollbackErr := m.rollback(ctx, lastGoodPath, backupPath)
 		if rollbackErr != nil {
-			p.result <- pipelineResult{candidate: candidateVersion, err: fmt.Errorf("restart failed: %v; rollback failed: %w", err, rollbackErr)}
+			combined := fmt.Errorf("restart failed: %v; rollback failed: %w", err, rollbackErr)
+			recordError(combined)
+			finish(pipelineResult{candidate: candidateVersion, err: combined})
 		} else {
-			p.result <- pipelineResult{candidate: candidateVersion, err: fmt.Errorf("restart failed: %w", err)}
+			wrapped := fmt.Errorf("restart failed: %w", err)
+			recordError(wrapped)
+			finish(pipelineResult{candidate: candidateVersion, err: wrapped})
 		}
 		return
 	}
 	if err := m.runner.PostPromotionCheck(ctx); err != nil {
 		rollbackErr := m.rollback(ctx, lastGoodPath, backupPath)
 		if rollbackErr != nil {
-			p.result <- pipelineResult{candidate: candidateVersion, err: fmt.Errorf("post-promotion check failed: %v; rollback failed: %w", err, rollbackErr)}
+			combined := fmt.Errorf("post-promotion check failed: %v; rollback failed: %w", err, rollbackErr)
+			recordError(combined)
+			finish(pipelineResult{candidate: candidateVersion, err: combined})
 		} else {
-			p.result <- pipelineResult{candidate: candidateVersion, err: fmt.Errorf("post-promotion check failed: %w", err)}
+			wrapped := fmt.Errorf("post-promotion check failed: %w", err)
+			recordError(wrapped)
+			finish(pipelineResult{candidate: candidateVersion, err: wrapped})
 		}
 		return
 	}
 
 	_ = m.notifier.Notify(ctx, "Promotion complete", fmt.Sprintf("Candidate %s deployed successfully", candidateVersion))
 	promotedSuccessfully = true
-	p.result <- pipelineResult{candidate: candidateVersion, promoted: true, err: nil}
+	finish(pipelineResult{candidate: candidateVersion, promoted: true, err: nil})
 }
 
 func (m *Manager) stageRelease(ctx context.Context, currentVersion string) <-chan releaseStageResult {
@@ -524,7 +640,7 @@ func (m *Manager) stageRelease(ctx context.Context, currentVersion string) <-cha
 			ch <- releaseStageResult{hasUpdate: false}
 			return
 		}
-		ch <- releaseStageResult{release: release, hasUpdate: true}
+		ch <- releaseStageResult{release: release, hasUpdate: true, needsBackup: release.RequiresDBBackup}
 	}()
 	return ch
 }
@@ -561,12 +677,13 @@ func (m *Manager) stageDownload(ctx context.Context, release Release, currentVer
 		}
 
 		var lastGoodPath, lastGoodChecksum string
-		if strings.TrimSpace(m.cfg.BinaryPath) != "" {
-			if _, err := os.Stat(m.cfg.BinaryPath); err == nil {
-				base := filepath.Base(m.cfg.BinaryPath)
-				name := fmt.Sprintf("%s-%s-%s", sanitize(base), sanitize(currentVersion), time.Now().UTC().Format("20060102-150405"))
-				lastGoodPath = filepath.Join(m.cfg.LastGoodDir, name)
-				lastGoodChecksum, err = copyFileWithHash(ctx, m.cfg.BinaryPath, lastGoodPath)
+		binaryPath := strings.TrimSpace(m.cfg.BinaryPath)
+		if binaryPath != "" {
+			if _, err := os.Stat(binaryPath); err == nil {
+				base := filepath.Base(binaryPath)
+				backupName := fmt.Sprintf("%s.previous", sanitize(base))
+				lastGoodPath = filepath.Join(filepath.Dir(binaryPath), backupName)
+				lastGoodChecksum, err = copyFileWithHash(ctx, binaryPath, lastGoodPath)
 				if err != nil {
 					ch <- downloadStageResult{err: err}
 					return
@@ -588,12 +705,16 @@ func (m *Manager) stageDownload(ctx context.Context, release Release, currentVer
 	return ch
 }
 
-func (m *Manager) stageDatabase(ctx context.Context, version string) <-chan databaseStageResult {
+func (m *Manager) stageDatabase(ctx context.Context, version string, needBackup bool) <-chan databaseStageResult {
 	ch := make(chan databaseStageResult, 1)
 	go func() {
 		defer close(ch)
-		if m.database == nil {
+		if !needBackup {
 			ch <- databaseStageResult{}
+			return
+		}
+		if m.database == nil {
+			ch <- databaseStageResult{err: errors.New("selfupgrade: database controller required for backup")}
 			return
 		}
 		backup, err := m.database.Backup(ctx, version)
@@ -730,6 +851,40 @@ func (m *Manager) rollback(ctx context.Context, lastGoodPath, backupPath string)
 		return nil
 	}
 	return errors.New("selfupgrade: rollback failed and no database backup available")
+}
+
+func (m *Manager) recordFailureLog(version, logContent string, err error) {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return
+	}
+	dir := filepath.Join(m.cfg.DeployDir, "logs")
+	if err := ensureDir(dir); err != nil {
+		m.logf("[selfupgrade] failed to create log directory for %s: %v", version, err)
+		return
+	}
+	filename := fmt.Sprintf("%s-%s.log", sanitize(version), time.Now().UTC().Format("20060102-150405"))
+	path := filepath.Join(dir, filename)
+
+	builder := &strings.Builder{}
+	if err != nil {
+		builder.WriteString(fmt.Sprintf("error: %v\n", err))
+	}
+	if strings.TrimSpace(logContent) != "" {
+		builder.WriteString(logContent)
+		if !strings.HasSuffix(logContent, "\n") {
+			builder.WriteString("\n")
+		}
+	}
+	if writeErr := os.WriteFile(path, []byte(builder.String()), 0o644); writeErr != nil {
+		m.logf("[selfupgrade] failed to write failure log for %s: %v", version, writeErr)
+		return
+	}
+	if err != nil {
+		m.logf("[selfupgrade] upgrade %s failed: %v (log at %s)", version, err, path)
+	} else {
+		m.logf("[selfupgrade] upgrade %s log stored at %s", version, path)
+	}
 }
 
 func urlQueryEscape(s string) string {
