@@ -2247,7 +2247,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
     maxZoom: 18,
-    attribution: '&copy; OpenStreetMap contributors'
+    attribution: '&copy; OSM contributors'
   });
 
   // Use the same satellite layer regardless of theme
@@ -2280,10 +2280,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
+		'<a href="#" class="attr-link" data-info="api">' + translate('attr_api') + '</a> | ' + 
     '<a href="#" class="attr-link" data-info="legal">' + translate('attr_legal') + '</a> | ' +
     '<a href="#" class="attr-link" data-info="sources">' + translate('attr_sources') + '</a> | ' +
-    '<a href="#" class="attr-link" data-info="license">' + translate('attr_license') + '</a> | ' +
-    '<a href="#" class="attr-link" data-info="api">' + translate('attr_api') + '</a>'
+    '<a href="#" class="attr-link" data-info="license">' + translate('attr_license') + '</a>'
   );
 
   // Track view initialization
