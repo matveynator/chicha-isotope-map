@@ -78,7 +78,7 @@ var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem desti
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var selfUpgradeEnabled = flag.Bool("selfupgrade", false, "Enable the background auto-deployment manager")
-var selfUpgradeRepo = flag.String("selfupgrade-repo", "", "GitHub repository in owner/name form used for release polling")
+var selfUpgradeURL = flag.String("selfupgrade-url", "https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64", "Direct download URL for the linux/amd64 binary")
 var selfUpgradePoll = flag.Duration("selfupgrade-interval", 30*time.Minute, "How often to check for new releases")
 var selfUpgradeBinary = flag.String("selfupgrade-binary", "", "Path to the production binary that gets swapped during promotion")
 var selfUpgradeCanaryPort = flag.Int("selfupgrade-canary-port", 9876, "Port reserved for the canary process")
@@ -234,15 +234,9 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 		return nil
 	}
 
-	repo := strings.TrimSpace(*selfUpgradeRepo)
-	if repo == "" {
-		log.Printf("selfupgrade disabled: set -selfupgrade-repo to owner/repo")
-		return nil
-	}
-	parts := strings.SplitN(repo, "/", 2)
-	if len(parts) != 2 {
-		log.Printf("selfupgrade disabled: repository must be in owner/repo form")
-		return nil
+	downloadURL := strings.TrimSpace(*selfUpgradeURL)
+	if downloadURL == "" {
+		downloadURL = "https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64"
 	}
 
 	binaryPath := strings.TrimSpace(*selfUpgradeBinary)
@@ -262,8 +256,6 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 		}
 	}
 	backupsDir := filepath.Join(workspace, "db_backups")
-	lastGoodDir := filepath.Join(workspace, "last-good")
-
 	driverName, dsn := selfUpgradeDatabaseInfo(dbCfg)
 	var dbController selfupgrade.DatabaseController
 	switch driverName {
@@ -281,13 +273,11 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 	}
 
 	cfgAuto := selfupgrade.Config{
-		RepoOwner:       strings.TrimSpace(parts[0]),
-		RepoName:        strings.TrimSpace(parts[1]),
+		DownloadURL:     downloadURL,
 		CurrentVersion:  CompileVersion,
 		PollInterval:    *selfUpgradePoll,
 		BinaryPath:      binaryPath,
 		DeployDir:       workspace,
-		LastGoodDir:     lastGoodDir,
 		DBBackupsDir:    backupsDir,
 		CanaryPort:      *selfUpgradeCanaryPort,
 		HealthCheckPath: *selfUpgradeHealthPath,
@@ -314,7 +304,7 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 	go func() {
 		manager.Wait()
 	}()
-	log.Printf("selfupgrade manager running for %s/%s", cfgAuto.RepoOwner, cfgAuto.RepoName)
+	log.Printf("selfupgrade manager polling %s", downloadURL)
 
 	return cancel
 }

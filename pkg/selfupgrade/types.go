@@ -12,13 +12,11 @@ import (
 // interface, the weaker the abstraction". Callers can plug in mocks or real
 // implementations to match their environment.
 type Config struct {
-	RepoOwner       string        // GitHub owner that publishes releases
-	RepoName        string        // GitHub repository name with releases
+	DownloadURL     string        // Direct URL pointing to the linux/amd64 binary
 	CurrentVersion  string        // Currently running version tag
 	PollInterval    time.Duration // How often to check for updates
 	BinaryPath      string        // Path to the production binary to swap
 	DeployDir       string        // Workspace for downloaded artifacts
-	LastGoodDir     string        // Directory holding the last known good build
 	DBBackupsDir    string        // Directory holding database backups
 	CanaryPort      int           // Port used for canary launches
 	HealthCheckPath string        // HTTP path to probe the canary
@@ -36,13 +34,14 @@ type Config struct {
 // Only the subset required by the deployment pipeline is exposed so we can
 // layer additional sources in the future without breaking callers.
 type Release struct {
-	Tag        string
-	Name       string
-	Body       string
-	Published  time.Time
-	Draft      bool
-	Prerelease bool
-	Assets     []ReleaseAsset
+	Tag              string
+	Name             string
+	Body             string
+	Published        time.Time
+	Draft            bool
+	Prerelease       bool
+	Assets           []ReleaseAsset
+	RequiresDBBackup bool // Whether the rollout needs a database backup beforehand
 }
 
 // ReleaseAsset points to a downloadable artifact (usually a binary archive).
