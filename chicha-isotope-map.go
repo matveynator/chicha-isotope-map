@@ -1,4 +1,3 @@
-
 //new: stream markers by track
 
 package main
@@ -69,7 +68,7 @@ var doseData database.Data
 var domain = flag.String("domain", "", "Serve HTTPS on 80/443 via Let's Encrypt when a domain is provided.")
 var dbType = flag.String("db-type", "sqlite", "Database driver: chai, sqlite, duckdb, pgx (PostgreSQL), or clickhouse")
 var dbPath = flag.String("db-path", "", "Filesystem path for chai/sqlite/duckdb databases; defaults to the working directory.")
-var dbConn = flag.String("db-conn", "", "Connection URI for network databases.\n  PostgreSQL: postgres://user:pass@host:5432/db?sslmode=verify-full\n  ClickHouse: clickhouse://user:pass@host:9000/db?secure=true")
+var dbConn = flag.String("db-conn", "", "Connection URI for network databases.\n  PostgreSQL: postgres://user:pass@host:5432/<database>?sslmode=verify-full\n  ClickHouse: clickhouse://user:pass@host:9000/<database>?secure=true")
 var port = flag.Int("port", 8765, "Port for running the HTTP server when not using -domain.")
 var version = flag.Bool("version", false, "Show the application version")
 var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
