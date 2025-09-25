@@ -159,7 +159,7 @@ func NewManager(cfg Config) (*Manager, error) {
 	}
 	runner := cfg.Runner
 	if runner == nil {
-		runner = DryRunner{Logf: cfg.Logf}
+		runner = NewSelfReplacingRunner(cfg.BinaryPath, cfg.Logf)
 	}
 
 	m := &Manager{
@@ -592,6 +592,11 @@ func (m *Manager) executePipeline(p *updatePipeline) {
 		return
 	}
 	if err := m.runner.RestartService(ctx); err != nil {
+		if errors.Is(err, ErrProcessReplaced) {
+			promotedSuccessfully = true
+			finish(pipelineResult{candidate: candidateVersion, promoted: true, err: nil})
+			return
+		}
 		rollbackErr := m.rollback(ctx, lastGoodPath, backupPath)
 		if rollbackErr != nil {
 			combined := fmt.Errorf("restart failed: %v; rollback failed: %w", err, rollbackErr)
@@ -666,14 +671,16 @@ func (m *Manager) stageDownload(ctx context.Context, release Release, currentVer
 			return
 		}
 		candidatePath := filepath.Join(versionDir, asset.Name)
-		checksum, err := downloadToFile(ctx, m.client, asset.DownloadURL, candidatePath)
+		checksum, cached, err := reuseOrDownloadCandidate(ctx, m.client, asset.DownloadURL, candidatePath)
 		if err != nil {
 			ch <- downloadStageResult{err: err}
 			return
 		}
-		if err := writeChecksumFile(candidatePath+".sha256", checksum); err != nil {
-			ch <- downloadStageResult{err: err}
-			return
+		if !cached {
+			if err := writeChecksumFile(candidatePath+".sha256", checksum); err != nil {
+				ch <- downloadStageResult{err: err}
+				return
+			}
 		}
 
 		var lastGoodPath, lastGoodChecksum string
@@ -703,6 +710,28 @@ func (m *Manager) stageDownload(ctx context.Context, release Release, currentVer
 		}
 	}()
 	return ch
+}
+
+// reuseOrDownloadCandidate keeps previously downloaded artefacts when possible.
+// We prefer reusing because many failures are transient network issues.
+func reuseOrDownloadCandidate(ctx context.Context, client *http.Client, url, path string) (string, bool, error) {
+	checksum, ok, err := loadCachedChecksum(path)
+	if err != nil {
+		return "", false, err
+	}
+	if ok {
+		return checksum, true, nil
+	}
+	_ = os.Remove(path)
+	_ = os.Remove(path + ".sha256")
+	checksum, err = downloadToFile(ctx, client, url, path)
+	if err != nil {
+		// We delete corrupted artefacts so the next attempt starts fresh.
+		_ = os.Remove(path)
+		_ = os.Remove(path + ".sha256")
+		return "", false, err
+	}
+	return checksum, false, nil
 }
 
 func (m *Manager) stageDatabase(ctx context.Context, version string, needBackup bool) <-chan databaseStageResult {
