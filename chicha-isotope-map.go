@@ -34,6 +34,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -322,6 +323,110 @@ func startSelfUpgrade(ctx context.Context, dbCfg database.Config) context.Cancel
 	return cancel
 }
 
+// selfupgradeStartupDelay pauses the freshly spawned binary during a handoff so
+// the previous process can close network listeners without racing. The old
+// binary encodes the delay inside SELFUPGRADE_WAIT_SECONDS.
+func selfupgradeStartupDelay(logf func(string, ...any)) {
+	waitEnv := strings.TrimSpace(os.Getenv("SELFUPGRADE_WAIT_SECONDS"))
+	if waitEnv == "" {
+		return
+	}
+	defer os.Unsetenv("SELFUPGRADE_WAIT_SECONDS")
+	seconds, err := strconv.ParseFloat(waitEnv, 64)
+	if err != nil || seconds <= 0 {
+		if logf != nil && err != nil {
+			logf("selfupgrade: invalid wait seconds %q: %v", waitEnv, err)
+		}
+		return
+	}
+	delay := time.Duration(seconds * float64(time.Second))
+	if logf != nil {
+		logf("selfupgrade: waiting %s for predecessor shutdown", delay)
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	<-timer.C
+}
+
+func selfupgradeCleanEnv(env []string) []string {
+	cleaned := make([]string, 0, len(env))
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "SELFUPGRADE_") {
+			continue
+		}
+		cleaned = append(cleaned, kv)
+	}
+	return cleaned
+}
+
+// selfupgradeRollback revives the last known good binary when the replacement
+// process fails to bind its listeners. We relaunch the previous binary and let
+// it resume service.
+func selfupgradeRollback(logf func(string, ...any)) bool {
+	lastGood := strings.TrimSpace(os.Getenv("SELFUPGRADE_LAST_GOOD"))
+	if lastGood == "" {
+		return false
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		if logf != nil {
+			logf("selfupgrade rollback skipped: executable unknown: %v", err)
+		}
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := selfupgrade.RestoreBinary(ctx, lastGood, exe); err != nil {
+		if logf != nil {
+			logf("selfupgrade rollback restore failed: %v", err)
+		}
+		return false
+	}
+	env := selfupgradeCleanEnv(os.Environ())
+	if logf != nil {
+		logf("selfupgrade rollback: relaunching %s", lastGood)
+	}
+	if runtime.GOOS != "windows" {
+		if err := syscall.Exec(exe, os.Args, env); err != nil {
+			if logf != nil {
+				logf("selfupgrade rollback exec failed: %v", err)
+			}
+			return false
+		}
+		return true
+	}
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Env = env
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	if err := cmd.Start(); err != nil {
+		if logf != nil {
+			logf("selfupgrade rollback spawn failed: %v", err)
+		}
+		return false
+	}
+	return true
+}
+
+// selfupgradeHandleServerError unifies server startup failures so the
+// self-upgrade workflow can roll back to the previous binary when binding the
+// listener fails.
+func selfupgradeHandleServerError(err error, logf func(string, ...any)) {
+	if err == nil {
+		return
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		return
+	}
+	if logf != nil {
+		logf("HTTP server error: %v", err)
+	}
+	if selfupgradeRollback(logf) {
+		os.Exit(0)
+	}
+}
+
 // registerSelfUpgradeFlags inspects the compilation target and only registers
 // self-upgrade flags for platforms where we publish release binaries. This keeps
 // unsupported builds free of dead flags while still allowing callers to override
@@ -586,7 +691,7 @@ func serveWithDomain(domain string, handler http.Handler) {
 			Handler:           mux80,
 			ReadHeaderTimeout: 10 * time.Second,
 		}).ListenAndServe(); err != nil {
-			log.Printf("HTTP  server error: %v", err)
+			selfupgradeHandleServerError(err, log.Printf)
 		}
 	}()
 
@@ -636,7 +741,7 @@ func serveWithDomain(domain string, handler http.Handler) {
 		TLSConfig:         tlsCfg,
 		ReadHeaderTimeout: 10 * time.Second,
 	}).ListenAndServeTLS("", ""); err != nil {
-		log.Printf("HTTPS server error: %v", err)
+		selfupgradeHandleServerError(err, log.Printf)
 	}
 }
 
@@ -3546,6 +3651,7 @@ func main() {
 	// 1. Флаги и версии
 	flag.Parse()
 	loadTranslations(content, "public_html/translations.json")
+	selfupgradeStartupDelay(log.Printf)
 
 	archiveFrequency, freqErr := jsonarchive.ParseFrequency(*jsonArchiveFrequencyFlag)
 	if freqErr != nil {
@@ -3672,7 +3778,7 @@ func main() {
 		go func() {
 			log.Printf("HTTP server ➜ http://localhost:%s", addr)
 			if err := http.ListenAndServe(addr, rootHandler); err != nil {
-				log.Printf("HTTP server error: %v", err)
+				selfupgradeHandleServerError(err, log.Printf)
 			}
 		}()
 	}
