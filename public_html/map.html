@@ -1536,13 +1536,13 @@ body, html {
 
       // Compute marker color from radiation level
       function getGradientColor(doseRate) {
-        if (doseRate <= 0.04) return "#006400"; // Dark green
+        if (doseRate <= 0.04) return '#006400'; // Dark green
         else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
         else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
         else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
         else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
         else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
-        else return "#000000"; // Black for very high values
+        else return '#000000'; // Black for very high values
       }
 
 // Interpolate between two colors
@@ -1647,17 +1647,20 @@ function formatMicroRoentgenValue(value) {
 }
 
 // escapeHtml protects popups against user-supplied strings like device names.
+// We rely on explicit lookup tables instead of quoting " inside the regex so
+// Go's html/template parser keeps the surrounding <script> in a neutral state.
+const ESCAPE_HTML_RE = /[&<>\u0022\u0027]/g;
+const ESCAPE_HTML_LOOKUP = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+};
+ESCAPE_HTML_LOOKUP['\u0022'] = '&quot;';
+ESCAPE_HTML_LOOKUP['\u0027'] = '&#39;';
 function escapeHtml(value) {
   if (value === null || value === undefined) return '';
-  return String(value).replace(/[&<>"']/g, function(ch) {
-    switch (ch) {
-      case '&': return '&amp;';
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '"': return '&quot;';
-      case "'": return '&#39;';
-      default: return ch;
-    }
+  return String(value).replace(ESCAPE_HTML_RE, function(ch) {
+    return ESCAPE_HTML_LOOKUP[ch] || ch;
   });
 }
 
@@ -4278,7 +4281,7 @@ function centerMapToLocation() {
     if (typeof txt !== 'string' || !txt) {
       return txt;
     }
-    var withMitAnchor = txt.replace(/<a[^>]*href="\\/LICENSE"[^>]*>([\s\S]*?)<\\/a>/gi, function(_, label) {
+    var withMitAnchor = txt.replace(/<a[^>]*href=\u0022\/LICENSE\u0022[^>]*>([\s\S]*?)<\/a>/gi, function(_, label) {
       return '<a href="#" class="license-link" data-license="mit">' + label + '</a>';
     });
     var withCc0Anchor = withMitAnchor.replace(/Creative Commons 1\.0(\s*\(CC0\))?/gi, function(match) {

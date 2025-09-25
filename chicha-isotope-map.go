@@ -3182,20 +3182,25 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return translations["en"][key]
 		},
-		"toJS": func(v any) (template.JS, error) {
-			// Returning template.JS keeps map.html inside a valid JavaScript context,
-			// so we can inject marker arrays without triggering auto-escaping issues.
-			b, err := json.Marshal(v)
-			if err != nil {
-				return template.JS(""), err
-			}
-			return template.JS(b), nil
-		},
 	}).ParseFS(content, "public_html/map.html"))
+
+	translationsJSON, err := marshalTemplateJS(translations)
+	if err != nil {
+		log.Printf("track handler: marshal translations failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	emptyMarkers := []database.Marker{}
+	markersJSON, err := marshalTemplateJS(emptyMarkers)
+	if err != nil {
+		log.Printf("track handler: marshal markers failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 
 	// отдаём пустой срез маркеров
 	data := struct {
-		Markers           []database.Marker
 		Version           string
 		Translations      map[string]map[string]string
 		Lang              string
@@ -3205,8 +3210,9 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer      string
 		RealtimeAvailable bool
 		SupportEmail      string
+		TranslationsJSON  template.JS
+		MarkersJSON       template.JS
 	}{
-		Markers:           nil, // ← ключевое изменение
 		Version:           CompileVersion,
 		Translations:      translations,
 		Lang:              lang,
@@ -3216,6 +3222,8 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer:      *defaultLayer,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		SupportEmail:      strings.TrimSpace(*supportEmail),
+		TranslationsJSON:  translationsJSON,
+		MarkersJSON:       markersJSON,
 	}
 
 	var buf bytes.Buffer
