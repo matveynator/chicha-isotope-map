@@ -158,9 +158,11 @@ sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download
 
 * `-db-path string` — путь к файлу базы для `duckdb`/`chai`/`sqlite`.
 
-* `-db-host string`, `-db-port int`, `-db-name string`, `-db-user string`, `-db-pass string` — параметры подключения к PostgreSQL (`pgx`).
+* `-db-conn string` — единый URI подключения для сетевых баз (`pgx`/PostgreSQL или `clickhouse`).
 
-* `-pg-ssl-mode string` — режим SSL для PostgreSQL: `disable`, `allow`, `prefer` (по умолчанию), `require`, `verify-ca`, `verify-full`.
+  * Пример PostgreSQL: `-db-type pgx -db-conn postgres://postgres@127.0.0.1:5432/chicha_isotope_map?sslmode=require`
+
+  * Пример ClickHouse: `-db-type clickhouse -db-conn clickhouse://default@127.0.0.1:9000/IsotopePathways?secure=true`
 
 ### Служебные
 

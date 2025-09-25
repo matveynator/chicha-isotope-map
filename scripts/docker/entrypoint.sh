@@ -68,9 +68,7 @@ fi
 # ----------- аргументы приложения --------------
 ARGS=(
   -db-type pgx
-  -db-host 127.0.0.1 -db-port 5432
-  -db-user "${DB_USER}" -db-pass '' -db-name "${DB_NAME}"
-  -pg-ssl-mode disable
+  -db-conn "postgres://${DB_USER}@127.0.0.1:5432/${DB_NAME}?sslmode=disable"
   -default-lat   "${DEFAULT_LAT:-51.389}"
   -default-lon   "${DEFAULT_LON:-30.099}"
   -default-zoom  "${DEFAULT_ZOOM:-4}"
