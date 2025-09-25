@@ -280,7 +280,8 @@ func printCLILicenseNote(out io.Writer, theme cliColorTheme) {
 	lines := []string{
 		"Code: MIT License.",
 		"Research datasets: CC0 1.0 Universal (Public Domain).",
-		"If this work resonates with you, join us — measurements, translations, and code all help.",
+		"Thank you for using this program and sharing your tracks. This work is fragile — care for it, and it will grow.",
+		"Support the sources, share honest knowledge, and run your own nodes so the maps stay free and safe.",
 	}
 
 	for _, line := range lines {
