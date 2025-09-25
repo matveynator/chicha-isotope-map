@@ -125,10 +125,14 @@ func resolveCLIColorTheme(out io.Writer) cliColorTheme {
 	}
 
 	theme.Enabled = true
-	theme.Section = "\033[1;36m"
-	theme.Flag = "\033[1;33m"
-	theme.Usage = "\033[0;37m"
-	theme.Default = "\033[0;32m"
+	// We prefer muted accents so the help text stays elegant on both light and dark
+	// terminals. 38;5 codes give us a refined teal for section titles, a warm sand for
+	// flag names, a soft graphite for usage text, and a gentle sage for defaults. This
+	// palette avoids harsh contrasts while still guiding the reader's eye.
+	theme.Section = "\033[38;5;38m"
+	theme.Flag = "\033[38;5;180m"
+	theme.Usage = "\033[38;5;244m"
+	theme.Default = "\033[38;5;114m"
 	theme.Reset = "\033[0m"
 	return theme
 }
