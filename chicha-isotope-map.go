@@ -203,20 +203,21 @@ func configureCLIUsage() {
 				leftovers = append(leftovers, f.Name)
 			}
 		})
-		if len(leftovers) == 0 {
-			return
-		}
-		sort.Strings(leftovers)
-		if theme.Enabled {
-			fmt.Fprintf(out, "%sAdditional flags:%s\n", theme.Section, theme.Reset)
-		} else {
-			fmt.Fprintln(out, "Additional flags:")
-		}
-		for _, name := range leftovers {
-			if f := flag.Lookup(name); f != nil {
-				writeFlagUsage(out, f, theme)
+		if len(leftovers) > 0 {
+			sort.Strings(leftovers)
+			if theme.Enabled {
+				fmt.Fprintf(out, "%sAdditional flags:%s\n", theme.Section, theme.Reset)
+			} else {
+				fmt.Fprintln(out, "Additional flags:")
+			}
+			for _, name := range leftovers {
+				if f := flag.Lookup(name); f != nil {
+					writeFlagUsage(out, f, theme)
+				}
 			}
 		}
+
+		printCLILicenseNote(out, theme)
 	}
 }
 
@@ -256,6 +257,40 @@ func writeFlagUsage(out io.Writer, f *flag.Flag, theme cliColorTheme) {
 			fmt.Fprintf(out, "      %sDefault:%s %s%s%s\n", theme.Flag, theme.Reset, theme.Default, def, theme.Reset)
 		} else {
 			fmt.Fprintf(out, "      Default: %s\n", def)
+		}
+	}
+}
+
+// printCLILicenseNote mirrors the in-app license block so terminal operators see the
+// same promise: code under MIT, research data under CC0, and an open invitation to
+// collaborate. Keeping the wording here ensures the CLI reflects the project ethos
+// without forcing admins to open the UI.
+func printCLILicenseNote(out io.Writer, theme cliColorTheme) {
+	if out == nil {
+		return
+	}
+
+	fmt.Fprintln(out)
+	if theme.Enabled {
+		fmt.Fprintf(out, "%sLicense & community:%s\n", theme.Section, theme.Reset)
+	} else {
+		fmt.Fprintln(out, "License & community:")
+	}
+
+	lines := []string{
+		"Code: MIT License.",
+		"Research datasets: CC0 1.0 Universal (Public Domain).",
+		"If this work resonates with you, join us — measurements, translations, and code all help.",
+	}
+
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if theme.Enabled {
+			fmt.Fprintf(out, "  %s%s%s\n", theme.Usage, line, theme.Reset)
+		} else {
+			fmt.Fprintf(out, "  %s\n", line)
 		}
 	}
 }
