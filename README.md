@@ -168,13 +168,11 @@ If you’re launching the `chicha-isotope-map` binary directly, here’s what ma
 
   * Example: `-db-type sqlite -db-path /var/lib/chicha/chicha.sqlite`
 
-* `-db-host string`, `-db-port int` (default 5432), `-db-name string`, `-db-user string`, `-db-pass string` — PostgreSQL connection params for `pgx`.
+* `-db-conn string` — single connection URI for network databases (`pgx`/PostgreSQL or `clickhouse`).
 
-  * Example: `-db-type pgx -db-host 127.0.0.1 -db-port 5432 -db-name chicha_isotope_map -db-user postgres -db-pass secret`
+  * PostgreSQL example: `-db-type pgx -db-conn postgres://postgres@127.0.0.1:5432/chicha_isotope_map?sslmode=require`
 
-* `-pg-ssl-mode string` — PostgreSQL SSL mode: `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, `verify-full`.
-
-  * Example: `-pg-ssl-mode require`
+  * ClickHouse example: `-db-type clickhouse -db-conn clickhouse://default@127.0.0.1:9000/IsotopePathways?secure=true`
 
 ### Utility
 
@@ -216,9 +214,7 @@ If you’re launching the `chicha-isotope-map` binary directly, here’s what ma
   ```bash
   chicha-isotope-map \
     -db-type pgx \
-    -db-host 127.0.0.1 -db-port 5432 \
-    -db-name chicha_isotope_map -db-user postgres -db-pass secret \
-    -pg-ssl-mode require \
+    -db-conn postgres://postgres:secret@127.0.0.1:5432/chicha_isotope_map?sslmode=verify-full \
     -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11
   ```
 

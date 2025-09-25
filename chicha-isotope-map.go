@@ -33,6 +33,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,17 +60,11 @@ var content embed.FS
 
 var doseData database.Data
 
-var domain = flag.String("domain", "", "Use 80 and 443 ports. Automatic HTTPS cert via Let's Encrypt.")
-var dbType = flag.String("db-type", "sqlite", "Type of the database driver: chai, sqlite, duckdb, pgx (PostgreSQL), or clickhouse")
-var dbPath = flag.String("db-path", "", "Path to the database file (defaults to the current folder, applicable for chai, sqlite, duckdb)")
-var dbHost = flag.String("db-host", "127.0.0.1", "Database host (used by pgx and clickhouse)")
-var dbPort = flag.Int("db-port", 5432, "Database port (pgx defaults to 5432, clickhouse commonly uses 9000)")
-var dbUser = flag.String("db-user", "postgres", "Database user (pgx or clickhouse)")
-var dbPass = flag.String("db-pass", "", "Database password (pgx or clickhouse)")
-var dbName = flag.String("db-name", "IsotopePathways", "Database name (pgx or clickhouse)")
-var pgSSLMode = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode: disable, allow, prefer, require, verify-ca, or verify-full")
-var clickhouseSecure = flag.Bool("clickhouse-secure", false, "Enable TLS for clickhouse connections")
-var port = flag.Int("port", 8765, "Port for running the server")
+var domain = flag.String("domain", "", "Serve HTTPS on 80/443 via Let's Encrypt when a domain is provided.")
+var dbType = flag.String("db-type", "sqlite", "Database driver: chai, sqlite, duckdb, pgx (PostgreSQL), or clickhouse")
+var dbPath = flag.String("db-path", "", "Filesystem path for chai/sqlite/duckdb databases; defaults to the working directory.")
+var dbConn = flag.String("db-conn", "", "Connection URI for network databases.\n  PostgreSQL: postgres://user:pass@host:5432/db?sslmode=verify-full\n  ClickHouse: clickhouse://user:pass@host:9000/db?secure=true")
+var port = flag.Int("port", 8765, "Port for running the HTTP server when not using -domain.")
 var version = flag.Bool("version", false, "Show the application version")
 var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
@@ -79,6 +74,21 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
+
+// usageSection groups CLI flags so operators can scan help output quickly. This keeps
+// the help text approachable without duplicating flag registration everywhere.
+type usageSection struct {
+	Title string
+	Flags []string
+}
+
+var cliUsageSections = []usageSection{
+	{Title: "General", Flags: []string{"version", "domain", "port", "support-email"}},
+	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
+	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer"}},
+	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency"}},
+	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
+}
 
 // selfUpgradeFlagSet keeps the flag pointers optional so unsupported platforms
 // never register a -selfupgrade flag, following the "Make the zero value useful"
@@ -93,6 +103,83 @@ type selfUpgradeFlagSet struct {
 }
 
 var selfUpgradeFlags = registerSelfUpgradeFlags()
+
+// configureCLIUsage replaces the default flag help with a grouped layout. We do this in init()
+// so operators immediately see logically clustered options when running -h, without juggling
+// extra wiring at call sites.
+func configureCLIUsage() {
+	flag.CommandLine.SetOutput(os.Stdout)
+	flag.Usage = func() {
+		out := flag.CommandLine.Output()
+		fmt.Fprintf(out, "Usage: %s [flags]\n\n", os.Args[0])
+		fmt.Fprintln(out, "Flags:")
+
+		printed := map[string]bool{}
+		for _, section := range cliUsageSections {
+			var sectionFlags []*flag.Flag
+			for _, name := range section.Flags {
+				if f := flag.Lookup(name); f != nil {
+					sectionFlags = append(sectionFlags, f)
+					printed[f.Name] = true
+				}
+			}
+			if len(sectionFlags) == 0 {
+				continue
+			}
+
+			fmt.Fprintf(out, "%s:\n", section.Title)
+			for _, f := range sectionFlags {
+				writeFlagUsage(out, f)
+			}
+			fmt.Fprintln(out)
+		}
+
+		var leftovers []string
+		flag.VisitAll(func(f *flag.Flag) {
+			if !printed[f.Name] {
+				leftovers = append(leftovers, f.Name)
+			}
+		})
+		if len(leftovers) == 0 {
+			return
+		}
+		sort.Strings(leftovers)
+		fmt.Fprintln(out, "Additional flags:")
+		for _, name := range leftovers {
+			if f := flag.Lookup(name); f != nil {
+				writeFlagUsage(out, f)
+			}
+		}
+	}
+}
+
+// writeFlagUsage mirrors flag.PrintDefaults but adds indentation and multiline support so the
+// help output stays legible even when descriptions contain examples.
+func writeFlagUsage(out io.Writer, f *flag.Flag) {
+	if f == nil {
+		return
+	}
+	name, usage := flag.UnquoteUsage(f)
+	line := fmt.Sprintf("  -%s", f.Name)
+	if name != "" {
+		line += " " + name
+	}
+	fmt.Fprintln(out, line)
+
+	if usage != "" {
+		for _, part := range strings.Split(usage, "\n") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			fmt.Fprintf(out, "      %s\n", part)
+		}
+	}
+
+	if def := strings.TrimSpace(f.DefValue); def != "" {
+		fmt.Fprintf(out, "      Default: %s\n", def)
+	}
+}
 
 var CompileVersion = "dev"
 
@@ -109,6 +196,9 @@ func init() {
 	// working even when auxiliary files are skipped; relying on init avoids extra
 	// coordination primitives and mirrors Go's preference for simplicity.
 	drivers.Ready()
+	// CLI usage grouping is also configured once during init so every entry point
+	// inherits the readable help layout without repeating boilerplate.
+	configureCLIUsage()
 }
 
 // =====================
@@ -204,6 +294,102 @@ func resolveArchivePath(flagValue, defaultFile string, logf func(string, ...any)
 	return fallback
 }
 
+// applyDBConnection parses a DSN passed via -db-conn and copies relevant fields into the
+// database configuration. We normalise defaults for host, port, and SSL/TLS so operators can
+// supply concise URLs while the rest of the application continues using structured settings.
+func applyDBConnection(driverName, conn string, cfg *database.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("db config is nil")
+	}
+	cleaned := strings.TrimSpace(conn)
+	if cleaned == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(cleaned)
+	if err != nil {
+		return fmt.Errorf("%s connection string: %w", driverName, err)
+	}
+
+	driver := strings.ToLower(strings.TrimSpace(driverName))
+	switch driver {
+	case "pgx":
+		if parsed.Scheme == "" {
+			parsed.Scheme = "postgres"
+		}
+	case "clickhouse":
+		if parsed.Scheme == "" {
+			parsed.Scheme = "clickhouse"
+		}
+	default:
+		return fmt.Errorf("db-conn is only supported for pgx or clickhouse (got %q)", driverName)
+	}
+
+	host := parsed.Hostname()
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	cfg.DBHost = host
+
+	portValue := parsed.Port()
+	var port int
+	if portValue != "" {
+		port, err = strconv.Atoi(portValue)
+		if err != nil {
+			return fmt.Errorf("%s connection string: invalid port %q", driverName, portValue)
+		}
+	} else {
+		if driver == "pgx" {
+			port = 5432
+		} else {
+			port = 9000
+		}
+	}
+	cfg.DBPort = port
+
+	if parsed.User != nil {
+		if user := strings.TrimSpace(parsed.User.Username()); user != "" {
+			cfg.DBUser = user
+		}
+		if pass, ok := parsed.User.Password(); ok {
+			cfg.DBPass = pass
+		}
+	}
+
+	name := strings.Trim(strings.TrimPrefix(parsed.Path, "/"), " ")
+	if driver == "pgx" && name == "" {
+		return fmt.Errorf("%s connection string must include a database name", driverName)
+	}
+	if name != "" || driver == "pgx" {
+		cfg.DBName = name
+	}
+
+	query := parsed.Query()
+	switch driver {
+	case "pgx":
+		sslMode := strings.TrimSpace(query.Get("sslmode"))
+		if sslMode == "" {
+			sslMode = "prefer"
+			query.Set("sslmode", sslMode)
+		}
+		cfg.PGSSLMode = sslMode
+	case "clickhouse":
+		secureValue := strings.TrimSpace(query.Get("secure"))
+		secure := false
+		if secureValue != "" {
+			secure = secureValue == "1" || strings.EqualFold(secureValue, "true") || strings.EqualFold(secureValue, "yes") || strings.EqualFold(secureValue, "on")
+		} else if strings.EqualFold(parsed.Scheme, "https") {
+			secure = true
+			query.Set("secure", "true")
+		}
+		cfg.ClickSecure = secure
+	}
+	parsed.RawQuery = query.Encode()
+
+	cfg.DBConn = parsed.String()
+	return nil
+}
+
 // selfUpgradeDatabaseInfo recreates the DSN resolution logic so the deployment
 // manager knows how to back up the live database. We intentionally mirror the
 // database package defaults instead of importing internal helpers to avoid
@@ -222,8 +408,12 @@ func selfUpgradeDatabaseInfo(cfg database.Config) (driver, dsn string) {
 			dsn = fmt.Sprintf("database-%d.duckdb", cfg.Port)
 		}
 	case "pgx":
-		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-			cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.PGSSLMode)
+		if strings.TrimSpace(cfg.DBConn) != "" {
+			dsn = cfg.DBConn
+		} else {
+			dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+				cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.PGSSLMode)
+		}
 	case "clickhouse":
 		dsn = database.ClickHouseDSNFromConfig(cfg)
 	}
@@ -3679,17 +3869,33 @@ func main() {
 	}
 
 	// 3. База данных
+	driverName := strings.ToLower(strings.TrimSpace(*dbType))
 	dbCfg := database.Config{
-		DBType:      *dbType,
-		DBPath:      *dbPath,
-		DBHost:      *dbHost,
-		DBPort:      *dbPort,
-		DBUser:      *dbUser,
-		DBPass:      *dbPass,
-		DBName:      *dbName,
-		PGSSLMode:   *pgSSLMode,
-		ClickSecure: *clickhouseSecure,
-		Port:        *port,
+		DBType: *dbType,
+		DBPath: *dbPath,
+		Port:   *port,
+	}
+	switch driverName {
+	case "pgx":
+		dbCfg.DBHost = "127.0.0.1"
+		dbCfg.DBPort = 5432
+		dbCfg.DBUser = "postgres"
+		dbCfg.DBName = "IsotopePathways"
+		dbCfg.PGSSLMode = "prefer"
+		if err := applyDBConnection(driverName, *dbConn, &dbCfg); err != nil {
+			log.Fatalf("DB config: %v", err)
+		}
+	case "clickhouse":
+		dbCfg.DBHost = "127.0.0.1"
+		dbCfg.DBPort = 9000
+		dbCfg.DBName = "IsotopePathways"
+		if err := applyDBConnection(driverName, *dbConn, &dbCfg); err != nil {
+			log.Fatalf("DB config: %v", err)
+		}
+	default:
+		if strings.TrimSpace(*dbConn) != "" {
+			log.Fatalf("db-conn is only valid for pgx or clickhouse drivers (current: %s)", *dbType)
+		}
 	}
 	var err error
 	db, err = database.NewDatabase(dbCfg)

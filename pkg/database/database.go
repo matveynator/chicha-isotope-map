@@ -53,6 +53,7 @@ func startIDGenerator(initialID int64) chan int64 {
 type Config struct {
 	DBType      string // The type of the database driver (e.g., "sqlite", "chai", or "pgx" (PostgreSQL))
 	DBPath      string // The file path to the database file (for file-based databases)
+	DBConn      string // Raw DSN for network drivers (pgx or clickhouse)
 	DBHost      string // The host for PostgreSQL
 	DBPort      int    // The port for PostgreSQL
 	DBUser      string // The user for PostgreSQL
@@ -66,6 +67,10 @@ type Config struct {
 // ClickHouseDSNFromConfig assembles a DSN understood by the lightweight HTTP driver.
 // We parse host/port carefully so IPv6 literals keep their brackets intact.
 func ClickHouseDSNFromConfig(cfg Config) string {
+	if trimmed := strings.TrimSpace(cfg.DBConn); trimmed != "" {
+		return trimmed
+	}
+
 	host := strings.TrimSpace(cfg.DBHost)
 	if host == "" {
 		host = "127.0.0.1"
@@ -135,8 +140,12 @@ func NewDatabase(config Config) (*Database, error) {
 			dsn = fmt.Sprintf("database-%d.duckdb", config.Port)
 		}
 	case "pgx":
-		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-			config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName, config.PGSSLMode)
+		if strings.TrimSpace(config.DBConn) != "" {
+			dsn = config.DBConn
+		} else {
+			dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+				config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName, config.PGSSLMode)
+		}
 	case "clickhouse":
 		dsn = ClickHouseDSNFromConfig(config)
 	default:
