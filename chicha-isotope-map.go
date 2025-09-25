@@ -2994,6 +2994,18 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 // =====================
 // WEB  — главная карта
 // =====================
+// marshalTemplateJS encodes the provided value into JSON and tags it as safe
+// JavaScript for html/template. We return template.JS so scripts can embed the
+// literal without tripping the context analyser, following "A little copying is
+// better than a little dependency" by keeping the helper tiny and local.
+func marshalTemplateJS(value interface{}) (template.JS, error) {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return template.JS(""), err
+	}
+	return template.JS(payload), nil
+}
+
 func mapHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 
@@ -3005,25 +3017,32 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return translations["en"][key]
 		},
-		"toJS": func(data interface{}) (template.JS, error) {
-			// We marshal straight into template.JS so the browser receives ready-made
-			// literals.  Escaping here prevents html/template from breaking out of
-			// string contexts and fixes the "non-text context" execution error.
-			bytes, err := json.Marshal(data)
-			if err != nil {
-				return template.JS(""), err
-			}
-			return template.JS(bytes), nil
-		},
 	}).ParseFS(content, "public_html/map.html"))
 
 	if CompileVersion == "dev" {
 		CompileVersion = "latest"
 	}
 
+	translationsJSON, err := marshalTemplateJS(translations)
+	if err != nil {
+		log.Printf("map handler: marshal translations failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	markers := doseData.Markers
+	if markers == nil {
+		markers = []database.Marker{}
+	}
+	markersJSON, err := marshalTemplateJS(markers)
+	if err != nil {
+		log.Printf("map handler: marshal markers failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	// Данные для шаблона
 	data := struct {
-		Markers           []database.Marker
 		Version           string
 		Translations      map[string]map[string]string
 		Lang              string
@@ -3033,8 +3052,9 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer      string
 		RealtimeAvailable bool
 		SupportEmail      string
+		TranslationsJSON  template.JS
+		MarkersJSON       template.JS
 	}{
-		Markers:           doseData.Markers,
 		Version:           CompileVersion,
 		Translations:      translations,
 		Lang:              lang,
@@ -3044,6 +3064,8 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer:      *defaultLayer,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		SupportEmail:      strings.TrimSpace(*supportEmail),
+		TranslationsJSON:  translationsJSON,
+		MarkersJSON:       markersJSON,
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader

@@ -1138,7 +1138,7 @@ body, html {
       // Translation object passed from Go
       // We emit ready-made JS literals to keep html/template from misdetecting
       // the surrounding string context when translations contain quotes.
-      var translations = {{ .Translations | toJS }};
+      var translations = {{ .TranslationsJSON }};
         var currentLang = '{{ .Lang }}'; // Current language
 
         // Get translation by key
@@ -1161,7 +1161,7 @@ body, html {
         lat:  {{printf "%.6f" .DefaultLat}},
         lon:  {{printf "%.6f" .DefaultLon}},
         zoom: {{.DefaultZoom}},
-        layer: {{ .DefaultLayer | toJS }}
+        layer: {{ printf "%q" .DefaultLayer }}
       };
     </script>
     <script>
@@ -2358,7 +2358,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Track view initialization
   // Inject markers as literal JSON so the first render avoids the template parse error
   // and the frontend can inspect the slice immediately.
-  var initialMarkers = {{ .Markers | toJS }};
+  var initialMarkers = {{ .MarkersJSON }};
   if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
     isTrackView = true;
 
