@@ -2994,6 +2994,18 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 // =====================
 // WEB  — главная карта
 // =====================
+// marshalTemplateJS encodes the provided value into JSON and tags it as safe
+// JavaScript for html/template. We return template.JS so scripts can embed the
+// literal without tripping the context analyser, following "A little copying is
+// better than a little dependency" by keeping the helper tiny and local.
+func marshalTemplateJS(value interface{}) (template.JS, error) {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return template.JS(""), err
+	}
+	return template.JS(payload), nil
+}
+
 func mapHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 
@@ -3005,19 +3017,32 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return translations["en"][key]
 		},
-		"toJSON": func(data interface{}) (string, error) {
-			bytes, err := json.Marshal(data)
-			return string(bytes), err
-		},
 	}).ParseFS(content, "public_html/map.html"))
 
 	if CompileVersion == "dev" {
 		CompileVersion = "latest"
 	}
 
+	translationsJSON, err := marshalTemplateJS(translations)
+	if err != nil {
+		log.Printf("map handler: marshal translations failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	markers := doseData.Markers
+	if markers == nil {
+		markers = []database.Marker{}
+	}
+	markersJSON, err := marshalTemplateJS(markers)
+	if err != nil {
+		log.Printf("map handler: marshal markers failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	// Данные для шаблона
 	data := struct {
-		Markers           []database.Marker
 		Version           string
 		Translations      map[string]map[string]string
 		Lang              string
@@ -3027,8 +3052,9 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer      string
 		RealtimeAvailable bool
 		SupportEmail      string
+		TranslationsJSON  template.JS
+		MarkersJSON       template.JS
 	}{
-		Markers:           doseData.Markers,
 		Version:           CompileVersion,
 		Translations:      translations,
 		Lang:              lang,
@@ -3038,6 +3064,8 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer:      *defaultLayer,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		SupportEmail:      strings.TrimSpace(*supportEmail),
+		TranslationsJSON:  translationsJSON,
+		MarkersJSON:       markersJSON,
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader
@@ -3154,15 +3182,25 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return translations["en"][key]
 		},
-		"toJSON": func(v any) (string, error) {
-			b, err := json.Marshal(v)
-			return string(b), err
-		},
 	}).ParseFS(content, "public_html/map.html"))
+
+	translationsJSON, err := marshalTemplateJS(translations)
+	if err != nil {
+		log.Printf("track handler: marshal translations failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	emptyMarkers := []database.Marker{}
+	markersJSON, err := marshalTemplateJS(emptyMarkers)
+	if err != nil {
+		log.Printf("track handler: marshal markers failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 
 	// отдаём пустой срез маркеров
 	data := struct {
-		Markers           []database.Marker
 		Version           string
 		Translations      map[string]map[string]string
 		Lang              string
@@ -3172,8 +3210,9 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer      string
 		RealtimeAvailable bool
 		SupportEmail      string
+		TranslationsJSON  template.JS
+		MarkersJSON       template.JS
 	}{
-		Markers:           nil, // ← ключевое изменение
 		Version:           CompileVersion,
 		Translations:      translations,
 		Lang:              lang,
@@ -3183,6 +3222,8 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer:      *defaultLayer,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		SupportEmail:      strings.TrimSpace(*supportEmail),
+		TranslationsJSON:  translationsJSON,
+		MarkersJSON:       markersJSON,
 	}
 
 	var buf bytes.Buffer
