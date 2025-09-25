@@ -55,7 +55,12 @@ import (
 	"chicha-isotope-map/pkg/selfupgrade"
 )
 
-//go:embed public_html/*
+// content bundles the UI and the license texts so single-file binaries still
+// expose the legal notice when served offline. Embedding keeps deployment
+// simple and mirrors the "A little copying is better than a little dependency"
+// proverb by avoiding extra runtime file IO.
+//
+//go:embed public_html/* LICENSE LICENSE.CC0
 var content embed.FS
 
 var doseData database.Data
@@ -3016,6 +3021,46 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// licenseHandler serves the embedded license documents so operators can ship a
+// single binary and still expose the legal texts offline. Keeping the handler
+// tiny follows "The bigger the interface, the weaker the abstraction" while
+// letting the UI lazily fetch the raw files on demand.
+func licenseHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rawPath := strings.TrimPrefix(r.URL.Path, "/licenses/")
+	if rawPath == r.URL.Path {
+		http.NotFound(w, r)
+		return
+	}
+	code := strings.ToLower(strings.Trim(rawPath, "/"))
+
+	var file string
+	switch code {
+	case "mit":
+		file = "LICENSE"
+	case "cc0":
+		file = "LICENSE.CC0"
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
+	data, err := content.ReadFile(file)
+	if err != nil {
+		log.Printf("license handler: %s read error: %v", file, err)
+		http.Error(w, "unable to load license", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	http.ServeContent(w, r, file, time.Time{}, bytes.NewReader(data))
+}
+
 // shortRedirectHandler resolves a short code and redirects visitors to the
 // stored long URL. We lean on context timeouts instead of bespoke timers,
 // echoing "The bigger the interface, the weaker the abstraction" by keeping
@@ -4031,6 +4076,9 @@ func main() {
 	http.Handle("/static/", http.StripPrefix("/static/",
 		http.FileServer(http.FS(staticFS))))
 	http.HandleFunc("/", mapHandler)
+	// Serve license documents straight from the embedded filesystem so UI
+	// modals can reuse the same source without relying on external storage.
+	http.HandleFunc("/licenses/", licenseHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)

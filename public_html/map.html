@@ -1382,7 +1382,74 @@ body, html {
   </div>
 </div>
 
+<!-- Provide dedicated modal for reading the full MIT License directly on the map. -->
+<div class="license-modal" data-license="mit" style="
+  display:none;
+  position:fixed;
+  top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.6);
+  z-index:2000;
+  justify-content:center;
+  align-items:center;">
+  <div style="
+    background:var(--modal-bg);
+    color:var(--modal-text);
+    border:var(--modal-border);
+    max-width:720px;
+    max-height:80vh;
+    overflow-y:auto;
+    padding:20px;
+    border-radius:10px;
+    font-size: var(--font-size-base);
+    line-height:1.6em;
+    box-shadow:0 0 10px rgba(0,0,0,0.5);
+    font-family: var(--font-family-base);">
+    <h3 style="margin-top:0;">MIT License</h3>
+    <pre class="license-modal-body" data-license-url="/licenses/mit" data-license-loaded="false" data-license-loading="false" style="white-space:pre-wrap; margin:0; font-family: var(--font-family-base);">Loading…</pre>
+    <div style="margin-top:12px; text-align:right;">
+      <button class="license-modal-close" data-license="mit" style="padding:6px 12px; background: var(--control-bg); border: var(--legend-border); border-radius:4px; cursor:pointer; font-family: inherit;">
+        OK
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Provide dedicated modal for reading the full CC0 1.0 Universal text. -->
+<div class="license-modal" data-license="cc0" style="
+  display:none;
+  position:fixed;
+  top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.6);
+  z-index:2000;
+  justify-content:center;
+  align-items:center;">
+  <div style="
+    background:var(--modal-bg);
+    color:var(--modal-text);
+    border:var(--modal-border);
+    max-width:720px;
+    max-height:80vh;
+    overflow-y:auto;
+    padding:20px;
+    border-radius:10px;
+    font-size: var(--font-size-base);
+    line-height:1.6em;
+    box-shadow:0 0 10px rgba(0,0,0,0.5);
+    font-family: var(--font-family-base);">
+    <h3 style="margin-top:0;">CC0 1.0 Universal</h3>
+    <pre class="license-modal-body" data-license-url="/licenses/cc0" data-license-loaded="false" data-license-loading="false" style="white-space:pre-wrap; margin:0; font-family: var(--font-family-base);">Loading…</pre>
+    <div style="margin-top:12px; text-align:right;">
+      <button class="license-modal-close" data-license="cc0" style="padding:6px 12px; background: var(--control-bg); border: var(--legend-border); border-radius:4px; cursor:pointer; font-family: inherit;">
+        OK
+      </button>
+    </div>
+  </div>
+
+</div>
+
+
 <!-- Modal with Grafana-style stacked charts for Safecast realtime sensors -->
+
 <div id="liveModal">
   <div class="live-modal-content">
     <div class="live-modal-header">
@@ -4202,6 +4269,93 @@ function centerMapToLocation() {
     }).join('');
   }
 
+  // Turn license mentions into modal triggers so readers stay on the map page.
+  function decorateLicenseLinks(txt) {
+    if (typeof txt !== 'string' || !txt) {
+      return txt;
+    }
+    var withMitAnchor = txt.replace(/<a[^>]*href="\\/LICENSE"[^>]*>([\s\S]*?)<\\/a>/gi, function(_, label) {
+      return '<a href="#" class="license-link" data-license="mit">' + label + '</a>';
+    });
+    var withCc0Anchor = withMitAnchor.replace(/Creative Commons 1\.0(\s*\(CC0\))?/gi, function(match) {
+      return '<a href="#" class="license-link" data-license="cc0">' + match + '</a>';
+    });
+    return withCc0Anchor;
+  }
+
+  // Open a specific license modal based on the identifier requested by the user.
+  // We fetch the source file lazily so embedded binaries stay in sync with
+  // the repository licenses even when served offline.
+  function openLicenseModal(code) {
+    if (!code) return;
+    var selector = '.license-modal[data-license="' + code + '"]';
+    var modal = document.querySelector(selector);
+    if (!modal) return;
+
+    var body = modal.querySelector('[data-license-url]');
+    if (body) {
+      var loadedState = body.getAttribute('data-license-loaded');
+      var loadingState = body.getAttribute('data-license-loading');
+      if (loadedState !== 'true' && loadingState !== 'true') {
+        var url = body.getAttribute('data-license-url');
+        if (url) {
+          body.textContent = 'Loading…';
+          body.setAttribute('data-license-loading', 'true');
+
+          var handleSuccess = function(text) {
+            body.textContent = text;
+            body.setAttribute('data-license-loaded', 'true');
+            body.setAttribute('data-license-loading', 'false');
+          };
+
+          var handleError = function(err) {
+            if (window.console && console.error) {
+              console.error('Failed to load license text for', code, err);
+            }
+            body.textContent = 'Unable to load the license text. Please download it from the repository.';
+            body.setAttribute('data-license-loaded', 'error');
+            body.setAttribute('data-license-loading', 'false');
+          };
+
+          if (window.fetch) {
+            fetch(url, { cache: 'no-store' })
+              .then(function(resp) {
+                if (!resp.ok) {
+                  throw new Error('HTTP ' + resp.status);
+                }
+                return resp.text();
+              })
+              .then(handleSuccess)
+              .catch(handleError);
+          } else {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.onreadystatechange = function() {
+              if (xhr.readyState === 4) {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  handleSuccess(xhr.responseText);
+                } else {
+                  handleError(new Error('HTTP ' + xhr.status));
+                }
+              }
+            };
+            xhr.onerror = function() { handleError(new Error('network error')); };
+            xhr.send();
+          }
+        }
+      }
+    }
+
+    modal.style.display = 'flex';
+  }
+
+  // Close the provided license modal so the overlay disappears cleanly.
+  function closeLicenseModal(modal) {
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
   // Example definitions stay in code so translations only supply human text.
   const apiExamples = [
     { key: 'root', method: 'api_method_get', methodFallback: 'GET', path: '/api', url: '/api' },
@@ -4293,6 +4447,9 @@ function centerMapToLocation() {
     if (topic === 'legal' && typeof window.supportEmail === 'string' && window.supportEmail.trim() !== '') {
       infoText += '\n\n' + translate('legal_contact') + ' ' + window.supportEmail.trim();
     }
+    if (topic === 'license') {
+      infoText = decorateLicenseLinks(infoText);
+    }
     if (box) box.innerHTML = buildInfoHTML(infoText);
     var head = document.getElementById('infoTitle');
     if (head) head.textContent = translate(topic + '_title');
@@ -4332,6 +4489,10 @@ function centerMapToLocation() {
       ev.preventDefault();
       openInfoModal(ev.target.dataset.info);
     }
+    if (ev.target.classList.contains('license-link')) {
+      ev.preventDefault();
+      openLicenseModal(ev.target.dataset.license);
+    }
   });
 
   (function(){
@@ -4351,6 +4512,30 @@ function centerMapToLocation() {
       infoModal.addEventListener('click', function(e){
         if (e.target === infoModal) infoModal.style.display = 'none';
       });
+    }
+    var licenseModals = document.querySelectorAll('.license-modal');
+    if (licenseModals && licenseModals.length) {
+      for (var i = 0; i < licenseModals.length; i++) {
+        (function(modalEl){
+          modalEl.addEventListener('click', function(e){
+            if (e.target === modalEl) closeLicenseModal(modalEl);
+          });
+        })(licenseModals[i]);
+      }
+    }
+    var licenseCloseButtons = document.querySelectorAll('.license-modal-close');
+    if (licenseCloseButtons && licenseCloseButtons.length) {
+      for (var j = 0; j < licenseCloseButtons.length; j++) {
+        (function(btn){
+          btn.addEventListener('click', function(){
+            var modalEl = btn;
+            while (modalEl && (!modalEl.classList || !modalEl.classList.contains('license-modal'))) {
+              modalEl = modalEl.parentNode;
+            }
+            closeLicenseModal(modalEl);
+          });
+        })(licenseCloseButtons[j]);
+      }
     }
     var liveModal = document.getElementById('liveModal');
     if (liveModal) {
