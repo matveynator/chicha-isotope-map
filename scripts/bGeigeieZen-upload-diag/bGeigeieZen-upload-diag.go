@@ -22,15 +22,16 @@ import (
 
 // ---- CLI flags (independent of the main app) ----
 var (
-	port   = flag.Int("port", 8877, "Port for running the diagnostics server")
-	dbType = flag.String("db-type", "sqlite", "Database driver: chai | sqlite | duckdb | pgx")
-	dbPath = flag.String("db-path", "", "Database file path (for sqlite/chai/duckdb)")
-	dbHost = flag.String("db-host", "127.0.0.1", "DB host (pgx)")
-	dbPort = flag.Int("db-port", 5432, "DB port (pgx)")
-	dbUser = flag.String("db-user", "postgres", "DB user (pgx)")
-	dbPass = flag.String("db-pass", "", "DB password (pgx)")
-	dbName = flag.String("db-name", "IsotopePathways", "DB name (pgx)")
-	pgSSL  = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode")
+	port          = flag.Int("port", 8877, "Port for running the diagnostics server")
+	dbType        = flag.String("db-type", "sqlite", "Database driver: chai | sqlite | duckdb | pgx | clickhouse")
+	dbPath        = flag.String("db-path", "", "Database file path (for sqlite/chai/duckdb)")
+	dbHost        = flag.String("db-host", "127.0.0.1", "DB host (pgx or clickhouse)")
+	dbPort        = flag.Int("db-port", 5432, "DB port (pgx defaults to 5432, clickhouse commonly uses 9000)")
+	dbUser        = flag.String("db-user", "postgres", "DB user (pgx or clickhouse)")
+	dbPass        = flag.String("db-pass", "", "DB password (pgx or clickhouse)")
+	dbName        = flag.String("db-name", "IsotopePathways", "DB name (pgx or clickhouse)")
+	pgSSL         = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode")
+	clickhouseTLS = flag.Bool("clickhouse-secure", false, "Enable TLS for clickhouse connections")
 )
 
 var db *database.Database
@@ -218,16 +219,22 @@ func processAndStoreMarkers(
 	allZoom := precomputeMarkersForAllZoomLevels(markers)
 	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoom))
 
-	tx, err := db.DB.Begin()
-	if err != nil {
-		return bbox, trackID, err
-	}
-	if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
-		_ = tx.Rollback()
-		return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return bbox, trackID, err
+	if strings.EqualFold(dbType, "clickhouse") {
+		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000); err != nil {
+			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
+		}
+	} else {
+		tx, err := db.DB.Begin()
+		if err != nil {
+			return bbox, trackID, err
+		}
+		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
+			_ = tx.Rollback()
+			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return bbox, trackID, err
+		}
 	}
 	logT(trackID, "Store", "stored %d markers", len(allZoom))
 	return bbox, trackID, nil
@@ -667,15 +674,16 @@ func main() {
 	flag.Parse()
 
 	cfg := database.Config{
-		DBType:    *dbType,
-		DBPath:    *dbPath,
-		DBHost:    *dbHost,
-		DBPort:    *dbPort,
-		DBUser:    *dbUser,
-		DBPass:    *dbPass,
-		DBName:    *dbName,
-		PGSSLMode: *pgSSL,
-		Port:      *port,
+		DBType:      *dbType,
+		DBPath:      *dbPath,
+		DBHost:      *dbHost,
+		DBPort:      *dbPort,
+		DBUser:      *dbUser,
+		DBPass:      *dbPass,
+		DBName:      *dbName,
+		PGSSLMode:   *pgSSL,
+		ClickSecure: *clickhouseTLS,
+		Port:        *port,
 	}
 
 	var err error

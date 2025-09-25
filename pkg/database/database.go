@@ -4,10 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
+	"net"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -47,15 +51,56 @@ func startIDGenerator(initialID int64) chan int64 {
 
 // Config holds the configuration details for initializing the database.
 type Config struct {
-	DBType    string // The type of the database driver (e.g., "sqlite", "chai", or "pgx" (PostgreSQL))
-	DBPath    string // The file path to the database file (for file-based databases)
-	DBHost    string // The host for PostgreSQL
-	DBPort    int    // The port for PostgreSQL
-	DBUser    string // The user for PostgreSQL
-	DBPass    string // The password for PostgreSQL
-	DBName    string // The name of the PostgreSQL database
-	PGSSLMode string // The SSL mode for PostgreSQL
-	Port      int    // The port number (used in database file naming if needed)
+	DBType      string // The type of the database driver (e.g., "sqlite", "chai", or "pgx" (PostgreSQL))
+	DBPath      string // The file path to the database file (for file-based databases)
+	DBHost      string // The host for PostgreSQL
+	DBPort      int    // The port for PostgreSQL
+	DBUser      string // The user for PostgreSQL
+	DBPass      string // The password for PostgreSQL
+	DBName      string // The name of the PostgreSQL database
+	PGSSLMode   string // The SSL mode for PostgreSQL
+	ClickSecure bool   // Enable TLS when connecting to ClickHouse over HTTP transport
+	Port        int    // The port number (used in database file naming if needed)
+}
+
+// ClickHouseDSNFromConfig assembles a DSN understood by the lightweight HTTP driver.
+// We parse host/port carefully so IPv6 literals keep their brackets intact.
+func ClickHouseDSNFromConfig(cfg Config) string {
+	host := strings.TrimSpace(cfg.DBHost)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+
+	if _, _, err := net.SplitHostPort(host); err != nil {
+		port := cfg.DBPort
+		if port <= 0 {
+			port = 9000
+		}
+		host = net.JoinHostPort(host, strconv.Itoa(port))
+	}
+
+	user := strings.TrimSpace(cfg.DBUser)
+	pass := cfg.DBPass
+	name := strings.Trim(strings.TrimSpace(cfg.DBName), "/")
+
+	dsn := url.URL{Scheme: "clickhouse", Host: host}
+	if user != "" {
+		if strings.TrimSpace(pass) != "" {
+			dsn.User = url.UserPassword(user, pass)
+		} else {
+			dsn.User = url.User(user)
+		}
+	}
+	if name != "" {
+		dsn.Path = "/" + name
+	}
+
+	params := url.Values{}
+	if cfg.ClickSecure {
+		params.Set("secure", "true")
+	}
+	dsn.RawQuery = params.Encode()
+	return dsn.String()
 }
 
 // NewDatabase opens DB and configures connection pooling.
@@ -92,6 +137,8 @@ func NewDatabase(config Config) (*Database, error) {
 	case "pgx":
 		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
 			config.DBUser, config.DBPass, config.DBHost, config.DBPort, config.DBName, config.PGSSLMode)
+	case "clickhouse":
+		dsn = ClickHouseDSNFromConfig(config)
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
@@ -119,6 +166,12 @@ func NewDatabase(config Config) (*Database, error) {
 		} else {
 			log.Printf("sqlite tuning skipped: driver %s manages pragmas itself", driverName)
 		}
+	case "clickhouse":
+		// ClickHouse benefits from a few parallel connections while remaining lightweight.
+		db.SetMaxOpenConns(8)
+		db.SetMaxIdleConns(8)
+		db.SetConnMaxLifetime(5 * time.Minute)
+		db.SetConnMaxIdleTime(2 * time.Minute)
 	}
 
 	// Cheap liveness probe with timeout so we don't hang at startup
@@ -418,6 +471,10 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
 
+	case "clickhouse":
+		// MergeTree handles ordering internally; explicit secondary indexes are unnecessary here.
+		return nil
+
 	default:
 		// Fallback: behave like SQLite/Chai (portable everywhere that supports IF NOT EXISTS).
 		return []struct{ name, sql string }{
@@ -502,7 +559,10 @@ LIMIT 1`
 // the app can accept traffic immediately. Heavy indexes are built later
 // by EnsureIndexesAsync in background.
 func (db *Database) InitSchema(cfg Config) error {
-	var schema string
+	var (
+		schema     string
+		statements []string
+	)
 
 	switch strings.ToLower(cfg.DBType) {
 	case "pgx":
@@ -664,12 +724,62 @@ CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
 `
 
+	case "clickhouse":
+		statements = []string{
+			`CREATE TABLE IF NOT EXISTS markers (
+  id          UInt64,
+  doseRate    Float64,
+  date        Int64,
+  lon         Float64,
+  lat         Float64,
+  countRate   Float64,
+  zoom        Int32,
+  speed       Float64,
+  trackID     String,
+  altitude    Float64,
+  detector    String,
+  radiation   String,
+  temperature Float64,
+  humidity    Float64
+) ENGINE = MergeTree()
+ORDER BY (trackID, date, id);`,
+			`CREATE TABLE IF NOT EXISTS realtime_measurements (
+  id          UInt64,
+  device_id   String,
+  transport   String,
+  device_name String,
+  tube        String,
+  country     String,
+  value       Float64,
+  unit        String,
+  lat         Float64,
+  lon         Float64,
+  measured_at Int64,
+  fetched_at  Int64,
+  extra       String
+) ENGINE = MergeTree()
+ORDER BY (device_id, measured_at);`,
+			`CREATE TABLE IF NOT EXISTS short_links (
+  id         UInt64,
+  code       String,
+  target     String,
+  created_at DateTime DEFAULT now()
+) ENGINE = MergeTree()
+ORDER BY (code);`,
+		}
+
 	default:
 		return fmt.Errorf("unsupported database type: %s", cfg.DBType)
 	}
 
-	if _, err := db.DB.Exec(schema); err != nil {
-		return fmt.Errorf("init schema: %w", err)
+	if len(statements) > 0 {
+		if err := execStatements(db.DB, statements); err != nil {
+			return fmt.Errorf("init schema: %w", err)
+		}
+	} else {
+		if _, err := db.DB.Exec(schema); err != nil {
+			return fmt.Errorf("init schema: %w", err)
+		}
 	}
 
 	// Ensure optional columns exist even for older databases.
@@ -680,6 +790,22 @@ CREATE INDEX IF NOT EXISTS idx_short_links_created
 		return fmt.Errorf("add realtime metadata column: %w", err)
 	}
 
+	return nil
+}
+
+// execStatements executes a slice of DDL statements sequentially so engines that
+// do not support multi-statement Exec calls (e.g. ClickHouse HTTP) still boot
+// correctly. We trim whitespace to stay tolerant of blank entries.
+func execStatements(db *sql.DB, stmts []string) error {
+	for _, raw := range stmts {
+		stmt := strings.TrimSpace(raw)
+		if stmt == "" {
+			continue
+		}
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -709,6 +835,10 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 				return err
 			}
 		}
+		return nil
+
+	case "clickhouse":
+		// ClickHouse schema already ships with the extended columns, so no ALTER needed.
 		return nil
 
 	default:
@@ -774,6 +904,10 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 		}
 		return nil
 
+	case "clickhouse":
+		// Tables created for ClickHouse already contain the optional metadata columns.
+		return nil
+
 	default:
 		// SQLite-style engines require manual detection before issuing ALTER TABLE statements.
 		rows, err := db.DB.Query(`PRAGMA table_info(realtime_measurements);`)
@@ -831,6 +965,13 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 		batch = 500
 	}
 
+	var exec sqlExecutor
+	if tx != nil {
+		exec = tx
+	} else {
+		exec = db.DB
+	}
+
 	ph := func(n int) string {
 		if strings.EqualFold(dbType, "pgx") {
 			return fmt.Sprintf("$%d", n)
@@ -879,6 +1020,55 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			}
 			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
 
+		case "clickhouse":
+			usable := make([]Marker, 0, len(chunk))
+			for j := range chunk {
+				idx := i + j
+				probe := markers[idx]
+				exists, err := db.markerExistsClickHouse(probe)
+				if err != nil {
+					return fmt.Errorf("clickhouse marker exists check: %w", err)
+				}
+				if exists {
+					continue
+				}
+				if probe.ID == 0 {
+					probe.ID = <-db.idGenerator
+					markers[idx].ID = probe.ID
+				}
+				usable = append(usable, probe)
+			}
+			if len(usable) == 0 {
+				i = end
+				continue
+			}
+
+			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+			argn := 0
+			const cols = 14
+			for j, m := range usable {
+				if j > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("(")
+				for k := 0; k < cols; k++ {
+					if k > 0 {
+						sb.WriteString(",")
+					}
+					argn++
+					sb.WriteString(ph(argn))
+				}
+				sb.WriteString(")")
+				args = append(args,
+					m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
+					m.CountRate, m.Zoom, m.Speed, m.TrackID,
+					nullableFloat64(m.AltitudeValid, m.Altitude),
+					m.Detector, m.Radiation,
+					nullableFloat64(m.TemperatureValid, m.Temperature),
+					nullableFloat64(m.HumidityValid, m.Humidity),
+				)
+			}
+
 		default:
 			// SQLite / Chai: keep explicit ids to avoid PRIMARY KEY clashes when aggregating zooms.
 			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
@@ -913,7 +1103,11 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			sb.WriteString(" ON CONFLICT DO NOTHING")
 		}
 
-		if _, err := tx.Exec(sb.String(), args...); err != nil {
+		if sb.Len() == 0 {
+			i = end
+			continue
+		}
+		if _, err := exec.Exec(sb.String(), args...); err != nil {
 			return fmt.Errorf("bulk exec: %w", err)
 		}
 		i = end
@@ -941,6 +1135,29 @@ INSERT INTO markers
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.DoseRate, m.Date, m.Lon, m.Lat,
+			m.CountRate, m.Zoom, m.Speed, m.TrackID,
+			nullableFloat64(m.AltitudeValid, m.Altitude),
+			m.Detector, m.Radiation,
+			nullableFloat64(m.TemperatureValid, m.Temperature),
+			nullableFloat64(m.HumidityValid, m.Humidity))
+		return err
+
+	case "clickhouse":
+		exists, err := db.markerExistsClickHouse(m)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+		if m.ID == 0 {
+			m.ID = <-db.idGenerator
+		}
+		_, err = exec.Exec(`
+INSERT INTO markers
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
 			nullableFloat64(m.AltitudeValid, m.Altitude),
 			m.Detector, m.Radiation,
@@ -978,6 +1195,44 @@ func nullableFloat64(valid bool, value float64) any {
 	return value
 }
 
+// markerExistsClickHouse checks for duplicates because MergeTree tables do not enforce unique keys.
+// We rely on the same composite uniqueness used for SQLite to keep behaviour consistent.
+func (db *Database) markerExistsClickHouse(m Marker) (bool, error) {
+	if db == nil || db.DB == nil {
+		return false, fmt.Errorf("database unavailable")
+	}
+	const q = `SELECT 1 FROM markers WHERE doseRate = ? AND date = ? AND lon = ? AND lat = ? AND countRate = ? AND zoom = ? AND speed = ? AND trackID = ? LIMIT 1`
+	var one int
+	err := db.DB.QueryRow(q,
+		m.DoseRate, m.Date, m.Lon, m.Lat,
+		m.CountRate, m.Zoom, m.Speed, m.TrackID,
+	).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// realtimeExistsClickHouse prevents duplicate realtime rows without relying on UNIQUE constraints.
+func (db *Database) realtimeExistsClickHouse(deviceID string, measuredAt int64) (bool, error) {
+	if db == nil || db.DB == nil {
+		return false, fmt.Errorf("database unavailable")
+	}
+	const q = `SELECT 1 FROM realtime_measurements WHERE device_id = ? AND measured_at = ? LIMIT 1`
+	var one int
+	err := db.DB.QueryRow(q, deviceID, measuredAt).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
@@ -989,6 +1244,25 @@ INSERT INTO realtime_measurements
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
+		return err
+
+	case "clickhouse":
+		exists, err := db.realtimeExistsClickHouse(m.DeviceID, m.MeasuredAt)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+		if m.ID == 0 {
+			m.ID = <-db.idGenerator
+		}
+		_, err = db.DB.Exec(`
+INSERT INTO realtime_measurements
+      (id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
 		return err
 
@@ -1210,9 +1484,19 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 			continue // stationary sensors stay in realtime table
 		}
 
-		tx, err := db.DB.Begin()
-		if err != nil {
-			return err
+		useTx := !strings.EqualFold(dbType, "clickhouse")
+		var (
+			tx   *sql.Tx
+			exec sqlExecutor
+		)
+		if useTx {
+			tx, err = db.DB.Begin()
+			if err != nil {
+				return err
+			}
+			exec = tx
+		} else {
+			exec = db.DB
 		}
 		for _, m := range ms {
 			// Normalise CPM before storing in the historical markers table.
@@ -1236,17 +1520,23 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 				Speed:     0,
 				TrackID:   id,
 			}
-			if err := db.SaveMarkerAtomic(tx, marker, dbType); err != nil {
-				tx.Rollback()
+			if err := db.SaveMarkerAtomic(exec, marker, dbType); err != nil {
+				if tx != nil {
+					tx.Rollback()
+				}
 				return err
 			}
 		}
-		if err := db.deleteRealtimeDevice(tx, id, dbType); err != nil {
-			tx.Rollback()
+		if err := db.deleteRealtimeDevice(exec, id, dbType); err != nil {
+			if tx != nil {
+				tx.Rollback()
+			}
 			return err
 		}
-		if err := tx.Commit(); err != nil {
-			return err
+		if tx != nil {
+			if err := tx.Commit(); err != nil {
+				return err
+			}
 		}
 	}
 	return <-errc
