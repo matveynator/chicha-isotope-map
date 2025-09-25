@@ -3005,9 +3005,15 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return translations["en"][key]
 		},
-		"toJSON": func(data interface{}) (string, error) {
+		"toJS": func(data interface{}) (template.JS, error) {
+			// We marshal straight into template.JS so the browser receives ready-made
+			// literals.  Escaping here prevents html/template from breaking out of
+			// string contexts and fixes the "non-text context" execution error.
 			bytes, err := json.Marshal(data)
-			return string(bytes), err
+			if err != nil {
+				return template.JS(""), err
+			}
+			return template.JS(bytes), nil
 		},
 	}).ParseFS(content, "public_html/map.html"))
 
@@ -3154,9 +3160,14 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return translations["en"][key]
 		},
-		"toJSON": func(v any) (string, error) {
+		"toJS": func(v any) (template.JS, error) {
+			// Returning template.JS keeps map.html inside a valid JavaScript context,
+			// so we can inject marker arrays without triggering auto-escaping issues.
 			b, err := json.Marshal(v)
-			return string(b), err
+			if err != nil {
+				return template.JS(""), err
+			}
+			return template.JS(b), nil
 		},
 	}).ParseFS(content, "public_html/map.html"))
 
