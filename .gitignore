@@ -13,4 +13,5 @@
 *.duckdb-wal
 binaries
 chicha-isotope-map
+selfupgrade-cache
 certs
