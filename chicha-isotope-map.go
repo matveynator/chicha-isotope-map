@@ -60,14 +60,15 @@ var content embed.FS
 var doseData database.Data
 
 var domain = flag.String("domain", "", "Use 80 and 443 ports. Automatic HTTPS cert via Let's Encrypt.")
-var dbType = flag.String("db-type", "sqlite", "Type of the database driver: chai, sqlite, duckdb, or pgx (postgresql)")
-var dbPath = flag.String("db-path", "", "Path to the database file(defaults to the current folder, applicable for chai, sqlite drivers.)")
-var dbHost = flag.String("db-host", "127.0.0.1", "Database host (applicable for pgx driver)")
-var dbPort = flag.Int("db-port", 5432, "Database port (applicable for pgx driver)")
-var dbUser = flag.String("db-user", "postgres", "Database user (applicable for pgx driver)")
-var dbPass = flag.String("db-pass", "", "Database password (applicable for pgx driver)")
-var dbName = flag.String("db-name", "IsotopePathways", "Database name (applicable for pgx driver)")
+var dbType = flag.String("db-type", "sqlite", "Type of the database driver: chai, sqlite, duckdb, pgx (PostgreSQL), or clickhouse")
+var dbPath = flag.String("db-path", "", "Path to the database file (defaults to the current folder, applicable for chai, sqlite, duckdb)")
+var dbHost = flag.String("db-host", "127.0.0.1", "Database host (used by pgx and clickhouse)")
+var dbPort = flag.Int("db-port", 5432, "Database port (pgx defaults to 5432, clickhouse commonly uses 9000)")
+var dbUser = flag.String("db-user", "postgres", "Database user (pgx or clickhouse)")
+var dbPass = flag.String("db-pass", "", "Database password (pgx or clickhouse)")
+var dbName = flag.String("db-name", "IsotopePathways", "Database name (pgx or clickhouse)")
 var pgSSLMode = flag.String("pg-ssl-mode", "prefer", "PostgreSQL SSL mode: disable, allow, prefer, require, verify-ca, or verify-full")
+var clickhouseSecure = flag.Bool("clickhouse-secure", false, "Enable TLS for clickhouse connections")
 var port = flag.Int("port", 8765, "Port for running the server")
 var version = flag.Bool("version", false, "Show the application version")
 var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
@@ -223,6 +224,8 @@ func selfUpgradeDatabaseInfo(cfg database.Config) (driver, dsn string) {
 	case "pgx":
 		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
 			cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.PGSSLMode)
+	case "clickhouse":
+		dsn = database.ClickHouseDSNFromConfig(cfg)
 	}
 	return driver, dsn
 }
@@ -2538,17 +2541,23 @@ func processAndStoreMarkers(
 	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoom))
 
 	// ── step 6: single transaction + multi-row VALUES ───────────────
-	tx, err := db.DB.Begin()
-	if err != nil {
-		return bbox, trackID, err
-	}
-	// Batch size 500–1000 usually gives a good balance on large B-Trees.
-	if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
-		_ = tx.Rollback()
-		return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return bbox, trackID, err
+	if strings.EqualFold(dbType, "clickhouse") {
+		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000); err != nil {
+			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
+		}
+	} else {
+		tx, err := db.DB.Begin()
+		if err != nil {
+			return bbox, trackID, err
+		}
+		// Batch size 500–1000 usually gives a good balance on large B-Trees.
+		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
+			_ = tx.Rollback()
+			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return bbox, trackID, err
+		}
 	}
 
 	logT(trackID, "Store", "✔ stored (new %d markers)", len(allZoom))
@@ -3671,15 +3680,16 @@ func main() {
 
 	// 3. База данных
 	dbCfg := database.Config{
-		DBType:    *dbType,
-		DBPath:    *dbPath,
-		DBHost:    *dbHost,
-		DBPort:    *dbPort,
-		DBUser:    *dbUser,
-		DBPass:    *dbPass,
-		DBName:    *dbName,
-		PGSSLMode: *pgSSLMode,
-		Port:      *port,
+		DBType:      *dbType,
+		DBPath:      *dbPath,
+		DBHost:      *dbHost,
+		DBPort:      *dbPort,
+		DBUser:      *dbUser,
+		DBPass:      *dbPass,
+		DBName:      *dbName,
+		PGSSLMode:   *pgSSLMode,
+		ClickSecure: *clickhouseSecure,
+		Port:        *port,
 	}
 	var err error
 	db, err = database.NewDatabase(dbCfg)
