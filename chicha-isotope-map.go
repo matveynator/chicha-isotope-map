@@ -90,6 +90,49 @@ var cliUsageSections = []usageSection{
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
 
+// cliColorTheme centralises ANSI escape sequences so we can keep colourful help output
+// consistent while still falling back to plain text when stdout is redirected. By
+// wrapping colour codes in a struct we avoid scattering control characters throughout
+// the printing logic and make future tweaks easier to follow.
+type cliColorTheme struct {
+	Enabled bool
+	Section string
+	Flag    string
+	Usage   string
+	Default string
+	Reset   string
+}
+
+// resolveCLIColorTheme inspects the provided writer to decide whether colourful output is
+// appropriate. We only enable ANSI sequences when stdout points to a terminal and the
+// operator has not explicitly disabled colour via NO_COLOR, aligning with the "don't
+// fight the tool" proverb by respecting common shell conventions.
+func resolveCLIColorTheme(out io.Writer) cliColorTheme {
+	theme := cliColorTheme{}
+	file, ok := out.(*os.File)
+	if !ok {
+		return theme
+	}
+	if os.Getenv("NO_COLOR") != "" {
+		return theme
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return theme
+	}
+	if (info.Mode() & os.ModeCharDevice) == 0 {
+		return theme
+	}
+
+	theme.Enabled = true
+	theme.Section = "\033[1;36m"
+	theme.Flag = "\033[1;33m"
+	theme.Usage = "\033[0;37m"
+	theme.Default = "\033[0;32m"
+	theme.Reset = "\033[0m"
+	return theme
+}
+
 // selfUpgradeFlagSet keeps the flag pointers optional so unsupported platforms
 // never register a -selfupgrade flag, following the "Make the zero value useful"
 // proverb. We also carry the default URLs so runtime decisions can fall back to
@@ -111,8 +154,14 @@ func configureCLIUsage() {
 	flag.CommandLine.SetOutput(os.Stdout)
 	flag.Usage = func() {
 		out := flag.CommandLine.Output()
+		theme := resolveCLIColorTheme(out)
+
 		fmt.Fprintf(out, "Usage: %s [flags]\n\n", os.Args[0])
-		fmt.Fprintln(out, "Flags:")
+		if theme.Enabled {
+			fmt.Fprintf(out, "%sFlags:%s\n", theme.Section, theme.Reset)
+		} else {
+			fmt.Fprintln(out, "Flags:")
+		}
 
 		printed := map[string]bool{}
 		for _, section := range cliUsageSections {
@@ -127,9 +176,13 @@ func configureCLIUsage() {
 				continue
 			}
 
-			fmt.Fprintf(out, "%s:\n", section.Title)
+			if theme.Enabled {
+				fmt.Fprintf(out, "%s%s:%s\n", theme.Section, section.Title, theme.Reset)
+			} else {
+				fmt.Fprintf(out, "%s:\n", section.Title)
+			}
 			for _, f := range sectionFlags {
-				writeFlagUsage(out, f)
+				writeFlagUsage(out, f, theme)
 			}
 			fmt.Fprintln(out)
 		}
@@ -144,10 +197,14 @@ func configureCLIUsage() {
 			return
 		}
 		sort.Strings(leftovers)
-		fmt.Fprintln(out, "Additional flags:")
+		if theme.Enabled {
+			fmt.Fprintf(out, "%sAdditional flags:%s\n", theme.Section, theme.Reset)
+		} else {
+			fmt.Fprintln(out, "Additional flags:")
+		}
 		for _, name := range leftovers {
 			if f := flag.Lookup(name); f != nil {
-				writeFlagUsage(out, f)
+				writeFlagUsage(out, f, theme)
 			}
 		}
 	}
@@ -155,16 +212,20 @@ func configureCLIUsage() {
 
 // writeFlagUsage mirrors flag.PrintDefaults but adds indentation and multiline support so the
 // help output stays legible even when descriptions contain examples.
-func writeFlagUsage(out io.Writer, f *flag.Flag) {
+func writeFlagUsage(out io.Writer, f *flag.Flag, theme cliColorTheme) {
 	if f == nil {
 		return
 	}
 	name, usage := flag.UnquoteUsage(f)
-	line := fmt.Sprintf("  -%s", f.Name)
-	if name != "" {
-		line += " " + name
+	if theme.Enabled {
+		fmt.Fprintf(out, "  %s-%s%s", theme.Flag, f.Name, theme.Reset)
+	} else {
+		fmt.Fprintf(out, "  -%s", f.Name)
 	}
-	fmt.Fprintln(out, line)
+	if name != "" {
+		fmt.Fprintf(out, " %s", name)
+	}
+	fmt.Fprintln(out)
 
 	if usage != "" {
 		for _, part := range strings.Split(usage, "\n") {
@@ -172,12 +233,20 @@ func writeFlagUsage(out io.Writer, f *flag.Flag) {
 			if part == "" {
 				continue
 			}
-			fmt.Fprintf(out, "      %s\n", part)
+			if theme.Enabled {
+				fmt.Fprintf(out, "      %s%s%s\n", theme.Usage, part, theme.Reset)
+			} else {
+				fmt.Fprintf(out, "      %s\n", part)
+			}
 		}
 	}
 
 	if def := strings.TrimSpace(f.DefValue); def != "" {
-		fmt.Fprintf(out, "      Default: %s\n", def)
+		if theme.Enabled {
+			fmt.Fprintf(out, "      %sDefault:%s %s%s%s\n", theme.Flag, theme.Reset, theme.Default, def, theme.Reset)
+		} else {
+			fmt.Fprintf(out, "      Default: %s\n", def)
+		}
 	}
 }
 
