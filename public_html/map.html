@@ -234,6 +234,25 @@ body, html {
           background: var(--control-bg-hover);
         }
 
+        /* Memory usage badge keeps operators aware of runtime footprint so heavy streams are easy to monitor. */
+        #memoryUsageDisplay {
+          position: absolute;
+          bottom: 20px;
+          left: 20px;
+          padding: 6px 8px;
+          min-width: 140px;
+          text-align: center;
+          background: var(--control-bg);
+          border: var(--legend-border);
+          border-radius: 4px;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-xs);
+          color: var(--modal-text);
+          z-index: 1000;
+          pointer-events: none; /* keep map interactions unobstructed while still reporting usage */
+        }
+
         /* API quickstart cards inside the info modal stay theme aware through shared variables. */
         #infoModal .api-heading {
           font-size: var(--font-size-xl);
@@ -1268,6 +1287,9 @@ body, html {
       <div class="spinner"></div>
     </div>
 
+    <!-- Memory usage indicator keeps operators informed about browser footprint in realtime -->
+    <div id="memoryUsageDisplay" aria-live="polite">Memory: …</div>
+
     <!-- Theme toggle -->
     <div id="themeToggle" role="button" tabindex="0" aria-label="{{translate "theme_toggle_tooltip"}}">
       <span class="theme-icon">☀️</span>
@@ -2007,6 +2029,9 @@ var markerProcessingQueue = [];
 // cancel outstanding work whenever a new viewport request starts.
 var markerProcessingTimer = null;
 
+// memoryUsageTimer polls the browser so we can display how much heap the page uses in real time.
+var memoryUsageTimer = null;
+
 // markerProcessingNow abstracts the timer source so older browsers without
 // performance.now still benefit from short work slices.
 var markerProcessingNow = (typeof performance !== 'undefined' && performance && typeof performance.now === 'function')
@@ -2025,6 +2050,83 @@ function clearPendingMarkerWork() {
 }
 
 var liveHistoryCache = new Map();
+
+/* -----------------------------------------------------------------
+ *  setupMemoryUsageMonitor() surfaces browser heap usage so operators
+ *  instantly see whether stacking keeps memory under control.
+ * -----------------------------------------------------------------*/
+function setupMemoryUsageMonitor(mapInstance) {
+  const display = document.getElementById('memoryUsageDisplay');
+  if (!display) {
+    return; // No badge means we skip monitoring entirely.
+  }
+
+  const hasPerformance = typeof performance !== 'undefined' && performance;
+  const hasHeapAPI = hasPerformance && performance.memory && typeof performance.memory.usedJSHeapSize === 'number';
+  const hasMeasureAPI = hasPerformance && typeof performance.measureUserAgentSpecificMemory === 'function';
+
+  if (!hasHeapAPI && !hasMeasureAPI) {
+    display.textContent = 'Memory: unsupported';
+    return; // Without metrics we avoid misleading numbers.
+  }
+
+  function formatMB(bytes) {
+    if (!isFinite(bytes) || bytes < 0) {
+      return '0.0';
+    }
+    return (bytes / (1024 * 1024)).toFixed(1);
+  }
+
+  function applyUsage(usedBytes, limitBytes) {
+    if (limitBytes && limitBytes > 0) {
+      display.textContent = `Memory: ${formatMB(usedBytes)} / ${formatMB(limitBytes)} MB`;
+    } else {
+      display.textContent = `Memory: ${formatMB(usedBytes)} MB`;
+    }
+  }
+
+  let sampling = false;
+
+  async function sampleUsage() {
+    if (sampling) {
+      return; // Skip overlapping polls so slower APIs never pile up.
+    }
+    sampling = true;
+    try {
+      if (hasHeapAPI) {
+        const used = performance.memory.usedJSHeapSize || 0;
+        const limit = performance.memory.jsHeapSizeLimit || performance.memory.totalJSHeapSize || 0;
+        applyUsage(used, limit);
+        return;
+      }
+      if (hasMeasureAPI) {
+        display.textContent = 'Memory: sampling…';
+        const result = await performance.measureUserAgentSpecificMemory();
+        if (result && typeof result.bytes === 'number') {
+          applyUsage(result.bytes, 0);
+        } else {
+          display.textContent = 'Memory: unavailable';
+        }
+      }
+    } catch (err) {
+      display.textContent = 'Memory: unavailable';
+    } finally {
+      sampling = false;
+    }
+  }
+
+  if (memoryUsageTimer !== null) {
+    clearInterval(memoryUsageTimer);
+  }
+
+  sampleUsage();
+  memoryUsageTimer = setInterval(sampleUsage, 5000);
+
+  if (mapInstance && typeof mapInstance.on === 'function') {
+    mapInstance.on('moveend', sampleUsage);
+    mapInstance.on('zoomend', sampleUsage);
+  }
+}
 
 
 /**
@@ -2364,6 +2466,8 @@ document.addEventListener('DOMContentLoaded', function () {
     zoom  : defaultCfg.zoom,
     layers: [startLayer],           // only one base layer
   });
+
+  setupMemoryUsageMonitor(map); // Display heap usage immediately after the map exists so sampling can hook map events.
 
   // Layer control
   var baseLayers = {
@@ -2935,7 +3039,7 @@ function getTooltipContent(marker) {
  *  overlapping markers to the most relevant ones.
  * -----------------------------------------------------------------*/
 const STACK_MAX_LAYERS = 2;                    // keep only the top two markers per stack
-const STACK_ZOOM_LIMIT = 11;                   // apply stacking up to zoom 11 so detail views show everything
+const STACK_ZOOM_LIMIT = 16;                   // apply stacking up to zoom 16 so high zoom levels always show every marker
 
 // markersOverlap returns true whenever two projected circles touch or intersect.
 // We only need a binary overlap check because any intersection means the markers cover one another visually.
@@ -3077,7 +3181,7 @@ function updateMarkers(){
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
 
-  const shouldStackMarkers = zoom <= STACK_ZOOM_LIMIT;    // disable stacking once zoomed in beyond level 11 for full detail
+  const shouldStackMarkers = zoom <= STACK_ZOOM_LIMIT;    // disable stacking once zoomed in beyond level 16 for full detail
   const markerStacks = [];                                // reset per update so stale stacks do not accumulate
 
   const params = {
