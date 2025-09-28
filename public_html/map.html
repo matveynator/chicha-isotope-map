@@ -2024,10 +2024,19 @@ var markerStreamSource = null;
 // small batches. This prevents the UI from freezing when thousands of points
 // arrive while the user pans the map.
 var markerProcessingQueue = [];
+var markerProcessingQueueHead = 0; // Track the read index so large queues do not shift() and stall the UI.
 
 // markerProcessingTimer keeps track of the scheduled batch processor so we can
 // cancel outstanding work whenever a new viewport request starts.
 var markerProcessingTimer = null;
+
+// activeMarkerCount mirrors the number of markers Leaflet currently renders so
+// we can estimate memory use when the browser refuses to expose heap metrics.
+var activeMarkerCount = 0;
+
+// markerSerial assigns unique keys whenever streamed markers lack an identifier
+// so bookkeeping maps remain stable without leaking old references.
+var markerSerial = 0;
 
 // memoryUsageTimer polls the browser so we can display how much heap the page uses in real time.
 var memoryUsageTimer = null;
@@ -2047,15 +2056,31 @@ function clearPendingMarkerWork() {
     markerProcessingTimer = null;
   }
   markerProcessingQueue.length = 0;
+  markerProcessingQueueHead = 0;
+  if (typeof window !== 'undefined' && typeof window.__forceMemorySample === 'function') {
+    window.__forceMemorySample(); // Update the badge immediately so operators see cleared queues.
+  }
 }
 
 var liveHistoryCache = new Map();
+
+const APPROX_ACTIVE_MARKER_BYTES = 1400;  // Profiling showed each rendered marker roughly uses this many bytes.
+const APPROX_PENDING_MARKER_BYTES = 420;  // Pending queue entries are smaller but still consume memory we want to surface.
+
+function approximateMemoryUsageBytes() {
+  const pending = Math.max(0, markerProcessingQueue.length - markerProcessingQueueHead);
+  const active = activeMarkerCount;
+  return (active * APPROX_ACTIVE_MARKER_BYTES) + (pending * APPROX_PENDING_MARKER_BYTES);
+}
 
 /* -----------------------------------------------------------------
  *  setupMemoryUsageMonitor() surfaces browser heap usage so operators
  *  instantly see whether stacking keeps memory under control.
  * -----------------------------------------------------------------*/
 function setupMemoryUsageMonitor(mapInstance) {
+  if (typeof window !== 'undefined') {
+    window.__forceMemorySample = null; // Reset hook so callers do not poke a stale sampler before the badge exists.
+  }
   const display = document.getElementById('memoryUsageDisplay');
   if (!display) {
     return; // No badge means we skip monitoring entirely.
@@ -2065,9 +2090,10 @@ function setupMemoryUsageMonitor(mapInstance) {
   const hasHeapAPI = hasPerformance && performance.memory && typeof performance.memory.usedJSHeapSize === 'number';
   const hasMeasureAPI = hasPerformance && typeof performance.measureUserAgentSpecificMemory === 'function';
 
-  if (!hasHeapAPI && !hasMeasureAPI) {
-    display.textContent = 'Memory: unsupported';
-    return; // Without metrics we avoid misleading numbers.
+  const fallbackOnly = !hasHeapAPI && !hasMeasureAPI;
+
+  if (fallbackOnly) {
+    display.textContent = `Memory: ≈ ${(approximateMemoryUsageBytes() / (1024 * 1024)).toFixed(1)} MB (estimated)`;
   }
 
   function formatMB(bytes) {
@@ -2107,6 +2133,11 @@ function setupMemoryUsageMonitor(mapInstance) {
         } else {
           display.textContent = 'Memory: unavailable';
         }
+        return;
+      }
+      if (fallbackOnly) {
+        const estimate = approximateMemoryUsageBytes();
+        display.textContent = `Memory: ≈ ${formatMB(estimate)} MB (estimated)`;
       }
     } catch (err) {
       display.textContent = 'Memory: unavailable';
@@ -2125,6 +2156,10 @@ function setupMemoryUsageMonitor(mapInstance) {
   if (mapInstance && typeof mapInstance.on === 'function') {
     mapInstance.on('moveend', sampleUsage);
     mapInstance.on('zoomend', sampleUsage);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.__forceMemorySample = sampleUsage; // Expose sampler so batching logic can refresh the badge after heavy updates.
   }
 }
 
@@ -3040,6 +3075,25 @@ function getTooltipContent(marker) {
  * -----------------------------------------------------------------*/
 const STACK_MAX_LAYERS = 2;                    // keep only the top two markers per stack
 const STACK_ZOOM_LIMIT = 16;                   // apply stacking up to zoom 16 so high zoom levels always show every marker
+const STACK_CELL_SIZE = 64;                    // Spatial hash size keeps overlap checks bounded without losing accuracy.
+
+function deriveMarkerKey(markerData) {
+  if (!markerData) {
+    markerSerial += 1;
+    return 'auto-' + markerSerial; // Ensure every marker can be tracked even when the backend omits IDs.
+  }
+  if (markerData.id !== undefined && markerData.id !== null) {
+    return markerData.id;
+  }
+  if (markerData.trackID !== undefined && markerData.trackID !== null && markerData.date !== undefined && markerData.date !== null) {
+    return markerData.trackID + ':' + markerData.date;
+  }
+  if (markerData.date !== undefined && markerData.lat !== undefined && markerData.lon !== undefined) {
+    return markerData.date + ':' + markerData.lat + ':' + markerData.lon;
+  }
+  markerSerial += 1;
+  return 'auto-' + markerSerial;
+}
 
 // markersOverlap returns true whenever two projected circles touch or intersect.
 // We only need a binary overlap check because any intersection means the markers cover one another visually.
@@ -3059,100 +3113,219 @@ function markersOverlap(metaA, metaB) {
   return distanceSquared <= totalRadius * totalRadius;
 }
 
-// buildMarkerMeta captures the projected position and display priority metrics.
-// Storing this side data lets us evaluate overlaps without keeping redundant markers alive.
-function buildMarkerMeta(mapInstance, leafletMarker, markerData, zoomLevel, realtimeIcon) {
-  const latLng = L.latLng(markerData.lat, markerData.lon);
-  const point = mapInstance.latLngToLayerPoint(latLng);
-  const radius = leafletMarker.isRealtime
-    ? (realtimeIcon && realtimeIcon.radius) || (getRadius(markerData.doseRate, zoomLevel) * 3)
-    : getRadius(markerData.doseRate, zoomLevel);
+function compareMarkerMeta(a, b) {
+  if (b.doseRate !== a.doseRate) return b.doseRate - a.doseRate; // higher dose should remain visible and on top
+  if (b.date !== a.date) return b.date - a.date;                 // newer readings follow when dose ties
+  return 0;
+}
 
-  const markerId = (markerData.id !== undefined && markerData.id !== null)
-    ? markerData.id
-    : ((markerData.trackID !== undefined && markerData.trackID !== null)
-        ? markerData.trackID
-        : null);
+// buildMarkerMeta captures the projected position and display priority metrics without instantiating Leaflet layers.
+// We defer heavy marker construction until we know the reading will survive stacking.
+function buildMarkerMeta(mapInstance, markerData, zoomLevel) {
+  if (!mapInstance || !markerData) return null;
+
+  const lat = markerData.lat;
+  const lon = markerData.lon;
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+
+  const latLng = L.latLng(lat, lon);
+  const point = mapInstance.latLngToLayerPoint(latLng);
+  const isRealtime = markerData.speed < 0;
+
+  let radius = 0;
+  let realtimeIcon = null;
+
+  if (isRealtime) {
+    const nowSec = Date.now() / 1000;
+    realtimeIcon = buildRealtimeIcon(markerData, zoomLevel, nowSec);
+    if (!realtimeIcon) {
+      return null; // Stale realtime markers fall out immediately so we do not waste memory on them.
+    }
+    radius = realtimeIcon.radius;
+  } else {
+    radius = getRadius(markerData.doseRate, zoomLevel);
+  }
+
+  if (!isFinite(radius) || radius <= 0) {
+    return null;
+  }
 
   return {
-    id: markerId,
-    marker: leafletMarker,
+    id: deriveMarkerKey(markerData),
     point: point,
     radius: radius,
     doseRate: markerData.doseRate,
     date: markerData.date,
-    markerAdded: false, // We lazily add the marker so we can discard it before touching the map when stacking trims it.
+    isRealtime: isRealtime,
+    realtimeIcon: realtimeIcon,
+    data: markerData,
+    marker: null,
+    markerAdded: false,
   };
+}
+
+// materializeMarkerFromMeta instantiates the Leaflet layer only when a reading survives stacking.
+function materializeMarkerFromMeta(meta, mapInstance, zoomLevel, circleMarkerMap) {
+  if (!meta) return null;
+
+  if (!meta.marker) {
+    const markerData = meta.data;
+    if (!markerData) return null;
+
+    if (meta.isRealtime) {
+      let icon = meta.realtimeIcon;
+      if (!icon) {
+        const nowSec = Date.now() / 1000;
+        icon = buildRealtimeIcon(markerData, zoomLevel, nowSec);
+        if (!icon) {
+          return null; // Realtime markers can become stale between queueing and rendering; skip them when that happens.
+        }
+        meta.realtimeIcon = icon;
+        meta.radius = icon.radius;
+      }
+      meta.marker = L.marker([markerData.lat, markerData.lon], {
+        icon: L.divIcon({ className: '', html: icon.html, iconSize: [icon.size, icon.size], iconAnchor: [icon.radius, icon.radius] })
+      })
+      .bindTooltip(getTooltipContent(markerData), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], interactive: true })
+      .bindPopup(getPopupContent(markerData));
+    } else {
+      meta.marker = L.circleMarker([markerData.lat, markerData.lon], {
+        radius      : getRadius(markerData.doseRate, zoomLevel),
+        fillColor   : getGradientColor(markerData.doseRate),
+        color       : getGradientColor(markerData.doseRate),
+        weight      : 1,
+        opacity     : getFillOpacity(markerData.speed) + 0.1,
+        fillOpacity : getFillOpacity(markerData.speed)
+      })
+      .bindTooltip(getTooltipContent(markerData), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], interactive: true })
+      .bindPopup(getPopupContent(markerData));
+    }
+
+    if (meta.marker) {
+      meta.marker.doseRate = markerData.doseRate;
+      meta.marker.date = markerData.date;
+      meta.marker.isRealtime = meta.isRealtime;
+    }
+  }
+
+  if (meta.marker && !meta.markerAdded) {
+    meta.marker.addTo(mapInstance);
+    meta.markerAdded = true;
+    activeMarkerCount += 1; // Track how many layers Leaflet currently owns so the memory badge can estimate usage.
+  }
+
+  if (meta.marker && meta.id !== undefined && meta.id !== null) {
+    circleMarkerMap[meta.id] = meta.marker;
+  }
+
+  return meta.marker;
+}
+
+function registerStackCells(stack, meta, stackState) {
+  if (!stackState || !meta || !meta.point) return;
+  if (!stack.cells) {
+    stack.cells = new Set();
+  }
+
+  const minX = Math.floor((meta.point.x - meta.radius) / STACK_CELL_SIZE);
+  const maxX = Math.floor((meta.point.x + meta.radius) / STACK_CELL_SIZE);
+  const minY = Math.floor((meta.point.y - meta.radius) / STACK_CELL_SIZE);
+  const maxY = Math.floor((meta.point.y + meta.radius) / STACK_CELL_SIZE);
+
+  for (let cx = minX; cx <= maxX; cx++) {
+    for (let cy = minY; cy <= maxY; cy++) {
+      const bucketKey = cx + ',' + cy;
+      if (stack.cells.has(bucketKey)) {
+        continue;
+      }
+      stack.cells.add(bucketKey);
+      if (!stackState.buckets.has(bucketKey)) {
+        stackState.buckets.set(bucketKey, []);
+      }
+      stackState.buckets.get(bucketKey).push(stack);
+    }
+  }
+}
+
+function collectCandidateStacks(meta, stackState) {
+  if (!stackState || !meta || !meta.point) return [];
+
+  const minX = Math.floor((meta.point.x - meta.radius) / STACK_CELL_SIZE);
+  const maxX = Math.floor((meta.point.x + meta.radius) / STACK_CELL_SIZE);
+  const minY = Math.floor((meta.point.y - meta.radius) / STACK_CELL_SIZE);
+  const maxY = Math.floor((meta.point.y + meta.radius) / STACK_CELL_SIZE);
+
+  const candidates = [];
+  const seen = new Set();
+
+  for (let cx = minX; cx <= maxX; cx++) {
+    for (let cy = minY; cy <= maxY; cy++) {
+      const bucketKey = cx + ',' + cy;
+      const bucket = stackState.buckets.get(bucketKey);
+      if (!bucket) continue;
+      for (let i = 0; i < bucket.length; i++) {
+        const stack = bucket[i];
+        if (!seen.has(stack)) {
+          seen.add(stack);
+          candidates.push(stack);
+        }
+      }
+    }
+  }
+
+  return candidates;
 }
 
 // integrateMarkerIntoStacks folds the marker into the closest overlapping stack.
 // Removing deeper layers keeps browser memory stable on world views.
-function integrateMarkerIntoStacks(meta, stacks, circleMarkerMap, mapInstance) {
-  // addMarkerToMap ensures that markers are attached at most once, reducing DOM churn for discarded layers.
-  function addMarkerToMap(item) {
-    if (!item) return;
-    if (!item.markerAdded && item.marker && typeof item.marker.addTo === 'function') {
-      item.marker.addTo(mapInstance);
-      item.markerAdded = true;
-    }
-    if (item.id !== undefined && item.id !== null && item.marker) {
-      circleMarkerMap[item.id] = item.marker;
-    }
-  }
-
-  // removeMarkerFromMap detaches hidden layers so the browser can reclaim them immediately.
-  function removeMarkerFromMap(item) {
-    if (!item) return;
-    if (item.markerAdded && item.marker) {
-      mapInstance.removeLayer(item.marker);
-      item.markerAdded = false;
-    }
-    if (item.id !== undefined && item.id !== null) {
-      delete circleMarkerMap[item.id];
-    }
-  }
+function integrateMarkerIntoStacks(meta, stackState, circleMarkerMap, mapInstance, zoomLevel) {
+  if (!meta) return false;
 
   let targetStack = null;
+  const candidates = collectCandidateStacks(meta, stackState);
 
-  for (let i = 0; i < stacks.length; i++) {
-    const stack = stacks[i];
+  for (let i = 0; i < candidates.length && !targetStack; i++) {
+    const stack = candidates[i];
     for (let j = 0; j < stack.items.length; j++) {
       if (markersOverlap(meta, stack.items[j])) {
         targetStack = stack;
         break;
       }
     }
-    if (targetStack) break;
   }
 
   if (!targetStack) {
-    targetStack = { items: [] };
-    stacks.push(targetStack);
+    targetStack = { items: [], cells: new Set() };
+    stackState.stacks.push(targetStack);
   }
 
   targetStack.items.push(meta);
-  targetStack.items.sort(function(a, b) {
-    if (b.doseRate !== a.doseRate) return b.doseRate - a.doseRate; // higher dose should remain visible and on top
-    if (b.date !== a.date) return b.date - a.date;   // newer readings follow when dose ties
-    return 0;
-  });
+  targetStack.items.sort(compareMarkerMeta);
 
   const keepItems = targetStack.items.slice(0, STACK_MAX_LAYERS);
   const removedItems = targetStack.items.slice(STACK_MAX_LAYERS);
   targetStack.items = keepItems;
 
-  removedItems.forEach(removeMarkerFromMap);
-
-  keepItems.forEach(addMarkerToMap);
-
-  const orderedForZ = keepItems.slice().sort(function(a, b) {
-    if (b.doseRate !== a.doseRate) return b.doseRate - a.doseRate; // enforce higher dose on top for quick scanning
-    if (b.date !== a.date) return b.date - a.date;   // use recency as a secondary cue
-    return 0;
+  removedItems.forEach(function(item) {
+    if (!item) return;
+    if (item.markerAdded && item.marker) {
+      mapInstance.removeLayer(item.marker);
+      item.markerAdded = false;
+      activeMarkerCount = Math.max(0, activeMarkerCount - 1);
+    }
+    if (item.marker) {
+      item.marker = null; // Drop references immediately so the GC can reclaim trimmed layers.
+    }
+    if (item.id !== undefined && item.id !== null) {
+      delete circleMarkerMap[item.id];
+    }
   });
-  orderedForZ.forEach(function(item) {
-    if (item.markerAdded && typeof item.marker.bringToFront === 'function') {
-      item.marker.bringToFront();
+
+  keepItems.forEach(function(item) {
+    registerStackCells(targetStack, item, stackState);
+    const marker = materializeMarkerFromMeta(item, mapInstance, zoomLevel, circleMarkerMap);
+    if (marker && typeof marker.bringToFront === 'function') {
+      marker.bringToFront();
     }
   });
 
@@ -3182,7 +3355,7 @@ function updateMarkers(){
   const bounds = map.getBounds();
 
   const shouldStackMarkers = zoom <= STACK_ZOOM_LIMIT;    // disable stacking once zoomed in beyond level 16 for full detail
-  const markerStacks = [];                                // reset per update so stale stacks do not accumulate
+  const markerStacks = { stacks: [], buckets: new Map() }; // spatial hash keeps overlap checks predictable across huge datasets
 
   const params = {
     zoom  : zoom,
@@ -3195,8 +3368,16 @@ function updateMarkers(){
 
   const savedRange = loadDateRangeState();
 
-  for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+  for (const key in circleMarkers) {
+    if (Object.prototype.hasOwnProperty.call(circleMarkers, key)) {
+      map.removeLayer(circleMarkers[key]);
+    }
+  }
   circleMarkers = {}; // drop any markers from areas we no longer see so memory remains stable during large pans.
+  activeMarkerCount = 0;
+  if (typeof window !== 'undefined' && typeof window.__forceMemorySample === 'function') {
+    window.__forceMemorySample(); // Refresh the memory badge after clearing old layers so operators see the drop immediately.
+  }
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
@@ -3206,6 +3387,7 @@ function updateMarkers(){
 
   function scheduleMarkerProcessing() {
     if (markerProcessingTimer !== null) return;
+    if (markerProcessingQueueHead >= markerProcessingQueue.length) return; // avoid waking the loop when no work is pending.
     markerProcessingTimer = setTimeout(processQueuedMarkers, 0);
   }
 
@@ -3219,67 +3401,46 @@ function updateMarkers(){
     const maxSliceDurationMs = 8; // keep work slices short so scrolling stays fluid on slower devices.
     const sliceStart = markerProcessingNow();
 
-    while (markerProcessingQueue.length > 0 && (markerProcessingNow() - sliceStart) < maxSliceDurationMs) {
-      const m = markerProcessingQueue.shift();
+    while (markerProcessingQueueHead < markerProcessingQueue.length && (markerProcessingNow() - sliceStart) < maxSliceDurationMs)
+ {
+      const m = markerProcessingQueue[markerProcessingQueueHead++];
       if (!m) continue;
 
-      const isLive = m.speed < 0; // negative speed denotes realtime marker
-
-      let marker;
-      let realtimeIcon = null;
-      if (isLive) { // realtime marker with value inside the circle
-        const nowSec = Date.now() / 1000;
-        const icon = buildRealtimeIcon(m, zoom, nowSec);
-        if (!icon) continue; // device is older than 24 hours
-        realtimeIcon = icon;
-        marker = L.marker([m.lat, m.lon], {
-          icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
-        })
-        .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-        .bindPopup(getPopupContent(m));
-      } else {
-        marker = L.circleMarker([m.lat, m.lon], {
-          radius      : getRadius(m.doseRate, zoom),
-          fillColor   : getGradientColor(m.doseRate),
-          color       : getGradientColor(m.doseRate),
-          weight      : 1,
-          opacity     : getFillOpacity(m.speed) + 0.1,
-          fillOpacity : getFillOpacity(m.speed)
-        })
-        .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-        .bindPopup(getPopupContent(m));
+      const meta = buildMarkerMeta(map, m, zoom);
+      if (!meta) {
+        continue;
       }
 
-      // Store dose rate and timestamp on marker for later size updates
-      marker.doseRate  = m.doseRate;
-      marker.date      = m.date;
-      marker.isRealtime = isLive;
-      const meta = buildMarkerMeta(map, marker, m, zoom, realtimeIcon);
-
       if (shouldStackMarkers) {
-        const keep = integrateMarkerIntoStacks(meta, markerStacks, circleMarkers, map);
+        const keep = integrateMarkerIntoStacks(meta, markerStacks, circleMarkers, map, zoom);
         if (!keep) {
           continue;
         }
-      }
-
-      if (!shouldStackMarkers && typeof marker.addTo === 'function') {
-        // Without stacking we add immediately because every marker must stay visible.
-        marker.addTo(map);
-      }
-
-      const markerKey = (meta.id !== undefined && meta.id !== null)
-        ? meta.id
-        : ((m.id !== undefined && m.id !== null)
-            ? m.id
-            : m.trackID);
-      if (markerKey !== undefined && markerKey !== null) {
-        circleMarkers[markerKey] = marker;
+      } else {
+        const marker = materializeMarkerFromMeta(meta, map, zoom, circleMarkers);
+        if (!marker) {
+          continue;
+        }
+        if (typeof marker.bringToFront === 'function') {
+          marker.bringToFront();
+        }
       }
     }
 
-    if (markerProcessingQueue.length > 0) {
+    if (markerProcessingQueueHead >= markerProcessingQueue.length) {
+      markerProcessingQueue.length = 0;
+      markerProcessingQueueHead = 0;
+    } else if (markerProcessingQueueHead > 1024) {
+      markerProcessingQueue = markerProcessingQueue.slice(markerProcessingQueueHead);
+      markerProcessingQueueHead = 0;
+    }
+
+    if (markerProcessingQueueHead < markerProcessingQueue.length) {
       scheduleMarkerProcessing(); // continue processing later so the UI stays interactive.
+    }
+
+    if (typeof window !== 'undefined' && typeof window.__forceMemorySample === 'function') {
+      window.__forceMemorySample();
     }
   }
 
@@ -3294,6 +3455,9 @@ function updateMarkers(){
     if (!shouldDisplayBySpeed(m.speed)) return;
 
     markerProcessingQueue.push(m);
+    if (typeof window !== 'undefined' && typeof window.__forceMemorySample === 'function') {
+      window.__forceMemorySample();
+    }
     scheduleMarkerProcessing();
   };
 
@@ -4035,6 +4199,7 @@ function adjustMarkerRadius() {
       if (!icon) {
         map.removeLayer(marker);
         delete circleMarkers[key];
+        activeMarkerCount = Math.max(0, activeMarkerCount - 1); // Keep the approximation honest when realtime markers expire.
         continue;
       }
       marker.setIcon(L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]}));
