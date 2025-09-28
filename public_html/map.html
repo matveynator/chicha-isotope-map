@@ -2393,13 +2393,18 @@ function attachControlTooltip(target, options) {
 }
 
 function hideMapHints() {
-  if (map && typeof map.closePopup === 'function') {
-    map.closePopup();
+  // We guard every Leaflet interaction so pan/zoom handlers cannot trip over
+  // undefined tooltips; this keeps navigation fluid even when nothing is open.
+  if (!map) {
+    return;
   }
-  if (map && typeof map.closeTooltip === 'function') {
-    map.closeTooltip();
+  if (typeof map.closePopup === 'function' && map._popup) {
+    map.closePopup(map._popup);
   }
-  const markerKeys = Object.keys(circleMarkers || {});
+  if (typeof map.closeTooltip === 'function' && map._tooltip && typeof map._tooltip.close === 'function') {
+    map.closeTooltip(map._tooltip);
+  }
+  const markerKeys = circleMarkers ? Object.keys(circleMarkers) : [];
   for (let i = 0; i < markerKeys.length; i++) {
     const marker = circleMarkers[markerKeys[i]];
     if (!marker) {
