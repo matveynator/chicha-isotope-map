@@ -1998,6 +1998,32 @@ function refreshDownloadLink() {
 // New controller to cancel previous request
 var markerStreamSource = null;
 
+// markerProcessingQueue buffers streamed markers so we can render them in
+// small batches. This prevents the UI from freezing when thousands of points
+// arrive while the user pans the map.
+var markerProcessingQueue = [];
+
+// markerProcessingTimer keeps track of the scheduled batch processor so we can
+// cancel outstanding work whenever a new viewport request starts.
+var markerProcessingTimer = null;
+
+// markerProcessingNow abstracts the timer source so older browsers without
+// performance.now still benefit from short work slices.
+var markerProcessingNow = (typeof performance !== 'undefined' && performance && typeof performance.now === 'function')
+  ? function() { return performance.now(); }
+  : function() { return Date.now(); };
+
+// clearPendingMarkerWork flushes any queued markers and cancels in-flight
+// timers. Doing this before kicking off a new stream makes sure old data is
+// released immediately and never blocks the main thread during fast pans.
+function clearPendingMarkerWork() {
+  if (markerProcessingTimer !== null) {
+    clearTimeout(markerProcessingTimer);
+    markerProcessingTimer = null;
+  }
+  markerProcessingQueue.length = 0;
+}
+
 var liveHistoryCache = new Map();
 
 
@@ -3046,6 +3072,8 @@ function updateMarkers(){
     markerStreamSource = null; // release previous stream immediately so stale markers can be reclaimed.
   }
 
+  clearPendingMarkerWork(); // reset batched rendering so previous work cannot freeze the UI.
+
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
 
@@ -3072,6 +3100,85 @@ function updateMarkers(){
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
   markerStreamSource = es;
 
+  function scheduleMarkerProcessing() {
+    if (markerProcessingTimer !== null) return;
+    markerProcessingTimer = setTimeout(processQueuedMarkers, 0);
+  }
+
+  function processQueuedMarkers() {
+    markerProcessingTimer = null;
+    if (markerStreamSource !== es) {
+      clearPendingMarkerWork();
+      return; // a newer stream took over so we discard stale work.
+    }
+
+    const maxSliceDurationMs = 8; // keep work slices short so scrolling stays fluid on slower devices.
+    const sliceStart = markerProcessingNow();
+
+    while (markerProcessingQueue.length > 0 && (markerProcessingNow() - sliceStart) < maxSliceDurationMs) {
+      const m = markerProcessingQueue.shift();
+      if (!m) continue;
+
+      const isLive = m.speed < 0; // negative speed denotes realtime marker
+
+      let marker;
+      let realtimeIcon = null;
+      if (isLive) { // realtime marker with value inside the circle
+        const nowSec = Date.now() / 1000;
+        const icon = buildRealtimeIcon(m, zoom, nowSec);
+        if (!icon) continue; // device is older than 24 hours
+        realtimeIcon = icon;
+        marker = L.marker([m.lat, m.lon], {
+          icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
+        })
+        .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+        .bindPopup(getPopupContent(m));
+      } else {
+        marker = L.circleMarker([m.lat, m.lon], {
+          radius      : getRadius(m.doseRate, zoom),
+          fillColor   : getGradientColor(m.doseRate),
+          color       : getGradientColor(m.doseRate),
+          weight      : 1,
+          opacity     : getFillOpacity(m.speed) + 0.1,
+          fillOpacity : getFillOpacity(m.speed)
+        })
+        .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+        .bindPopup(getPopupContent(m));
+      }
+
+      // Store dose rate and timestamp on marker for later size updates
+      marker.doseRate  = m.doseRate;
+      marker.date      = m.date;
+      marker.isRealtime = isLive;
+      const meta = buildMarkerMeta(map, marker, m, zoom, realtimeIcon);
+
+      if (shouldStackMarkers) {
+        const keep = integrateMarkerIntoStacks(meta, markerStacks, circleMarkers, map);
+        if (!keep) {
+          continue;
+        }
+      }
+
+      if (!shouldStackMarkers && typeof marker.addTo === 'function') {
+        // Without stacking we add immediately because every marker must stay visible.
+        marker.addTo(map);
+      }
+
+      const markerKey = (meta.id !== undefined && meta.id !== null)
+        ? meta.id
+        : ((m.id !== undefined && m.id !== null)
+            ? m.id
+            : m.trackID);
+      if (markerKey !== undefined && markerKey !== null) {
+        circleMarkers[markerKey] = marker;
+      }
+    }
+
+    if (markerProcessingQueue.length > 0) {
+      scheduleMarkerProcessing(); // continue processing later so the UI stays interactive.
+    }
+  }
+
   es.onmessage = e => {
     if (markerStreamSource !== es) return; // ignore stale events so new view updates stay accurate and light on memory.
     let m; try { m = JSON.parse(e.data); } catch { return; }
@@ -3082,57 +3189,8 @@ function updateMarkers(){
     if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
 
-    let marker;
-    let realtimeIcon = null;
-    if (isLive) { // realtime marker with value inside the circle
-      const nowSec = Date.now() / 1000;
-      const icon = buildRealtimeIcon(m, zoom, nowSec);
-      if (!icon) return; // device is older than 24 hours
-      realtimeIcon = icon;
-      marker = L.marker([m.lat, m.lon], {
-        icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
-      })
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
-    } else {
-      marker = L.circleMarker([m.lat, m.lon], {
-        radius      : getRadius(m.doseRate, zoom),
-        fillColor   : getGradientColor(m.doseRate),
-        color       : getGradientColor(m.doseRate),
-        weight      : 1,
-        opacity     : getFillOpacity(m.speed) + 0.1,
-        fillOpacity : getFillOpacity(m.speed)
-      })
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
-    }
-
-    // Store dose rate and timestamp on marker for later size updates
-    marker.doseRate  = m.doseRate;
-    marker.date      = m.date;
-    marker.isRealtime = isLive;
-    const meta = buildMarkerMeta(map, marker, m, zoom, realtimeIcon);
-
-    if (shouldStackMarkers) {
-      const keep = integrateMarkerIntoStacks(meta, markerStacks, circleMarkers, map);
-      if (!keep) {
-        return;
-      }
-    }
-
-    if (!shouldStackMarkers && typeof marker.addTo === 'function') {
-      // Without stacking we add immediately because every marker must stay visible.
-      marker.addTo(map);
-    }
-
-    const markerKey = (meta.id !== undefined && meta.id !== null)
-      ? meta.id
-      : ((m.id !== undefined && m.id !== null)
-          ? m.id
-          : m.trackID);
-    if (markerKey !== undefined && markerKey !== null) {
-      circleMarkers[markerKey] = marker;
-    }
+    markerProcessingQueue.push(m);
+    scheduleMarkerProcessing();
   };
 
   es.addEventListener('done', () => {
@@ -3160,6 +3218,7 @@ function updateMarkers(){
     if (loadingEl) loadingEl.style.display='none';
     es.close();
     markerStreamSource = null; // drop the failing stream to free resources before retrying
+    clearPendingMarkerWork(); // ensure we stop processing stale markers when the stream errors out.
   };
 }
 
