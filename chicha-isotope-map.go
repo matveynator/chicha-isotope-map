@@ -79,6 +79,13 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
+var debugIPsFlag = flag.String("debug", "", "Comma separated IP addresses allowed to view the debug overlay")
+
+// debugIPAllowlist keeps a fast lookup of remote addresses that should see the
+// technical overlay. We keep it as a map so lookups stay O(1) without extra
+// synchronization, following "Clear is better than clever" by leaning on Go's
+// built-in map semantics.
+var debugIPAllowlist map[string]struct{}
 
 // usageSection groups CLI flags so operators can scan help output quickly. This keeps
 // the help text approachable without duplicating flag registration everywhere.
@@ -3006,6 +3013,59 @@ func marshalTemplateJS(value interface{}) (template.JS, error) {
 	return template.JS(payload), nil
 }
 
+// parseDebugAllowlist converts the comma-separated flag payload into a lookup
+// map. Returning a new map keeps the zero value useful and avoids hidden shared
+// state that could surprise future callers.
+func parseDebugAllowlist(raw string) map[string]struct{} {
+	allow := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		ip := strings.TrimSpace(part)
+		if ip == "" {
+			continue
+		}
+		allow[ip] = struct{}{}
+	}
+	return allow
+}
+
+// requestClientIP mirrors the API rate-limiter helper so template handlers can
+// decide whether to surface diagnostics. We respect X-Forwarded-For first so the
+// overlay still works when the service sits behind a proxy.
+func requestClientIP(r *http.Request) string {
+	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		candidate := strings.TrimSpace(parts[0])
+		if candidate != "" {
+			return candidate
+		}
+	}
+
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && strings.TrimSpace(host) != "" {
+		return host
+	}
+	if trimmed := strings.TrimSpace(r.RemoteAddr); trimmed != "" {
+		return trimmed
+	}
+	return ""
+}
+
+// debugEnabledForRequest checks whether the caller IP is in the allowlist.
+// Keeping the lookup in one spot makes it simple to extend later with CIDR
+// matching or runtime toggles without touching handlers.
+func debugEnabledForRequest(r *http.Request) bool {
+	if len(debugIPAllowlist) == 0 || r == nil {
+		return false
+	}
+	ip := requestClientIP(r)
+	if ip == "" {
+		return false
+	}
+	_, ok := debugIPAllowlist[ip]
+	return ok
+}
+
 func mapHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 
@@ -3054,6 +3114,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		SupportEmail      string
 		TranslationsJSON  template.JS
 		MarkersJSON       template.JS
+		DebugEnabled      bool
 	}{
 		Version:           CompileVersion,
 		Translations:      translations,
@@ -3066,6 +3127,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		SupportEmail:      strings.TrimSpace(*supportEmail),
 		TranslationsJSON:  translationsJSON,
 		MarkersJSON:       markersJSON,
+		DebugEnabled:      debugEnabledForRequest(r),
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader
@@ -3212,6 +3274,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		SupportEmail      string
 		TranslationsJSON  template.JS
 		MarkersJSON       template.JS
+		DebugEnabled      bool
 	}{
 		Version:           CompileVersion,
 		Translations:      translations,
@@ -3224,6 +3287,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		SupportEmail:      strings.TrimSpace(*supportEmail),
 		TranslationsJSON:  translationsJSON,
 		MarkersJSON:       markersJSON,
+		DebugEnabled:      debugEnabledForRequest(r),
 	}
 
 	var buf bytes.Buffer
@@ -4045,6 +4109,7 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	// 1. Флаги и версии
 	flag.Parse()
+	debugIPAllowlist = parseDebugAllowlist(*debugIPsFlag)
 	loadTranslations(content, "public_html/translations.json")
 	selfupgradeStartupDelay(log.Printf)
 

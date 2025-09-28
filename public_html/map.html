@@ -234,6 +234,31 @@ body, html {
           background: var(--control-bg-hover);
         }
 
+        /* Debug overlay hugs the short-link pill so operators can glance at the telemetry without opening devtools. */
+        #debugStats {
+          position: absolute;
+          top: 44px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: var(--overlay-bg);
+          border: var(--legend-border);
+          border-radius: 8px;
+          padding: 6px 10px;
+          font-size: var(--font-size-xxs);
+          line-height: 1.4;
+          color: var(--modal-text);
+          z-index: 1180;
+          display: none;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+          max-width: min(90vw, 520px);
+          text-align: left;
+          word-break: break-word;
+        }
+
+        #debugStats strong {
+          font-weight: 600;
+        }
+
         /* API quickstart cards inside the info modal stay theme aware through shared variables. */
         #infoModal .api-heading {
           font-size: var(--font-size-xl);
@@ -1172,6 +1197,10 @@ body, html {
       // Expose the realtime flag so the UI can hide controls when the backend keeps the feature off.
       window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
     </script>
+    <script>
+      // Flag whether the caller is on the debug allowlist so diagnostics stay hidden for regular visitors.
+      window.__debugEnabled = {{if .DebugEnabled}}true{{else}}false{{end}};
+    </script>
 
   </head>
 
@@ -1260,6 +1289,9 @@ body, html {
       tabindex="0"
       aria-live="polite"
       aria-label="{{translate "short_link_tooltip"}}"></div>
+
+    <!-- Debug metrics live directly under the short-link so operators see diagnostics without extra clicks. -->
+    <div id="debugStats" aria-live="polite" role="status"></div>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -1997,6 +2029,262 @@ function refreshDownloadLink() {
 
 // New controller to cancel previous request
 var markerStreamSource = null;
+
+// Debug overlay tracks marker streaming metrics so operators can correlate map
+// state with backend behaviour without opening the console.
+const debugOverlay = (function () {
+  const enabled = window.__debugEnabled === true;
+  const panel = enabled ? document.getElementById('debugStats') : null;
+  const jsErrors = [];
+  let metrics = null;
+  let listenersAttached = false;
+
+  function attachGlobalListeners() {
+    if (!enabled || !panel || listenersAttached) {
+      return;
+    }
+    window.addEventListener('error', function (event) {
+      if (!enabled) return;
+      const message = event && event.message ? event.message : 'JavaScript error';
+      pushJSError(message);
+    });
+    window.addEventListener('unhandledrejection', function (event) {
+      if (!enabled) return;
+      let message = 'Unhandled rejection';
+      if (event && event.reason) {
+        if (typeof event.reason === 'string') {
+          message = event.reason;
+        } else if (event.reason && typeof event.reason.message === 'string') {
+          message = event.reason.message;
+        } else {
+          message = String(event.reason);
+        }
+      }
+      pushJSError(message);
+    });
+    listenersAttached = true;
+  }
+
+  function pushJSError(message) {
+    jsErrors.push({ message: message, time: Date.now() });
+    if (jsErrors.length > 5) {
+      jsErrors.shift();
+    }
+    render();
+  }
+
+  function readMemory() {
+    if (typeof performance !== 'undefined' && performance && performance.memory) {
+      const mem = performance.memory;
+      return { used: mem.usedJSHeapSize, total: mem.totalJSHeapSize };
+    }
+    return null;
+  }
+
+  function formatBytes(bytes) {
+    if (typeof bytes !== 'number' || !isFinite(bytes)) {
+      return 'n/a';
+    }
+    if (Math.abs(bytes) < 1024) {
+      return bytes.toFixed(0) + ' B';
+    }
+    const mb = bytes / (1024 * 1024);
+    return mb.toFixed(1) + ' MB';
+  }
+
+  function formatDuration(ms) {
+    if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) {
+      return 'n/a';
+    }
+    if (ms < 1000) {
+      return ms.toFixed(0) + ' ms';
+    }
+    return (ms / 1000).toFixed(2) + ' s';
+  }
+
+  function initialiseMetrics() {
+    metrics = {
+      requestStart: performance.now(),
+      firstMarkerAt: null,
+      lastMarkerAt: null,
+      totalMarkers: 0,
+      visibleMarkers: 0,
+      filteredDate: 0,
+      filteredSpeed: 0,
+      filteredRealtime: 0,
+      locationCounts: new Map(),
+      maxStack: 0,
+      renderCost: 0,
+      doneAt: null,
+      memoryBefore: readMemory(),
+      memoryAfter: null,
+      backendErrors: [],
+    };
+  }
+
+  function ensureMetrics() {
+    if (!metrics) {
+      initialiseMetrics();
+    }
+    return metrics;
+  }
+
+  function locationKey(lat, lon) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return 'invalid';
+    }
+    return lat.toFixed(6) + ',' + lon.toFixed(6);
+  }
+
+  function render() {
+    if (!enabled || !panel || !metrics) {
+      if (panel) {
+        panel.style.display = 'none';
+        panel.textContent = '';
+      }
+      return;
+    }
+
+    const hasData = metrics.totalMarkers > 0 || metrics.visibleMarkers > 0 ||
+      metrics.backendErrors.length > 0 || jsErrors.length > 0 || metrics.doneAt !== null;
+    if (!hasData) {
+      panel.style.display = 'none';
+      panel.textContent = '';
+      return;
+    }
+
+    let uncovered = 0;
+    let covered = 0;
+    metrics.locationCounts.forEach(function (count) {
+      if (count <= 0) {
+        return;
+      }
+      uncovered += 1;
+      if (count > 1) {
+        covered += (count - 1);
+      }
+    });
+
+    const filteredTotal = metrics.filteredDate + metrics.filteredSpeed + metrics.filteredRealtime;
+    const expectedTotal = metrics.totalMarkers;
+    const requestDuration = metrics.doneAt !== null ? (metrics.doneAt - metrics.requestStart) : null;
+    const buildDuration = (metrics.firstMarkerAt !== null && metrics.lastMarkerAt !== null)
+      ? (metrics.lastMarkerAt - metrics.firstMarkerAt)
+      : null;
+    const renderCost = metrics.renderCost;
+    const fetchCost = requestDuration !== null ? Math.max(0, requestDuration - renderCost) : null;
+
+    let memoryUsed = 'n/a';
+    let memoryFreed = 'n/a';
+    if (metrics.memoryBefore && metrics.memoryAfter) {
+      const usedDelta = metrics.memoryAfter.used - metrics.memoryBefore.used;
+      if (usedDelta >= 0) {
+        memoryUsed = formatBytes(usedDelta);
+        memoryFreed = formatBytes(0);
+      } else {
+        memoryUsed = formatBytes(0);
+        memoryFreed = formatBytes(-usedDelta);
+      }
+    }
+
+    const latestJSError = jsErrors.length > 0 ? jsErrors[jsErrors.length - 1].message : 'none';
+    const backendErrors = metrics.backendErrors.length > 0 ? metrics.backendErrors.join('; ') : 'none';
+
+    const lines = [
+      `<div><strong>Markers:</strong> ${metrics.visibleMarkers} visible / ${expectedTotal} fetched (filtered ${filteredTotal})</div>`,
+      `<div><strong>Coverage:</strong> uncovered ${uncovered}, covered ${covered}, max stack ${metrics.maxStack}</div>`,
+      `<div><strong>Timing:</strong> fetch ${formatDuration(fetchCost)}, render ${formatDuration(renderCost)}, build ${formatDuration(buildDuration)}</div>`,
+      `<div><strong>Request:</strong> total ${formatDuration(requestDuration)}</div>`,
+      `<div><strong>Memory:</strong> used ${memoryUsed}, freed ${memoryFreed}</div>`,
+      `<div><strong>Expected:</strong> ${expectedTotal} markers</div>`,
+      `<div><strong>JS errors:</strong> ${latestJSError}</div>`,
+      `<div><strong>Backend errors:</strong> ${backendErrors}</div>`
+    ];
+
+    panel.style.display = 'block';
+    panel.innerHTML = lines.join('');
+  }
+
+  attachGlobalListeners();
+
+  return {
+    enabled: enabled,
+    startRequest: function () {
+      if (!enabled) {
+        return;
+      }
+      attachGlobalListeners();
+      initialiseMetrics();
+      render();
+    },
+    noteIncoming: function () {
+      if (!enabled) {
+        return;
+      }
+      const current = ensureMetrics();
+      current.totalMarkers += 1;
+    },
+    noteFiltered: function (reason) {
+      if (!enabled || !metrics) {
+        return;
+      }
+      if (reason === 'date') {
+        metrics.filteredDate += 1;
+      } else if (reason === 'speed') {
+        metrics.filteredSpeed += 1;
+      } else {
+        metrics.filteredRealtime += 1;
+      }
+      render();
+    },
+    noteRendered: function (marker, renderDuration) {
+      if (!enabled || !metrics || !marker) {
+        return;
+      }
+      const now = performance.now();
+      if (metrics.firstMarkerAt === null) {
+        metrics.firstMarkerAt = now;
+      }
+      metrics.lastMarkerAt = now;
+      metrics.visibleMarkers += 1;
+      if (typeof renderDuration === 'number' && isFinite(renderDuration)) {
+        metrics.renderCost += renderDuration;
+      }
+      const lat = Number(marker.lat);
+      const lon = Number(marker.lon);
+      const key = locationKey(lat, lon);
+      const prev = metrics.locationCounts.get(key) || 0;
+      const next = prev + 1;
+      metrics.locationCounts.set(key, next);
+      if (next > metrics.maxStack) {
+        metrics.maxStack = next;
+      }
+      render();
+    },
+    finishRequest: function () {
+      if (!enabled || !metrics) {
+        return;
+      }
+      if (metrics.doneAt === null) {
+        metrics.doneAt = performance.now();
+        metrics.memoryAfter = readMemory();
+      }
+      render();
+    },
+    recordBackendError: function (message) {
+      if (!enabled || !metrics) {
+        return;
+      }
+      if (message && message.trim() !== '') {
+        metrics.backendErrors.push(message.trim());
+        if (metrics.backendErrors.length > 5) {
+          metrics.backendErrors = metrics.backendErrors.slice(-5);
+        }
+      }
+      render();
+    }
+  };
+})();
 
 var liveHistoryCache = new Map();
 
@@ -2911,6 +3199,8 @@ function updateMarkers(){
   const loadingEl = document.getElementById('loadingOverlay');
   if (loadingEl) loadingEl.style.display='block';
 
+  debugOverlay.startRequest();
+
   if (markerStreamSource) markerStreamSource.close();
 
   const zoom   = map.getZoom();
@@ -2938,18 +3228,29 @@ function updateMarkers(){
 
   es.onmessage = e => {
     let m; try { m = JSON.parse(e.data); } catch { return; }
+    debugOverlay.noteIncoming();
     const isLive = m.speed < 0; // negative speed denotes realtime marker
     if (!isLive && m.trackID) tracks.add(m.trackID);
     minTs = Math.min(minTs, m.date);
     maxTs = Math.max(maxTs, m.date);
-    if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
-    if (!shouldDisplayBySpeed(m.speed)) return;
+    if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) {
+      debugOverlay.noteFiltered('date');
+      return;
+    }
+    if (!shouldDisplayBySpeed(m.speed)) {
+      debugOverlay.noteFiltered('speed');
+      return;
+    }
 
     let marker;
+    const renderStart = performance.now();
     if (isLive) { // realtime marker with value inside the circle
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
-      if (!icon) return; // device is older than 24 hours
+      if (!icon) {
+        debugOverlay.noteFiltered('realtime');
+        return; // device is older than 24 hours
+      }
       marker = L.marker([m.lat, m.lon], {
         icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
       })
@@ -2969,6 +3270,9 @@ function updateMarkers(){
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
     }
+
+    const renderEnd = performance.now();
+    debugOverlay.noteRendered(m, renderEnd - renderStart);
 
     // Store dose rate and timestamp on marker for later size updates
     marker.doseRate  = m.doseRate;
@@ -2992,11 +3296,14 @@ function updateMarkers(){
       window.__syncDateSliders(minTs, maxTs);
     }
     if (loadingEl) loadingEl.style.display='none';
+    debugOverlay.finishRequest();
     es.close();
   });
 
   es.onerror = () => {
     if (loadingEl) loadingEl.style.display='none';
+    debugOverlay.recordBackendError('stream error');
+    debugOverlay.finishRequest();
     es.close();
   };
 }
