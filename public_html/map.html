@@ -2904,6 +2904,136 @@ function getTooltipContent(marker) {
 }
 
 
+/* -----------------------------------------------------------------
+ *  Marker stacking helpers keep global views responsive by limiting
+ *  overlapping markers to the most relevant ones.
+ * -----------------------------------------------------------------*/
+const STACK_MAX_LAYERS = 2;                    // keep only the top two markers per stack
+const STACK_ZOOM_LIMIT = 11;                   // apply stacking up to zoom 11 so detail views show everything
+
+// markersOverlap returns true whenever two projected circles touch or intersect.
+// We only need a binary overlap check because any intersection means the markers cover one another visually.
+function markersOverlap(metaA, metaB) {
+  if (!metaA || !metaB) return false;
+  if (!metaA.point || !metaB.point) return false;
+
+  const r1 = metaA.radius;
+  const r2 = metaB.radius;
+  if (!(r1 > 0 && r2 > 0)) return false;
+
+  const dx = metaA.point.x - metaB.point.x;
+  const dy = metaA.point.y - metaB.point.y;
+  const distanceSquared = dx * dx + dy * dy;
+  const totalRadius = r1 + r2;
+
+  return distanceSquared <= totalRadius * totalRadius;
+}
+
+// buildMarkerMeta captures the projected position and display priority metrics.
+// Storing this side data lets us evaluate overlaps without keeping redundant markers alive.
+function buildMarkerMeta(mapInstance, leafletMarker, markerData, zoomLevel, realtimeIcon) {
+  const latLng = L.latLng(markerData.lat, markerData.lon);
+  const point = mapInstance.latLngToLayerPoint(latLng);
+  const radius = leafletMarker.isRealtime
+    ? (realtimeIcon && realtimeIcon.radius) || (getRadius(markerData.doseRate, zoomLevel) * 3)
+    : getRadius(markerData.doseRate, zoomLevel);
+
+  const markerId = (markerData.id !== undefined && markerData.id !== null)
+    ? markerData.id
+    : ((markerData.trackID !== undefined && markerData.trackID !== null)
+        ? markerData.trackID
+        : null);
+
+  return {
+    id: markerId,
+    marker: leafletMarker,
+    point: point,
+    radius: radius,
+    doseRate: markerData.doseRate,
+    date: markerData.date,
+    markerAdded: false, // We lazily add the marker so we can discard it before touching the map when stacking trims it.
+  };
+}
+
+// integrateMarkerIntoStacks folds the marker into the closest overlapping stack.
+// Removing deeper layers keeps browser memory stable on world views.
+function integrateMarkerIntoStacks(meta, stacks, circleMarkerMap, mapInstance) {
+  // addMarkerToMap ensures that markers are attached at most once, reducing DOM churn for discarded layers.
+  function addMarkerToMap(item) {
+    if (!item) return;
+    if (!item.markerAdded && item.marker && typeof item.marker.addTo === 'function') {
+      item.marker.addTo(mapInstance);
+      item.markerAdded = true;
+    }
+    if (item.id !== undefined && item.id !== null && item.marker) {
+      circleMarkerMap[item.id] = item.marker;
+    }
+  }
+
+  // removeMarkerFromMap detaches hidden layers so the browser can reclaim them immediately.
+  function removeMarkerFromMap(item) {
+    if (!item) return;
+    if (item.markerAdded && item.marker) {
+      mapInstance.removeLayer(item.marker);
+      item.markerAdded = false;
+    }
+    if (item.id !== undefined && item.id !== null) {
+      delete circleMarkerMap[item.id];
+    }
+  }
+
+  let targetStack = null;
+
+  for (let i = 0; i < stacks.length; i++) {
+    const stack = stacks[i];
+    for (let j = 0; j < stack.items.length; j++) {
+      if (markersOverlap(meta, stack.items[j])) {
+        targetStack = stack;
+        break;
+      }
+    }
+    if (targetStack) break;
+  }
+
+  if (!targetStack) {
+    targetStack = { items: [] };
+    stacks.push(targetStack);
+  }
+
+  targetStack.items.push(meta);
+  targetStack.items.sort(function(a, b) {
+    if (b.doseRate !== a.doseRate) return b.doseRate - a.doseRate; // higher dose should remain visible and on top
+    if (b.date !== a.date) return b.date - a.date;   // newer readings follow when dose ties
+    return 0;
+  });
+
+  const keepItems = targetStack.items.slice(0, STACK_MAX_LAYERS);
+  const removedItems = targetStack.items.slice(STACK_MAX_LAYERS);
+  targetStack.items = keepItems;
+
+  removedItems.forEach(removeMarkerFromMap);
+
+  keepItems.forEach(addMarkerToMap);
+
+  const orderedForZ = keepItems.slice().sort(function(a, b) {
+    if (b.doseRate !== a.doseRate) return b.doseRate - a.doseRate; // enforce higher dose on top for quick scanning
+    if (b.date !== a.date) return b.date - a.date;   // use recency as a secondary cue
+    return 0;
+  });
+  orderedForZ.forEach(function(item) {
+    if (item.markerAdded && typeof item.marker.bringToFront === 'function') {
+      item.marker.bringToFront();
+    }
+  });
+
+  for (let i = 0; i < keepItems.length; i++) {
+    if (keepItems[i] === meta) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
  */
@@ -2911,10 +3041,16 @@ function updateMarkers(){
   const loadingEl = document.getElementById('loadingOverlay');
   if (loadingEl) loadingEl.style.display='block';
 
-  if (markerStreamSource) markerStreamSource.close();
+  if (markerStreamSource) {
+    markerStreamSource.close();
+    markerStreamSource = null; // release previous stream immediately so stale markers can be reclaimed.
+  }
 
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
+
+  const shouldStackMarkers = zoom <= STACK_ZOOM_LIMIT;    // disable stacking once zoomed in beyond level 11 for full detail
+  const markerStacks = [];                                // reset per update so stale stacks do not accumulate
 
   const params = {
     zoom  : zoom,
@@ -2928,7 +3064,7 @@ function updateMarkers(){
   const savedRange = loadDateRangeState();
 
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
-  circleMarkers = {};
+  circleMarkers = {}; // drop any markers from areas we no longer see so memory remains stable during large pans.
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
@@ -2937,6 +3073,7 @@ function updateMarkers(){
   markerStreamSource = es;
 
   es.onmessage = e => {
+    if (markerStreamSource !== es) return; // ignore stale events so new view updates stay accurate and light on memory.
     let m; try { m = JSON.parse(e.data); } catch { return; }
     const isLive = m.speed < 0; // negative speed denotes realtime marker
     if (!isLive && m.trackID) tracks.add(m.trackID);
@@ -2946,14 +3083,15 @@ function updateMarkers(){
     if (!shouldDisplayBySpeed(m.speed)) return;
 
     let marker;
+    let realtimeIcon = null;
     if (isLive) { // realtime marker with value inside the circle
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
       if (!icon) return; // device is older than 24 hours
+      realtimeIcon = icon;
       marker = L.marker([m.lat, m.lon], {
         icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
       })
-      .addTo(map)
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
     } else {
@@ -2965,7 +3103,6 @@ function updateMarkers(){
         opacity     : getFillOpacity(m.speed) + 0.1,
         fillOpacity : getFillOpacity(m.speed)
       })
-      .addTo(map)
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
     }
@@ -2974,10 +3111,32 @@ function updateMarkers(){
     marker.doseRate  = m.doseRate;
     marker.date      = m.date;
     marker.isRealtime = isLive;
-    circleMarkers[m.id || m.trackID] = marker;
+    const meta = buildMarkerMeta(map, marker, m, zoom, realtimeIcon);
+
+    if (shouldStackMarkers) {
+      const keep = integrateMarkerIntoStacks(meta, markerStacks, circleMarkers, map);
+      if (!keep) {
+        return;
+      }
+    }
+
+    if (!shouldStackMarkers && typeof marker.addTo === 'function') {
+      // Without stacking we add immediately because every marker must stay visible.
+      marker.addTo(map);
+    }
+
+    const markerKey = (meta.id !== undefined && meta.id !== null)
+      ? meta.id
+      : ((m.id !== undefined && m.id !== null)
+          ? m.id
+          : m.trackID);
+    if (markerKey !== undefined && markerKey !== null) {
+      circleMarkers[markerKey] = marker;
+    }
   };
 
   es.addEventListener('done', () => {
+    if (markerStreamSource !== es) return; // another update replaced this stream already
     const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
                             ? monthsApart(minTs, maxTs) : 0;
     const needSlider = !isTrackView && tracks.size > 1 && dateSpanMonths > 1;
@@ -2993,11 +3152,14 @@ function updateMarkers(){
     }
     if (loadingEl) loadingEl.style.display='none';
     es.close();
+    markerStreamSource = null; // clear reference so a fresh update can stream new markers without keeping old data
   });
 
   es.onerror = () => {
+    if (markerStreamSource !== es) return; // if a newer stream exists we leave it alone
     if (loadingEl) loadingEl.style.display='none';
     es.close();
+    markerStreamSource = null; // drop the failing stream to free resources before retrying
   };
 }
 
