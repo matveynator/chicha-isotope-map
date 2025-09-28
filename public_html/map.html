@@ -234,23 +234,24 @@ body, html {
           background: var(--control-bg-hover);
         }
 
-        /* Memory usage badge keeps operators aware of runtime footprint so heavy streams are easy to monitor. */
+        /* Memory usage badge now lives under the short URL so the information stays near sharing tools without covering the map. */
         #memoryUsageDisplay {
           position: absolute;
-          bottom: 20px;
-          left: 20px;
-          padding: 6px 8px;
-          min-width: 140px;
-          text-align: center;
-          background: var(--control-bg);
+          top: 36px;
+          left: 50%;
+          transform: translateX(-50%);
+          margin-top: 2px;
+          padding: 2px 6px;
+          background: var(--overlay-bg);
           border: var(--legend-border);
-          border-radius: 4px;
-          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+          border-radius: 999px;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.35);
           font-family: var(--font-family-base);
-          font-size: var(--font-size-xs);
+          font-size: var(--font-size-xxs);
           color: var(--modal-text);
-          z-index: 1000;
+          z-index: 1200;
           pointer-events: none; /* keep map interactions unobstructed while still reporting usage */
+          opacity: 0.75;
         }
 
         /* API quickstart cards inside the info modal stay theme aware through shared variables. */
@@ -1280,15 +1281,15 @@ body, html {
       aria-live="polite"
       aria-label="{{translate "short_link_tooltip"}}"></div>
 
+    <!-- Memory usage indicator keeps operators informed about browser footprint in realtime -->
+    <div id="memoryUsageDisplay" aria-live="polite">Mem: …</div>
+
     <!-- Map container -->
     <div id="map"></div>
 
     <div id="loadingOverlay" class="loading-overlay" style="display:none;">
       <div class="spinner"></div>
     </div>
-
-    <!-- Memory usage indicator keeps operators informed about browser footprint in realtime -->
-    <div id="memoryUsageDisplay" aria-live="polite">Memory: …</div>
 
     <!-- Theme toggle -->
     <div id="themeToggle" role="button" tabindex="0" aria-label="{{translate "theme_toggle_tooltip"}}">
@@ -1984,6 +1985,10 @@ function getCurrentUrlParams() {
     <script>
       var map;
 var circleMarkers = {};
+var markerMetas = {};
+var lastViewportZoom = null;
+var lastViewportBounds = null;
+const controlTooltipRegistry = new Set();
 var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
@@ -2093,7 +2098,7 @@ function setupMemoryUsageMonitor(mapInstance) {
   const fallbackOnly = !hasHeapAPI && !hasMeasureAPI;
 
   if (fallbackOnly) {
-    display.textContent = `Memory: ≈ ${(approximateMemoryUsageBytes() / (1024 * 1024)).toFixed(1)} MB (estimated)`;
+    display.textContent = `Mem: ≈ ${(approximateMemoryUsageBytes() / (1024 * 1024)).toFixed(1)} MB (estimated)`;
   }
 
   function formatMB(bytes) {
@@ -2105,9 +2110,9 @@ function setupMemoryUsageMonitor(mapInstance) {
 
   function applyUsage(usedBytes, limitBytes) {
     if (limitBytes && limitBytes > 0) {
-      display.textContent = `Memory: ${formatMB(usedBytes)} / ${formatMB(limitBytes)} MB`;
+      display.textContent = `Mem: ${formatMB(usedBytes)} / ${formatMB(limitBytes)} MB`;
     } else {
-      display.textContent = `Memory: ${formatMB(usedBytes)} MB`;
+      display.textContent = `Mem: ${formatMB(usedBytes)} MB`;
     }
   }
 
@@ -2126,21 +2131,21 @@ function setupMemoryUsageMonitor(mapInstance) {
         return;
       }
       if (hasMeasureAPI) {
-        display.textContent = 'Memory: sampling…';
+        display.textContent = 'Mem: sampling…';
         const result = await performance.measureUserAgentSpecificMemory();
         if (result && typeof result.bytes === 'number') {
           applyUsage(result.bytes, 0);
         } else {
-          display.textContent = 'Memory: unavailable';
+          display.textContent = 'Mem: unavailable';
         }
         return;
       }
       if (fallbackOnly) {
         const estimate = approximateMemoryUsageBytes();
-        display.textContent = `Memory: ≈ ${formatMB(estimate)} MB (estimated)`;
+        display.textContent = `Mem: ≈ ${formatMB(estimate)} MB (estimated)`;
       }
     } catch (err) {
-      display.textContent = 'Memory: unavailable';
+      display.textContent = 'Mem: unavailable';
     } finally {
       sampling = false;
     }
@@ -2237,6 +2242,7 @@ function saveSpeedFilterState(state) {
 function attachControlTooltip(target, options) {
   if (!target) {
     return {
+      show: function noopShow() {},
       hide: function noopHide() {},
       destroy: function noopDestroy() {},
     };
@@ -2372,11 +2378,49 @@ function attachControlTooltip(target, options) {
   target.addEventListener('blur', hideTooltip);
   target.addEventListener('keydown', onKeyDown);
 
-  return {
+  const handle = {
     show: showTooltip,
     hide: hideTooltip,
-    destroy: destroyTooltip,
+    destroy: function () {
+      destroyTooltip();
+      controlTooltipRegistry.delete(handle);
+    },
   };
+
+  controlTooltipRegistry.add(handle);
+
+  return handle;
+}
+
+function hideMapHints() {
+  if (map && typeof map.closePopup === 'function') {
+    map.closePopup();
+  }
+  if (map && typeof map.closeTooltip === 'function') {
+    map.closeTooltip();
+  }
+  const markerKeys = Object.keys(circleMarkers || {});
+  for (let i = 0; i < markerKeys.length; i++) {
+    const marker = circleMarkers[markerKeys[i]];
+    if (!marker) {
+      continue;
+    }
+    if (typeof marker.closePopup === 'function') {
+      marker.closePopup();
+    }
+    if (typeof marker.closeTooltip === 'function') {
+      marker.closeTooltip();
+    }
+  }
+  controlTooltipRegistry.forEach(function(handle) {
+    if (handle && typeof handle.hide === 'function') {
+      handle.hide();
+    }
+  });
+  const stray = document.querySelectorAll('.control-tooltip--visible');
+  stray.forEach(function(el) {
+    el.classList.remove('control-tooltip--visible');
+  });
 }
 
 
@@ -2503,6 +2547,18 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   setupMemoryUsageMonitor(map); // Display heap usage immediately after the map exists so sampling can hook map events.
+
+  if (map && typeof map.on === 'function') {
+    map.on('movestart', hideMapHints);
+    map.on('zoomstart', hideMapHints);
+    map.on('dragstart', hideMapHints);
+    const mapContainer = map.getContainer ? map.getContainer() : null;
+    if (mapContainer) {
+      mapContainer.addEventListener('mouseleave', hideMapHints);
+      mapContainer.addEventListener('touchend', hideMapHints);
+      mapContainer.addEventListener('touchcancel', hideMapHints);
+    }
+  }
 
   // Layer control
   var baseLayers = {
@@ -3073,9 +3129,23 @@ function getTooltipContent(marker) {
  *  Marker stacking helpers keep global views responsive by limiting
  *  overlapping markers to the most relevant ones.
  * -----------------------------------------------------------------*/
-const STACK_MAX_LAYERS = 2;                    // keep only the top two markers per stack
-const STACK_ZOOM_LIMIT = 16;                   // apply stacking up to zoom 16 so high zoom levels always show every marker
 const STACK_CELL_SIZE = 64;                    // Spatial hash size keeps overlap checks bounded without losing accuracy.
+
+function stackLimitForZoom(zoomLevel) {
+  if (!isFinite(zoomLevel)) {
+    return 2;
+  }
+  if (zoomLevel >= 18) {
+    return Infinity; // show every marker once the operator zooms in far enough.
+  }
+  if (zoomLevel >= 17) {
+    return 4;        // keep the top four readings when zoom is 17.
+  }
+  if (zoomLevel >= 16) {
+    return 3;        // keep three readings when zoom equals 16.
+  }
+  return 2;          // default to the top two readings for all wider zoom levels.
+}
 
 function deriveMarkerKey(markerData) {
   if (!markerData) {
@@ -3214,8 +3284,14 @@ function materializeMarkerFromMeta(meta, mapInstance, zoomLevel, circleMarkerMap
     activeMarkerCount += 1; // Track how many layers Leaflet currently owns so the memory badge can estimate usage.
   }
 
+  if (meta.marker) {
+    meta.marker.__markerData = meta.data;
+    meta.marker.__stackMeta = meta;
+  }
+
   if (meta.marker && meta.id !== undefined && meta.id !== null) {
     circleMarkerMap[meta.id] = meta.marker;
+    markerMetas[meta.id] = meta;
   }
 
   return meta.marker;
@@ -3302,8 +3378,16 @@ function integrateMarkerIntoStacks(meta, stackState, circleMarkerMap, mapInstanc
   targetStack.items.push(meta);
   targetStack.items.sort(compareMarkerMeta);
 
-  const keepItems = targetStack.items.slice(0, STACK_MAX_LAYERS);
-  const removedItems = targetStack.items.slice(STACK_MAX_LAYERS);
+  const maxLayers = (stackState && typeof stackState.limit === 'number') ? stackState.limit : Infinity;
+  let keepItems;
+  let removedItems;
+  if (!isFinite(maxLayers)) {
+    keepItems = targetStack.items.slice();
+    removedItems = [];
+  } else {
+    keepItems = targetStack.items.slice(0, maxLayers);
+    removedItems = targetStack.items.slice(maxLayers);
+  }
   targetStack.items = keepItems;
 
   removedItems.forEach(function(item) {
@@ -3314,10 +3398,17 @@ function integrateMarkerIntoStacks(meta, stackState, circleMarkerMap, mapInstanc
       activeMarkerCount = Math.max(0, activeMarkerCount - 1);
     }
     if (item.marker) {
+      if (item.marker.__stackMeta) {
+        delete item.marker.__stackMeta;
+      }
+      if (item.marker.__markerData) {
+        delete item.marker.__markerData;
+      }
       item.marker = null; // Drop references immediately so the GC can reclaim trimmed layers.
     }
     if (item.id !== undefined && item.id !== null) {
       delete circleMarkerMap[item.id];
+      delete markerMetas[item.id];
     }
   });
 
@@ -3354,8 +3445,11 @@ function updateMarkers(){
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
 
-  const shouldStackMarkers = zoom <= STACK_ZOOM_LIMIT;    // disable stacking once zoomed in beyond level 16 for full detail
-  const markerStacks = { stacks: [], buckets: new Map() }; // spatial hash keeps overlap checks predictable across huge datasets
+  const previousZoom = lastViewportZoom;
+  const zoomChanged = previousZoom === null || previousZoom !== zoom;
+  const stackLimit = stackLimitForZoom(zoom);
+  const shouldStackMarkers = isFinite(stackLimit);
+  const markerStacks = shouldStackMarkers ? { stacks: [], buckets: new Map(), limit: stackLimit } : null;
 
   const params = {
     zoom  : zoom,
@@ -3368,16 +3462,101 @@ function updateMarkers(){
 
   const savedRange = loadDateRangeState();
 
-  for (const key in circleMarkers) {
-    if (Object.prototype.hasOwnProperty.call(circleMarkers, key)) {
-      map.removeLayer(circleMarkers[key]);
+  let removedAny = false;
+  if (zoomChanged) {
+    Object.keys(circleMarkers).forEach(function(key) {
+      const marker = circleMarkers[key];
+      if (marker && map.hasLayer(marker)) {
+        map.removeLayer(marker);
+        removedAny = true;
+      }
+      if (marker && marker.__stackMeta) {
+        delete marker.__stackMeta;
+      }
+      if (marker && marker.__markerData) {
+        delete marker.__markerData;
+      }
+    });
+    circleMarkers = {};
+    markerMetas = {};
+    activeMarkerCount = 0;
+  } else {
+    const keys = Object.keys(circleMarkers);
+    const survivorKeys = [];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const marker = circleMarkers[key];
+      if (!marker) {
+        delete circleMarkers[key];
+        delete markerMetas[key];
+        continue;
+      }
+      const latLng = (typeof marker.getLatLng === 'function') ? marker.getLatLng() : null;
+      if (!latLng || !bounds.contains(latLng)) {
+        if (map.hasLayer(marker)) {
+          map.removeLayer(marker);
+          removedAny = true;
+        }
+        if (marker.__stackMeta) {
+          delete marker.__stackMeta;
+        }
+        if (marker.__markerData) {
+          delete marker.__markerData;
+        }
+        delete circleMarkers[key];
+        delete markerMetas[key];
+        continue;
+      }
+      survivorKeys.push(key);
+    }
+    activeMarkerCount = survivorKeys.length;
+
+    if (shouldStackMarkers) {
+      for (let i = 0; i < survivorKeys.length; i++) {
+        const id = survivorKeys[i];
+        const marker = circleMarkers[id];
+        if (!marker) {
+          continue;
+        }
+        const stored = marker.__markerData || (markerMetas[id] ? markerMetas[id].data : null);
+        if (!stored) {
+          continue;
+        }
+        const refreshedMeta = buildMarkerMeta(map, stored, zoom);
+        if (!refreshedMeta) {
+          if (map.hasLayer(marker)) {
+            map.removeLayer(marker);
+            removedAny = true;
+          }
+          delete circleMarkers[id];
+          delete markerMetas[id];
+          if (marker.__stackMeta) {
+            delete marker.__stackMeta;
+          }
+          if (marker.__markerData) {
+            delete marker.__markerData;
+          }
+          activeMarkerCount = Math.max(0, activeMarkerCount - 1);
+          continue;
+        }
+        refreshedMeta.marker = marker;
+        refreshedMeta.markerAdded = map.hasLayer(marker);
+        if (!refreshedMeta.realtimeIcon && markerMetas[id] && markerMetas[id].realtimeIcon) {
+          refreshedMeta.realtimeIcon = markerMetas[id].realtimeIcon;
+        }
+        markerMetas[id] = refreshedMeta;
+        marker.__stackMeta = refreshedMeta;
+        integrateMarkerIntoStacks(refreshedMeta, markerStacks, circleMarkers, map, zoom);
+      }
     }
   }
-  circleMarkers = {}; // drop any markers from areas we no longer see so memory remains stable during large pans.
-  activeMarkerCount = 0;
-  if (typeof window !== 'undefined' && typeof window.__forceMemorySample === 'function') {
-    window.__forceMemorySample(); // Refresh the memory badge after clearing old layers so operators see the drop immediately.
+
+  if (typeof window !== 'undefined' && typeof window.__forceMemorySample === 'function' && removedAny) {
+    window.__forceMemorySample();
   }
+
+  lastViewportZoom = zoom;
+  lastViewportBounds = (bounds && typeof bounds.clone === 'function') ? bounds.clone() : bounds;
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
