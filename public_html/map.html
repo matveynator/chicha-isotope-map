@@ -2910,7 +2910,7 @@ function getTooltipContent(marker) {
  * -----------------------------------------------------------------*/
 const STACK_MAX_LAYERS = 2;                    // keep only the top two markers per stack
 const STACK_OVERLAP_THRESHOLD = 0.3;           // minimum overlap ratio to consider markers stacked
-const STACK_ZOOM_LIMIT = 11;                   // apply stacking only on wide zoom levels
+const STACK_ZOOM_LIMIT = 16;                   // apply stacking for zoom levels below 17 so detailed views remain intact
 
 // computeOverlapRatio returns the overlap ratio relative to the smaller marker.
 // We rely on the exact circle intersection math so dense clusters are filtered accurately.
@@ -3040,7 +3040,7 @@ function updateMarkers(){
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
 
-  const shouldStackMarkers = zoom <= STACK_ZOOM_LIMIT;    // keep stack behaviour local to low zoom levels
+  const shouldStackMarkers = zoom <= STACK_ZOOM_LIMIT;    // disable stacking at zoom 17-20 to expose every marker
   const markerStacks = [];                                // reset per update so stale stacks do not accumulate
 
   const params = {
