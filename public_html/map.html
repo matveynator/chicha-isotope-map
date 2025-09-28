@@ -774,6 +774,21 @@ body, html {
           z-index:3000;
           pointer-events:none;
         }
+        .marker-limit-notice{
+          position:absolute;
+          top:20px;
+          left:50%;
+          transform:translateX(-50%);
+          background: var(--overlay-bg);
+          color: var(--modal-text);
+          border: var(--modal-border);
+          border-radius:8px;
+          padding:8px 12px;
+          box-shadow:0 1px 5px rgba(0,0,0,0.35);
+          font-size: var(--font-size-sm);
+          z-index: 2500;
+          display:none;
+        }
         .spinner{
           width:40px;height:40px;
           border:4px solid rgba(0,0,0,.15);
@@ -1267,6 +1282,8 @@ body, html {
     <div id="loadingOverlay" class="loading-overlay" style="display:none;">
       <div class="spinner"></div>
     </div>
+
+    <div id="markerLimitNotice" class="marker-limit-notice" role="status" aria-live="polite"></div>
 
     <!-- Theme toggle -->
     <div id="themeToggle" role="button" tabindex="0" aria-label="{{translate "theme_toggle_tooltip"}}">
@@ -1972,6 +1989,7 @@ let shortLinkAbort = null;
 let lastShortLinkFull = '';
 let pendingShortLinkFull = '';
 let shortLinkCommitPromise = null;
+const markerLimitNoticeEl = document.getElementById('markerLimitNotice');
 
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
@@ -2904,12 +2922,34 @@ function getTooltipContent(marker) {
 }
 
 
+function hideMarkerLimitNotice() {
+  if (!markerLimitNoticeEl) return;
+  markerLimitNoticeEl.textContent = '';
+  markerLimitNoticeEl.style.display = 'none';
+}
+
+function showMarkerLimitNotice(limitValue) {
+  if (!markerLimitNoticeEl) return;
+  const limit = Number(limitValue);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    hideMarkerLimitNotice();
+    return;
+  }
+  const template = translate('marker_limit_notice');
+  const text = (typeof template === 'string')
+    ? template.replace('[[count]]', limit.toLocaleString())
+    : `Showing up to ${limit.toLocaleString()} markers. Zoom in for more detail.`;
+  markerLimitNoticeEl.textContent = text;
+  markerLimitNoticeEl.style.display = 'block';
+}
+
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
  */
 function updateMarkers(){
   const loadingEl = document.getElementById('loadingOverlay');
   if (loadingEl) loadingEl.style.display='block';
+  hideMarkerLimitNotice();
 
   if (markerStreamSource) markerStreamSource.close();
 
@@ -2976,6 +3016,11 @@ function updateMarkers(){
     marker.isRealtime = isLive;
     circleMarkers[m.id || m.trackID] = marker;
   };
+
+  es.addEventListener('limit', (event) => {
+    const parsed = parseInt(event.data, 10);
+    showMarkerLimitNotice(Number.isFinite(parsed) ? parsed : 0);
+  });
 
   es.addEventListener('done', () => {
     const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))

@@ -3368,14 +3368,77 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 // Streaming markers via SSE
 // ========
 
-// aggregateMarkers chooses the most radioactive marker per grid cell.
-// Cells shrink with higher zoom to preserve detail.
-func aggregateMarkers(ctx context.Context, in <-chan database.Marker, zoom int) <-chan database.Marker {
+// markerCell identifies a coarse grid bucket that groups markers together.
+// Using integers keeps allocations predictable while we aggregate results per
+// viewport.
+type markerCell struct {
+	latIndex int
+	lonIndex int
+}
+
+// markerGridScale widens cells on low zoom levels so the world view returns a
+// manageable amount of data. We favour coarse aggregation over hammering the
+// browser with tens of thousands of SVG nodes.
+func markerGridScale(zoom int) float64 {
+	base := math.Pow(2, float64(zoom))
+	switch {
+	case zoom <= 2:
+		base /= 8
+	case zoom <= 4:
+		base /= 4
+	case zoom <= 6:
+		base /= 2
+	}
+	if base < 0.25 {
+		return 0.25
+	}
+	return base
+}
+
+// markerLimitForZoom caps the amount of unique cells we emit. This keeps the
+// frontend responsive while still presenting more detail as the operator zooms
+// in.
+func markerLimitForZoom(zoom int) int {
+	switch {
+	case zoom <= 2:
+		return 1500
+	case zoom <= 4:
+		return 3500
+	case zoom <= 6:
+		return 6000
+	case zoom <= 8:
+		return 9000
+	case zoom <= 10:
+		return 12000
+	case zoom <= 12:
+		return 16000
+	default:
+		return 20000
+	}
+}
+
+// aggregateMarkers chooses the most radioactive marker per grid cell. Cells
+// widen when zoomed out to keep world views light on memory. Once the limit is
+// reached we stop streaming and notify the caller via the returned channel so
+// the UI can hint at the truncation.
+func aggregateMarkers(ctx context.Context, cancel context.CancelFunc, in <-chan database.Marker, zoom int) (<-chan database.Marker, <-chan int) {
 	out := make(chan database.Marker)
+	limited := make(chan int, 1)
 	go func() {
 		defer close(out)
-		cells := make(map[string]database.Marker)
-		scale := math.Pow(2, float64(zoom))
+		defer close(limited)
+		cells := make(map[markerCell]database.Marker)
+		scale := markerGridScale(zoom)
+		limit := markerLimitForZoom(zoom)
+		notifyLimited := func() {
+			if limit <= 0 {
+				return
+			}
+			select {
+			case limited <- limit:
+			default:
+			}
+		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -3384,15 +3447,29 @@ func aggregateMarkers(ctx context.Context, in <-chan database.Marker, zoom int) 
 				if !ok {
 					return
 				}
-				key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
-				if prev, ok := cells[key]; !ok || m.DoseRate > prev.DoseRate {
-					cells[key] = m
-					out <- m
+				latIdx := int(math.Floor(m.Lat * scale))
+				lonIdx := int(math.Floor(m.Lon * scale))
+				key := markerCell{latIndex: latIdx, lonIndex: lonIdx}
+				if prev, ok := cells[key]; ok {
+					if m.DoseRate > prev.DoseRate {
+						cells[key] = m
+						out <- m
+					}
+					continue
 				}
+				if limit > 0 && len(cells) >= limit {
+					notifyLimited()
+					if cancel != nil {
+						cancel()
+					}
+					return
+				}
+				cells[key] = m
+				out <- m
 			}
 		}
 	}()
-	return out
+	return out, limited
 }
 
 // streamMarkersHandler streams markers via Server-Sent Events.
@@ -3407,14 +3484,16 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	trackID := q.Get("trackID")
 	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
 	var (
 		baseSrc <-chan database.Marker
 		errCh   <-chan error
 	)
 	if trackID != "" {
-		baseSrc, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+		baseSrc, errCh = db.StreamMarkersByTrackIDZoomAndBounds(streamCtx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
 	} else {
-		baseSrc, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+		baseSrc, errCh = db.StreamMarkersByZoomAndBounds(streamCtx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
 	}
 
 	// Fetch current realtime points once so the map reflects network devices.
@@ -3431,7 +3510,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
 
-	agg := aggregateMarkers(ctx, baseSrc, zoom)
+	agg, limited := aggregateMarkers(streamCtx, cancelStream, baseSrc, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -3448,13 +3527,24 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
+	limitedNotified := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case limitVal, ok := <-limited:
+			if ok && !limitedNotified {
+				fmt.Fprintf(w, "event: limit\ndata: %d\n\n", limitVal)
+				flusher.Flush()
+				limitedNotified = true
+			}
 		case err := <-errCh:
 			if err != nil {
-				fmt.Fprintf(w, "event: done\ndata: %v\n\n", err)
+				if errors.Is(err, context.Canceled) {
+					fmt.Fprint(w, "event: done\ndata: end\n\n")
+				} else {
+					fmt.Fprintf(w, "event: done\ndata: %v\n\n", err)
+				}
 			} else {
 				fmt.Fprint(w, "event: done\ndata: end\n\n")
 			}

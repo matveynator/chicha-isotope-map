@@ -753,6 +753,7 @@
     "location_permission_denied": "Location access denied.",
     "location_timeout": "Location request timed out.",
     "location_unavailable": "Location unavailable.",
+    "marker_limit_notice": "Showing up to [[count]] highlighted areas. Zoom in for more detail.",
     "processing_complete": "Processing complete!",
     "processing_on_server": "Processing on server...",
     "qr_button_tooltip": "QR code for the link to this map area.",
