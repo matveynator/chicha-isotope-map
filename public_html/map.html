@@ -2012,13 +2012,41 @@ let shortLinkCommitPromise = null;
 var mapHintHandles = [];
 
 // -----------------------------------------------------------------------------
-// Marker stack management keeps only the strongest readings at each coordinate.
-// We follow "Make the zero value useful" by treating missing numbers as 0 so the
-// comparison logic stays simple.
-function buildCoordinateKey(lat, lon) {
+// Marker stack management keeps only the strongest readings within the visible
+// footprint.  We quantise projected pixels instead of raw coordinates so even
+// a slight overlap joins the same stack, satisfying the requirement to purge
+// lower layers whenever markers touch.
+function stackCellSizeForZoom(zoom) {
+  const safeZoom = Number.isFinite(zoom) ? zoom : 0;
+  let radius = getRadius(0.3, safeZoom);
+  if (!Number.isFinite(radius) || radius <= 0) {
+    radius = 4;
+  }
+  const base = Math.max(radius * 4, 6);
+  if (safeZoom >= 17) return Math.max(8, Math.round(base * 0.75));
+  if (safeZoom >= 15) return Math.max(12, Math.round(base));
+  if (safeZoom >= 11) return Math.max(16, Math.round(base * 1.5));
+  if (safeZoom >= 6) return Math.max(24, Math.round(base * 2));
+  return Math.max(48, Math.round(base * 3));
+}
+
+function buildCoordinateKey(lat, lon, zoom) {
   const safeLat = typeof lat === 'number' && isFinite(lat) ? lat : 0;
   const safeLon = typeof lon === 'number' && isFinite(lon) ? lon : 0;
-  return safeLat.toFixed(5) + ',' + safeLon.toFixed(5);
+  const safeZoom = Number.isFinite(zoom)
+    ? zoom
+    : (map && typeof map.getZoom === 'function') ? map.getZoom() : 0;
+
+  if (map && typeof map.project === 'function' && typeof L !== 'undefined' && L && typeof L.latLng === 'function') {
+    const projected = map.project(L.latLng(safeLat, safeLon), Math.round(safeZoom));
+    const cellSize = stackCellSizeForZoom(safeZoom);
+    const cellX = Math.floor(projected.x / cellSize);
+    const cellY = Math.floor(projected.y / cellSize);
+    return Math.round(safeZoom) + ':' + cellX + ':' + cellY;
+  }
+
+  const coarse = Math.max(0, Math.min(5, 5 - Math.round(safeZoom / 3)));
+  return safeLat.toFixed(coarse) + ',' + safeLon.toFixed(coarse);
 }
 
 // The zoom-dependent cap mirrors how we would scale services in Go: simple rules
@@ -2087,6 +2115,7 @@ function dematerialiseEntryMarker(entry) {
     delete circleMarkers[entry.key];
   }
   entry.marker = null;
+  entry.hidden = true;
 }
 
 // publishStackMetrics mirrors Go's channel fan-out: a single call updates all
@@ -2136,8 +2165,9 @@ function updateStackMetricsForStack(stack, prevTotal, prevVisible) {
   publishStackMetrics();
 }
 
-// enforceStackVisibility materialises the strongest entries and drops the rest so
-// the browser can reclaim memory while we still report accurate stack totals.
+// enforceStackVisibility materialises the strongest entries and dematerialises the
+// rest so the browser can reclaim memory while we still retain enough metadata to
+// restore them at high zoom levels.
 function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
   if (!stack || !Array.isArray(stack.entries)) {
     return;
@@ -2157,32 +2187,32 @@ function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
   const keepAll = !isFinite(layerLimit);
   const limit = keepAll ? entryCount : Math.max(0, Math.min(layerLimit, entryCount));
   let visible = 0;
-  // We accumulate the filtered tally so the debug overlay can quote how many layers were discarded.
-  let filtered = keepAll ? 0 : (Number.isFinite(stack.filteredCount) ? Math.max(0, stack.filteredCount) : 0);
-  let index = 0;
+  let filtered = 0;
 
-  while (index < stack.entries.length) {
+  for (let index = 0; index < stack.entries.length; index += 1) {
     const entry = stack.entries[index];
     if (!entry || !entry.key) {
       stack.entries.splice(index, 1);
+      index -= 1;
       continue;
     }
 
-    if (index < limit) {
-      markerStackIndex.set(entry.key, coordKey);
+    markerStackIndex.set(entry.key, coordKey);
+
+    if (keepAll || index < limit) {
+      entry.hidden = false;
       const marker = ensureEntryMarker(entry, zoom);
-      if (marker) {
-        visible += 1;
-        index += 1;
+      if (!marker) {
+        stack.entries.splice(index, 1);
+        index -= 1;
         continue;
       }
-      dropMarkerEntry(entry);
-      stack.entries.splice(index, 1);
+      visible += 1;
       continue;
     }
 
-    dropMarkerEntry(entry);
-    stack.entries.splice(index, 1);
+    entry.hidden = true;
+    dematerialiseEntryMarker(entry);
     filtered += 1;
   }
 
@@ -2192,7 +2222,8 @@ function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
 }
 
 // Removing stale markers early frees memory so the browser can breathe. We clear
-// every reference to respect the user's requirement about releasing resources.
+// every reference and mark the entry hidden to respect the user's requirement
+// about releasing resources.
 function dropMarkerEntry(entry) {
   if (!entry) return;
   dematerialiseEntryMarker(entry);
@@ -2200,6 +2231,7 @@ function dropMarkerEntry(entry) {
     markerStackIndex.delete(entry.key);
   }
   entry.marker = null;
+  entry.hidden = true;
   entry.dose = null;
   entry.date = null;
   entry.data = null;
@@ -2378,18 +2410,19 @@ function registerMarkerEntry(coordKey, entry, layerLimit, zoom) {
     if (existing && existing.key === entry.key) {
       dematerialiseEntryMarker(existing);
       stack.entries.splice(i, 1);
+      markerStackIndex.delete(existing.key);
       break;
     }
   }
 
+  entry.hidden = false;
   stack.entries.push(entry);
-  stack.entries.sort(compareMarkerEntries);
 
   enforceStackVisibility(stack, coordKey, layerLimit, zoom);
 
   const keepIndex = stack.entries.indexOf(entry);
   const keep = keepIndex !== -1;
-  const visible = keep && keepIndex < stack.visibleCount;
+  const visible = keep && !entry.hidden;
   const filteredAfter = Number.isFinite(stack.filteredCount) ? stack.filteredCount : 0;
   const filteredDelta = filteredAfter - prevFiltered;
   if (filteredDelta > 0) {
@@ -4172,7 +4205,7 @@ function updateMarkers(){
       : (m && typeof m.trackID !== 'undefined' && m.trackID !== null
         ? String(m.trackID)
         : 'anon-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
-    const coordKey = buildCoordinateKey(m.lat, m.lon);
+    const coordKey = buildCoordinateKey(m.lat, m.lon, zoom);
     const entry = {
       key  : markerKey,
       dose : (typeof m.doseRate === 'number' && isFinite(m.doseRate)) ? m.doseRate : 0,
