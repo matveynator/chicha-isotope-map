@@ -1994,6 +1994,9 @@ function getCurrentUrlParams() {
     <script>
       var map;
 var circleMarkers = {};
+const markerStacks = new Map();
+const markerStackIndex = new Map();
+const stackMetrics = { totalLayers: 0, visibleLayers: 0 };
 var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
@@ -2007,6 +2010,447 @@ let shortLinkCommitPromise = null;
 
 // We keep every tooltip handle in one place so hideMapHints can silence them together.
 var mapHintHandles = [];
+
+// -----------------------------------------------------------------------------
+// Marker stack management now deduplicates markers strictly by location so we
+// only collapse entries that truly sit on top of each other. Rounding to five
+// decimals keeps float noise in check without merging distant readings.
+function buildCoordinateKey(lat, lon) {
+  const safeLat = typeof lat === 'number' && isFinite(lat) ? lat : 0;
+  const safeLon = typeof lon === 'number' && isFinite(lon) ? lon : 0;
+  const latQuantised = Math.round(safeLat * 100000) / 100000;
+  const lonQuantised = Math.round(safeLon * 100000) / 100000;
+  return latQuantised.toFixed(5) + ',' + lonQuantised.toFixed(5);
+}
+
+// The zoom-dependent cap mirrors how we would scale services in Go: simple rules
+// keep behavior predictable for operators. The ranges intentionally overlap, and
+// we pick the stricter cap when that happens so the busiest views stay snappy.
+function maxLayersForZoom(zoom) {
+  if (typeof zoom !== 'number' || !isFinite(zoom)) return 2;
+  if (zoom >= 17) return Infinity;
+  if (zoom >= 15) return 5;
+  if (zoom >= 11) return 4;
+  if (zoom >= 6) return 3;
+  if (zoom >= 1) return 2;
+  return 1;
+}
+
+// Provide a monotonic clock similar to Go's time.Since helper so render timing stays stable.
+function monotonicNow() {
+  if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+// Higher dose wins; newer timestamps break ties so investigators see the freshest
+// report first. This mirrors "Clear is better than clever" by keeping the sort
+// well-documented.
+function compareMarkerEntries(a, b) {
+  const doseA = (a && typeof a.dose === 'number' && isFinite(a.dose)) ? a.dose : -Infinity;
+  const doseB = (b && typeof b.dose === 'number' && isFinite(b.dose)) ? b.dose : -Infinity;
+  if (doseA !== doseB) return doseB - doseA;
+  const tsA = (a && typeof a.date === 'number' && isFinite(a.date)) ? a.date : 0;
+  const tsB = (b && typeof b.date === 'number' && isFinite(b.date)) ? b.date : 0;
+  if (tsA !== tsB) return tsB - tsA;
+  return 0;
+}
+
+// We trim stale entries before reshaping stacks so null placeholders never skew counts.
+function purgeInvalidStackEntries(stack) {
+  if (!stack || !Array.isArray(stack.entries)) {
+    return;
+  }
+  for (let i = stack.entries.length - 1; i >= 0; i -= 1) {
+    const entry = stack.entries[i];
+    if (!entry || !entry.key) {
+      stack.entries.splice(i, 1);
+    }
+  }
+}
+
+// Removing the Leaflet layer without dropping metadata lets us resurrect hidden
+// markers instantly when zoom grows while still releasing browser memory.
+function dematerialiseEntryMarker(entry) {
+  if (!entry || !entry.marker) {
+    return;
+  }
+  if (typeof entry.marker.remove === 'function') {
+    entry.marker.remove();
+  } else if (map && typeof map.removeLayer === 'function') {
+    try {
+      map.removeLayer(entry.marker);
+    } catch (err) {
+      // ignore cleanup errors so the rest of the pipeline keeps flowing
+    }
+  }
+  if (entry.key && circleMarkers[entry.key]) {
+    delete circleMarkers[entry.key];
+  }
+  entry.marker = null;
+  entry.hidden = true;
+}
+
+// publishStackMetrics mirrors Go's channel fan-out: a single call updates all
+// listeners so debug and instrumentation stay in sync.
+function publishStackMetrics() {
+  const total = stackMetrics.totalLayers < 0 ? 0 : stackMetrics.totalLayers;
+  const visible = stackMetrics.visibleLayers < 0 ? 0 : stackMetrics.visibleLayers;
+  const filtered = total - visible > 0 ? (total - visible) : 0;
+  if (typeof debugOverlay !== 'undefined' && debugOverlay && typeof debugOverlay.recordStackTotals === 'function') {
+    debugOverlay.recordStackTotals(total, filtered, visible);
+  }
+}
+
+// resetStackMetrics clears aggregate counters whenever we drop all markers.
+function resetStackMetrics() {
+  stackMetrics.totalLayers = 0;
+  stackMetrics.visibleLayers = 0;
+  publishStackMetrics();
+}
+
+// updateStackMetricsForStack applies the delta from the previous stack snapshot
+// so aggregate totals update in constant time.
+function updateStackMetricsForStack(stack, prevTotal, prevVisible) {
+  if (!stack || !Array.isArray(stack.entries)) {
+    stackMetrics.totalLayers -= prevTotal;
+    stackMetrics.visibleLayers -= prevVisible;
+    if (stackMetrics.totalLayers < 0) stackMetrics.totalLayers = 0;
+    if (stackMetrics.visibleLayers < 0) stackMetrics.visibleLayers = 0;
+    publishStackMetrics();
+    return;
+  }
+  const safePrevTotal = Number.isFinite(prevTotal) ? prevTotal : 0;
+  const safePrevVisible = Number.isFinite(prevVisible) ? prevVisible : 0;
+  const entryCount = Array.isArray(stack.entries) ? stack.entries.length : 0;
+  const filteredCount = Number.isFinite(stack.filteredCount) ? Math.max(0, stack.filteredCount) : 0;
+  const nextVisible = Number.isFinite(stack.visibleCount)
+    ? Math.max(0, Math.min(stack.visibleCount, entryCount))
+    : entryCount;
+  const nextTotal = nextVisible + filteredCount;
+  stackMetrics.totalLayers += nextTotal - safePrevTotal;
+  stackMetrics.visibleLayers += nextVisible - safePrevVisible;
+  if (stackMetrics.totalLayers < 0) stackMetrics.totalLayers = 0;
+  if (stackMetrics.visibleLayers < 0) stackMetrics.visibleLayers = 0;
+  stack.totalCount = nextTotal;
+  stack.visibleCount = nextVisible;
+  stack.filteredCount = filteredCount;
+  publishStackMetrics();
+}
+
+// enforceStackVisibility materialises the strongest entries and dematerialises the
+// rest so the browser can reclaim memory while we still retain enough metadata to
+// restore them at high zoom levels.
+function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
+  if (!stack || !Array.isArray(stack.entries)) {
+    return;
+  }
+
+  purgeInvalidStackEntries(stack);
+  stack.entries.sort(compareMarkerEntries);
+
+  const entryCount = stack.entries.length;
+  if (entryCount === 0) {
+    stack.visibleCount = 0;
+    stack.filteredCount = 0;
+    stack.totalCount = 0;
+    return;
+  }
+
+  const keepAll = !isFinite(layerLimit);
+  const limit = keepAll ? entryCount : Math.max(0, Math.min(layerLimit, entryCount));
+  let visible = 0;
+  let filtered = 0;
+
+  for (let index = 0; index < stack.entries.length; index += 1) {
+    const entry = stack.entries[index];
+    if (!entry || !entry.key) {
+      stack.entries.splice(index, 1);
+      index -= 1;
+      continue;
+    }
+
+    markerStackIndex.set(entry.key, coordKey);
+
+    if (keepAll || index < limit) {
+      entry.hidden = false;
+      const marker = ensureEntryMarker(entry, zoom);
+      if (!marker) {
+        stack.entries.splice(index, 1);
+        index -= 1;
+        continue;
+      }
+      visible += 1;
+      continue;
+    }
+
+    entry.hidden = true;
+    dematerialiseEntryMarker(entry);
+    filtered += 1;
+  }
+
+  stack.visibleCount = visible;
+  stack.filteredCount = filtered;
+  stack.totalCount = visible + filtered;
+}
+
+// Removing stale markers early frees memory so the browser can breathe. We clear
+// every reference and mark the entry hidden to respect the user's requirement
+// about releasing resources.
+function dropMarkerEntry(entry) {
+  if (!entry) return;
+  dematerialiseEntryMarker(entry);
+  if (entry.key) {
+    markerStackIndex.delete(entry.key);
+  }
+  entry.marker = null;
+  entry.hidden = true;
+  entry.dose = null;
+  entry.date = null;
+  entry.data = null;
+  entry.isRealtime = null;
+}
+
+// Materialise a marker on demand so we only spend work on entries that survive the cap.
+function ensureEntryMarker(entry, zoom) {
+  if (!entry || entry.marker) {
+    return entry ? entry.marker : null;
+  }
+
+  const markerData = entry.data;
+  if (!markerData) {
+    return null;
+  }
+
+  const renderStart = monotonicNow();
+  let marker = null;
+  let realtimeIcon = null;
+
+  if (entry.isRealtime) {
+    const nowSec = Date.now() / 1000;
+    const icon = buildRealtimeIcon(markerData, zoom, nowSec);
+    if (!icon) {
+      debugOverlay.noteFiltered('realtime');
+      const stackKey = markerStackIndex.get(entry.key);
+      if (stackKey) {
+        removeMarkerFromStack(stackKey, entry.key);
+      } else {
+        dropMarkerEntry(entry);
+      }
+      return null;
+    }
+    realtimeIcon = icon;
+    marker = L.marker([markerData.lat, markerData.lon], {
+      icon: L.divIcon({
+        className: '',
+        html: icon.html,
+        iconSize: [icon.size, icon.size],
+        iconAnchor: [icon.radius, icon.radius]
+      })
+    })
+      .addTo(map)
+      .bindTooltip(getTooltipContent(markerData), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], interactive: true })
+      .bindPopup(getPopupContent(markerData));
+  } else {
+    marker = L.circleMarker([markerData.lat, markerData.lon], {
+      radius: getRadius(markerData.doseRate, zoom),
+      fillColor: getGradientColor(markerData.doseRate),
+      color: getGradientColor(markerData.doseRate),
+      weight: 1,
+      opacity: getFillOpacity(markerData.speed) + 0.1,
+      fillOpacity: getFillOpacity(markerData.speed)
+    })
+      .addTo(map)
+      .bindTooltip(getTooltipContent(markerData), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], interactive: true })
+      .bindPopup(getPopupContent(markerData));
+  }
+
+  if (!marker) {
+    const stackKey = markerStackIndex.get(entry.key);
+    if (stackKey) {
+      removeMarkerFromStack(stackKey, entry.key);
+    } else {
+      dropMarkerEntry(entry);
+    }
+    return null;
+  }
+
+  const renderEnd = monotonicNow();
+  let footprint = null;
+  try {
+    const point = map.latLngToContainerPoint([markerData.lat, markerData.lon]);
+    let radiusPx = 0;
+    if (entry.isRealtime && realtimeIcon) {
+      radiusPx = realtimeIcon.radius;
+    } else if (marker && typeof marker.getRadius === 'function') {
+      radiusPx = marker.getRadius();
+    } else if (marker && marker.options && typeof marker.options.radius === 'number') {
+      radiusPx = marker.options.radius;
+    }
+    if (point && typeof point.x === 'number' && typeof point.y === 'number') {
+      footprint = { x: point.x, y: point.y, radius: radiusPx };
+    }
+  } catch (err) {
+    footprint = null;
+  }
+
+  marker.doseRate = entry.dose;
+  marker.date = entry.date;
+  marker.isRealtime = entry.isRealtime;
+  circleMarkers[entry.key] = marker;
+  entry.marker = marker;
+
+  debugOverlay.noteRendered(markerData, renderEnd - renderStart, footprint);
+  return marker;
+}
+
+// Allow markers to migrate between stacks when a track reports a new position.
+function removeMarkerFromStack(stackKey, markerKey) {
+  if (!stackKey || !markerKey) return;
+  const stack = markerStacks.get(stackKey);
+  if (!stack || !Array.isArray(stack.entries)) return;
+
+  const zoom = map && typeof map.getZoom === 'function' ? map.getZoom() : 0;
+  const layerLimit = maxLayersForZoom(zoom);
+  const prevTotal = Number.isFinite(stack.totalCount) ? stack.totalCount : stack.entries.length;
+  const prevVisible = Number.isFinite(stack.visibleCount)
+    ? stack.visibleCount
+    : Math.min(prevTotal, isFinite(layerLimit) ? layerLimit : prevTotal);
+  const prevFiltered = Number.isFinite(stack.filteredCount)
+    ? stack.filteredCount
+    : Math.max(0, prevTotal - prevVisible);
+
+  let removed = false;
+  for (let i = stack.entries.length - 1; i >= 0; i -= 1) {
+    const entry = stack.entries[i];
+    if (entry && entry.key === markerKey) {
+      dropMarkerEntry(entry);
+      stack.entries.splice(i, 1);
+      removed = true;
+      break;
+    }
+  }
+
+  if (!removed) {
+    return;
+  }
+
+  purgeInvalidStackEntries(stack);
+
+  if (!stack.entries.length) {
+    stack.visibleCount = 0;
+    stack.filteredCount = 0;
+    stack.totalCount = 0;
+    updateStackMetricsForStack(stack, prevTotal, prevVisible);
+    markerStacks.delete(stackKey);
+    return;
+  }
+
+  enforceStackVisibility(stack, stackKey, layerLimit, zoom);
+  const filteredAfter = Number.isFinite(stack.filteredCount) ? stack.filteredCount : 0;
+  const filteredDelta = filteredAfter - prevFiltered;
+  if (filteredDelta > 0) {
+    debugOverlay.noteFiltered('stack', filteredDelta);
+  }
+  updateStackMetricsForStack(stack, prevTotal, prevVisible);
+}
+
+// Insert a marker into the coordinate stack and enforce the active zoom limit.
+function registerMarkerEntry(coordKey, entry, layerLimit, zoom) {
+  if (!coordKey || !entry || !entry.key) return { keep: false, visible: false };
+
+  const previousStack = markerStackIndex.get(entry.key);
+  if (previousStack && previousStack !== coordKey) {
+    removeMarkerFromStack(previousStack, entry.key);
+  }
+
+  let stack = markerStacks.get(coordKey);
+  if (!stack) {
+    stack = { entries: [], visibleCount: 0, totalCount: 0, filteredCount: 0 };
+    markerStacks.set(coordKey, stack);
+  }
+
+  const prevTotal = Number.isFinite(stack.totalCount) ? stack.totalCount : stack.entries.length;
+  const prevVisible = Number.isFinite(stack.visibleCount) ? stack.visibleCount : Math.min(prevTotal, isFinite(layerLimit) ? layerLimit : prevTotal);
+  const prevFiltered = Number.isFinite(stack.filteredCount)
+    ? stack.filteredCount
+    : Math.max(0, prevTotal - prevVisible);
+
+  purgeInvalidStackEntries(stack);
+
+  for (let i = stack.entries.length - 1; i >= 0; i -= 1) {
+    const existing = stack.entries[i];
+    if (existing && existing.key === entry.key) {
+      dematerialiseEntryMarker(existing);
+      stack.entries.splice(i, 1);
+      markerStackIndex.delete(existing.key);
+      break;
+    }
+  }
+
+  entry.hidden = false;
+  stack.entries.push(entry);
+
+  enforceStackVisibility(stack, coordKey, layerLimit, zoom);
+
+  const keepIndex = stack.entries.indexOf(entry);
+  const keep = keepIndex !== -1;
+  const visible = keep && !entry.hidden;
+  const filteredAfter = Number.isFinite(stack.filteredCount) ? stack.filteredCount : 0;
+  const filteredDelta = filteredAfter - prevFiltered;
+  if (filteredDelta > 0) {
+    debugOverlay.noteFiltered('stack', filteredDelta);
+  }
+
+  updateStackMetricsForStack(stack, prevTotal, prevVisible);
+
+  if (!keep) {
+    markerStackIndex.delete(entry.key);
+  }
+
+  if (!stack.entries.length) {
+    markerStacks.delete(coordKey);
+  }
+
+  return { keep: keep, visible: visible };
+}
+
+// After a zoom change we revisit every stack so the map never shows more layers
+// than budgeted. This keeps the UI reactive without locking on a single big task.
+function applyStackLimitsForZoom(zoom) {
+  const layerLimit = maxLayersForZoom(zoom);
+  markerStacks.forEach(function (stack, coordKey) {
+    if (!stack || !Array.isArray(stack.entries)) {
+      markerStacks.delete(coordKey);
+      return;
+    }
+    const prevTotal = Number.isFinite(stack.totalCount) ? stack.totalCount : stack.entries.length;
+    const prevVisible = Number.isFinite(stack.visibleCount) ? stack.visibleCount : Math.min(prevTotal, isFinite(layerLimit) ? layerLimit : prevTotal);
+    const prevFiltered = Number.isFinite(stack.filteredCount)
+      ? stack.filteredCount
+      : Math.max(0, prevTotal - prevVisible);
+
+    enforceStackVisibility(stack, coordKey, layerLimit, zoom);
+    const filteredAfter = Number.isFinite(stack.filteredCount) ? stack.filteredCount : 0;
+    const filteredDelta = filteredAfter - prevFiltered;
+    if (filteredDelta > 0) {
+      debugOverlay.noteFiltered('stack', filteredDelta);
+    }
+
+    if (!stack.entries.length) {
+      stack.visibleCount = 0;
+      // Preserve the filtered tally so aggregate stats still reflect discarded layers after we drop the stack.
+      stack.totalCount = filteredAfter;
+      stack.filteredCount = filteredAfter;
+      updateStackMetricsForStack(stack, prevTotal, prevVisible);
+      markerStacks.delete(coordKey);
+      return;
+    }
+
+    updateStackMetricsForStack(stack, prevTotal, prevVisible);
+  });
+}
 
 // registerMapHintHandle remembers a tooltip/popup handle so later gestures can hide it.
 function registerMapHintHandle(handle) {
@@ -2211,6 +2655,22 @@ const debugOverlay = (function () {
   let lastPayloadBytes = 0;
   let nextMemorySampleAt = 0;
   let memorySamplePending = false;
+  const renderScheduler = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+    ? window.requestAnimationFrame.bind(window)
+    : function (cb) { return setTimeout(cb, 16); };
+  let renderScheduled = false;
+
+  // requestRender coalesces overlay updates so the debug panel never blocks marker streaming work.
+  function requestRender() {
+    if (renderScheduled) {
+      return;
+    }
+    renderScheduled = true;
+    renderScheduler(function () {
+      renderScheduled = false;
+      render();
+    });
+  }
 
   // We request a heap snapshot when available so operators see real memory deltas.
   function sampleMemorySnapshot() {
@@ -2280,7 +2740,7 @@ const debugOverlay = (function () {
         return;
       }
       recordMemorySample(snapshot, 'during');
-      render();
+      requestRender();
     });
   }
 
@@ -2448,7 +2908,7 @@ const debugOverlay = (function () {
     if (jsErrors.length > 5) {
       jsErrors.shift();
     }
-    render();
+    requestRender();
   }
 
   function formatBytes(bytes) {
@@ -2482,7 +2942,11 @@ const debugOverlay = (function () {
       filteredDate: 0,
       filteredSpeed: 0,
       filteredRealtime: 0,
+      filteredStack: 0,
       maxStack: 0,
+      stackTotal: 0,
+      stackFiltered: 0,
+      stackVisible: 0,
       renderCost: 0,
       doneAt: null,
       memoryBefore: null,
@@ -2502,7 +2966,7 @@ const debugOverlay = (function () {
         return;
       }
       recordMemorySample(snapshot, 'before');
-      render();
+      requestRender();
     });
   }
 
@@ -2523,6 +2987,7 @@ const debugOverlay = (function () {
     }
 
     const hasData = metrics.totalMarkers > 0 || metrics.visibleMarkers > 0 ||
+      metrics.stackTotal > 0 || metrics.stackFiltered > 0 || metrics.stackVisible > 0 ||
       metrics.backendErrors.length > 0 || jsErrors.length > 0 || metrics.doneAt !== null;
     if (!hasData) {
       panel.style.display = 'none';
@@ -2545,7 +3010,8 @@ const debugOverlay = (function () {
       uncovered = metrics.visibleMarkers;
     }
 
-    const filteredTotal = metrics.filteredDate + metrics.filteredSpeed + metrics.filteredRealtime;
+    const filteredTotal = metrics.filteredDate + metrics.filteredSpeed + metrics.filteredRealtime + metrics.filteredStack;
+    const filteredDetails = `filtered ${filteredTotal} (date ${metrics.filteredDate}, speed ${metrics.filteredSpeed}, realtime ${metrics.filteredRealtime}, stack ${metrics.filteredStack})`;
     const expectedTotal = metrics.totalMarkers;
     const requestDuration = metrics.doneAt !== null ? (metrics.doneAt - metrics.requestStart) : null;
     const buildDuration = (metrics.firstMarkerAt !== null && metrics.lastMarkerAt !== null)
@@ -2579,9 +3045,14 @@ const debugOverlay = (function () {
     const latestJSError = jsErrors.length > 0 ? jsErrors[jsErrors.length - 1].message : 'none';
     const backendErrors = metrics.backendErrors.length > 0 ? metrics.backendErrors.join('; ') : 'none';
 
+    const stackTotal = Number.isFinite(metrics.stackTotal) ? metrics.stackTotal : 0;
+    const stackFiltered = Number.isFinite(metrics.stackFiltered) ? metrics.stackFiltered : Math.max(0, stackTotal - metrics.stackVisible);
+    const stackVisible = Number.isFinite(metrics.stackVisible) ? metrics.stackVisible : Math.max(0, stackTotal - stackFiltered);
+
     const lines = [
-      `<div><strong>Markers:</strong> ${metrics.visibleMarkers} visible / ${expectedTotal} fetched (filtered ${filteredTotal})</div>`,
+      `<div><strong>Markers:</strong> ${metrics.visibleMarkers} visible / ${expectedTotal} fetched (${filteredDetails})</div>`,
       `<div><strong>Coverage:</strong> uncovered ${uncovered}, covered ${covered}, max stack ${metrics.maxStack}</div>`,
+      `<div><strong>Stacking:</strong> total ${stackTotal}, filtered ${stackFiltered}, kept ${stackVisible}</div>`,
       `<div><strong>Timing:</strong> fetch ${formatDuration(fetchCost)}, render ${formatDuration(renderCost)}, build ${formatDuration(buildDuration)}</div>`,
       `<div><strong>Request:</strong> total ${formatDuration(requestDuration)}</div>`,
       `<div><strong>Memory:</strong> used ${memoryUsed}, freed ${memoryFreed}</div>`,
@@ -2604,7 +3075,7 @@ const debugOverlay = (function () {
       }
       attachGlobalListeners();
       initialiseMetrics();
-      render();
+      requestRender();
     },
     noteIncoming: function (payloadLength) {
       if (!enabled) {
@@ -2616,18 +3087,33 @@ const debugOverlay = (function () {
         current.payloadBytes += payloadLength;
       }
     },
-    noteFiltered: function (reason) {
+    recordStackTotals: function (total, filtered, visible) {
+      if (!enabled) {
+        return;
+      }
+      const current = ensureMetrics();
+      current.stackTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
+      current.stackFiltered = Number.isFinite(filtered) ? Math.max(0, filtered) : 0;
+      current.stackVisible = Number.isFinite(visible) ? Math.max(0, visible) : 0;
+      requestRender();
+    },
+    noteFiltered: function (reason, count) {
       if (!enabled || !metrics) {
         return;
       }
+      const amount = (typeof count === 'number' && isFinite(count) && count > 0)
+        ? Math.floor(count)
+        : 1;
       if (reason === 'date') {
-        metrics.filteredDate += 1;
+        metrics.filteredDate += amount;
       } else if (reason === 'speed') {
-        metrics.filteredSpeed += 1;
+        metrics.filteredSpeed += amount;
+      } else if (reason === 'stack') {
+        metrics.filteredStack += amount;
       } else {
-        metrics.filteredRealtime += 1;
+        metrics.filteredRealtime += amount;
       }
-      render();
+      requestRender();
     },
     noteRendered: function (marker, renderDuration, footprint) {
       if (!enabled || !metrics || !marker) {
@@ -2644,7 +3130,7 @@ const debugOverlay = (function () {
       }
       registerCoverage(footprint || null);
       scheduleMemorySample();
-      render();
+      requestRender();
     },
     finishRequest: function () {
       if (!enabled || !metrics) {
@@ -2660,11 +3146,11 @@ const debugOverlay = (function () {
             return;
           }
           recordMemorySample(snapshot, 'after');
-          render();
+          requestRender();
         });
         lastPayloadBytes = metrics.payloadBytes;
       }
-      render();
+      requestRender();
     },
     recordBackendError: function (message) {
       if (!enabled || !metrics) {
@@ -2676,7 +3162,7 @@ const debugOverlay = (function () {
           metrics.backendErrors = metrics.backendErrors.slice(-5);
         }
       }
-      render();
+      requestRender();
     }
   };
 })();
@@ -3640,6 +4126,7 @@ function updateMarkers(){
 
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
+  const layerLimit = maxLayersForZoom(zoom);
 
   const params = {
     zoom  : zoom,
@@ -3651,12 +4138,11 @@ function updateMarkers(){
   if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
   const savedRange = loadDateRangeState();
-  const nowTimer = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-    ? function () { return performance.now(); }
-    : function () { return Date.now(); };
-
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
+  markerStacks.clear();
+  markerStackIndex.clear();
+  resetStackMetrics();
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
@@ -3677,62 +4163,38 @@ function updateMarkers(){
       return;
     }
 
-    let marker;
-    const renderStart = nowTimer();
-    let realtimeIcon = null;
-    if (isLive) { // realtime marker with value inside the circle
+    // Fast-return for stale realtime data keeps the stack clean so we never store entries
+    // that cannot render, echoing "Don't just do something, stand there" by staying calm.
+    if (isLive) {
       const nowSec = Date.now() / 1000;
-      const icon = buildRealtimeIcon(m, zoom, nowSec);
-      if (!icon) {
+      if (!buildRealtimeIcon(m, zoom, nowSec)) {
         debugOverlay.noteFiltered('realtime');
-        return; // device is older than 24 hours
+        return;
       }
-      realtimeIcon = icon;
-      marker = L.marker([m.lat, m.lon], {
-        icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
-      })
-      .addTo(map)
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
-    } else {
-      marker = L.circleMarker([m.lat, m.lon], {
-        radius      : getRadius(m.doseRate, zoom),
-        fillColor   : getGradientColor(m.doseRate),
-        color       : getGradientColor(m.doseRate),
-        weight      : 1,
-        opacity     : getFillOpacity(m.speed) + 0.1,
-        fillOpacity : getFillOpacity(m.speed)
-      })
-      .addTo(map)
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
     }
-
-    const renderEnd = nowTimer();
-    let footprint = null;
-    try {
-      const point = map.latLngToContainerPoint([m.lat, m.lon]);
-      let radiusPx = 0;
-      if (isLive && realtimeIcon) {
-        radiusPx = realtimeIcon.radius;
-      } else if (marker && typeof marker.getRadius === 'function') {
-        radiusPx = marker.getRadius();
-      } else if (marker && marker.options && typeof marker.options.radius === 'number') {
-        radiusPx = marker.options.radius;
-      }
-      if (point && typeof point.x === 'number' && typeof point.y === 'number') {
-        footprint = { x: point.x, y: point.y, radius: radiusPx };
-      }
-    } catch (err) {
-      footprint = null;
-    }
-    debugOverlay.noteRendered(m, renderEnd - renderStart, footprint);
 
     // Store dose rate and timestamp on marker for later size updates
-    marker.doseRate  = m.doseRate;
-    marker.date      = m.date;
-    marker.isRealtime = isLive;
-    circleMarkers[m.id || m.trackID] = marker;
+    const markerKey = m && typeof m.id !== 'undefined' && m.id !== null
+      ? String(m.id)
+      : (m && typeof m.trackID !== 'undefined' && m.trackID !== null
+        ? String(m.trackID)
+        : 'anon-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+    const coordKey = buildCoordinateKey(m.lat, m.lon);
+    const entry = {
+      key  : markerKey,
+      dose : (typeof m.doseRate === 'number' && isFinite(m.doseRate)) ? m.doseRate : 0,
+      date : (typeof m.date === 'number' && isFinite(m.date)) ? m.date : 0,
+      data : m,
+      isRealtime: isLive,
+      marker: null
+    };
+    const registration = registerMarkerEntry(coordKey, entry, layerLimit, zoom);
+    if (!registration.keep) {
+      return;
+    }
+    if (registration.visible) {
+      ensureEntryMarker(entry, zoom);
+    }
   }
 
   setMarkerStreamProcessor(processStreamMarker);
@@ -4487,6 +4949,7 @@ function debounceUpdateMarkers() {
 
 function adjustMarkerRadius() {
   var zoomLevel = map.getZoom();
+  applyStackLimitsForZoom(zoomLevel);
   const nowSec = Date.now() / 1000;
   for (let key in circleMarkers) {
     let marker = circleMarkers[key];
