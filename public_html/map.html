@@ -2012,41 +2012,15 @@ let shortLinkCommitPromise = null;
 var mapHintHandles = [];
 
 // -----------------------------------------------------------------------------
-// Marker stack management keeps only the strongest readings within the visible
-// footprint.  We quantise projected pixels instead of raw coordinates so even
-// a slight overlap joins the same stack, satisfying the requirement to purge
-// lower layers whenever markers touch.
-function stackCellSizeForZoom(zoom) {
-  const safeZoom = Number.isFinite(zoom) ? zoom : 0;
-  let radius = getRadius(0.3, safeZoom);
-  if (!Number.isFinite(radius) || radius <= 0) {
-    radius = 4;
-  }
-  const base = Math.max(radius * 4, 6);
-  if (safeZoom >= 17) return Math.max(8, Math.round(base * 0.75));
-  if (safeZoom >= 15) return Math.max(12, Math.round(base));
-  if (safeZoom >= 11) return Math.max(16, Math.round(base * 1.5));
-  if (safeZoom >= 6) return Math.max(24, Math.round(base * 2));
-  return Math.max(48, Math.round(base * 3));
-}
-
-function buildCoordinateKey(lat, lon, zoom) {
+// Marker stack management now deduplicates markers strictly by location so we
+// only collapse entries that truly sit on top of each other. Rounding to five
+// decimals keeps float noise in check without merging distant readings.
+function buildCoordinateKey(lat, lon) {
   const safeLat = typeof lat === 'number' && isFinite(lat) ? lat : 0;
   const safeLon = typeof lon === 'number' && isFinite(lon) ? lon : 0;
-  const safeZoom = Number.isFinite(zoom)
-    ? zoom
-    : (map && typeof map.getZoom === 'function') ? map.getZoom() : 0;
-
-  if (map && typeof map.project === 'function' && typeof L !== 'undefined' && L && typeof L.latLng === 'function') {
-    const projected = map.project(L.latLng(safeLat, safeLon), Math.round(safeZoom));
-    const cellSize = stackCellSizeForZoom(safeZoom);
-    const cellX = Math.floor(projected.x / cellSize);
-    const cellY = Math.floor(projected.y / cellSize);
-    return Math.round(safeZoom) + ':' + cellX + ':' + cellY;
-  }
-
-  const coarse = Math.max(0, Math.min(5, 5 - Math.round(safeZoom / 3)));
-  return safeLat.toFixed(coarse) + ',' + safeLon.toFixed(coarse);
+  const latQuantised = Math.round(safeLat * 100000) / 100000;
+  const lonQuantised = Math.round(safeLon * 100000) / 100000;
+  return latQuantised.toFixed(5) + ',' + lonQuantised.toFixed(5);
 }
 
 // The zoom-dependent cap mirrors how we would scale services in Go: simple rules
@@ -4205,7 +4179,7 @@ function updateMarkers(){
       : (m && typeof m.trackID !== 'undefined' && m.trackID !== null
         ? String(m.trackID)
         : 'anon-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
-    const coordKey = buildCoordinateKey(m.lat, m.lon, zoom);
+    const coordKey = buildCoordinateKey(m.lat, m.lon);
     const entry = {
       key  : markerKey,
       dose : (typeof m.doseRate === 'number' && isFinite(m.doseRate)) ? m.doseRate : 0,
