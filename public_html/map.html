@@ -4153,8 +4153,11 @@ function updateMarkers(){
     }
 
     const isLive = typeof m.speed === 'number' && m.speed < 0; // negative speed denotes realtime marker
+    const hasDate = typeof m.date === 'number' && isFinite(m.date);
+    const dateOutsideRange = savedRange && hasDate && (m.date < savedRange[0] || m.date > savedRange[1]);
 
-    if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) {
+    if (dateOutsideRange && !isLive) {
+      // Realtime markers must always stay visible so operators never miss live sensors.
       debugOverlay.noteFiltered('date');
       return;
     }
