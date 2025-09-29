@@ -2068,10 +2068,12 @@ const debugOverlay = (function () {
 
   // Build per-request coverage bookkeeping so we can spot overlapping footprints quickly.
   function createCoverageState() {
+    // We keep a coarse grid so overlap checks only inspect nearby neighbours, mirroring
+    // "Don't communicate by sharing memory" by letting each cell act as a message hub.
     return {
       markerInfo: new Map(),
       cellMembers: new Map(),
-      cellSize: 40,
+      cellSize: 32,
     };
   }
 
@@ -2098,27 +2100,45 @@ const debugOverlay = (function () {
     }
 
     const coverage = metrics.coverage;
-    // We hash markers into coarse grid cells so overlap detection stays cheap even with thousands of points.
-    const cells = cellsForFootprint(
-      footprint && typeof footprint.x === 'number' ? footprint.x : NaN,
-      footprint && typeof footprint.y === 'number' ? footprint.y : NaN,
-      footprint && typeof footprint.radius === 'number' ? footprint.radius : NaN,
-      coverage.cellSize
-    );
-
     const key = 'marker-' + metrics.sequence;
     metrics.sequence += 1;
 
-    const info = { covered: false, cells: cells };
+    const x = footprint && typeof footprint.x === 'number' ? footprint.x : NaN;
+    const y = footprint && typeof footprint.y === 'number' ? footprint.y : NaN;
+    const radius = footprint && typeof footprint.radius === 'number' && footprint.radius > 0
+      ? footprint.radius
+      : 0;
+
+    const info = {
+      covered: false,
+      cells: [],
+      x: x,
+      y: y,
+      radius: radius,
+      stack: 1,
+    };
     coverage.markerInfo.set(key, info);
 
-    if (!cells.length) {
-      // Without a valid footprint we still count the marker as a single exposed point.
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
       if (metrics.maxStack < 1) {
         metrics.maxStack = 1;
       }
       return;
     }
+
+    const cells = cellsForFootprint(x, y, radius, coverage.cellSize);
+    info.cells = cells;
+
+    if (!cells.length) {
+      if (metrics.maxStack < 1) {
+        metrics.maxStack = 1;
+      }
+      return;
+    }
+
+    // We only count true overlaps so dense clusters do not pretend everything is hidden.
+    const seen = new Set();
+    let overlapCount = 0;
 
     cells.forEach(function (cellKey) {
       let members = coverage.cellMembers.get(cellKey);
@@ -2126,20 +2146,57 @@ const debugOverlay = (function () {
         members = new Set();
         coverage.cellMembers.set(cellKey, members);
       }
-      if (members.size > 0) {
-        info.covered = true;
-        members.forEach(function (existingKey) {
-          const existing = coverage.markerInfo.get(existingKey);
-          if (existing) {
+
+      members.forEach(function (existingKey) {
+        if (seen.has(existingKey)) {
+          return;
+        }
+        seen.add(existingKey);
+        const existing = coverage.markerInfo.get(existingKey);
+        if (!existing || !Number.isFinite(existing.x) || !Number.isFinite(existing.y)) {
+          return;
+        }
+
+        const exRadius = typeof existing.radius === 'number' && existing.radius > 0 ? existing.radius : 0;
+        const dx = existing.x - x;
+        const dy = existing.y - y;
+        const maxDistance = exRadius + radius;
+
+        if (maxDistance <= 0) {
+          if (dx === 0 && dy === 0) {
+            overlapCount += 1;
             existing.covered = true;
           }
-        });
-      }
+          return;
+        }
+
+        if ((dx * dx + dy * dy) <= (maxDistance * maxDistance)) {
+          overlapCount += 1;
+          existing.covered = true;
+        }
+      });
+
       members.add(key);
-      if (members.size > metrics.maxStack) {
-        metrics.maxStack = members.size;
-      }
     });
+
+    if (overlapCount > 0) {
+      const stackSize = overlapCount + 1;
+      info.stack = stackSize;
+      seen.forEach(function (existingKey) {
+        const existing = coverage.markerInfo.get(existingKey);
+        if (existing) {
+          const prev = typeof existing.stack === 'number' ? existing.stack : 1;
+          if (stackSize > prev) {
+            existing.stack = stackSize;
+          }
+        }
+      });
+      if (stackSize > metrics.maxStack) {
+        metrics.maxStack = stackSize;
+      }
+    } else if (metrics.maxStack < 1) {
+      metrics.maxStack = 1;
+    }
   }
 
   function attachGlobalListeners() {
