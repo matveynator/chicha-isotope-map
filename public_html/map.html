@@ -2032,7 +2032,11 @@ function hideMapHints() {
     map.closePopup();
   }
   if (map && typeof map.closeTooltip === 'function') {
-    map.closeTooltip();
+    // Leaflet expects an explicit tooltip instance, so we guard the internal ref before closing.
+    var activeTooltip = map._tooltip;
+    if (activeTooltip) {
+      map.closeTooltip(activeTooltip);
+    }
   }
   mapHintHandles.forEach(function (handle) {
     if (handle && typeof handle.hide === 'function') {
