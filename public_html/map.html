@@ -2032,6 +2032,14 @@ function maxLayersForZoom(zoom) {
   return 1;
 }
 
+// Provide a monotonic clock similar to Go's time.Since helper so render timing stays stable.
+function monotonicNow() {
+  if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
 // Higher dose wins; newer timestamps break ties so investigators see the freshest
 // report first. This mirrors "Clear is better than clever" by keeping the sort
 // well-documented.
@@ -2068,6 +2076,100 @@ function dropMarkerEntry(entry) {
   entry.dose = null;
   entry.date = null;
   entry.data = null;
+  entry.isRealtime = null;
+}
+
+// Materialise a marker on demand so we only spend work on entries that survive the cap.
+function ensureEntryMarker(entry, zoom) {
+  if (!entry || entry.marker) {
+    return entry ? entry.marker : null;
+  }
+
+  const markerData = entry.data;
+  if (!markerData) {
+    return null;
+  }
+
+  const renderStart = monotonicNow();
+  let marker = null;
+  let realtimeIcon = null;
+
+  if (entry.isRealtime) {
+    const nowSec = Date.now() / 1000;
+    const icon = buildRealtimeIcon(markerData, zoom, nowSec);
+    if (!icon) {
+      debugOverlay.noteFiltered('realtime');
+      const stackKey = markerStackIndex.get(entry.key);
+      if (stackKey) {
+        removeMarkerFromStack(stackKey, entry.key);
+      } else {
+        dropMarkerEntry(entry);
+      }
+      return null;
+    }
+    realtimeIcon = icon;
+    marker = L.marker([markerData.lat, markerData.lon], {
+      icon: L.divIcon({
+        className: '',
+        html: icon.html,
+        iconSize: [icon.size, icon.size],
+        iconAnchor: [icon.radius, icon.radius]
+      })
+    })
+      .addTo(map)
+      .bindTooltip(getTooltipContent(markerData), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], interactive: true })
+      .bindPopup(getPopupContent(markerData));
+  } else {
+    marker = L.circleMarker([markerData.lat, markerData.lon], {
+      radius: getRadius(markerData.doseRate, zoom),
+      fillColor: getGradientColor(markerData.doseRate),
+      color: getGradientColor(markerData.doseRate),
+      weight: 1,
+      opacity: getFillOpacity(markerData.speed) + 0.1,
+      fillOpacity: getFillOpacity(markerData.speed)
+    })
+      .addTo(map)
+      .bindTooltip(getTooltipContent(markerData), { direction: 'top', className: 'custom-tooltip', offset: [0, -8], interactive: true })
+      .bindPopup(getPopupContent(markerData));
+  }
+
+  if (!marker) {
+    const stackKey = markerStackIndex.get(entry.key);
+    if (stackKey) {
+      removeMarkerFromStack(stackKey, entry.key);
+    } else {
+      dropMarkerEntry(entry);
+    }
+    return null;
+  }
+
+  const renderEnd = monotonicNow();
+  let footprint = null;
+  try {
+    const point = map.latLngToContainerPoint([markerData.lat, markerData.lon]);
+    let radiusPx = 0;
+    if (entry.isRealtime && realtimeIcon) {
+      radiusPx = realtimeIcon.radius;
+    } else if (marker && typeof marker.getRadius === 'function') {
+      radiusPx = marker.getRadius();
+    } else if (marker && marker.options && typeof marker.options.radius === 'number') {
+      radiusPx = marker.options.radius;
+    }
+    if (point && typeof point.x === 'number' && typeof point.y === 'number') {
+      footprint = { x: point.x, y: point.y, radius: radiusPx };
+    }
+  } catch (err) {
+    footprint = null;
+  }
+
+  marker.doseRate = entry.dose;
+  marker.date = entry.date;
+  marker.isRealtime = entry.isRealtime;
+  circleMarkers[entry.key] = marker;
+  entry.marker = marker;
+
+  debugOverlay.noteRendered(markerData, renderEnd - renderStart, footprint);
+  return marker;
 }
 
 // Allow markers to migrate between stacks when a track reports a new position.
@@ -2089,7 +2191,7 @@ function removeMarkerFromStack(stackKey, markerKey) {
 
 // Insert a marker into the coordinate stack and enforce the active zoom limit.
 function registerMarkerEntry(coordKey, entry, layerLimit) {
-  if (!coordKey || !entry || !entry.key) return false;
+  if (!coordKey || !entry || !entry.key) return { keep: false, visible: false };
 
   const previousStack = markerStackIndex.get(entry.key);
   if (previousStack && previousStack !== coordKey) {
@@ -2134,7 +2236,9 @@ function registerMarkerEntry(coordKey, entry, layerLimit) {
     markerStacks.delete(coordKey);
   }
 
-  return keep;
+  const index = keep ? stack.entries.indexOf(entry) : -1;
+  const visible = keep && (!isFinite(layerLimit) || (index > -1 && index < layerLimit));
+  return { keep: keep, visible: visible };
 }
 
 // After a zoom change we revisit every stack so the map never shows more layers
@@ -2147,15 +2251,23 @@ function applyStackLimitsForZoom(zoom) {
       return;
     }
     stack.entries.sort(compareMarkerEntries);
-    if (!isFinite(layerLimit)) {
-      return;
-    }
-    while (stack.entries.length > layerLimit) {
-      const removed = stack.entries.pop();
-      dropMarkerEntry(removed);
+    if (isFinite(layerLimit)) {
+      while (stack.entries.length > layerLimit) {
+        const removed = stack.entries.pop();
+        dropMarkerEntry(removed);
+      }
     }
     if (!stack.entries.length) {
       markerStacks.delete(coordKey);
+      return;
+    }
+    const visibleCount = isFinite(layerLimit) ? Math.min(layerLimit, stack.entries.length) : stack.entries.length;
+    for (let i = 0; i < visibleCount; i += 1) {
+      const entry = stack.entries[i];
+      if (entry && entry.key) {
+        markerStackIndex.set(entry.key, coordKey);
+        ensureEntryMarker(entry, zoom);
+      }
     }
   });
 }
@@ -3804,10 +3916,6 @@ function updateMarkers(){
   if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
   const savedRange = loadDateRangeState();
-  const nowTimer = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-    ? function () { return performance.now(); }
-    : function () { return Date.now(); };
-
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
   markerStacks.clear();
@@ -3832,56 +3940,15 @@ function updateMarkers(){
       return;
     }
 
-    let marker;
-    const renderStart = nowTimer();
-    let realtimeIcon = null;
-    if (isLive) { // realtime marker with value inside the circle
+    // Fast-return for stale realtime data keeps the stack clean so we never store entries
+    // that cannot render, echoing "Don't just do something, stand there" by staying calm.
+    if (isLive) {
       const nowSec = Date.now() / 1000;
-      const icon = buildRealtimeIcon(m, zoom, nowSec);
-      if (!icon) {
+      if (!buildRealtimeIcon(m, zoom, nowSec)) {
         debugOverlay.noteFiltered('realtime');
-        return; // device is older than 24 hours
+        return;
       }
-      realtimeIcon = icon;
-      marker = L.marker([m.lat, m.lon], {
-        icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
-      })
-      .addTo(map)
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
-    } else {
-      marker = L.circleMarker([m.lat, m.lon], {
-        radius      : getRadius(m.doseRate, zoom),
-        fillColor   : getGradientColor(m.doseRate),
-        color       : getGradientColor(m.doseRate),
-        weight      : 1,
-        opacity     : getFillOpacity(m.speed) + 0.1,
-        fillOpacity : getFillOpacity(m.speed)
-      })
-      .addTo(map)
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
     }
-
-    const renderEnd = nowTimer();
-    let footprint = null;
-    try {
-      const point = map.latLngToContainerPoint([m.lat, m.lon]);
-      let radiusPx = 0;
-      if (isLive && realtimeIcon) {
-        radiusPx = realtimeIcon.radius;
-      } else if (marker && typeof marker.getRadius === 'function') {
-        radiusPx = marker.getRadius();
-      } else if (marker && marker.options && typeof marker.options.radius === 'number') {
-        radiusPx = marker.options.radius;
-      }
-      if (point && typeof point.x === 'number' && typeof point.y === 'number') {
-        footprint = { x: point.x, y: point.y, radius: radiusPx };
-      }
-    } catch (err) {
-      footprint = null;
-    }
-    debugOverlay.noteRendered(m, renderEnd - renderStart, footprint);
 
     // Store dose rate and timestamp on marker for later size updates
     const markerKey = m && typeof m.id !== 'undefined' && m.id !== null
@@ -3894,16 +3961,17 @@ function updateMarkers(){
       key  : markerKey,
       dose : (typeof m.doseRate === 'number' && isFinite(m.doseRate)) ? m.doseRate : 0,
       date : (typeof m.date === 'number' && isFinite(m.date)) ? m.date : 0,
-      marker: marker
+      data : m,
+      isRealtime: isLive,
+      marker: null
     };
-    const keepMarker = registerMarkerEntry(coordKey, entry, layerLimit);
-    if (!keepMarker) {
+    const registration = registerMarkerEntry(coordKey, entry, layerLimit);
+    if (!registration.keep) {
       return;
     }
-    marker.doseRate  = (typeof m.doseRate === 'number' && isFinite(m.doseRate)) ? m.doseRate : 0;
-    marker.date      = (typeof m.date === 'number' && isFinite(m.date)) ? m.date : 0;
-    marker.isRealtime = isLive;
-    circleMarkers[markerKey] = marker;
+    if (registration.visible) {
+      ensureEntryMarker(entry, zoom);
+    }
   }
 
   setMarkerStreamProcessor(processStreamMarker);
