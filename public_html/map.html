@@ -2027,7 +2027,9 @@ function buildCoordinateKey(lat, lon) {
 function maxLayersForZoom(zoom) {
   if (typeof zoom !== 'number' || !isFinite(zoom)) return 2;
   if (zoom >= 17) return Infinity;
-  if (zoom > 10) return 3;
+  if (zoom >= 15) return 5;
+  if (zoom >= 11) return 4;
+  if (zoom >= 6) return 3;
   if (zoom >= 1) return 2;
   return 1;
 }
@@ -2111,22 +2113,31 @@ function updateStackMetricsForStack(stack, prevTotal, prevVisible) {
   if (!stack || !Array.isArray(stack.entries)) {
     stackMetrics.totalLayers -= prevTotal;
     stackMetrics.visibleLayers -= prevVisible;
+    if (stackMetrics.totalLayers < 0) stackMetrics.totalLayers = 0;
+    if (stackMetrics.visibleLayers < 0) stackMetrics.visibleLayers = 0;
     publishStackMetrics();
     return;
   }
   const safePrevTotal = Number.isFinite(prevTotal) ? prevTotal : 0;
   const safePrevVisible = Number.isFinite(prevVisible) ? prevVisible : 0;
-  const nextTotal = stack.entries.length;
-  const nextVisible = Number.isFinite(stack.visibleCount) ? stack.visibleCount : Math.min(nextTotal, safePrevVisible);
+  const entryCount = Array.isArray(stack.entries) ? stack.entries.length : 0;
+  const filteredCount = Number.isFinite(stack.filteredCount) ? Math.max(0, stack.filteredCount) : 0;
+  const nextVisible = Number.isFinite(stack.visibleCount)
+    ? Math.max(0, Math.min(stack.visibleCount, entryCount))
+    : entryCount;
+  const nextTotal = nextVisible + filteredCount;
   stackMetrics.totalLayers += nextTotal - safePrevTotal;
   stackMetrics.visibleLayers += nextVisible - safePrevVisible;
+  if (stackMetrics.totalLayers < 0) stackMetrics.totalLayers = 0;
+  if (stackMetrics.visibleLayers < 0) stackMetrics.visibleLayers = 0;
   stack.totalCount = nextTotal;
   stack.visibleCount = nextVisible;
+  stack.filteredCount = filteredCount;
   publishStackMetrics();
 }
 
-// enforceStackVisibility materialises only the top-priority entries while
-// keeping the rest dormant so zoomed-in views can resurrect them cheaply.
+// enforceStackVisibility materialises the strongest entries and drops the rest so
+// the browser can reclaim memory while we still report accurate stack totals.
 function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
   if (!stack || !Array.isArray(stack.entries)) {
     return;
@@ -2135,14 +2146,19 @@ function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
   purgeInvalidStackEntries(stack);
   stack.entries.sort(compareMarkerEntries);
 
-  const total = stack.entries.length;
-  if (total === 0) {
+  const entryCount = stack.entries.length;
+  if (entryCount === 0) {
     stack.visibleCount = 0;
+    stack.filteredCount = 0;
+    stack.totalCount = 0;
     return;
   }
 
-  const limit = isFinite(layerLimit) ? Math.max(0, Math.min(layerLimit, total)) : total;
+  const keepAll = !isFinite(layerLimit);
+  const limit = keepAll ? entryCount : Math.max(0, Math.min(layerLimit, entryCount));
   let visible = 0;
+  // We accumulate the filtered tally so the debug overlay can quote how many layers were discarded.
+  let filtered = keepAll ? 0 : (Number.isFinite(stack.filteredCount) ? Math.max(0, stack.filteredCount) : 0);
   let index = 0;
 
   while (index < stack.entries.length) {
@@ -2152,27 +2168,27 @@ function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
       continue;
     }
 
-    markerStackIndex.set(entry.key, coordKey);
-
     if (index < limit) {
+      markerStackIndex.set(entry.key, coordKey);
       const marker = ensureEntryMarker(entry, zoom);
       if (marker) {
         visible += 1;
         index += 1;
         continue;
       }
-      // If we fail to materialise the marker we drop the entry entirely so the
-      // stack never holds invalid placeholders.
       dropMarkerEntry(entry);
       stack.entries.splice(index, 1);
       continue;
     }
 
-    dematerialiseEntryMarker(entry);
-    index += 1;
+    dropMarkerEntry(entry);
+    stack.entries.splice(index, 1);
+    filtered += 1;
   }
 
   stack.visibleCount = visible;
+  stack.filteredCount = filtered;
+  stack.totalCount = visible + filtered;
 }
 
 // Removing stale markers early frees memory so the browser can breathe. We clear
@@ -2295,6 +2311,9 @@ function removeMarkerFromStack(stackKey, markerKey) {
   const prevVisible = Number.isFinite(stack.visibleCount)
     ? stack.visibleCount
     : Math.min(prevTotal, isFinite(layerLimit) ? layerLimit : prevTotal);
+  const prevFiltered = Number.isFinite(stack.filteredCount)
+    ? stack.filteredCount
+    : Math.max(0, prevTotal - prevVisible);
 
   let removed = false;
   for (let i = stack.entries.length - 1; i >= 0; i -= 1) {
@@ -2315,12 +2334,19 @@ function removeMarkerFromStack(stackKey, markerKey) {
 
   if (!stack.entries.length) {
     stack.visibleCount = 0;
+    stack.filteredCount = 0;
+    stack.totalCount = 0;
     updateStackMetricsForStack(stack, prevTotal, prevVisible);
     markerStacks.delete(stackKey);
     return;
   }
 
   enforceStackVisibility(stack, stackKey, layerLimit, zoom);
+  const filteredAfter = Number.isFinite(stack.filteredCount) ? stack.filteredCount : 0;
+  const filteredDelta = filteredAfter - prevFiltered;
+  if (filteredDelta > 0) {
+    debugOverlay.noteFiltered('stack', filteredDelta);
+  }
   updateStackMetricsForStack(stack, prevTotal, prevVisible);
 }
 
@@ -2335,12 +2361,15 @@ function registerMarkerEntry(coordKey, entry, layerLimit, zoom) {
 
   let stack = markerStacks.get(coordKey);
   if (!stack) {
-    stack = { entries: [], visibleCount: 0, totalCount: 0 };
+    stack = { entries: [], visibleCount: 0, totalCount: 0, filteredCount: 0 };
     markerStacks.set(coordKey, stack);
   }
 
   const prevTotal = Number.isFinite(stack.totalCount) ? stack.totalCount : stack.entries.length;
   const prevVisible = Number.isFinite(stack.visibleCount) ? stack.visibleCount : Math.min(prevTotal, isFinite(layerLimit) ? layerLimit : prevTotal);
+  const prevFiltered = Number.isFinite(stack.filteredCount)
+    ? stack.filteredCount
+    : Math.max(0, prevTotal - prevVisible);
 
   purgeInvalidStackEntries(stack);
 
@@ -2361,6 +2390,11 @@ function registerMarkerEntry(coordKey, entry, layerLimit, zoom) {
   const keepIndex = stack.entries.indexOf(entry);
   const keep = keepIndex !== -1;
   const visible = keep && keepIndex < stack.visibleCount;
+  const filteredAfter = Number.isFinite(stack.filteredCount) ? stack.filteredCount : 0;
+  const filteredDelta = filteredAfter - prevFiltered;
+  if (filteredDelta > 0) {
+    debugOverlay.noteFiltered('stack', filteredDelta);
+  }
 
   updateStackMetricsForStack(stack, prevTotal, prevVisible);
 
@@ -2386,11 +2420,22 @@ function applyStackLimitsForZoom(zoom) {
     }
     const prevTotal = Number.isFinite(stack.totalCount) ? stack.totalCount : stack.entries.length;
     const prevVisible = Number.isFinite(stack.visibleCount) ? stack.visibleCount : Math.min(prevTotal, isFinite(layerLimit) ? layerLimit : prevTotal);
+    const prevFiltered = Number.isFinite(stack.filteredCount)
+      ? stack.filteredCount
+      : Math.max(0, prevTotal - prevVisible);
 
     enforceStackVisibility(stack, coordKey, layerLimit, zoom);
+    const filteredAfter = Number.isFinite(stack.filteredCount) ? stack.filteredCount : 0;
+    const filteredDelta = filteredAfter - prevFiltered;
+    if (filteredDelta > 0) {
+      debugOverlay.noteFiltered('stack', filteredDelta);
+    }
 
     if (!stack.entries.length) {
       stack.visibleCount = 0;
+      // Preserve the filtered tally so aggregate stats still reflect discarded layers after we drop the stack.
+      stack.totalCount = filteredAfter;
+      stack.filteredCount = filteredAfter;
       updateStackMetricsForStack(stack, prevTotal, prevVisible);
       markerStacks.delete(coordKey);
       return;
@@ -2603,6 +2648,22 @@ const debugOverlay = (function () {
   let lastPayloadBytes = 0;
   let nextMemorySampleAt = 0;
   let memorySamplePending = false;
+  const renderScheduler = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+    ? window.requestAnimationFrame.bind(window)
+    : function (cb) { return setTimeout(cb, 16); };
+  let renderScheduled = false;
+
+  // requestRender coalesces overlay updates so the debug panel never blocks marker streaming work.
+  function requestRender() {
+    if (renderScheduled) {
+      return;
+    }
+    renderScheduled = true;
+    renderScheduler(function () {
+      renderScheduled = false;
+      render();
+    });
+  }
 
   // We request a heap snapshot when available so operators see real memory deltas.
   function sampleMemorySnapshot() {
@@ -2672,7 +2733,7 @@ const debugOverlay = (function () {
         return;
       }
       recordMemorySample(snapshot, 'during');
-      render();
+      requestRender();
     });
   }
 
@@ -2840,7 +2901,7 @@ const debugOverlay = (function () {
     if (jsErrors.length > 5) {
       jsErrors.shift();
     }
-    render();
+    requestRender();
   }
 
   function formatBytes(bytes) {
@@ -2874,6 +2935,7 @@ const debugOverlay = (function () {
       filteredDate: 0,
       filteredSpeed: 0,
       filteredRealtime: 0,
+      filteredStack: 0,
       maxStack: 0,
       stackTotal: 0,
       stackFiltered: 0,
@@ -2897,7 +2959,7 @@ const debugOverlay = (function () {
         return;
       }
       recordMemorySample(snapshot, 'before');
-      render();
+      requestRender();
     });
   }
 
@@ -2941,7 +3003,8 @@ const debugOverlay = (function () {
       uncovered = metrics.visibleMarkers;
     }
 
-    const filteredTotal = metrics.filteredDate + metrics.filteredSpeed + metrics.filteredRealtime;
+    const filteredTotal = metrics.filteredDate + metrics.filteredSpeed + metrics.filteredRealtime + metrics.filteredStack;
+    const filteredDetails = `filtered ${filteredTotal} (date ${metrics.filteredDate}, speed ${metrics.filteredSpeed}, realtime ${metrics.filteredRealtime}, stack ${metrics.filteredStack})`;
     const expectedTotal = metrics.totalMarkers;
     const requestDuration = metrics.doneAt !== null ? (metrics.doneAt - metrics.requestStart) : null;
     const buildDuration = (metrics.firstMarkerAt !== null && metrics.lastMarkerAt !== null)
@@ -2980,7 +3043,7 @@ const debugOverlay = (function () {
     const stackVisible = Number.isFinite(metrics.stackVisible) ? metrics.stackVisible : Math.max(0, stackTotal - stackFiltered);
 
     const lines = [
-      `<div><strong>Markers:</strong> ${metrics.visibleMarkers} visible / ${expectedTotal} fetched (filtered ${filteredTotal})</div>`,
+      `<div><strong>Markers:</strong> ${metrics.visibleMarkers} visible / ${expectedTotal} fetched (${filteredDetails})</div>`,
       `<div><strong>Coverage:</strong> uncovered ${uncovered}, covered ${covered}, max stack ${metrics.maxStack}</div>`,
       `<div><strong>Stacking:</strong> total ${stackTotal}, filtered ${stackFiltered}, kept ${stackVisible}</div>`,
       `<div><strong>Timing:</strong> fetch ${formatDuration(fetchCost)}, render ${formatDuration(renderCost)}, build ${formatDuration(buildDuration)}</div>`,
@@ -3005,7 +3068,7 @@ const debugOverlay = (function () {
       }
       attachGlobalListeners();
       initialiseMetrics();
-      render();
+      requestRender();
     },
     noteIncoming: function (payloadLength) {
       if (!enabled) {
@@ -3025,20 +3088,25 @@ const debugOverlay = (function () {
       current.stackTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
       current.stackFiltered = Number.isFinite(filtered) ? Math.max(0, filtered) : 0;
       current.stackVisible = Number.isFinite(visible) ? Math.max(0, visible) : 0;
-      render();
+      requestRender();
     },
-    noteFiltered: function (reason) {
+    noteFiltered: function (reason, count) {
       if (!enabled || !metrics) {
         return;
       }
+      const amount = (typeof count === 'number' && isFinite(count) && count > 0)
+        ? Math.floor(count)
+        : 1;
       if (reason === 'date') {
-        metrics.filteredDate += 1;
+        metrics.filteredDate += amount;
       } else if (reason === 'speed') {
-        metrics.filteredSpeed += 1;
+        metrics.filteredSpeed += amount;
+      } else if (reason === 'stack') {
+        metrics.filteredStack += amount;
       } else {
-        metrics.filteredRealtime += 1;
+        metrics.filteredRealtime += amount;
       }
-      render();
+      requestRender();
     },
     noteRendered: function (marker, renderDuration, footprint) {
       if (!enabled || !metrics || !marker) {
@@ -3055,7 +3123,7 @@ const debugOverlay = (function () {
       }
       registerCoverage(footprint || null);
       scheduleMemorySample();
-      render();
+      requestRender();
     },
     finishRequest: function () {
       if (!enabled || !metrics) {
@@ -3071,11 +3139,11 @@ const debugOverlay = (function () {
             return;
           }
           recordMemorySample(snapshot, 'after');
-          render();
+          requestRender();
         });
         lastPayloadBytes = metrics.payloadBytes;
       }
-      render();
+      requestRender();
     },
     recordBackendError: function (message) {
       if (!enabled || !metrics) {
@@ -3087,7 +3155,7 @@ const debugOverlay = (function () {
           metrics.backendErrors = metrics.backendErrors.slice(-5);
         }
       }
-      render();
+      requestRender();
     }
   };
 })();
