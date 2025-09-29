@@ -2005,6 +2005,51 @@ let lastShortLinkFull = '';
 let pendingShortLinkFull = '';
 let shortLinkCommitPromise = null;
 
+// We keep every tooltip handle in one place so hideMapHints can silence them together.
+var mapHintHandles = [];
+
+// registerMapHintHandle remembers a tooltip/popup handle so later gestures can hide it.
+function registerMapHintHandle(handle) {
+  if (!handle || typeof handle.hide !== 'function') {
+    return;
+  }
+  if (mapHintHandles.indexOf(handle) === -1) {
+    mapHintHandles.push(handle);
+  }
+}
+
+// unregisterMapHintHandle removes a handle when controls are destroyed to avoid stale refs.
+function unregisterMapHintHandle(handle) {
+  var idx = mapHintHandles.indexOf(handle);
+  if (idx !== -1) {
+    mapHintHandles.splice(idx, 1);
+  }
+}
+
+// hideMapHints clears map popups and custom tooltips as soon as a gesture begins on mobile.
+function hideMapHints() {
+  if (map && typeof map.closePopup === 'function') {
+    map.closePopup();
+  }
+  if (map && typeof map.closeTooltip === 'function') {
+    // Leaflet expects an explicit tooltip instance, so we guard the internal ref before closing.
+    var activeTooltip = map._tooltip;
+    if (activeTooltip) {
+      map.closeTooltip(activeTooltip);
+    }
+  }
+  mapHintHandles.forEach(function (handle) {
+    if (handle && typeof handle.hide === 'function') {
+      handle.hide();
+    }
+  });
+}
+
+if (typeof window !== 'undefined') {
+  // Sharing the handler through window keeps custom controls decoupled yet consistent.
+  window.hideMapHints = hideMapHints;
+}
+
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
  *  We compute the href lazily so the button is only active when a
@@ -2599,6 +2644,7 @@ function attachControlTooltip(target, options) {
   }, options || {});
 
   let tooltipEl = null;
+  let handle = null; // Remember the handle so destroyTooltip can unregister it later.
 
   function resolveContent() {
     const content = typeof opts.content === 'function' ? opts.content() : opts.content;
@@ -2708,6 +2754,12 @@ function attachControlTooltip(target, options) {
     target.removeEventListener('focus', showTooltip);
     target.removeEventListener('blur', hideTooltip);
     target.removeEventListener('keydown', onKeyDown);
+    hideEvents.forEach(function (evt) {
+      target.removeEventListener(evt, hideMapHints, false);
+    });
+    if (handle) {
+      unregisterMapHintHandle(handle);
+    }
   }
 
   function onKeyDown(ev) {
@@ -2722,11 +2774,19 @@ function attachControlTooltip(target, options) {
   target.addEventListener('blur', hideTooltip);
   target.addEventListener('keydown', onKeyDown);
 
-  return {
+  // hideEvents wires every control interaction into hideMapHints for consistency on touch screens.
+  var hideEvents = ['pointerdown', 'touchstart', 'wheel'];
+  hideEvents.forEach(function (evt) {
+    target.addEventListener(evt, hideMapHints, false);
+  });
+
+  handle = {
     show: showTooltip,
     hide: hideTooltip,
     destroy: destroyTooltip,
   };
+  registerMapHintHandle(handle);
+  return handle;
 }
 
 
@@ -2851,6 +2911,30 @@ document.addEventListener('DOMContentLoaded', function () {
     zoom  : defaultCfg.zoom,
     layers: [startLayer],           // only one base layer
   });
+
+  // We listen to every gesture so tooltips disappear as soon as a visitor touches the map.
+  var mapGestureEvents = [
+    'movestart',
+    'move',
+    'moveend',
+    'zoomstart',
+    'zoomend',
+    'dragstart',
+    'dragend',
+    'click',
+    'mousedown',
+    'touchstart'
+  ];
+  mapGestureEvents.forEach(function (evt) {
+    map.on(evt, hideMapHints);
+  });
+
+  var mapContainer = typeof map.getContainer === 'function' ? map.getContainer() : null;
+  if (mapContainer && typeof mapContainer.addEventListener === 'function') {
+    ['pointerdown', 'touchstart', 'wheel'].forEach(function (evt) {
+      mapContainer.addEventListener(evt, hideMapHints, false);
+    });
+  }
 
   // Layer control
   var baseLayers = {
