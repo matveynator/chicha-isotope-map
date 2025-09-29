@@ -2049,9 +2049,15 @@ function monotonicNow() {
 }
 
 // Higher dose wins; newer timestamps break ties so investigators see the freshest
-// report first. This mirrors "Clear is better than clever" by keeping the sort
-// well-documented.
+// report first.  Realtime entries jump ahead of historical ones so Safecast live
+// sensors never disappear under dense archives, echoing "Don't hide power" by
+// surfacing the critical stream first.
 function compareMarkerEntries(a, b) {
+  const liveA = !!(a && a.isRealtime);
+  const liveB = !!(b && b.isRealtime);
+  if (liveA !== liveB) {
+    return liveA ? -1 : 1;
+  }
   const doseA = (a && typeof a.dose === 'number' && isFinite(a.dose)) ? a.dose : -Infinity;
   const doseB = (b && typeof b.dose === 'number' && isFinite(b.dose)) ? b.dose : -Infinity;
   if (doseA !== doseB) return doseB - doseA;
@@ -2163,7 +2169,13 @@ function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
   }
 
   const keepAll = !isFinite(layerLimit);
-  const limit = keepAll ? entryCount : Math.max(0, Math.min(layerLimit, entryCount));
+  // Count realtime entries so the limit expands when multiple live sensors share a spot;
+  // this keeps their signals visible instead of clipping to the historical budget.
+  const realtimeCount = keepAll ? entryCount : stack.entries.reduce(function (count, entry) {
+    return count + (entry && entry.isRealtime ? 1 : 0);
+  }, 0);
+  const rawLimit = keepAll ? entryCount : Math.max(0, Math.min(layerLimit, entryCount));
+  const limit = keepAll ? entryCount : Math.max(rawLimit, realtimeCount);
   let visible = 0;
   let filtered = 0;
 
