@@ -234,6 +234,31 @@ body, html {
           background: var(--control-bg-hover);
         }
 
+        /* Debug overlay hugs the short-link pill so operators can glance at the telemetry without opening devtools. */
+        #debugStats {
+          position: absolute;
+          top: 44px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: var(--overlay-bg);
+          border: var(--legend-border);
+          border-radius: 8px;
+          padding: 6px 10px;
+          font-size: var(--font-size-xxs);
+          line-height: 1.4;
+          color: var(--modal-text);
+          z-index: 1180;
+          display: none;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+          max-width: min(90vw, 520px);
+          text-align: left;
+          word-break: break-word;
+        }
+
+        #debugStats strong {
+          font-weight: 600;
+        }
+
         /* API quickstart cards inside the info modal stay theme aware through shared variables. */
         #infoModal .api-heading {
           font-size: var(--font-size-xl);
@@ -1172,6 +1197,10 @@ body, html {
       // Expose the realtime flag so the UI can hide controls when the backend keeps the feature off.
       window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
     </script>
+    <script>
+      // Flag whether the caller is on the debug allowlist so diagnostics stay hidden for regular visitors.
+      window.__debugEnabled = {{if .DebugEnabled}}true{{else}}false{{end}};
+    </script>
 
   </head>
 
@@ -1260,6 +1289,9 @@ body, html {
       tabindex="0"
       aria-live="polite"
       aria-label="{{translate "short_link_tooltip"}}"></div>
+
+    <!-- Debug metrics live directly under the short-link so operators see diagnostics without extra clicks. -->
+    <div id="debugStats" aria-live="polite" role="status"></div>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -1997,6 +2029,487 @@ function refreshDownloadLink() {
 
 // New controller to cancel previous request
 var markerStreamSource = null;
+
+// Debug overlay tracks marker streaming metrics so operators can correlate map
+// state with backend behaviour without opening the console.
+const debugOverlay = (function () {
+  const enabled = window.__debugEnabled === true;
+  const panel = enabled ? document.getElementById('debugStats') : null;
+  const jsErrors = [];
+  let metrics = null;
+  let listenersAttached = false;
+  let lastPayloadBytes = 0;
+  let nextMemorySampleAt = 0;
+  let memorySamplePending = false;
+
+  // We request a heap snapshot when available so operators see real memory deltas.
+  function sampleMemorySnapshot() {
+    try {
+      if (performance && typeof performance.measureUserAgentSpecificMemory === 'function') {
+        return performance.measureUserAgentSpecificMemory()
+          .then(function (result) {
+            if (result && typeof result.bytes === 'number') {
+              return { used: result.bytes, total: result.bytes };
+            }
+            return null;
+          })
+          .catch(function () { return null; });
+      }
+      if (performance && performance.memory && typeof performance.memory.usedJSHeapSize === 'number') {
+        const mem = performance.memory;
+        const total = typeof mem.totalJSHeapSize === 'number' ? mem.totalJSHeapSize
+          : typeof mem.jsHeapSizeLimit === 'number' ? mem.jsHeapSizeLimit
+          : mem.usedJSHeapSize;
+        return Promise.resolve({ used: mem.usedJSHeapSize, total: total });
+      }
+    } catch (err) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(null);
+  }
+
+  // recordMemorySample keeps both the baseline and the high-water mark so operators
+  // see how much memory the request actually consumed even if GC runs later.
+  function recordMemorySample(snapshot, role) {
+    if (!metrics || !snapshot || typeof snapshot.used !== 'number' || !isFinite(snapshot.used)) {
+      return;
+    }
+    const sample = {
+      used: snapshot.used,
+      total: typeof snapshot.total === 'number' && isFinite(snapshot.total) ? snapshot.total : snapshot.used,
+    };
+    if (role === 'before') {
+      metrics.memoryBefore = sample;
+    }
+    if (!metrics.memoryPeak || sample.used > metrics.memoryPeak.used) {
+      metrics.memoryPeak = sample;
+    }
+    if (role === 'after') {
+      metrics.memoryAfter = sample;
+    }
+  }
+
+  // scheduleMemorySample throttles heap probes to avoid stalling rendering while
+  // still capturing the peaks that make browsers struggle on large marker sets.
+  function scheduleMemorySample() {
+    if (!enabled || !metrics || memorySamplePending) {
+      return;
+    }
+    const now = typeof performance !== 'undefined' && performance && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+    if (now < nextMemorySampleAt) {
+      return;
+    }
+    nextMemorySampleAt = now + 2000;
+    memorySamplePending = true;
+    const current = metrics;
+    sampleMemorySnapshot().then(function (snapshot) {
+      memorySamplePending = false;
+      if (metrics !== current || !snapshot) {
+        return;
+      }
+      recordMemorySample(snapshot, 'during');
+      render();
+    });
+  }
+
+  // Build per-request coverage bookkeeping so we can spot overlapping footprints quickly.
+  function createCoverageState() {
+    // We keep a coarse grid so overlap checks only inspect nearby neighbours, mirroring
+    // "Don't communicate by sharing memory" by letting each cell act as a message hub.
+    return {
+      markerInfo: new Map(),
+      cellMembers: new Map(),
+      cellSize: 32,
+    };
+  }
+
+  function cellsForFootprint(x, y, radius, cellSize) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
+      return [];
+    }
+    const minX = Math.floor((x - radius) / cellSize);
+    const maxX = Math.floor((x + radius) / cellSize);
+    const minY = Math.floor((y - radius) / cellSize);
+    const maxY = Math.floor((y + radius) / cellSize);
+    const cells = [];
+    for (let cx = minX; cx <= maxX; cx += 1) {
+      for (let cy = minY; cy <= maxY; cy += 1) {
+        cells.push(cx + ':' + cy);
+      }
+    }
+    return cells;
+  }
+
+  function registerCoverage(footprint) {
+    if (!metrics || !metrics.coverage) {
+      return;
+    }
+
+    const coverage = metrics.coverage;
+    const key = 'marker-' + metrics.sequence;
+    metrics.sequence += 1;
+
+    const x = footprint && typeof footprint.x === 'number' ? footprint.x : NaN;
+    const y = footprint && typeof footprint.y === 'number' ? footprint.y : NaN;
+    const radius = footprint && typeof footprint.radius === 'number' && footprint.radius > 0
+      ? footprint.radius
+      : 0;
+
+    const info = {
+      covered: false,
+      cells: [],
+      x: x,
+      y: y,
+      radius: radius,
+      stack: 1,
+    };
+    coverage.markerInfo.set(key, info);
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      if (metrics.maxStack < 1) {
+        metrics.maxStack = 1;
+      }
+      return;
+    }
+
+    const cells = cellsForFootprint(x, y, radius, coverage.cellSize);
+    info.cells = cells;
+
+    if (!cells.length) {
+      if (metrics.maxStack < 1) {
+        metrics.maxStack = 1;
+      }
+      return;
+    }
+
+    // We only count true overlaps so dense clusters do not pretend everything is hidden.
+    const seen = new Set();
+    let overlapCount = 0;
+
+    cells.forEach(function (cellKey) {
+      let members = coverage.cellMembers.get(cellKey);
+      if (!members) {
+        members = new Set();
+        coverage.cellMembers.set(cellKey, members);
+      }
+
+      members.forEach(function (existingKey) {
+        if (seen.has(existingKey)) {
+          return;
+        }
+        seen.add(existingKey);
+        const existing = coverage.markerInfo.get(existingKey);
+        if (!existing || !Number.isFinite(existing.x) || !Number.isFinite(existing.y)) {
+          return;
+        }
+
+        const exRadius = typeof existing.radius === 'number' && existing.radius > 0 ? existing.radius : 0;
+        const dx = existing.x - x;
+        const dy = existing.y - y;
+        const maxDistance = exRadius + radius;
+
+        if (maxDistance <= 0) {
+          if (dx === 0 && dy === 0) {
+            overlapCount += 1;
+            existing.covered = true;
+          }
+          return;
+        }
+
+        if ((dx * dx + dy * dy) <= (maxDistance * maxDistance)) {
+          overlapCount += 1;
+          existing.covered = true;
+        }
+      });
+
+      members.add(key);
+    });
+
+    if (overlapCount > 0) {
+      const stackSize = overlapCount + 1;
+      info.stack = stackSize;
+      seen.forEach(function (existingKey) {
+        const existing = coverage.markerInfo.get(existingKey);
+        if (existing) {
+          const prev = typeof existing.stack === 'number' ? existing.stack : 1;
+          if (stackSize > prev) {
+            existing.stack = stackSize;
+          }
+        }
+      });
+      if (stackSize > metrics.maxStack) {
+        metrics.maxStack = stackSize;
+      }
+    } else if (metrics.maxStack < 1) {
+      metrics.maxStack = 1;
+    }
+  }
+
+  function attachGlobalListeners() {
+    if (!enabled || !panel || listenersAttached) {
+      return;
+    }
+    window.addEventListener('error', function (event) {
+      if (!enabled) return;
+      const message = event && event.message ? event.message : 'JavaScript error';
+      pushJSError(message);
+    });
+    window.addEventListener('unhandledrejection', function (event) {
+      if (!enabled) return;
+      let message = 'Unhandled rejection';
+      if (event && event.reason) {
+        if (typeof event.reason === 'string') {
+          message = event.reason;
+        } else if (event.reason && typeof event.reason.message === 'string') {
+          message = event.reason.message;
+        } else {
+          message = String(event.reason);
+        }
+      }
+      pushJSError(message);
+    });
+    listenersAttached = true;
+  }
+
+  function pushJSError(message) {
+    jsErrors.push({ message: message, time: Date.now() });
+    if (jsErrors.length > 5) {
+      jsErrors.shift();
+    }
+    render();
+  }
+
+  function formatBytes(bytes) {
+    if (typeof bytes !== 'number' || !isFinite(bytes)) {
+      return 'n/a';
+    }
+    if (Math.abs(bytes) < 1024) {
+      return bytes.toFixed(0) + ' B';
+    }
+    const mb = bytes / (1024 * 1024);
+    return mb.toFixed(1) + ' MB';
+  }
+
+  function formatDuration(ms) {
+    if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) {
+      return 'n/a';
+    }
+    if (ms < 1000) {
+      return ms.toFixed(0) + ' ms';
+    }
+    return (ms / 1000).toFixed(2) + ' s';
+  }
+
+  function initialiseMetrics() {
+    metrics = {
+      requestStart: performance.now(),
+      firstMarkerAt: null,
+      lastMarkerAt: null,
+      totalMarkers: 0,
+      visibleMarkers: 0,
+      filteredDate: 0,
+      filteredSpeed: 0,
+      filteredRealtime: 0,
+      maxStack: 0,
+      renderCost: 0,
+      doneAt: null,
+      memoryBefore: null,
+      memoryAfter: null,
+      memoryPeak: null,
+      payloadBytes: 0,
+      freedBytes: lastPayloadBytes,
+      backendErrors: [],
+      coverage: createCoverageState(),
+      sequence: 0,
+    };
+    nextMemorySampleAt = 0;
+    memorySamplePending = false;
+    const current = metrics;
+    sampleMemorySnapshot().then(function (snapshot) {
+      if (metrics !== current) {
+        return;
+      }
+      recordMemorySample(snapshot, 'before');
+      render();
+    });
+  }
+
+  function ensureMetrics() {
+    if (!metrics) {
+      initialiseMetrics();
+    }
+    return metrics;
+  }
+
+  function render() {
+    if (!enabled || !panel || !metrics) {
+      if (panel) {
+        panel.style.display = 'none';
+        panel.textContent = '';
+      }
+      return;
+    }
+
+    const hasData = metrics.totalMarkers > 0 || metrics.visibleMarkers > 0 ||
+      metrics.backendErrors.length > 0 || jsErrors.length > 0 || metrics.doneAt !== null;
+    if (!hasData) {
+      panel.style.display = 'none';
+      panel.textContent = '';
+      return;
+    }
+
+    let uncovered = 0;
+    let covered = 0;
+    if (metrics.coverage && metrics.coverage.markerInfo) {
+      metrics.coverage.markerInfo.forEach(function (info) {
+        if (info && info.covered) {
+          covered += 1;
+        } else {
+          uncovered += 1;
+        }
+      });
+    }
+    if (metrics.visibleMarkers > 0 && uncovered === 0 && covered === 0) {
+      uncovered = metrics.visibleMarkers;
+    }
+
+    const filteredTotal = metrics.filteredDate + metrics.filteredSpeed + metrics.filteredRealtime;
+    const expectedTotal = metrics.totalMarkers;
+    const requestDuration = metrics.doneAt !== null ? (metrics.doneAt - metrics.requestStart) : null;
+    const buildDuration = (metrics.firstMarkerAt !== null && metrics.lastMarkerAt !== null)
+      ? (metrics.lastMarkerAt - metrics.firstMarkerAt)
+      : null;
+    const renderCost = metrics.renderCost;
+    const fetchCost = requestDuration !== null ? Math.max(0, requestDuration - renderCost) : null;
+
+    let memoryUsed = 'n/a';
+    let memoryFreed = 'n/a';
+    if (metrics.memoryBefore && metrics.memoryPeak) {
+      const usedDelta = Math.max(0, metrics.memoryPeak.used - metrics.memoryBefore.used);
+      memoryUsed = formatBytes(usedDelta);
+    } else if (metrics.memoryBefore && metrics.memoryAfter) {
+      const usedDelta = metrics.memoryAfter.used - metrics.memoryBefore.used;
+      memoryUsed = formatBytes(Math.max(0, usedDelta));
+    } else if (metrics.payloadBytes > 0) {
+      memoryUsed = '&#8776; ' + formatBytes(metrics.payloadBytes);
+    }
+
+    if (metrics.memoryPeak && metrics.memoryAfter) {
+      const freedDelta = Math.max(0, metrics.memoryPeak.used - metrics.memoryAfter.used);
+      memoryFreed = formatBytes(freedDelta);
+    } else if (metrics.memoryBefore && metrics.memoryAfter) {
+      const freedDelta = metrics.memoryBefore.used - metrics.memoryAfter.used;
+      memoryFreed = formatBytes(Math.max(0, freedDelta));
+    } else if (typeof metrics.freedBytes === 'number' && metrics.freedBytes > 0) {
+      memoryFreed = '&#8776; ' + formatBytes(metrics.freedBytes);
+    }
+
+    const latestJSError = jsErrors.length > 0 ? jsErrors[jsErrors.length - 1].message : 'none';
+    const backendErrors = metrics.backendErrors.length > 0 ? metrics.backendErrors.join('; ') : 'none';
+
+    const lines = [
+      `<div><strong>Markers:</strong> ${metrics.visibleMarkers} visible / ${expectedTotal} fetched (filtered ${filteredTotal})</div>`,
+      `<div><strong>Coverage:</strong> uncovered ${uncovered}, covered ${covered}, max stack ${metrics.maxStack}</div>`,
+      `<div><strong>Timing:</strong> fetch ${formatDuration(fetchCost)}, render ${formatDuration(renderCost)}, build ${formatDuration(buildDuration)}</div>`,
+      `<div><strong>Request:</strong> total ${formatDuration(requestDuration)}</div>`,
+      `<div><strong>Memory:</strong> used ${memoryUsed}, freed ${memoryFreed}</div>`,
+      `<div><strong>Expected:</strong> ${expectedTotal} markers</div>`,
+      `<div><strong>JS errors:</strong> ${latestJSError}</div>`,
+      `<div><strong>Backend errors:</strong> ${backendErrors}</div>`
+    ];
+
+    panel.style.display = 'block';
+    panel.innerHTML = lines.join('');
+  }
+
+  attachGlobalListeners();
+
+  return {
+    enabled: enabled,
+    startRequest: function () {
+      if (!enabled) {
+        return;
+      }
+      attachGlobalListeners();
+      initialiseMetrics();
+      render();
+    },
+    noteIncoming: function (payloadLength) {
+      if (!enabled) {
+        return;
+      }
+      const current = ensureMetrics();
+      current.totalMarkers += 1;
+      if (typeof payloadLength === 'number' && payloadLength > 0 && isFinite(payloadLength)) {
+        current.payloadBytes += payloadLength;
+      }
+    },
+    noteFiltered: function (reason) {
+      if (!enabled || !metrics) {
+        return;
+      }
+      if (reason === 'date') {
+        metrics.filteredDate += 1;
+      } else if (reason === 'speed') {
+        metrics.filteredSpeed += 1;
+      } else {
+        metrics.filteredRealtime += 1;
+      }
+      render();
+    },
+    noteRendered: function (marker, renderDuration, footprint) {
+      if (!enabled || !metrics || !marker) {
+        return;
+      }
+      const now = performance.now();
+      if (metrics.firstMarkerAt === null) {
+        metrics.firstMarkerAt = now;
+      }
+      metrics.lastMarkerAt = now;
+      metrics.visibleMarkers += 1;
+      if (typeof renderDuration === 'number' && isFinite(renderDuration)) {
+        metrics.renderCost += renderDuration;
+      }
+      registerCoverage(footprint || null);
+      scheduleMemorySample();
+      render();
+    },
+    finishRequest: function () {
+      if (!enabled || !metrics) {
+        return;
+      }
+      if (metrics.doneAt === null) {
+        metrics.doneAt = performance.now();
+        nextMemorySampleAt = 0;
+        scheduleMemorySample();
+        const current = metrics;
+        sampleMemorySnapshot().then(function (snapshot) {
+          if (metrics !== current) {
+            return;
+          }
+          recordMemorySample(snapshot, 'after');
+          render();
+        });
+        lastPayloadBytes = metrics.payloadBytes;
+      }
+      render();
+    },
+    recordBackendError: function (message) {
+      if (!enabled || !metrics) {
+        return;
+      }
+      if (message && message.trim() !== '') {
+        metrics.backendErrors.push(message.trim());
+        if (metrics.backendErrors.length > 5) {
+          metrics.backendErrors = metrics.backendErrors.slice(-5);
+        }
+      }
+      render();
+    }
+  };
+})();
 
 var liveHistoryCache = new Map();
 
@@ -2911,6 +3424,8 @@ function updateMarkers(){
   const loadingEl = document.getElementById('loadingOverlay');
   if (loadingEl) loadingEl.style.display='block';
 
+  debugOverlay.startRequest();
+
   if (markerStreamSource) markerStreamSource.close();
 
   const zoom   = map.getZoom();
@@ -2937,19 +3452,32 @@ function updateMarkers(){
   markerStreamSource = es;
 
   es.onmessage = e => {
+    debugOverlay.noteIncoming(e && typeof e.data === 'string' ? e.data.length : 0);
     let m; try { m = JSON.parse(e.data); } catch { return; }
     const isLive = m.speed < 0; // negative speed denotes realtime marker
     if (!isLive && m.trackID) tracks.add(m.trackID);
     minTs = Math.min(minTs, m.date);
     maxTs = Math.max(maxTs, m.date);
-    if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
-    if (!shouldDisplayBySpeed(m.speed)) return;
+    if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) {
+      debugOverlay.noteFiltered('date');
+      return;
+    }
+    if (!shouldDisplayBySpeed(m.speed)) {
+      debugOverlay.noteFiltered('speed');
+      return;
+    }
 
     let marker;
+    const renderStart = performance.now();
+    let realtimeIcon = null;
     if (isLive) { // realtime marker with value inside the circle
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
-      if (!icon) return; // device is older than 24 hours
+      if (!icon) {
+        debugOverlay.noteFiltered('realtime');
+        return; // device is older than 24 hours
+      }
+      realtimeIcon = icon;
       marker = L.marker([m.lat, m.lon], {
         icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
       })
@@ -2969,6 +3497,26 @@ function updateMarkers(){
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
     }
+
+    const renderEnd = performance.now();
+    let footprint = null;
+    try {
+      const point = map.latLngToContainerPoint([m.lat, m.lon]);
+      let radiusPx = 0;
+      if (isLive && realtimeIcon) {
+        radiusPx = realtimeIcon.radius;
+      } else if (marker && typeof marker.getRadius === 'function') {
+        radiusPx = marker.getRadius();
+      } else if (marker && marker.options && typeof marker.options.radius === 'number') {
+        radiusPx = marker.options.radius;
+      }
+      if (point && typeof point.x === 'number' && typeof point.y === 'number') {
+        footprint = { x: point.x, y: point.y, radius: radiusPx };
+      }
+    } catch (err) {
+      footprint = null;
+    }
+    debugOverlay.noteRendered(m, renderEnd - renderStart, footprint);
 
     // Store dose rate and timestamp on marker for later size updates
     marker.doseRate  = m.doseRate;
@@ -2992,11 +3540,14 @@ function updateMarkers(){
       window.__syncDateSliders(minTs, maxTs);
     }
     if (loadingEl) loadingEl.style.display='none';
+    debugOverlay.finishRequest();
     es.close();
   });
 
   es.onerror = () => {
     if (loadingEl) loadingEl.style.display='none';
+    debugOverlay.recordBackendError('stream error');
+    debugOverlay.finishRequest();
     es.close();
   };
 }
