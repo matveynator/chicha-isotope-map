@@ -2075,6 +2075,131 @@ function refreshDownloadLink() {
 // New controller to cancel previous request
 var markerStreamSource = null;
 
+// ---------------------------------------------------------------
+// Marker streaming queue helpers keep DOM updates responsive.
+// ---------------------------------------------------------------
+let markerStreamQueue = [];
+let markerStreamHead = 0;
+let markerStreamFlushHandle = 0;
+let markerStreamProcessor = null;
+let markerStreamLastDrain = 0; // Track last drain timestamp so we can adapt the budget.
+let markerStreamBudgetMs = 8;  // Adaptive budget keeps desktop throughput high without stalling touch devices.
+
+// We prefer requestAnimationFrame because it naturally aligns with painting; fall back to a timeout when unavailable.
+const markerFrameScheduler = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+  ? window.requestAnimationFrame.bind(window)
+  : function (cb) { return setTimeout(cb, 16); };
+
+// Matching cancel helper ensures timers do not leak when the stream restarts.
+const markerFrameCanceller = (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function')
+  ? window.cancelAnimationFrame.bind(window)
+  : function (handle) { clearTimeout(handle); };
+
+// clearMarkerStreamQueue aborts any pending flush so a new request cannot process stale markers.
+function clearMarkerStreamQueue() {
+  if (markerStreamFlushHandle) {
+    markerFrameCanceller(markerStreamFlushHandle);
+    markerStreamFlushHandle = 0;
+  }
+  markerStreamQueue.length = 0;
+  markerStreamHead = 0;
+  markerStreamProcessor = null;
+  markerStreamLastDrain = 0;
+  markerStreamBudgetMs = 8;
+}
+
+// setMarkerStreamProcessor wires the queue to the active handler without reallocating the backing array.
+function setMarkerStreamProcessor(fn) {
+  markerStreamProcessor = typeof fn === 'function' ? fn : null;
+  if (!markerStreamProcessor) {
+    markerStreamQueue.length = 0;
+    markerStreamHead = 0;
+    markerStreamLastDrain = 0;
+    markerStreamBudgetMs = 8;
+  } else {
+    markerStreamLastDrain = 0;
+    markerStreamBudgetMs = 8;
+  }
+}
+
+// enqueueMarkerPayload appends to the queue and schedules a flush if one is not already pending.
+function enqueueMarkerPayload(payload) {
+  if (!markerStreamProcessor) {
+    return;
+  }
+  markerStreamQueue.push(payload);
+  if (!markerStreamFlushHandle) {
+    if (markerStreamQueue.length - markerStreamHead <= 16) {
+      // Process small bursts immediately so realtime markers appear without extra latency.
+      runMarkerStreamQueue();
+    } else {
+      markerStreamFlushHandle = markerFrameScheduler(runMarkerStreamQueue);
+    }
+  }
+}
+
+// runMarkerStreamQueue drains work in adaptive bursts so user gestures stay responsive and desktops still catch up quickly.
+function runMarkerStreamQueue() {
+  markerStreamFlushHandle = 0;
+  if (!markerStreamProcessor || !markerStreamQueue || markerStreamHead >= markerStreamQueue.length) {
+    markerStreamQueue.length = 0;
+    markerStreamHead = 0;
+    return;
+  }
+
+  const nowFn = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? function () { return performance.now(); }
+    : function () { return Date.now(); };
+  const start = nowFn();
+
+  if (markerStreamLastDrain) {
+    const delta = start - markerStreamLastDrain;
+    if (delta > 40) {
+      markerStreamBudgetMs = Math.min(markerStreamBudgetMs + 1, 16);
+    } else if (delta < 16) {
+      markerStreamBudgetMs = Math.max(markerStreamBudgetMs - 1, 4);
+    }
+  }
+  markerStreamLastDrain = start;
+
+  const deadline = start + markerStreamBudgetMs;
+  // We check the clock in batches to reduce the overhead of frequent now() calls when the queue is large.
+  const stride = markerStreamQueue.length > 4000 ? 32 : markerStreamQueue.length > 1000 ? 16 : 8;
+  let processedSinceCheck = 0;
+
+  while (markerStreamHead < markerStreamQueue.length) {
+    const item = markerStreamQueue[markerStreamHead];
+    markerStreamQueue[markerStreamHead] = null;
+    markerStreamHead++;
+    processedSinceCheck++;
+    try {
+      markerStreamProcessor(item);
+    } catch (err) {
+      console.error('marker queue error', err);
+    }
+    if (processedSinceCheck >= stride) {
+      processedSinceCheck = 0;
+      if (nowFn() >= deadline) {
+        break;
+      }
+    }
+  }
+
+  if (markerStreamHead >= markerStreamQueue.length) {
+    markerStreamQueue.length = 0;
+    markerStreamHead = 0;
+    return;
+  }
+
+  if (markerStreamHead > 2048 && markerStreamHead > markerStreamQueue.length / 2) {
+    // Compact the buffer occasionally so long-lived sessions do not grow arrays indefinitely.
+    markerStreamQueue.splice(0, markerStreamHead);
+    markerStreamHead = 0;
+  }
+
+  markerStreamFlushHandle = markerFrameScheduler(runMarkerStreamQueue);
+}
+
 // Debug overlay tracks marker streaming metrics so operators can correlate map
 // state with backend behaviour without opening the console.
 const debugOverlay = (function () {
@@ -3511,6 +3636,7 @@ function updateMarkers(){
   debugOverlay.startRequest();
 
   if (markerStreamSource) markerStreamSource.close();
+  clearMarkerStreamQueue(); // Reset pending work so a fresh stream cannot leak old markers.
 
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
@@ -3525,6 +3651,9 @@ function updateMarkers(){
   if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
   const savedRange = loadDateRangeState();
+  const nowTimer = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? function () { return performance.now(); }
+    : function () { return Date.now(); };
 
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
@@ -3532,16 +3661,13 @@ function updateMarkers(){
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
 
-  const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
-  markerStreamSource = es;
+  function processStreamMarker(m) {
+    if (!m || typeof m !== 'object') {
+      return;
+    }
 
-  es.onmessage = e => {
-    debugOverlay.noteIncoming(e && typeof e.data === 'string' ? e.data.length : 0);
-    let m; try { m = JSON.parse(e.data); } catch { return; }
-    const isLive = m.speed < 0; // negative speed denotes realtime marker
-    if (!isLive && m.trackID) tracks.add(m.trackID);
-    minTs = Math.min(minTs, m.date);
-    maxTs = Math.max(maxTs, m.date);
+    const isLive = typeof m.speed === 'number' && m.speed < 0; // negative speed denotes realtime marker
+
     if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) {
       debugOverlay.noteFiltered('date');
       return;
@@ -3552,7 +3678,7 @@ function updateMarkers(){
     }
 
     let marker;
-    const renderStart = performance.now();
+    const renderStart = nowTimer();
     let realtimeIcon = null;
     if (isLive) { // realtime marker with value inside the circle
       const nowSec = Date.now() / 1000;
@@ -3582,7 +3708,7 @@ function updateMarkers(){
       .bindPopup(getPopupContent(m));
     }
 
-    const renderEnd = performance.now();
+    const renderEnd = nowTimer();
     let footprint = null;
     try {
       const point = map.latLngToContainerPoint([m.lat, m.lon]);
@@ -3607,6 +3733,30 @@ function updateMarkers(){
     marker.date      = m.date;
     marker.isRealtime = isLive;
     circleMarkers[m.id || m.trackID] = marker;
+  }
+
+  setMarkerStreamProcessor(processStreamMarker);
+
+  const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
+  markerStreamSource = es;
+
+  es.onmessage = e => {
+    debugOverlay.noteIncoming(e && typeof e.data === 'string' ? e.data.length : 0);
+    let markerPayload;
+    try {
+      markerPayload = JSON.parse(e.data);
+    } catch (err) {
+      return;
+    }
+    const liveMarker = typeof markerPayload.speed === 'number' && markerPayload.speed < 0;
+    if (!liveMarker && markerPayload && markerPayload.trackID) {
+      tracks.add(markerPayload.trackID);
+    }
+    if (markerPayload && typeof markerPayload.date === 'number' && isFinite(markerPayload.date)) {
+      if (markerPayload.date < minTs) minTs = markerPayload.date;
+      if (markerPayload.date > maxTs) maxTs = markerPayload.date;
+    }
+    enqueueMarkerPayload(markerPayload);
   };
 
   es.addEventListener('done', () => {
@@ -3632,6 +3782,7 @@ function updateMarkers(){
     if (loadingEl) loadingEl.style.display='none';
     debugOverlay.recordBackendError('stream error');
     debugOverlay.finishRequest();
+    clearMarkerStreamQueue();
     es.close();
   };
 }
