@@ -2038,6 +2038,109 @@ const debugOverlay = (function () {
   const jsErrors = [];
   let metrics = null;
   let listenersAttached = false;
+  let lastPayloadBytes = 0;
+
+  // We request a heap snapshot when available so operators see real memory deltas.
+  function sampleMemorySnapshot() {
+    try {
+      if (performance && typeof performance.measureUserAgentSpecificMemory === 'function') {
+        return performance.measureUserAgentSpecificMemory()
+          .then(function (result) {
+            if (result && typeof result.bytes === 'number') {
+              return { used: result.bytes, total: result.bytes };
+            }
+            return null;
+          })
+          .catch(function () { return null; });
+      }
+      if (performance && performance.memory && typeof performance.memory.usedJSHeapSize === 'number') {
+        const mem = performance.memory;
+        const total = typeof mem.totalJSHeapSize === 'number' ? mem.totalJSHeapSize
+          : typeof mem.jsHeapSizeLimit === 'number' ? mem.jsHeapSizeLimit
+          : mem.usedJSHeapSize;
+        return Promise.resolve({ used: mem.usedJSHeapSize, total: total });
+      }
+    } catch (err) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(null);
+  }
+
+  // Build per-request coverage bookkeeping so we can spot overlapping footprints quickly.
+  function createCoverageState() {
+    return {
+      markerInfo: new Map(),
+      cellMembers: new Map(),
+      cellSize: 40,
+    };
+  }
+
+  function cellsForFootprint(x, y, radius, cellSize) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
+      return [];
+    }
+    const minX = Math.floor((x - radius) / cellSize);
+    const maxX = Math.floor((x + radius) / cellSize);
+    const minY = Math.floor((y - radius) / cellSize);
+    const maxY = Math.floor((y + radius) / cellSize);
+    const cells = [];
+    for (let cx = minX; cx <= maxX; cx += 1) {
+      for (let cy = minY; cy <= maxY; cy += 1) {
+        cells.push(cx + ':' + cy);
+      }
+    }
+    return cells;
+  }
+
+  function registerCoverage(footprint) {
+    if (!metrics || !metrics.coverage) {
+      return;
+    }
+
+    const coverage = metrics.coverage;
+    // We hash markers into coarse grid cells so overlap detection stays cheap even with thousands of points.
+    const cells = cellsForFootprint(
+      footprint && typeof footprint.x === 'number' ? footprint.x : NaN,
+      footprint && typeof footprint.y === 'number' ? footprint.y : NaN,
+      footprint && typeof footprint.radius === 'number' ? footprint.radius : NaN,
+      coverage.cellSize
+    );
+
+    const key = 'marker-' + metrics.sequence;
+    metrics.sequence += 1;
+
+    const info = { covered: false, cells: cells };
+    coverage.markerInfo.set(key, info);
+
+    if (!cells.length) {
+      // Without a valid footprint we still count the marker as a single exposed point.
+      if (metrics.maxStack < 1) {
+        metrics.maxStack = 1;
+      }
+      return;
+    }
+
+    cells.forEach(function (cellKey) {
+      let members = coverage.cellMembers.get(cellKey);
+      if (!members) {
+        members = new Set();
+        coverage.cellMembers.set(cellKey, members);
+      }
+      if (members.size > 0) {
+        info.covered = true;
+        members.forEach(function (existingKey) {
+          const existing = coverage.markerInfo.get(existingKey);
+          if (existing) {
+            existing.covered = true;
+          }
+        });
+      }
+      members.add(key);
+      if (members.size > metrics.maxStack) {
+        metrics.maxStack = members.size;
+      }
+    });
+  }
 
   function attachGlobalListeners() {
     if (!enabled || !panel || listenersAttached) {
@@ -2073,14 +2176,6 @@ const debugOverlay = (function () {
     render();
   }
 
-  function readMemory() {
-    if (typeof performance !== 'undefined' && performance && performance.memory) {
-      const mem = performance.memory;
-      return { used: mem.usedJSHeapSize, total: mem.totalJSHeapSize };
-    }
-    return null;
-  }
-
   function formatBytes(bytes) {
     if (typeof bytes !== 'number' || !isFinite(bytes)) {
       return 'n/a';
@@ -2112,14 +2207,25 @@ const debugOverlay = (function () {
       filteredDate: 0,
       filteredSpeed: 0,
       filteredRealtime: 0,
-      locationCounts: new Map(),
       maxStack: 0,
       renderCost: 0,
       doneAt: null,
-      memoryBefore: readMemory(),
+      memoryBefore: null,
       memoryAfter: null,
+      payloadBytes: 0,
+      freedBytes: lastPayloadBytes,
       backendErrors: [],
+      coverage: createCoverageState(),
+      sequence: 0,
     };
+    const current = metrics;
+    sampleMemorySnapshot().then(function (snapshot) {
+      if (metrics !== current) {
+        return;
+      }
+      metrics.memoryBefore = snapshot;
+      render();
+    });
   }
 
   function ensureMetrics() {
@@ -2127,13 +2233,6 @@ const debugOverlay = (function () {
       initialiseMetrics();
     }
     return metrics;
-  }
-
-  function locationKey(lat, lon) {
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      return 'invalid';
-    }
-    return lat.toFixed(6) + ',' + lon.toFixed(6);
   }
 
   function render() {
@@ -2155,15 +2254,18 @@ const debugOverlay = (function () {
 
     let uncovered = 0;
     let covered = 0;
-    metrics.locationCounts.forEach(function (count) {
-      if (count <= 0) {
-        return;
-      }
-      uncovered += 1;
-      if (count > 1) {
-        covered += (count - 1);
-      }
-    });
+    if (metrics.coverage && metrics.coverage.markerInfo) {
+      metrics.coverage.markerInfo.forEach(function (info) {
+        if (info && info.covered) {
+          covered += 1;
+        } else {
+          uncovered += 1;
+        }
+      });
+    }
+    if (metrics.visibleMarkers > 0 && uncovered === 0 && covered === 0) {
+      uncovered = metrics.visibleMarkers;
+    }
 
     const filteredTotal = metrics.filteredDate + metrics.filteredSpeed + metrics.filteredRealtime;
     const expectedTotal = metrics.totalMarkers;
@@ -2180,10 +2282,18 @@ const debugOverlay = (function () {
       const usedDelta = metrics.memoryAfter.used - metrics.memoryBefore.used;
       if (usedDelta >= 0) {
         memoryUsed = formatBytes(usedDelta);
-        memoryFreed = formatBytes(0);
+        const freedDelta = metrics.memoryBefore.used - metrics.memoryAfter.used;
+        memoryFreed = freedDelta > 0 ? formatBytes(freedDelta) : formatBytes(0);
       } else {
         memoryUsed = formatBytes(0);
         memoryFreed = formatBytes(-usedDelta);
+      }
+    } else {
+      if (metrics.payloadBytes > 0) {
+        memoryUsed = '&#8776; ' + formatBytes(metrics.payloadBytes);
+      }
+      if (typeof metrics.freedBytes === 'number' && metrics.freedBytes > 0) {
+        memoryFreed = '&#8776; ' + formatBytes(metrics.freedBytes);
       }
     }
 
@@ -2217,12 +2327,15 @@ const debugOverlay = (function () {
       initialiseMetrics();
       render();
     },
-    noteIncoming: function () {
+    noteIncoming: function (payloadLength) {
       if (!enabled) {
         return;
       }
       const current = ensureMetrics();
       current.totalMarkers += 1;
+      if (typeof payloadLength === 'number' && payloadLength > 0 && isFinite(payloadLength)) {
+        current.payloadBytes += payloadLength;
+      }
     },
     noteFiltered: function (reason) {
       if (!enabled || !metrics) {
@@ -2237,7 +2350,7 @@ const debugOverlay = (function () {
       }
       render();
     },
-    noteRendered: function (marker, renderDuration) {
+    noteRendered: function (marker, renderDuration, footprint) {
       if (!enabled || !metrics || !marker) {
         return;
       }
@@ -2250,15 +2363,7 @@ const debugOverlay = (function () {
       if (typeof renderDuration === 'number' && isFinite(renderDuration)) {
         metrics.renderCost += renderDuration;
       }
-      const lat = Number(marker.lat);
-      const lon = Number(marker.lon);
-      const key = locationKey(lat, lon);
-      const prev = metrics.locationCounts.get(key) || 0;
-      const next = prev + 1;
-      metrics.locationCounts.set(key, next);
-      if (next > metrics.maxStack) {
-        metrics.maxStack = next;
-      }
+      registerCoverage(footprint || null);
       render();
     },
     finishRequest: function () {
@@ -2267,7 +2372,15 @@ const debugOverlay = (function () {
       }
       if (metrics.doneAt === null) {
         metrics.doneAt = performance.now();
-        metrics.memoryAfter = readMemory();
+        const current = metrics;
+        sampleMemorySnapshot().then(function (snapshot) {
+          if (metrics !== current) {
+            return;
+          }
+          metrics.memoryAfter = snapshot;
+          render();
+        });
+        lastPayloadBytes = metrics.payloadBytes;
       }
       render();
     },
@@ -3227,8 +3340,8 @@ function updateMarkers(){
   markerStreamSource = es;
 
   es.onmessage = e => {
+    debugOverlay.noteIncoming(e && typeof e.data === 'string' ? e.data.length : 0);
     let m; try { m = JSON.parse(e.data); } catch { return; }
-    debugOverlay.noteIncoming();
     const isLive = m.speed < 0; // negative speed denotes realtime marker
     if (!isLive && m.trackID) tracks.add(m.trackID);
     minTs = Math.min(minTs, m.date);
@@ -3244,6 +3357,7 @@ function updateMarkers(){
 
     let marker;
     const renderStart = performance.now();
+    let realtimeIcon = null;
     if (isLive) { // realtime marker with value inside the circle
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
@@ -3251,6 +3365,7 @@ function updateMarkers(){
         debugOverlay.noteFiltered('realtime');
         return; // device is older than 24 hours
       }
+      realtimeIcon = icon;
       marker = L.marker([m.lat, m.lon], {
         icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
       })
@@ -3272,7 +3387,24 @@ function updateMarkers(){
     }
 
     const renderEnd = performance.now();
-    debugOverlay.noteRendered(m, renderEnd - renderStart);
+    let footprint = null;
+    try {
+      const point = map.latLngToContainerPoint([m.lat, m.lon]);
+      let radiusPx = 0;
+      if (isLive && realtimeIcon) {
+        radiusPx = realtimeIcon.radius;
+      } else if (marker && typeof marker.getRadius === 'function') {
+        radiusPx = marker.getRadius();
+      } else if (marker && marker.options && typeof marker.options.radius === 'number') {
+        radiusPx = marker.options.radius;
+      }
+      if (point && typeof point.x === 'number' && typeof point.y === 'number') {
+        footprint = { x: point.x, y: point.y, radius: radiusPx };
+      }
+    } catch (err) {
+      footprint = null;
+    }
+    debugOverlay.noteRendered(m, renderEnd - renderStart, footprint);
 
     // Store dose rate and timestamp on marker for later size updates
     marker.doseRate  = m.doseRate;
