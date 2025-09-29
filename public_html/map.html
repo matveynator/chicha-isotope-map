@@ -2082,6 +2082,8 @@ let markerStreamQueue = [];
 let markerStreamHead = 0;
 let markerStreamFlushHandle = 0;
 let markerStreamProcessor = null;
+let markerStreamLastDrain = 0; // Track last drain timestamp so we can adapt the budget.
+let markerStreamBudgetMs = 8;  // Adaptive budget keeps desktop throughput high without stalling touch devices.
 
 // We prefer requestAnimationFrame because it naturally aligns with painting; fall back to a timeout when unavailable.
 const markerFrameScheduler = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
@@ -2102,6 +2104,8 @@ function clearMarkerStreamQueue() {
   markerStreamQueue.length = 0;
   markerStreamHead = 0;
   markerStreamProcessor = null;
+  markerStreamLastDrain = 0;
+  markerStreamBudgetMs = 8;
 }
 
 // setMarkerStreamProcessor wires the queue to the active handler without reallocating the backing array.
@@ -2110,6 +2114,11 @@ function setMarkerStreamProcessor(fn) {
   if (!markerStreamProcessor) {
     markerStreamQueue.length = 0;
     markerStreamHead = 0;
+    markerStreamLastDrain = 0;
+    markerStreamBudgetMs = 8;
+  } else {
+    markerStreamLastDrain = 0;
+    markerStreamBudgetMs = 8;
   }
 }
 
@@ -2120,11 +2129,16 @@ function enqueueMarkerPayload(payload) {
   }
   markerStreamQueue.push(payload);
   if (!markerStreamFlushHandle) {
-    markerStreamFlushHandle = markerFrameScheduler(runMarkerStreamQueue);
+    if (markerStreamQueue.length - markerStreamHead <= 16) {
+      // Process small bursts immediately so realtime markers appear without extra latency.
+      runMarkerStreamQueue();
+    } else {
+      markerStreamFlushHandle = markerFrameScheduler(runMarkerStreamQueue);
+    }
   }
 }
 
-// runMarkerStreamQueue drains work in short bursts (~8ms) so user gestures stay responsive.
+// runMarkerStreamQueue drains work in adaptive bursts so user gestures stay responsive and desktops still catch up quickly.
 function runMarkerStreamQueue() {
   markerStreamFlushHandle = 0;
   if (!markerStreamProcessor || !markerStreamQueue || markerStreamHead >= markerStreamQueue.length) {
@@ -2136,19 +2150,38 @@ function runMarkerStreamQueue() {
   const nowFn = (typeof performance !== 'undefined' && typeof performance.now === 'function')
     ? function () { return performance.now(); }
     : function () { return Date.now(); };
-  const deadline = nowFn() + 8;
+  const start = nowFn();
+
+  if (markerStreamLastDrain) {
+    const delta = start - markerStreamLastDrain;
+    if (delta > 40) {
+      markerStreamBudgetMs = Math.min(markerStreamBudgetMs + 1, 16);
+    } else if (delta < 16) {
+      markerStreamBudgetMs = Math.max(markerStreamBudgetMs - 1, 4);
+    }
+  }
+  markerStreamLastDrain = start;
+
+  const deadline = start + markerStreamBudgetMs;
+  // We check the clock in batches to reduce the overhead of frequent now() calls when the queue is large.
+  const stride = markerStreamQueue.length > 4000 ? 32 : markerStreamQueue.length > 1000 ? 16 : 8;
+  let processedSinceCheck = 0;
 
   while (markerStreamHead < markerStreamQueue.length) {
     const item = markerStreamQueue[markerStreamHead];
     markerStreamQueue[markerStreamHead] = null;
     markerStreamHead++;
+    processedSinceCheck++;
     try {
       markerStreamProcessor(item);
     } catch (err) {
       console.error('marker queue error', err);
     }
-    if (nowFn() >= deadline) {
-      break;
+    if (processedSinceCheck >= stride) {
+      processedSinceCheck = 0;
+      if (nowFn() >= deadline) {
+        break;
+      }
     }
   }
 
@@ -2158,8 +2191,9 @@ function runMarkerStreamQueue() {
     return;
   }
 
-  if (markerStreamHead > 1024 && markerStreamHead > markerStreamQueue.length / 2) {
-    markerStreamQueue = markerStreamQueue.slice(markerStreamHead);
+  if (markerStreamHead > 2048 && markerStreamHead > markerStreamQueue.length / 2) {
+    // Compact the buffer occasionally so long-lived sessions do not grow arrays indefinitely.
+    markerStreamQueue.splice(0, markerStreamHead);
     markerStreamHead = 0;
   }
 
