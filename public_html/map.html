@@ -1994,6 +1994,8 @@ function getCurrentUrlParams() {
     <script>
       var map;
 var circleMarkers = {};
+const markerStacks = new Map();
+const markerStackIndex = new Map();
 var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
@@ -2007,6 +2009,156 @@ let shortLinkCommitPromise = null;
 
 // We keep every tooltip handle in one place so hideMapHints can silence them together.
 var mapHintHandles = [];
+
+// -----------------------------------------------------------------------------
+// Marker stack management keeps only the strongest readings at each coordinate.
+// We follow "Make the zero value useful" by treating missing numbers as 0 so the
+// comparison logic stays simple.
+function buildCoordinateKey(lat, lon) {
+  const safeLat = typeof lat === 'number' && isFinite(lat) ? lat : 0;
+  const safeLon = typeof lon === 'number' && isFinite(lon) ? lon : 0;
+  return safeLat.toFixed(5) + ',' + safeLon.toFixed(5);
+}
+
+// The zoom-dependent cap mirrors how we would scale services in Go: simple rules
+// keep behavior predictable for operators.
+function maxLayersForZoom(zoom) {
+  if (typeof zoom !== 'number' || !isFinite(zoom)) return 2;
+  if (zoom >= 17) return Infinity;
+  if (zoom >= 15) return 5;
+  if (zoom >= 11) return 4;
+  if (zoom >= 6) return 3;
+  if (zoom >= 1) return 2;
+  return 1;
+}
+
+// Higher dose wins; newer timestamps break ties so investigators see the freshest
+// report first. This mirrors "Clear is better than clever" by keeping the sort
+// well-documented.
+function compareMarkerEntries(a, b) {
+  const doseA = (a && typeof a.dose === 'number' && isFinite(a.dose)) ? a.dose : -Infinity;
+  const doseB = (b && typeof b.dose === 'number' && isFinite(b.dose)) ? b.dose : -Infinity;
+  if (doseA !== doseB) return doseB - doseA;
+  const tsA = (a && typeof a.date === 'number' && isFinite(a.date)) ? a.date : 0;
+  const tsB = (b && typeof b.date === 'number' && isFinite(b.date)) ? b.date : 0;
+  if (tsA !== tsB) return tsB - tsA;
+  return 0;
+}
+
+// Removing stale markers early frees memory so the browser can breathe. We clear
+// every reference to respect the user's requirement about releasing resources.
+function dropMarkerEntry(entry) {
+  if (!entry) return;
+  if (entry.marker && typeof entry.marker.remove === 'function') {
+    entry.marker.remove();
+  } else if (entry.marker && typeof map !== 'undefined' && map && typeof map.removeLayer === 'function') {
+    try {
+      map.removeLayer(entry.marker);
+    } catch (err) {
+      // swallow errors so cleanup keeps going
+    }
+  }
+  if (entry.key && circleMarkers[entry.key]) {
+    delete circleMarkers[entry.key];
+  }
+  if (entry.key) {
+    markerStackIndex.delete(entry.key);
+  }
+  entry.marker = null;
+  entry.dose = null;
+  entry.date = null;
+  entry.data = null;
+}
+
+// Allow markers to migrate between stacks when a track reports a new position.
+function removeMarkerFromStack(stackKey, markerKey) {
+  if (!stackKey || !markerKey) return;
+  const stack = markerStacks.get(stackKey);
+  if (!stack || !Array.isArray(stack.entries)) return;
+  for (let i = 0; i < stack.entries.length; i++) {
+    if (stack.entries[i] && stack.entries[i].key === markerKey) {
+      dropMarkerEntry(stack.entries[i]);
+      stack.entries.splice(i, 1);
+      break;
+    }
+  }
+  if (!stack.entries.length) {
+    markerStacks.delete(stackKey);
+  }
+}
+
+// Insert a marker into the coordinate stack and enforce the active zoom limit.
+function registerMarkerEntry(coordKey, entry, layerLimit) {
+  if (!coordKey || !entry || !entry.key) return false;
+
+  const previousStack = markerStackIndex.get(entry.key);
+  if (previousStack && previousStack !== coordKey) {
+    removeMarkerFromStack(previousStack, entry.key);
+  }
+
+  let stack = markerStacks.get(coordKey);
+  if (!stack) {
+    stack = { entries: [] };
+    markerStacks.set(coordKey, stack);
+  }
+
+  for (let i = 0; i < stack.entries.length; i++) {
+    if (stack.entries[i] && stack.entries[i].key === entry.key) {
+      dropMarkerEntry(stack.entries[i]);
+      stack.entries.splice(i, 1);
+      break;
+    }
+  }
+
+  stack.entries.push(entry);
+  stack.entries.sort(compareMarkerEntries);
+
+  let keep = true;
+  if (isFinite(layerLimit)) {
+    while (stack.entries.length > layerLimit) {
+      const removed = stack.entries.pop();
+      if (removed === entry) {
+        keep = false;
+      }
+      dropMarkerEntry(removed);
+    }
+  }
+
+  if (keep) {
+    markerStackIndex.set(entry.key, coordKey);
+  } else {
+    markerStackIndex.delete(entry.key);
+  }
+
+  if (!stack.entries.length) {
+    markerStacks.delete(coordKey);
+  }
+
+  return keep;
+}
+
+// After a zoom change we revisit every stack so the map never shows more layers
+// than budgeted. This keeps the UI reactive without locking on a single big task.
+function applyStackLimitsForZoom(zoom) {
+  const layerLimit = maxLayersForZoom(zoom);
+  markerStacks.forEach(function (stack, coordKey) {
+    if (!stack || !Array.isArray(stack.entries)) {
+      markerStacks.delete(coordKey);
+      return;
+    }
+    stack.entries.sort(compareMarkerEntries);
+    if (!isFinite(layerLimit)) {
+      return;
+    }
+    while (stack.entries.length > layerLimit) {
+      const removed = stack.entries.pop();
+      dropMarkerEntry(removed);
+    }
+    if (!stack.entries.length) {
+      markerStacks.delete(coordKey);
+    }
+  });
+}
 
 // registerMapHintHandle remembers a tooltip/popup handle so later gestures can hide it.
 function registerMapHintHandle(handle) {
@@ -3640,6 +3792,7 @@ function updateMarkers(){
 
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
+  const layerLimit = maxLayersForZoom(zoom);
 
   const params = {
     zoom  : zoom,
@@ -3657,6 +3810,8 @@ function updateMarkers(){
 
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
+  markerStacks.clear();
+  markerStackIndex.clear();
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
@@ -3729,10 +3884,26 @@ function updateMarkers(){
     debugOverlay.noteRendered(m, renderEnd - renderStart, footprint);
 
     // Store dose rate and timestamp on marker for later size updates
-    marker.doseRate  = m.doseRate;
-    marker.date      = m.date;
+    const markerKey = m && typeof m.id !== 'undefined' && m.id !== null
+      ? String(m.id)
+      : (m && typeof m.trackID !== 'undefined' && m.trackID !== null
+        ? String(m.trackID)
+        : 'anon-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+    const coordKey = buildCoordinateKey(m.lat, m.lon);
+    const entry = {
+      key  : markerKey,
+      dose : (typeof m.doseRate === 'number' && isFinite(m.doseRate)) ? m.doseRate : 0,
+      date : (typeof m.date === 'number' && isFinite(m.date)) ? m.date : 0,
+      marker: marker
+    };
+    const keepMarker = registerMarkerEntry(coordKey, entry, layerLimit);
+    if (!keepMarker) {
+      return;
+    }
+    marker.doseRate  = (typeof m.doseRate === 'number' && isFinite(m.doseRate)) ? m.doseRate : 0;
+    marker.date      = (typeof m.date === 'number' && isFinite(m.date)) ? m.date : 0;
     marker.isRealtime = isLive;
-    circleMarkers[m.id || m.trackID] = marker;
+    circleMarkers[markerKey] = marker;
   }
 
   setMarkerStreamProcessor(processStreamMarker);
@@ -4487,6 +4658,7 @@ function debounceUpdateMarkers() {
 
 function adjustMarkerRadius() {
   var zoomLevel = map.getZoom();
+  applyStackLimitsForZoom(zoomLevel);
   const nowSec = Date.now() / 1000;
   for (let key in circleMarkers) {
     let marker = circleMarkers[key];
