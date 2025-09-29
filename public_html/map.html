@@ -2039,6 +2039,8 @@ const debugOverlay = (function () {
   let metrics = null;
   let listenersAttached = false;
   let lastPayloadBytes = 0;
+  let nextMemorySampleAt = 0;
+  let memorySamplePending = false;
 
   // We request a heap snapshot when available so operators see real memory deltas.
   function sampleMemorySnapshot() {
@@ -2064,6 +2066,52 @@ const debugOverlay = (function () {
       return Promise.resolve(null);
     }
     return Promise.resolve(null);
+  }
+
+  // recordMemorySample keeps both the baseline and the high-water mark so operators
+  // see how much memory the request actually consumed even if GC runs later.
+  function recordMemorySample(snapshot, role) {
+    if (!metrics || !snapshot || typeof snapshot.used !== 'number' || !isFinite(snapshot.used)) {
+      return;
+    }
+    const sample = {
+      used: snapshot.used,
+      total: typeof snapshot.total === 'number' && isFinite(snapshot.total) ? snapshot.total : snapshot.used,
+    };
+    if (role === 'before') {
+      metrics.memoryBefore = sample;
+    }
+    if (!metrics.memoryPeak || sample.used > metrics.memoryPeak.used) {
+      metrics.memoryPeak = sample;
+    }
+    if (role === 'after') {
+      metrics.memoryAfter = sample;
+    }
+  }
+
+  // scheduleMemorySample throttles heap probes to avoid stalling rendering while
+  // still capturing the peaks that make browsers struggle on large marker sets.
+  function scheduleMemorySample() {
+    if (!enabled || !metrics || memorySamplePending) {
+      return;
+    }
+    const now = typeof performance !== 'undefined' && performance && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+    if (now < nextMemorySampleAt) {
+      return;
+    }
+    nextMemorySampleAt = now + 2000;
+    memorySamplePending = true;
+    const current = metrics;
+    sampleMemorySnapshot().then(function (snapshot) {
+      memorySamplePending = false;
+      if (metrics !== current || !snapshot) {
+        return;
+      }
+      recordMemorySample(snapshot, 'during');
+      render();
+    });
   }
 
   // Build per-request coverage bookkeeping so we can spot overlapping footprints quickly.
@@ -2269,18 +2317,21 @@ const debugOverlay = (function () {
       doneAt: null,
       memoryBefore: null,
       memoryAfter: null,
+      memoryPeak: null,
       payloadBytes: 0,
       freedBytes: lastPayloadBytes,
       backendErrors: [],
       coverage: createCoverageState(),
       sequence: 0,
     };
+    nextMemorySampleAt = 0;
+    memorySamplePending = false;
     const current = metrics;
     sampleMemorySnapshot().then(function (snapshot) {
       if (metrics !== current) {
         return;
       }
-      metrics.memoryBefore = snapshot;
+      recordMemorySample(snapshot, 'before');
       render();
     });
   }
@@ -2335,23 +2386,24 @@ const debugOverlay = (function () {
 
     let memoryUsed = 'n/a';
     let memoryFreed = 'n/a';
-    if (metrics.memoryBefore && metrics.memoryAfter) {
+    if (metrics.memoryBefore && metrics.memoryPeak) {
+      const usedDelta = Math.max(0, metrics.memoryPeak.used - metrics.memoryBefore.used);
+      memoryUsed = formatBytes(usedDelta);
+    } else if (metrics.memoryBefore && metrics.memoryAfter) {
       const usedDelta = metrics.memoryAfter.used - metrics.memoryBefore.used;
-      if (usedDelta >= 0) {
-        memoryUsed = formatBytes(usedDelta);
-        const freedDelta = metrics.memoryBefore.used - metrics.memoryAfter.used;
-        memoryFreed = freedDelta > 0 ? formatBytes(freedDelta) : formatBytes(0);
-      } else {
-        memoryUsed = formatBytes(0);
-        memoryFreed = formatBytes(-usedDelta);
-      }
-    } else {
-      if (metrics.payloadBytes > 0) {
-        memoryUsed = '&#8776; ' + formatBytes(metrics.payloadBytes);
-      }
-      if (typeof metrics.freedBytes === 'number' && metrics.freedBytes > 0) {
-        memoryFreed = '&#8776; ' + formatBytes(metrics.freedBytes);
-      }
+      memoryUsed = formatBytes(Math.max(0, usedDelta));
+    } else if (metrics.payloadBytes > 0) {
+      memoryUsed = '&#8776; ' + formatBytes(metrics.payloadBytes);
+    }
+
+    if (metrics.memoryPeak && metrics.memoryAfter) {
+      const freedDelta = Math.max(0, metrics.memoryPeak.used - metrics.memoryAfter.used);
+      memoryFreed = formatBytes(freedDelta);
+    } else if (metrics.memoryBefore && metrics.memoryAfter) {
+      const freedDelta = metrics.memoryBefore.used - metrics.memoryAfter.used;
+      memoryFreed = formatBytes(Math.max(0, freedDelta));
+    } else if (typeof metrics.freedBytes === 'number' && metrics.freedBytes > 0) {
+      memoryFreed = '&#8776; ' + formatBytes(metrics.freedBytes);
     }
 
     const latestJSError = jsErrors.length > 0 ? jsErrors[jsErrors.length - 1].message : 'none';
@@ -2421,6 +2473,7 @@ const debugOverlay = (function () {
         metrics.renderCost += renderDuration;
       }
       registerCoverage(footprint || null);
+      scheduleMemorySample();
       render();
     },
     finishRequest: function () {
@@ -2429,12 +2482,14 @@ const debugOverlay = (function () {
       }
       if (metrics.doneAt === null) {
         metrics.doneAt = performance.now();
+        nextMemorySampleAt = 0;
+        scheduleMemorySample();
         const current = metrics;
         sampleMemorySnapshot().then(function (snapshot) {
           if (metrics !== current) {
             return;
           }
-          metrics.memoryAfter = snapshot;
+          recordMemorySample(snapshot, 'after');
           render();
         });
         lastPayloadBytes = metrics.payloadBytes;
