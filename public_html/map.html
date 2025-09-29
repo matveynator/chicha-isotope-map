@@ -1935,12 +1935,13 @@ function shouldDisplayBySpeed(marker) {
   if (isTrackView) return true;        // filter disabled in track view
 
   const st = loadSpeedFilterState();   // global mode
+  const realtimeAllowed = window.safecastRealtimeEnabled ? st.live !== false : false;
   if (isRealtimeMarker(marker)) {
     if (!window.safecastRealtimeEnabled) {
       // Safety net: when realtime is disabled we never show synthetic realtime points.
       return false;
     }
-    return st.live;
+    return realtimeAllowed;
   }
 
   const speed = (marker && typeof marker.speed === 'number') ? marker.speed : NaN;
@@ -3171,7 +3172,17 @@ const debugOverlay = (function () {
 })();
 
 var liveHistoryCache = new Map();
+let cachedSpeedFilterState = null; // Cache the current toggle state so streaming bursts do not hammer sessionStorage.
 
+
+// speedFilterDefaults mirrors how we would seed Go structs: clear intent, no hidden fallbacks.
+function speedFilterDefaults() {
+  const base = { plane: false, car: true, ped: true };
+  if (window.safecastRealtimeEnabled) {
+    base.live = true;
+  }
+  return base;
+}
 
 /**
  * Load previously saved speed-filter state from sessionStorage.
@@ -3179,21 +3190,27 @@ var liveHistoryCache = new Map();
  *   Realtime on:  Safecast heart on, ✈️ off, 🚗 on, 🚶 on  (as requested).
  *   Realtime off: ✈️ off, 🚗 on, 🚶 on  (heart absent).
  */
-function loadSpeedFilterState() {
-  // We derive defaults from the realtime flag so the UI matches backend capabilities.
-  const base = { plane: false, car: true, ped: true };
-  if (window.safecastRealtimeEnabled) {
-    base.live = true;
+function loadSpeedFilterState(forceReload) {
+  if (!forceReload && cachedSpeedFilterState) {
+    return cachedSpeedFilterState;
   }
+
+  // We derive defaults from the realtime flag so the UI matches backend capabilities.
+  const base = speedFilterDefaults();
   try {
     const raw = sessionStorage.getItem('speedFilterState');
     const st = raw ? JSON.parse(raw) : {};
     const merged = Object.assign({}, base, st);
     if (!window.safecastRealtimeEnabled) {
       delete merged.live;
+    } else if (typeof merged.live !== 'boolean') {
+      // Treat "missing" or malformed values as enabled so live sensors remain visible by default.
+      merged.live = true;
     }
+    cachedSpeedFilterState = merged;
     return merged;
   } catch (e) {
+    cachedSpeedFilterState = base;
     return base;
   }
 }
@@ -3237,6 +3254,14 @@ function saveSpeedFilterState(state) {
     delete toSave.live;
   }
   sessionStorage.setItem('speedFilterState', JSON.stringify(toSave));
+  const defaults = speedFilterDefaults();
+  const merged = Object.assign({}, defaults, toSave);
+  if (!window.safecastRealtimeEnabled) {
+    delete merged.live;
+  } else if (typeof merged.live !== 'boolean') {
+    merged.live = true;
+  }
+  cachedSpeedFilterState = merged;
 }
 
 /**
@@ -4087,6 +4112,12 @@ function createDateRangeSlider(){
     if (!marker || typeof marker !== 'object') {
       return false;
     }
+    if (typeof marker.isRealtime === 'boolean') {
+      return marker.isRealtime;
+    }
+    if (typeof marker.realtime === 'boolean') {
+      return marker.realtime;
+    }
     if (typeof marker.speed === 'number' && marker.speed < 0) {
       return true;
     }
@@ -4094,6 +4125,18 @@ function createDateRangeSlider(){
       return true;
     }
     if (typeof marker.track === 'string' && marker.track.indexOf('live:') === 0) {
+      return true;
+    }
+    const deviceID = (typeof marker.deviceID === 'string' && marker.deviceID.trim() !== '')
+      ? marker.deviceID.trim()
+      : (typeof marker.device_id === 'string' && marker.device_id.trim() !== ''
+        ? marker.device_id.trim()
+        : '');
+    if (deviceID && deviceID.indexOf('live:') === 0) {
+      return true;
+    }
+    if (deviceID) {
+      // Safecast realtime payloads always ship a device identifier while historical tracks omit it.
       return true;
     }
     return false;
