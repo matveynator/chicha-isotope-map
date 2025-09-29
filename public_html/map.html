@@ -1925,22 +1925,25 @@ function buildRealtimeIcon(marker, zoomLevel, nowSec) {
 
 
 /**
- * Decide whether the marker with given speed (m/s)
- * should be displayed according to current speed-filter state.
+ * Decide whether the marker should be displayed according to the current
+ * speed-filter state.  Passing the full payload lets us detect realtime
+ * sources that do not carry the negative-speed sentinel.
  * In single-track view there is no filtering — show everything.
  */
-function shouldDisplayBySpeed(speed) {
+function shouldDisplayBySpeed(marker) {
   /* Key line */
   if (isTrackView) return true;        // filter disabled in track view
 
   const st = loadSpeedFilterState();   // global mode
-  if (speed < 0) {                     // Safecast heart markers use negative speed to signal realtime data
+  if (isRealtimeMarker(marker)) {
     if (!window.safecastRealtimeEnabled) {
-      // Safety net: when realtime is disabled we never show synthetic negative speeds.
+      // Safety net: when realtime is disabled we never show synthetic realtime points.
       return false;
     }
     return st.live;
   }
+
+  const speed = (marker && typeof marker.speed === 'number') ? marker.speed : NaN;
   if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
   if (speed >= 7  && speed <  70)  return st.car;    // 🚗
   /* speed < 7 m/s  → pedestrian */
@@ -4074,8 +4077,30 @@ function createDateRangeSlider(){
       </div>`;
   }
 
+  /**
+   * Safecast realtime sensors can arrive either with a negative speed sentinel
+   * or just a track identifier that starts with "live:".  We centralize the
+   * detection so every consumer reaches the same conclusion and avoids subtle
+   * mismatches when the feed format drifts.
+   */
+  function isRealtimeMarker(marker) {
+    if (!marker || typeof marker !== 'object') {
+      return false;
+    }
+    if (typeof marker.speed === 'number' && marker.speed < 0) {
+      return true;
+    }
+    if (typeof marker.trackID === 'string' && marker.trackID.indexOf('live:') === 0) {
+      return true;
+    }
+    if (typeof marker.track === 'string' && marker.track.indexOf('live:') === 0) {
+      return true;
+    }
+    return false;
+  }
+
   function buildMarkerContent(marker) {
-    if (marker.speed < 0) {
+    if (isRealtimeMarker(marker)) {
       return buildLiveMarkerPopup(marker);
     }
 
@@ -4137,7 +4162,14 @@ function updateMarkers(){
   };
   if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
-  const savedRange = loadDateRangeState();
+  const savedRangeRaw = loadDateRangeState();
+  const savedRange = (Array.isArray(savedRangeRaw) && savedRangeRaw.length === 2 &&
+    typeof savedRangeRaw[0] === 'number' && isFinite(savedRangeRaw[0]) &&
+    typeof savedRangeRaw[1] === 'number' && isFinite(savedRangeRaw[1]))
+      ? savedRangeRaw
+      : null;
+  const hasSavedFilter = !!savedRange; // Remember whether the operator intentionally narrowed the timeline.
+
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
   markerStacks.clear();
@@ -4152,7 +4184,7 @@ function updateMarkers(){
       return;
     }
 
-    const isLive = typeof m.speed === 'number' && m.speed < 0; // negative speed denotes realtime marker
+    const isLive = isRealtimeMarker(m);
     const hasDate = typeof m.date === 'number' && isFinite(m.date);
     const dateOutsideRange = savedRange && hasDate && (m.date < savedRange[0] || m.date > savedRange[1]);
 
@@ -4161,7 +4193,7 @@ function updateMarkers(){
       debugOverlay.noteFiltered('date');
       return;
     }
-    if (!shouldDisplayBySpeed(m.speed)) {
+    if (!shouldDisplayBySpeed(m)) {
       debugOverlay.noteFiltered('speed');
       return;
     }
@@ -4213,7 +4245,7 @@ function updateMarkers(){
     } catch (err) {
       return;
     }
-    const liveMarker = typeof markerPayload.speed === 'number' && markerPayload.speed < 0;
+    const liveMarker = isRealtimeMarker(markerPayload);
     if (!liveMarker && markerPayload && markerPayload.trackID) {
       tracks.add(markerPayload.trackID);
     }
@@ -4227,7 +4259,8 @@ function updateMarkers(){
   es.addEventListener('done', () => {
     const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
                             ? monthsApart(minTs, maxTs) : 0;
-    const needSlider = !isTrackView && tracks.size > 1 && dateSpanMonths > 1;
+    // We keep the slider visible when an operator saved a filter so they can revise it even if the span is narrow.
+    const needSlider = !isTrackView && ((tracks.size > 1 && dateSpanMonths > 1) || hasSavedFilter);
     if (window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(needSlider);
     }
