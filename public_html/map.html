@@ -1908,7 +1908,12 @@ function buildRealtimeIcon(marker, zoomLevel, nowSec) {
   const border = active ? '#ffffff' : '#888888';
   const textColor = isDarkColor(active ? baseColor : fill) ? '#ffffff' : '#000000';
 
-  const radius = getRadius(marker.doseRate, zoomLevel) * 3;
+  // Real-time markers scale with zoom but maintain a reasonable minimum size
+  // so they remain visible without overwhelming the map at low zoom levels.
+  const baseRadius = getRadius(marker.doseRate, zoomLevel);
+  const scaleFactor = zoomLevel < 8 ? 2.5 : 3; // Smaller at low zoom, larger when zoomed in
+  const minRadius = zoomLevel < 8 ? 12 : 15; // Dynamic minimum based on zoom
+  const radius = Math.max(baseRadius * scaleFactor, minRadius);
   const size = radius * 2;
   const value = formatMicroRoentgen(marker.doseRate);
   const fontSize = Math.max(Math.round(size * 0.32), 11);
@@ -1925,22 +1930,26 @@ function buildRealtimeIcon(marker, zoomLevel, nowSec) {
 
 
 /**
- * Decide whether the marker with given speed (m/s)
- * should be displayed according to current speed-filter state.
+ * Decide whether the marker should be displayed according to the current
+ * speed-filter state.  Passing the full payload lets us detect realtime
+ * sources that do not carry the negative-speed sentinel.
  * In single-track view there is no filtering — show everything.
  */
-function shouldDisplayBySpeed(speed) {
+function shouldDisplayBySpeed(marker) {
   /* Key line */
   if (isTrackView) return true;        // filter disabled in track view
 
   const st = loadSpeedFilterState();   // global mode
-  if (speed < 0) {                     // Safecast heart markers use negative speed to signal realtime data
+  const realtimeAllowed = window.safecastRealtimeEnabled ? st.live !== false : false;
+  if (isRealtimeMarker(marker)) {
     if (!window.safecastRealtimeEnabled) {
-      // Safety net: when realtime is disabled we never show synthetic negative speeds.
+      // Safety net: when realtime is disabled we never show synthetic realtime points.
       return false;
     }
-    return st.live;
+    return realtimeAllowed;
   }
+
+  const speed = (marker && typeof marker.speed === 'number') ? marker.speed : NaN;
   if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
   if (speed >= 7  && speed <  70)  return st.car;    // 🚗
   /* speed < 7 m/s  → pedestrian */
@@ -2045,9 +2054,15 @@ function monotonicNow() {
 }
 
 // Higher dose wins; newer timestamps break ties so investigators see the freshest
-// report first. This mirrors "Clear is better than clever" by keeping the sort
-// well-documented.
+// report first.  Realtime entries jump ahead of historical ones so Safecast live
+// sensors never disappear under dense archives, echoing "Don't hide power" by
+// surfacing the critical stream first.
 function compareMarkerEntries(a, b) {
+  const liveA = !!(a && a.isRealtime);
+  const liveB = !!(b && b.isRealtime);
+  if (liveA !== liveB) {
+    return liveA ? -1 : 1;
+  }
   const doseA = (a && typeof a.dose === 'number' && isFinite(a.dose)) ? a.dose : -Infinity;
   const doseB = (b && typeof b.dose === 'number' && isFinite(b.dose)) ? b.dose : -Infinity;
   if (doseA !== doseB) return doseB - doseA;
@@ -2159,7 +2174,13 @@ function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
   }
 
   const keepAll = !isFinite(layerLimit);
-  const limit = keepAll ? entryCount : Math.max(0, Math.min(layerLimit, entryCount));
+  // Count realtime entries so the limit expands when multiple live sensors share a spot;
+  // this keeps their signals visible instead of clipping to the historical budget.
+  const realtimeCount = keepAll ? entryCount : stack.entries.reduce(function (count, entry) {
+    return count + (entry && entry.isRealtime ? 1 : 0);
+  }, 0);
+  const rawLimit = keepAll ? entryCount : Math.max(0, Math.min(layerLimit, entryCount));
+  const limit = keepAll ? entryCount : Math.max(rawLimit, realtimeCount);
   let visible = 0;
   let filtered = 0;
 
@@ -2173,7 +2194,10 @@ function enforceStackVisibility(stack, coordKey, layerLimit, zoom) {
 
     markerStackIndex.set(entry.key, coordKey);
 
-    if (keepAll || index < limit) {
+    // Real-time markers must always stay visible so operators never miss live sensors,
+    // regardless of zoom level or stack depth. Historical markers respect the layer budget.
+    const mustShow = entry.isRealtime || keepAll || index < limit;
+    if (mustShow) {
       entry.hidden = false;
       const marker = ensureEntryMarker(entry, zoom);
       if (!marker) {
@@ -3168,7 +3192,17 @@ const debugOverlay = (function () {
 })();
 
 var liveHistoryCache = new Map();
+let cachedSpeedFilterState = null; // Cache the current toggle state so streaming bursts do not hammer sessionStorage.
 
+
+// speedFilterDefaults mirrors how we would seed Go structs: clear intent, no hidden fallbacks.
+function speedFilterDefaults() {
+  const base = { plane: false, car: true, ped: true };
+  if (window.safecastRealtimeEnabled) {
+    base.live = true;
+  }
+  return base;
+}
 
 /**
  * Load previously saved speed-filter state from sessionStorage.
@@ -3176,21 +3210,27 @@ var liveHistoryCache = new Map();
  *   Realtime on:  Safecast heart on, ✈️ off, 🚗 on, 🚶 on  (as requested).
  *   Realtime off: ✈️ off, 🚗 on, 🚶 on  (heart absent).
  */
-function loadSpeedFilterState() {
-  // We derive defaults from the realtime flag so the UI matches backend capabilities.
-  const base = { plane: false, car: true, ped: true };
-  if (window.safecastRealtimeEnabled) {
-    base.live = true;
+function loadSpeedFilterState(forceReload) {
+  if (!forceReload && cachedSpeedFilterState) {
+    return cachedSpeedFilterState;
   }
+
+  // We derive defaults from the realtime flag so the UI matches backend capabilities.
+  const base = speedFilterDefaults();
   try {
     const raw = sessionStorage.getItem('speedFilterState');
     const st = raw ? JSON.parse(raw) : {};
     const merged = Object.assign({}, base, st);
     if (!window.safecastRealtimeEnabled) {
       delete merged.live;
+    } else if (typeof merged.live !== 'boolean') {
+      // Treat "missing" or malformed values as enabled so live sensors remain visible by default.
+      merged.live = true;
     }
+    cachedSpeedFilterState = merged;
     return merged;
   } catch (e) {
+    cachedSpeedFilterState = base;
     return base;
   }
 }
@@ -3234,6 +3274,14 @@ function saveSpeedFilterState(state) {
     delete toSave.live;
   }
   sessionStorage.setItem('speedFilterState', JSON.stringify(toSave));
+  const defaults = speedFilterDefaults();
+  const merged = Object.assign({}, defaults, toSave);
+  if (!window.safecastRealtimeEnabled) {
+    delete merged.live;
+  } else if (typeof merged.live !== 'boolean') {
+    merged.live = true;
+  }
+  cachedSpeedFilterState = merged;
 }
 
 /**
@@ -4074,8 +4122,48 @@ function createDateRangeSlider(){
       </div>`;
   }
 
+  /**
+   * Safecast realtime sensors can arrive either with a negative speed sentinel
+   * or just a track identifier that starts with "live:".  We centralize the
+   * detection so every consumer reaches the same conclusion and avoids subtle
+   * mismatches when the feed format drifts.
+   */
+  function isRealtimeMarker(marker) {
+    if (!marker || typeof marker !== 'object') {
+      return false;
+    }
+    if (typeof marker.isRealtime === 'boolean') {
+      return marker.isRealtime;
+    }
+    if (typeof marker.realtime === 'boolean') {
+      return marker.realtime;
+    }
+    if (typeof marker.speed === 'number' && marker.speed < 0) {
+      return true;
+    }
+    if (typeof marker.trackID === 'string' && marker.trackID.indexOf('live:') === 0) {
+      return true;
+    }
+    if (typeof marker.track === 'string' && marker.track.indexOf('live:') === 0) {
+      return true;
+    }
+    const deviceID = (typeof marker.deviceID === 'string' && marker.deviceID.trim() !== '')
+      ? marker.deviceID.trim()
+      : (typeof marker.device_id === 'string' && marker.device_id.trim() !== ''
+        ? marker.device_id.trim()
+        : '');
+    if (deviceID && deviceID.indexOf('live:') === 0) {
+      return true;
+    }
+    if (deviceID) {
+      // Safecast realtime payloads always ship a device identifier while historical tracks omit it.
+      return true;
+    }
+    return false;
+  }
+
   function buildMarkerContent(marker) {
-    if (marker.speed < 0) {
+    if (isRealtimeMarker(marker)) {
       return buildLiveMarkerPopup(marker);
     }
 
@@ -4137,7 +4225,14 @@ function updateMarkers(){
   };
   if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
-  const savedRange = loadDateRangeState();
+  const savedRangeRaw = loadDateRangeState();
+  const savedRange = (Array.isArray(savedRangeRaw) && savedRangeRaw.length === 2 &&
+    typeof savedRangeRaw[0] === 'number' && isFinite(savedRangeRaw[0]) &&
+    typeof savedRangeRaw[1] === 'number' && isFinite(savedRangeRaw[1]))
+      ? savedRangeRaw
+      : null;
+  const hasSavedFilter = !!savedRange; // Remember whether the operator intentionally narrowed the timeline.
+
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
   markerStacks.clear();
@@ -4152,13 +4247,16 @@ function updateMarkers(){
       return;
     }
 
-    const isLive = typeof m.speed === 'number' && m.speed < 0; // negative speed denotes realtime marker
+    const isLive = isRealtimeMarker(m);
+    const hasDate = typeof m.date === 'number' && isFinite(m.date);
+    const dateOutsideRange = savedRange && hasDate && (m.date < savedRange[0] || m.date > savedRange[1]);
 
-    if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) {
+    if (dateOutsideRange && !isLive) {
+      // Realtime markers must always stay visible so operators never miss live sensors.
       debugOverlay.noteFiltered('date');
       return;
     }
-    if (!shouldDisplayBySpeed(m.speed)) {
+    if (!shouldDisplayBySpeed(m)) {
       debugOverlay.noteFiltered('speed');
       return;
     }
@@ -4174,11 +4272,15 @@ function updateMarkers(){
     }
 
     // Store dose rate and timestamp on marker for later size updates
-    const markerKey = m && typeof m.id !== 'undefined' && m.id !== null
-      ? String(m.id)
-      : (m && typeof m.trackID !== 'undefined' && m.trackID !== null
-        ? String(m.trackID)
-        : 'anon-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+    // Real-time markers must use trackID or deviceID as the key since their database ID
+    // is often 0 or reused, causing all live sensors to overwrite each other.
+    const markerKey = (m && isLive && m.trackID)
+      ? String(m.trackID)
+      : (m && typeof m.id !== 'undefined' && m.id !== null && m.id !== 0
+        ? String(m.id)
+        : (m && typeof m.trackID !== 'undefined' && m.trackID !== null
+          ? String(m.trackID)
+          : 'anon-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)));
     const coordKey = buildCoordinateKey(m.lat, m.lon);
     const entry = {
       key  : markerKey,
@@ -4210,7 +4312,7 @@ function updateMarkers(){
     } catch (err) {
       return;
     }
-    const liveMarker = typeof markerPayload.speed === 'number' && markerPayload.speed < 0;
+    const liveMarker = isRealtimeMarker(markerPayload);
     if (!liveMarker && markerPayload && markerPayload.trackID) {
       tracks.add(markerPayload.trackID);
     }
@@ -4224,7 +4326,8 @@ function updateMarkers(){
   es.addEventListener('done', () => {
     const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
                             ? monthsApart(minTs, maxTs) : 0;
-    const needSlider = !isTrackView && tracks.size > 1 && dateSpanMonths > 1;
+    // We keep the slider visible when an operator saved a filter so they can revise it even if the span is narrow.
+    const needSlider = !isTrackView && ((tracks.size > 1 && dateSpanMonths > 1) || hasSavedFilter);
     if (window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(needSlider);
     }
