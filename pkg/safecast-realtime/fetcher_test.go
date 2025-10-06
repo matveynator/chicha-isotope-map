@@ -13,10 +13,11 @@ func TestConvertIfRadiation(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name string
-		d    devicePayload
-		want float64
-		ok   bool
+		name   string
+		d      devicePayload
+		want   float64
+		extras map[string]float64
+		ok     bool
 	}{
 		{
 			name: "car 7318 cpm",
@@ -48,18 +49,50 @@ func TestConvertIfRadiation(t *testing.T) {
 			want: 0,
 			ok:   false,
 		},
+		{
+			name: "pointcast dual tubes",
+			d: devicePayload{
+				ID:       "pointcast:10001",
+				Type:     "pointcast",
+				Tube:     "LND-7128EC",
+				Unit:     "lnd_7128ec",
+				Value:    108,
+				Readings: map[string]measurementCandidate{"lnd_7128ec": {value: 108, unit: "lnd_7128ec", key: "lnd_7128ec"}, "lnd_7318u": {value: 334, unit: "lnd_7318u", key: "lnd_7318u"}},
+				Primary:  "lnd_7128ec",
+			},
+			want:   1,
+			extras: map[string]float64{"tube_lnd_7318u": 1},
+			ok:     true,
+		},
 	}
 
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := convertIfRadiation(tc.d)
+			got, extras, ok := convertIfRadiation(tc.d)
 			if ok != tc.ok {
 				t.Fatalf("convertIfRadiation(%+v) ok=%v want %v", tc.d, ok, tc.ok)
 			}
 			if ok && (got < tc.want-0.0001 || got > tc.want+0.0001) {
 				t.Fatalf("convertIfRadiation(%+v)=%v want %v", tc.d, got, tc.want)
+			}
+			if tc.extras == nil && len(extras) != 0 {
+				t.Fatalf("convertIfRadiation extras=%v want none", extras)
+			}
+			if tc.extras != nil {
+				if len(extras) != len(tc.extras) {
+					t.Fatalf("extras len=%d want %d", len(extras), len(tc.extras))
+				}
+				for k, want := range tc.extras {
+					gotVal, ok := extras[k]
+					if !ok {
+						t.Fatalf("extras missing key %q", k)
+					}
+					if gotVal < want-0.0001 || gotVal > want+0.0001 {
+						t.Fatalf("extras[%q]=%v want %v", k, gotVal, want)
+					}
+				}
 			}
 		})
 	}
@@ -127,24 +160,28 @@ func TestDevicePayloadMeasurementSelection(t *testing.T) {
 		json      string
 		wantValue float64
 		wantUnit  string
+		wantKey   string
 	}{
 		{
 			name:      "prefers cps over cpm",
 			json:      `{"device_urn":"device:1","lnd_7318c_cpm":120,"lnd_7318c_cps":2}`,
 			wantValue: 2,
 			wantUnit:  "lnd_7318c_cps",
+			wantKey:   "lnd_7318c_cps",
 		},
 		{
 			name:      "falls back to raw counts",
 			json:      `{"device_urn":"device:2","lnd_7318u":73}`,
 			wantValue: 73,
 			wantUnit:  "lnd_7318u",
+			wantKey:   "lnd_7318u",
 		},
 		{
 			name:      "radnote cps reinterpretation",
 			json:      `{"device_urn":"device:3","device_class":"product:com.blues.radnote","lnd_7318c":1077}`,
 			wantValue: 1077,
 			wantUnit:  "lnd_7318c_cps",
+			wantKey:   "lnd_7318c",
 		},
 	}
 
@@ -161,6 +198,12 @@ func TestDevicePayloadMeasurementSelection(t *testing.T) {
 			}
 			if d.Unit != tc.wantUnit {
 				t.Fatalf("Unit=%q want %q", d.Unit, tc.wantUnit)
+			}
+			if tc.wantKey != "" && d.Primary != tc.wantKey {
+				t.Fatalf("Primary=%q want %q", d.Primary, tc.wantKey)
+			}
+			if len(d.Readings) == 0 {
+				t.Fatalf("expected readings map for %s", tc.name)
 			}
 		})
 	}

@@ -1092,21 +1092,31 @@ body, html {
           font-size: var(--font-size-base);
         }
 
+        /* Responsive grid keeps the modal charts readable on phones, tablets, and desktops. */
         .live-chart-stack {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
+          display: grid;
+          gap: 14px;
+          grid-template-columns: 1fr;
+        }
+
+        @media (min-width: 720px) {
+          .live-chart-stack {
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          }
         }
 
         .live-chart-block {
           background: var(--control-bg);
           border: var(--legend-border);
-          border-radius: 10px;
+          border-radius: 12px;
           padding: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
         }
 
         .live-chart-title {
-          margin: 0 0 8px 0;
+          margin: 0;
           display: flex;
           flex-wrap: wrap;
           gap: 4px 12px;
@@ -1131,12 +1141,22 @@ body, html {
           opacity: 0.7;
         }
 
+        /* Clamp the canvas height so short viewports are not overwhelmed while desktops still see detail. */
         .live-chart-canvas {
           display: block;
           width: 100%;
-          height: 180px;
-          border-radius: 6px;
+          height: clamp(160px, 32vh, 220px);
+          border-radius: 8px;
           background: rgba(0,0,0,0.05);
+        }
+
+        @media (max-width: 480px) {
+          .live-chart-title {
+            gap: 2px 8px;
+          }
+          .live-chart-window {
+            flex-basis: 100%;
+          }
         }
 
         .live-chart-empty {
@@ -1770,7 +1790,25 @@ function describeLiveSensor(marker) {
   return [subject, place, transport, tube].join(' ');
 }
 
+function isTubeSeriesKey(key) {
+  return typeof key === 'string' && key.startsWith('tube_');
+}
+
+function tubeLabelFromKey(key) {
+  if (!isTubeSeriesKey(key)) return key;
+  return key.replace(/^tube_/, '').replace(/_/g, ' ').toUpperCase();
+}
+
+function sortTubeKeys(keys) {
+  return keys.sort(function(a, b) {
+    return tubeLabelFromKey(a).localeCompare(tubeLabelFromKey(b));
+  });
+}
+
 function labelForExtraKey(key) {
+  if (isTubeSeriesKey(key)) {
+    return tubeLabelFromKey(key);
+  }
   switch (key) {
     case 'temperature_c':
       return translate('live_marker_temperature');
@@ -1789,6 +1827,9 @@ function labelForExtraKey(key) {
 
 function formatExtraValue(key, value) {
   if (typeof value !== 'number' || !isFinite(value)) return null;
+  if (isTubeSeriesKey(key)) {
+    return formatMicroRoentgenValue(value) + ' µR/h';
+  }
   if (key === 'temperature_c' || key === 'temperature_f') {
     return value.toFixed(1) + (key.endsWith('_f') ? ' °F' : ' °C');
   }
@@ -1806,6 +1847,7 @@ function formatExtraValue(key, value) {
 const EXTRA_SERIES_ORDER = ['temperature_c', 'temperature_f', 'humidity_percent', 'pressure_hpa'];
 
 function extraUnitSuffix(key) {
+  if (isTubeSeriesKey(key)) return 'µR/h';
   if (key === 'temperature_c') return '°C';
   if (key === 'temperature_f') return '°F';
   if (key === 'humidity_percent') return '%';
@@ -1815,6 +1857,9 @@ function extraUnitSuffix(key) {
 
 function formatExtraAxisValue(key, value) {
   if (typeof value !== 'number' || !isFinite(value)) return '';
+  if (isTubeSeriesKey(key)) {
+    return formatMicroRoentgenValue(value);
+  }
   if (key === 'temperature_c' || key === 'temperature_f') {
     return value.toFixed(1);
   }
@@ -1827,7 +1872,15 @@ function formatExtraAxisValue(key, value) {
   return value.toFixed(2);
 }
 
+function colorForTubeKey(key) {
+  const lower = key.toLowerCase();
+  if (lower.includes('7318') || lower.includes('7317')) return '#fb8c00';
+  if (lower.includes('712')) return '#00897b';
+  return '#6d4c41';
+}
+
 function colorForExtraKey(key) {
+  if (isTubeSeriesKey(key)) return colorForTubeKey(key);
   if (key === 'temperature_c' || key === 'temperature_f') return '#ff7043';
   if (key === 'humidity_percent') return '#26a69a';
   if (key === 'pressure_hpa') {
@@ -1858,7 +1911,14 @@ function hasExtraSeries(series) {
 function renderLiveExtras(extra) {
   if (!extra || typeof extra !== 'object') return '';
   const items = [];
-  Object.keys(extra).sort().forEach(function(key){
+  Object.keys(extra).sort(function(a, b) {
+    const aTube = isTubeSeriesKey(a);
+    const bTube = isTubeSeriesKey(b);
+    if (aTube && !bTube) return -1;
+    if (!aTube && bTube) return 1;
+    if (aTube && bTube) return tubeLabelFromKey(a).localeCompare(tubeLabelFromKey(b));
+    return a.localeCompare(b);
+  }).forEach(function(key){
     const label = labelForExtraKey(key);
     const val = formatExtraValue(key, extra[key]);
     if (!label || !val) return;
@@ -4604,21 +4664,33 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   };
 
   const extras = {};
+  const tubeSeries = {};
   if (extrasByKey && typeof extrasByKey === 'object') {
     Object.keys(extrasByKey).forEach(function(key) {
       const series = extrasByKey[key];
-      if (Array.isArray(series) && series.length) {
+      if (!Array.isArray(series) || !series.length) return;
+      if (isTubeSeriesKey(key)) {
+        tubeSeries[key] = series;
+      } else {
         extras[key] = series;
       }
     });
   }
+  const tubeKeys = sortTubeKeys(Object.keys(tubeSeries));
   const extraKeys = sortExtraKeys(Object.keys(extras));
   const hasRadiation = Array.isArray(radiationPoints) && radiationPoints.length > 0;
-  if (!hasRadiation && extraKeys.length === 0) {
+  if (!hasRadiation && tubeKeys.length === 0 && extraKeys.length === 0) {
     return;
   }
 
-  const baseSeries = hasRadiation ? radiationPoints : extras[extraKeys[0]];
+  let baseSeries = null;
+  if (hasRadiation) {
+    baseSeries = radiationPoints;
+  } else if (tubeKeys.length) {
+    baseSeries = tubeSeries[tubeKeys[0]];
+  } else if (extraKeys.length) {
+    baseSeries = extras[extraKeys[0]];
+  }
   if (!baseSeries || !baseSeries.length) {
     return;
   }
@@ -4644,6 +4716,14 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
       if (point.value < minY) minY = point.value;
       if (point.value > maxY) maxY = point.value;
     });
+  } else if (tubeKeys.length) {
+    const key = tubeKeys[0];
+    minY = tubeSeries[key][0].value;
+    maxY = tubeSeries[key][0].value;
+    tubeSeries[key].forEach(function(point) {
+      if (point.value < minY) minY = point.value;
+      if (point.value > maxY) maxY = point.value;
+    });
   } else {
     const key = extraKeys[0];
     minY = extras[key][0].value;
@@ -4653,6 +4733,13 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
       if (point.value > maxY) maxY = point.value;
     });
   }
+  tubeKeys.forEach(function(key) {
+    const series = tubeSeries[key];
+    series.forEach(function(point) {
+      if (point.value < minY) minY = point.value;
+      if (point.value > maxY) maxY = point.value;
+    });
+  });
   if (minY === maxY) {
     const delta = minY === 0 ? 0.5 : Math.abs(minY) * 0.2;
     minY -= delta;
@@ -4798,6 +4885,36 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     }
   }
 
+  tubeKeys.forEach(function(key) {
+    const series = tubeSeries[key];
+    const color = colorForTubeKey(key);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([]);
+    for (let i = 1; i < series.length; i++) {
+      const prev = series[i - 1];
+      const curr = series[i];
+      const x1 = plotLeft + ((prev.timestamp - minX) / rangeX) * plotW;
+      const y1 = plotBottom - ((prev.value - minY) / rangeY) * plotH;
+      const x2 = plotLeft + ((curr.timestamp - minX) / rangeX) * plotW;
+      const y2 = plotBottom - ((curr.value - minY) / rangeY) * plotH;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    if (series.length === 1) {
+      const lone = series[0];
+      const x = plotLeft + ((lone.timestamp - minX) / rangeX) * plotW;
+      const y = plotBottom - ((lone.value - minY) / rangeY) * plotH;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
   extraKeys.forEach(function(key, idx) {
     const series = extras[key];
     const range = extraRanges[key];
@@ -4845,6 +4962,10 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     legendGradient.addColorStop(1, radiationLineColor(maxY));
     legendEntries.push({ label: translate('radiation_dose') + ' (µR/h)', color: legendGradient, solid: true });
   }
+  tubeKeys.forEach(function(key) {
+    const label = labelForExtraKey(key) + ' (µR/h)';
+    legendEntries.push({ label: label, color: colorForTubeKey(key), solid: true });
+  });
   extraKeys.forEach(function(key) {
     const suffix = extraUnitSuffix(key);
     const label = labelForExtraKey(key) + (suffix ? ' (' + suffix + ')' : '');

@@ -25,18 +25,20 @@ import (
 // the Go Proverb "Clear is better than clever" by keeping decoding logic
 // explicit and easy to inspect.
 type devicePayload struct {
-	ID      string
-	Type    string  // transport tag such as car or walk
-	Class   string  // upstream device_class retained for unit heuristics
-	Name    string  // human friendly device title from the feed
-	Tube    string  // detector type as advertised by the feed
-	Value   float64 // dose rate
-	Unit    string  // unit of Value
-	Lat     float64 // latitude in degrees
-	Lon     float64 // longitude in degrees
-	Time    int64   // measurement timestamp
-	Country string  // optional country hint
-	Metrics map[string]float64
+	ID       string
+	Type     string  // transport tag such as car or walk
+	Class    string  // upstream device_class retained for unit heuristics
+	Name     string  // human friendly device title from the feed
+	Tube     string  // detector type as advertised by the feed
+	Value    float64 // dose rate
+	Unit     string  // unit of Value
+	Lat      float64 // latitude in degrees
+	Lon      float64 // longitude in degrees
+	Time     int64   // measurement timestamp
+	Country  string  // optional country hint
+	Metrics  map[string]float64
+	Readings map[string]measurementCandidate // keep every detector field so we can surface multi-tube devices later.
+	Primary  string                          // lowercase key of the chosen reading; helps us skip duplicates when exporting extras.
 }
 
 // measurementCandidate records a possible radiation reading parsed from the
@@ -137,6 +139,22 @@ func metricKeyFor(raw string) (string, bool) {
 		return "pressure_hpa", true
 	}
 	return "", false
+}
+
+// radiationMetricKey normalises detector fields into a predictable metric name.
+// We keep the transformation tiny so upstream variations such as "lnd-7128EC"
+// still collapse to the same extra key without leaking punctuation into JSON.
+func radiationMetricKey(raw string) string {
+	cleaned := strings.ToLower(strings.TrimSpace(raw))
+	if cleaned == "" {
+		return "tube"
+	}
+	cleaned = strings.ReplaceAll(cleaned, " ", "_")
+	cleaned = strings.ReplaceAll(cleaned, "-", "_")
+	cleaned = strings.ReplaceAll(cleaned, ".", "_")
+	cleaned = strings.TrimSuffix(cleaned, "_cpm")
+	cleaned = strings.TrimSuffix(cleaned, "_cps")
+	return "tube_" + cleaned
 }
 
 // reinterpretCountsUnit upgrades bare detector fields from specific hardware
@@ -268,6 +286,7 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 	// This keeps the selection deterministic and follows "Clear is better
 	// than clever" by centralising the heuristics.
 	best := measurementCandidate{priority: math.MaxInt}
+	d.Readings = make(map[string]measurementCandidate)
 	for k, raw := range m {
 		if !strings.HasPrefix(k, "lnd_") {
 			continue
@@ -276,6 +295,7 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 		if !ok {
 			continue
 		}
+		d.Readings[candidate.key] = candidate
 		if candidate.priority < best.priority || (candidate.priority == best.priority && candidate.key < best.key) {
 			best = candidate
 		}
@@ -283,6 +303,7 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 	if best.priority != math.MaxInt {
 		d.Value = best.value
 		d.Unit = reinterpretCountsUnit(d.Class, best.unit)
+		d.Primary = best.key
 	}
 
 	// Timestamp is provided as RFC3339 string.
@@ -401,12 +422,45 @@ func DetectorLabel(tube, transport, name string) string {
 // convertIfRadiation filters Safecast Air units and returns the converted
 // radiation value when the reading looks usable.  Returning the µSv/h value
 // here keeps the calling loop simple and lets us reuse the same conversion
-// for summaries without reprocessing the payload.
-func convertIfRadiation(d devicePayload) (float64, bool) {
+// for summaries without reprocessing the payload.  The second map contains
+// extra converted readings for devices that expose multiple tubes, which lets
+// the UI plot both traces without introducing shared mutable state.
+func convertIfRadiation(d devicePayload) (float64, map[string]float64, bool) {
 	if containsAir(d.ID) || containsAir(d.Type) || containsAir(d.Tube) || containsAir(d.Name) {
-		return 0, false
+		return 0, nil, false
 	}
-	return FromRealtime(d.Value, d.Unit)
+	converted, ok := FromRealtime(d.Value, d.Unit)
+	if !ok {
+		return 0, nil, false
+	}
+
+	extras := make(map[string]float64)
+	primaryKey := ""
+	if d.Primary != "" {
+		primaryKey = radiationMetricKey(d.Primary)
+	}
+	for key, candidate := range d.Readings {
+		if key == d.Primary {
+			continue
+		}
+		unit := reinterpretCountsUnit(d.Class, candidate.unit)
+		value, ok := FromRealtime(candidate.value, unit)
+		if !ok {
+			continue
+		}
+		metricKey := radiationMetricKey(key)
+		if primaryKey != "" && metricKey == primaryKey {
+			continue
+		}
+		if _, exists := extras[metricKey]; exists {
+			continue
+		}
+		extras[metricKey] = value
+	}
+	if len(extras) == 0 {
+		extras = nil
+	}
+	return converted, extras, true
 }
 
 // Start launches background workers that keep the live table updated.
@@ -495,7 +549,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					if d.ID == "" {
 						continue
 					}
-					converted, ok := convertIfRadiation(d)
+					converted, radiationExtras, ok := convertIfRadiation(d)
 					if !ok {
 						continue
 					}
@@ -515,6 +569,22 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					}
 					detector := DetectorLabel(d.Tube, d.Type, d.Name)
 
+					var metrics map[string]float64
+					if len(d.Metrics) > 0 {
+						metrics = make(map[string]float64, len(d.Metrics)+len(radiationExtras))
+						for key, value := range d.Metrics {
+							metrics[key] = value
+						}
+					}
+					if len(radiationExtras) > 0 {
+						if metrics == nil {
+							metrics = make(map[string]float64, len(radiationExtras))
+						}
+						for key, value := range radiationExtras {
+							metrics[key] = ToMicroRoentgen(value)
+						}
+					}
+
 					m := database.RealtimeMeasurement{
 						DeviceID:   d.ID,
 						Transport:  d.Type,
@@ -527,7 +597,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						Lon:        d.Lon,
 						MeasuredAt: d.Time,
 						FetchedAt:  nowUnix,
-						Extra:      encodeMetrics(d.Metrics),
+						Extra:      encodeMetrics(metrics),
 					}
 					select {
 					case <-ctx.Done():
