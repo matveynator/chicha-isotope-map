@@ -451,13 +451,10 @@ func decodeJSONResult(r io.Reader) (*clickhouseRows, error) {
 // servers behave identically.
 func decodeJSONObjectPayload(payload []byte) (*clickhouseRows, error) {
 	var envelope struct {
-		Meta []struct {
-			Name string `json:"name"`
-			Type string `json:"type"`
-		} `json:"meta"`
-		Names []string `json:"names"`
-		Types []string `json:"types"`
-		Data  [][]any  `json:"data"`
+		Meta  json.RawMessage `json:"meta"`
+		Names []string        `json:"names"`
+		Types []string        `json:"types"`
+		Data  [][]any         `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return nil, fmt.Errorf("clickhouse: decode json: %w", err)
@@ -467,16 +464,16 @@ func decodeJSONObjectPayload(payload []byte) (*clickhouseRows, error) {
 	var types []string
 
 	switch {
-	case len(envelope.Meta) > 0:
-		cols = make([]string, len(envelope.Meta))
-		types = make([]string, len(envelope.Meta))
-		for i, meta := range envelope.Meta {
-			cols[i] = meta.Name
-			types[i] = meta.Type
-		}
 	case len(envelope.Names) > 0 && len(envelope.Names) == len(envelope.Types):
 		cols = append([]string(nil), envelope.Names...)
 		types = append([]string(nil), envelope.Types...)
+	case len(envelope.Meta) > 0:
+		parsedCols, parsedTypes, err := parseMetaBlock(envelope.Meta)
+		if err != nil {
+			return nil, err
+		}
+		cols = parsedCols
+		types = parsedTypes
 	default:
 		return nil, fmt.Errorf("clickhouse: json payload missing metadata")
 	}
@@ -497,6 +494,43 @@ func decodeJSONObjectPayload(payload []byte) (*clickhouseRows, error) {
 		rows = append(rows, converted)
 	}
 	return &clickhouseRows{columns: cols, data: rows}, nil
+}
+
+// parseMetaBlock understands the "meta" field regardless of whether ClickHouse
+// encodes it as an array of objects or a compact array of arrays. We keep the
+// behaviour flexible so both JSON and JSONCompact formats stay supported.
+func parseMetaBlock(meta json.RawMessage) ([]string, []string, error) {
+	var objectMeta []struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(meta, &objectMeta); err == nil && len(objectMeta) > 0 {
+		cols := make([]string, len(objectMeta))
+		types := make([]string, len(objectMeta))
+		for i, metaEntry := range objectMeta {
+			cols[i] = metaEntry.Name
+			types[i] = metaEntry.Type
+		}
+		return cols, types, nil
+	}
+
+	var compactMeta [][]string
+	if err := json.Unmarshal(meta, &compactMeta); err == nil && len(compactMeta) > 0 {
+		cols := make([]string, len(compactMeta))
+		types := make([]string, len(compactMeta))
+		for i, entry := range compactMeta {
+			if len(entry) == 0 {
+				return nil, nil, fmt.Errorf("clickhouse: compact meta row missing name at index %d", i)
+			}
+			cols[i] = entry[0]
+			if len(entry) > 1 {
+				types[i] = entry[1]
+			}
+		}
+		return cols, types, nil
+	}
+
+	return nil, nil, fmt.Errorf("clickhouse: unsupported meta payload")
 }
 
 // decodeJSONArrayStream handles FORMAT JSONCompactEachRowWithNamesAndTypes when
