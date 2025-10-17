@@ -175,6 +175,14 @@ func NewDatabase(config Config) (*Database, error) {
 		} else {
 			log.Printf("sqlite tuning skipped: driver %s manages pragmas itself", driverName)
 		}
+	case "duckdb":
+		// DuckDB performs all writes through a single transaction log and does not
+		// currently benefit from multiple concurrent writers.  We cap it to one
+		// connection so realtime refreshes avoid unique-key races while staying in
+		// line with "Clear is better than clever".
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+		db.SetConnMaxLifetime(0)
 	case "clickhouse":
 		// ClickHouse benefits from a few parallel connections while remaining lightweight.
 		db.SetMaxOpenConns(8)
@@ -1242,6 +1250,16 @@ func (db *Database) realtimeExistsClickHouse(deviceID string, measuredAt int64) 
 	return true, nil
 }
 
+// duckDBIsConflict detects duplicate-key errors reported by DuckDB so callers can retry safely.
+// DuckDB tends to use user-facing phrases like "duplicate key" inside a Constraint Error message.
+func duckDBIsConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "constraint error")
+}
+
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
@@ -1259,37 +1277,51 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 	case "duckdb":
 		// DuckDB currently refuses to update indexed columns inside an ON CONFLICT branch.
 		// To keep markers fresh we replace the row inside a transaction: delete the stale
-		// entry and insert the latest reading. This stays portable and mirrors the Go
-		// Proverb "Don't communicate by sharing memory; share memory by communicating" by
-		// keeping the sequence deterministic without locks.
-		tx, err := db.DB.BeginTx(context.Background(), nil)
-		if err != nil {
-			return fmt.Errorf("begin duckdb realtime tx: %w", err)
-		}
-		// We make sure to roll back on any failure so callers never observe a partial write.
-		defer func() {
+		// entry and insert the latest reading.  Concurrent writers may collide, so we
+		// retry politely when DuckDB reports a duplicate-key race, mirroring "Don't panic"
+		// by keeping the logic straightforward and resilient.
+		const maxDuckDBRetries = 3
+		var lastConflict error
+
+		for attempt := 0; attempt < maxDuckDBRetries; attempt++ {
+			tx, err := db.DB.BeginTx(context.Background(), nil)
 			if err != nil {
-				_ = tx.Rollback()
+				return fmt.Errorf("begin duckdb realtime tx: %w", err)
 			}
-		}()
 
-		if _, err = tx.Exec(`DELETE FROM realtime_measurements WHERE device_id = ? AND measured_at = ?`, m.DeviceID, m.MeasuredAt); err != nil {
-			return fmt.Errorf("duckdb delete realtime: %w", err)
-		}
+			if _, execErr := tx.Exec(`DELETE FROM realtime_measurements WHERE device_id = ? AND measured_at = ?`, m.DeviceID, m.MeasuredAt); execErr != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("duckdb delete realtime: %w", execErr)
+			}
 
-		if _, err = tx.Exec(`
+			if _, execErr := tx.Exec(`
 INSERT INTO realtime_measurements
       (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
-			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra); err != nil {
-			return fmt.Errorf("duckdb insert realtime: %w", err)
-		}
+				m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+				m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra); execErr != nil {
+				_ = tx.Rollback()
+				if duckDBIsConflict(execErr) {
+					lastConflict = execErr
+					continue
+				}
+				return fmt.Errorf("duckdb insert realtime: %w", execErr)
+			}
 
-		if err = tx.Commit(); err != nil {
-			return fmt.Errorf("duckdb commit realtime: %w", err)
+			if commitErr := tx.Commit(); commitErr != nil {
+				_ = tx.Rollback()
+				if duckDBIsConflict(commitErr) {
+					lastConflict = commitErr
+					continue
+				}
+				return fmt.Errorf("duckdb commit realtime: %w", commitErr)
+			}
+			return nil
 		}
-		return nil
+		if lastConflict != nil {
+			return fmt.Errorf("duckdb realtime conflict after retries: %w", lastConflict)
+		}
+		return fmt.Errorf("duckdb realtime conflict without error context")
 
 	case "clickhouse":
 		exists, err := db.realtimeExistsClickHouse(m.DeviceID, m.MeasuredAt)
