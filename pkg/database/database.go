@@ -175,6 +175,14 @@ func NewDatabase(config Config) (*Database, error) {
 		} else {
 			log.Printf("sqlite tuning skipped: driver %s manages pragmas itself", driverName)
 		}
+	case "duckdb":
+		// DuckDB performs all writes through a single transaction log and does not
+		// currently benefit from multiple concurrent writers.  We cap it to one
+		// connection so realtime refreshes avoid unique-key races while staying in
+		// line with "Clear is better than clever".
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+		db.SetConnMaxLifetime(0)
 	case "clickhouse":
 		// ClickHouse benefits from a few parallel connections while remaining lightweight.
 		db.SetMaxOpenConns(8)
@@ -1242,11 +1250,21 @@ func (db *Database) realtimeExistsClickHouse(deviceID string, measuredAt int64) 
 	return true, nil
 }
 
+// duckDBIsConflict detects duplicate-key errors reported by DuckDB so callers can retry safely.
+// DuckDB tends to use user-facing phrases like "duplicate key" inside a Constraint Error message.
+func duckDBIsConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "constraint error")
+}
+
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
 	switch strings.ToLower(dbType) {
-	case "pgx", "duckdb":
+	case "pgx":
 		_, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
       (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
@@ -1255,6 +1273,55 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
 		return err
+
+	case "duckdb":
+		// DuckDB currently refuses to update indexed columns inside an ON CONFLICT branch.
+		// To keep markers fresh we replace the row inside a transaction: delete the stale
+		// entry and insert the latest reading.  Concurrent writers may collide, so we
+		// retry politely when DuckDB reports a duplicate-key race, mirroring "Don't panic"
+		// by keeping the logic straightforward and resilient.
+		const maxDuckDBRetries = 3
+		var lastConflict error
+
+		for attempt := 0; attempt < maxDuckDBRetries; attempt++ {
+			tx, err := db.DB.BeginTx(context.Background(), nil)
+			if err != nil {
+				return fmt.Errorf("begin duckdb realtime tx: %w", err)
+			}
+
+			if _, execErr := tx.Exec(`DELETE FROM realtime_measurements WHERE device_id = ? AND measured_at = ?`, m.DeviceID, m.MeasuredAt); execErr != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("duckdb delete realtime: %w", execErr)
+			}
+
+			if _, execErr := tx.Exec(`
+INSERT INTO realtime_measurements
+      (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+				m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+				m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra); execErr != nil {
+				_ = tx.Rollback()
+				if duckDBIsConflict(execErr) {
+					lastConflict = execErr
+					continue
+				}
+				return fmt.Errorf("duckdb insert realtime: %w", execErr)
+			}
+
+			if commitErr := tx.Commit(); commitErr != nil {
+				_ = tx.Rollback()
+				if duckDBIsConflict(commitErr) {
+					lastConflict = commitErr
+					continue
+				}
+				return fmt.Errorf("duckdb commit realtime: %w", commitErr)
+			}
+			return nil
+		}
+		if lastConflict != nil {
+			return fmt.Errorf("duckdb realtime conflict after retries: %w", lastConflict)
+		}
+		return fmt.Errorf("duckdb realtime conflict without error context")
 
 	case "clickhouse":
 		exists, err := db.realtimeExistsClickHouse(m.DeviceID, m.MeasuredAt)
@@ -1297,13 +1364,13 @@ func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon flo
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
 		query = `
-SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
+SELECT id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
 ORDER BY device_id,fetched_at DESC;`
 	default:
 		query = `
-SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
+SELECT id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
 ORDER BY device_id,fetched_at DESC;`
@@ -1322,13 +1389,14 @@ ORDER BY device_id,fetched_at DESC;`
 	var out []Marker
 	for rows.Next() {
 		var (
+			rowID                                        int64
 			id, transport, name, tube, country, extraRaw string
 			val                                          float64
 			unit                                         string
 			lat, lon                                     float64
 			measured                                     int64
 		)
-		if err := rows.Scan(&id, &transport, &name, &tube, &country, &val, &unit, &lat, &lon, &measured, &extraRaw); err != nil {
+		if err := rows.Scan(&rowID, &id, &transport, &name, &tube, &country, &val, &unit, &lat, &lon, &measured, &extraRaw); err != nil {
 			return nil, fmt.Errorf("scan realtime: %w", err)
 		}
 		if lat == 0 && lon == 0 {
@@ -1368,6 +1436,7 @@ ORDER BY device_id,fetched_at DESC;`
 
 		seen[id] = true
 		marker := Marker{
+			ID:         rowID, // Preserve primary key so map updates can track devices reliably.
 			DoseRate:   doseRate,
 			Date:       measured,
 			Lon:        lon,
