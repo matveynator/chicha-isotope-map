@@ -28,6 +28,21 @@ const (
 	// Safecast documents 108 CPM per µSv/h; for per-second counts we divide
 	// by 60 so both units share the same physical calibration.
 	factorLND712CPS = factorLND712
+	// factorLND78017 handles the larger LND 78017 pancake detector.
+	// Common calibration is approximately 57 CPM per µSv/h based on field data.
+	factorLND78017 = 57.0
+	// factorLND78017CPS converts counts per second for 78017 tubes.
+	factorLND78017CPS = factorLND78017
+	// factorSBM20 handles the Russian SBM-20 tube commonly found in DIY detectors.
+	// Standard calibration is approximately 175 CPM per µSv/h.
+	factorSBM20 = 175.0
+	// factorSBM20CPS converts counts per second for SBM-20 tubes.
+	factorSBM20CPS = factorSBM20
+	// factorJ305 handles the J305 beta-gamma tube used in various counters.
+	// Standard calibration is approximately 153 CPM per µSv/h.
+	factorJ305 = 153.0
+	// factorJ305CPS converts counts per second for J305 tubes.
+	factorJ305CPS = factorJ305
 )
 
 // ─── Public conversion helpers ──────────────────────────────────────────────
@@ -78,10 +93,28 @@ func FromRealtime(value float64, unit string) (float64, bool) {
 		}
 		return value / factorLND712, true
 	}
+	if containsAny(clean, []string{"lnd78017"}) {
+		if strings.Contains(clean, "cps") {
+			return value / factorLND78017CPS, true
+		}
+		return value / factorLND78017, true
+	}
+	if containsAny(clean, []string{"sbm20", "sbm-20"}) {
+		if strings.Contains(clean, "cps") {
+			return value / factorSBM20CPS, true
+		}
+		return value / factorSBM20, true
+	}
+	if containsAny(clean, []string{"j305", "j-305"}) {
+		if strings.Contains(clean, "cps") {
+			return value / factorJ305CPS, true
+		}
+		return value / factorJ305, true
+	}
 
 	// Unknown detectors remain unconverted so the caller can decide whether
-	// to display raw CPM or hide the value.  LND 78017 falls into this
-	// branch until we receive an official calibration factor.
+	// to display raw CPM or hide the value.  We now support LND 78017,
+	// SBM-20, and J305 in addition to the original LND 7318 and 712 tubes.
 	return 0, false
 }
 

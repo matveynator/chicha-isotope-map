@@ -954,6 +954,17 @@ func withServerHeader(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Server", "chicha-isotope-map/"+CompileVersion)
 
+		// Add CORS headers for cross-origin requests
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		// Handle preflight requests
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		if r.Method == http.MethodHead && r.URL.Path == "/" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -4024,6 +4035,162 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 	return agg
 }
 
+// realtimeDebugHandler provides diagnostic information about realtime sensor filtering.
+// This endpoint helps operators understand why specific sensors may not appear on the map.
+func realtimeDebugHandler(w http.ResponseWriter, r *http.Request) {
+	if !*safecastRealtimeEnabled {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Fetch current live data to analyze
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://tt.safecast.org/devices", nil)
+	if err != nil {
+		http.Error(w, "debug fetch error", http.StatusInternalServerError)
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, "debug fetch error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "debug read error", http.StatusInternalServerError)
+		return
+	}
+
+	var devices []map[string]interface{}
+	if err := json.Unmarshal(body, &devices); err != nil {
+		http.Error(w, "debug parse error", http.StatusInternalServerError)
+		return
+	}
+
+	type filterStats struct {
+		Total            int      `json:"total"`
+		NoID             int      `json:"no_id"`
+		Air              int      `json:"air"`
+		NoConvert        int      `json:"no_convert"`
+		ZeroCoords       int      `json:"zero_coords"`
+		NoTime           int      `json:"no_time"`
+		Stale24h         int      `json:"stale_24h"`
+		Accepted         int      `json:"accepted"`
+		UnconvertedUnits []string `json:"unconverted_units,omitempty"`
+		UnconvertedIDs   []string `json:"unconverted_device_ids,omitempty"`
+	}
+
+	stats := filterStats{Total: len(devices)}
+	unconvertedMap := make(map[string]bool)
+	unconvertedDevices := make(map[string]bool)
+	now := time.Now().Unix()
+
+	for _, d := range devices {
+		// Extract device ID
+		deviceID := ""
+		if v, ok := d["device_urn"].(string); ok {
+			deviceID = v
+		} else if v, ok := d["id"].(string); ok {
+			deviceID = v
+		}
+
+		if deviceID == "" {
+			stats.NoID++
+			continue
+		}
+
+		// Check for Air devices
+		isAir := false
+		for _, field := range []string{"device_urn", "id", "device_class", "device_title", "device_name", "tube_type"} {
+			if v, ok := d[field].(string); ok {
+				if strings.Contains(strings.ToLower(v), "air") {
+					isAir = true
+					break
+				}
+			}
+		}
+		if isAir {
+			stats.Air++
+			continue
+		}
+
+		// Check coordinates
+		lat, _ := d["loc_lat"].(float64)
+		lon, _ := d["loc_lon"].(float64)
+		if lat == 0 && lon == 0 {
+			stats.ZeroCoords++
+			continue
+		}
+
+		// Check timestamp
+		timeVal := int64(0)
+		if v, ok := d["when_captured"].(string); ok {
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				timeVal = t.Unix()
+			}
+		}
+		if timeVal == 0 {
+			stats.NoTime++
+			continue
+		}
+
+		// Check if stale (>24h old)
+		if now-timeVal > 86400 {
+			stats.Stale24h++
+			continue
+		}
+
+		// Check if unit can be converted
+		converted := false
+		unit := ""
+		value := 0.0
+
+		// Find measurement field
+		for k, v := range d {
+			if strings.HasPrefix(k, "lnd_") {
+				if val, ok := v.(float64); ok {
+					value = val
+					unit = k
+					// Try conversion using same logic as converter
+					_, convOk := safecastrealtime.FromRealtime(value, unit)
+					if convOk {
+						converted = true
+					}
+					break
+				}
+			}
+		}
+
+		if !converted && unit != "" {
+			stats.NoConvert++
+			if !unconvertedMap[unit] {
+				unconvertedMap[unit] = true
+				stats.UnconvertedUnits = append(stats.UnconvertedUnits, unit)
+			}
+			if len(unconvertedDevices) < 10 {
+				unconvertedDevices[deviceID] = true
+				stats.UnconvertedIDs = append(stats.UnconvertedIDs, deviceID)
+			}
+			continue
+		}
+
+		if converted {
+			stats.Accepted++
+		}
+	}
+
+	// Sort unconverted units for consistent output
+	sort.Strings(stats.UnconvertedUnits)
+	sort.Strings(stats.UnconvertedIDs)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(stats)
+}
+
 // realtimeHistoryHandler returns one year of realtime measurements for a device.
 // The handler keeps the response lightweight so the frontend can draw Grafana-style
 // charts without shipping a dedicated dashboard backend.
@@ -4226,6 +4393,7 @@ func main() {
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)
 	http.HandleFunc("/realtime_history", realtimeHistoryHandler)
+	http.HandleFunc("/realtime_debug", realtimeDebugHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
 	http.HandleFunc("/s/", shortRedirectHandler)

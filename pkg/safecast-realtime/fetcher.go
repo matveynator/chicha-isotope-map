@@ -409,6 +409,100 @@ func convertIfRadiation(d devicePayload) (float64, bool) {
 	return FromRealtime(d.Value, d.Unit)
 }
 
+// devicePosition tracks the last known position and time for speed calculation.
+type devicePosition struct {
+	lat  float64
+	lon  float64
+	time int64
+}
+
+// calculateSpeed computes speed in km/h between two positions using the Haversine formula.
+// Returns -1 if the device hasn't moved significantly or if time delta is too small.
+func calculateSpeed(prevPos devicePosition, currLat, currLon float64, currTime int64) float64 {
+	// If no previous position, can't calculate speed
+	if prevPos.time == 0 {
+		return -1
+	}
+
+	timeDelta := currTime - prevPos.time
+	if timeDelta <= 0 {
+		return -1
+	}
+
+	// Calculate distance using Haversine formula
+	const earthRadiusKm = 6371.0
+	lat1Rad := prevPos.lat * math.Pi / 180
+	lat2Rad := currLat * math.Pi / 180
+	deltaLat := (currLat - prevPos.lat) * math.Pi / 180
+	deltaLon := (currLon - prevPos.lon) * math.Pi / 180
+
+	a := math.Sin(deltaLat/2)*math.Sin(deltaLat/2) +
+		math.Cos(lat1Rad)*math.Cos(lat2Rad)*
+			math.Sin(deltaLon/2)*math.Sin(deltaLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	distanceKm := earthRadiusKm * c
+
+	// If movement is less than 10 meters, consider stationary
+	if distanceKm < 0.01 {
+		return 0
+	}
+
+	// Calculate speed in km/h
+	timeHours := float64(timeDelta) / 3600.0
+	speed := distanceKm / timeHours
+
+	// Sanity check: if speed > 200 km/h, probably bad data
+	if speed > 200 {
+		return -1
+	}
+
+	return speed
+}
+
+// convertRealtimeToMarker transforms a realtime measurement into a permanent marker.
+// This allows realtime sensor data to appear in the regular map layers even when
+// the live layer is disabled. Speed is calculated based on movement from previous position.
+func convertRealtimeToMarker(m database.RealtimeMeasurement, doseRate float64, speed float64) database.Marker {
+	// Parse extra metrics if present
+	var temperature, humidity float64
+	var tempValid, humidValid bool
+	if m.Extra != "" {
+		var metrics map[string]float64
+		if err := json.Unmarshal([]byte(m.Extra), &metrics); err == nil {
+			if temp, ok := metrics["temperature_c"]; ok {
+				temperature = temp
+				tempValid = true
+			}
+			if hum, ok := metrics["humidity_percent"]; ok {
+				humidity = hum
+				humidValid = true
+			}
+		}
+	}
+
+	return database.Marker{
+		DoseRate:    doseRate,        // Converted µSv/h value
+		Date:        m.MeasuredAt,    // When the reading was taken
+		Lon:         m.Lon,
+		Lat:         m.Lat,
+		CountRate:   0,               // Not provided by realtime API
+		Zoom:        0,               // Will be calculated by database
+		Speed:       speed,           // Calculated from position changes, 0=stationary, -1=unknown
+		TrackID:     "live:" + m.DeviceID, // Prefix with "live:" to distinguish from uploaded tracks
+		Detector:    m.Tube,
+		Radiation:   "gamma",         // Assume gamma (most common for these detectors)
+		Temperature: temperature,
+		Humidity:    humidity,
+		TemperatureValid: tempValid,
+		HumidityValid:    humidValid,
+		DeviceID:    m.DeviceID,
+		DeviceName:  m.DeviceName,
+		Transport:   m.Transport,
+		Tube:        m.Tube,
+		Country:     m.Country,
+	}
+}
+
 // Start launches background workers that keep the live table updated.
 // We poll every five minutes so active counters stay fresh while still being
 // polite to the upstream service.
@@ -425,32 +519,57 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 	// Announce poller start once so operators know interval and source.
 	logf("realtime poller start: url=%s interval=%s", url, pollInterval)
 
-	measurements := make(chan database.RealtimeMeasurement)
+	// measurementWithDose bundles a realtime measurement with its converted dose rate
+	// and calculated speed so we can insert both into realtime_measurements and markers tables.
+	type measurementWithDose struct {
+		measurement database.RealtimeMeasurement
+		doseRate    float64
+		speed       float64
+	}
+
+	measurements := make(chan measurementWithDose)
 	reports := make(chan int)
 
 	// DB writer goroutine.
 	// It counts successes and errors per batch and logs once per report.
+	// Now it inserts into BOTH realtime_measurements and markers tables.
 	go func() {
-		var stored, errs int
+		var stored, errs, markersStored, markersErrs int
 		var lastErr error
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case m := <-measurements:
-				if err := db.InsertRealtimeMeasurement(m, dbType); err != nil {
+			case mwd := <-measurements:
+				// Insert into realtime_measurements table
+				if err := db.InsertRealtimeMeasurement(mwd.measurement, dbType); err != nil {
 					errs++
 					lastErr = err
 				} else {
 					stored++
 				}
-			case n := <-reports:
-				if errs > 0 {
-					logf("realtime poll: devices %d stored %d errors %d last=%v next=%s", n, stored, errs, lastErr, pollInterval)
+
+				// Also insert into markers table for permanent storage
+				marker := convertRealtimeToMarker(mwd.measurement, mwd.doseRate, mwd.speed)
+				if err := db.SaveMarkerAtomic(db.DB, marker, dbType); err != nil {
+					markersErrs++
+					// Don't overwrite lastErr if realtime insert succeeded
+					if lastErr == nil {
+						lastErr = err
+					}
 				} else {
-					logf("realtime poll: devices %d stored %d next=%s", n, stored, pollInterval)
+					markersStored++
 				}
-				stored, errs, lastErr = 0, 0, nil
+
+			case n := <-reports:
+				if errs > 0 || markersErrs > 0 {
+					logf("realtime poll: devices %d stored %d (markers %d) errors %d (markers %d) last=%v next=%s",
+						n, stored, markersStored, errs, markersErrs, lastErr, pollInterval)
+				} else {
+					logf("realtime poll: devices %d stored %d (markers %d) next=%s",
+						n, stored, markersStored, pollInterval)
+				}
+				stored, errs, markersStored, markersErrs, lastErr = 0, 0, 0, 0, nil
 			}
 		}
 	}()
@@ -465,6 +584,9 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 
 		// prevIDs remembers devices from prior fetch to compute add/remove counts.
 		prevIDs := make(map[string]struct{})
+
+		// prevPositions tracks last known positions for speed calculation.
+		prevPositions := make(map[string]devicePosition)
 
 		for {
 			now := time.Now()
@@ -491,18 +613,42 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				})
 				curr := make(map[string]struct{})
 
+				// Track filtering reasons for diagnostics
+				var (
+					skippedNoID       int
+					skippedAir        int
+					skippedNoConvert  int
+					skippedZeroCoords int
+					skippedNoTime     int
+				)
+
 				for _, d := range data {
 					if d.ID == "" {
+						skippedNoID++
 						continue
 					}
+
+					// Check if Air device before conversion
+					if containsAir(d.ID) || containsAir(d.Type) || containsAir(d.Tube) || containsAir(d.Name) {
+						skippedAir++
+						continue
+					}
+
 					converted, ok := convertIfRadiation(d)
 					if !ok {
+						skippedNoConvert++
+						// Log first few unconverted units for diagnostics
+						if skippedNoConvert <= 3 {
+							logf("realtime unconverted: device=%s value=%.2f unit=%q", d.ID, d.Value, d.Unit)
+						}
 						continue
 					}
 					if d.Lat == 0 && d.Lon == 0 {
+						skippedZeroCoords++
 						continue
 					}
 					if d.Time == 0 {
+						skippedNoTime++
 						continue
 					}
 
@@ -514,6 +660,17 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						country = strings.ToUpper(strings.TrimSpace(d.Country))
 					}
 					detector := DetectorLabel(d.Tube, d.Type, d.Name)
+
+					// Calculate speed based on position change since last poll
+					prevPos := prevPositions[d.ID]
+					speed := calculateSpeed(prevPos, d.Lat, d.Lon, d.Time)
+
+					// Update position for next calculation
+					prevPositions[d.ID] = devicePosition{
+						lat:  d.Lat,
+						lon:  d.Lon,
+						time: d.Time,
+					}
 
 					m := database.RealtimeMeasurement{
 						DeviceID:   d.ID,
@@ -533,7 +690,11 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					case <-ctx.Done():
 						close(measurements)
 						return
-					case measurements <- m:
+					case measurements <- measurementWithDose{
+						measurement: m,
+						doseRate:    converted, // Already converted to µSv/h earlier
+						speed:       speed,     // Calculated speed in km/h
+					}:
 					}
 
 					if d.Time < cutoff {
@@ -585,6 +746,13 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 
 				// Log per-country averages and churn without extra links.
 				logf("realtime summary: %s added=%d removed=%d", strings.Join(parts, " "), added, removed)
+
+				// Log filtering statistics if any devices were skipped
+				totalSkipped := skippedNoID + skippedAir + skippedNoConvert + skippedZeroCoords + skippedNoTime
+				if totalSkipped > 0 {
+					logf("realtime filtered: total=%d (noID=%d air=%d noConvert=%d zeroCoords=%d noTime=%d)",
+						totalSkipped, skippedNoID, skippedAir, skippedNoConvert, skippedZeroCoords, skippedNoTime)
+				}
 
 				// Promote stale device histories to normal tracks once a day.
 				go db.PromoteStaleRealtime(cutoff, dbType)
