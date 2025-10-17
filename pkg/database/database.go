@@ -1364,13 +1364,13 @@ func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon flo
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
 		query = `
-SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
+SELECT id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
 ORDER BY device_id,fetched_at DESC;`
 	default:
 		query = `
-SELECT device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
+SELECT id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,extra
 FROM realtime_measurements
 WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
 ORDER BY device_id,fetched_at DESC;`
@@ -1389,13 +1389,14 @@ ORDER BY device_id,fetched_at DESC;`
 	var out []Marker
 	for rows.Next() {
 		var (
+			rowID                                        int64
 			id, transport, name, tube, country, extraRaw string
 			val                                          float64
 			unit                                         string
 			lat, lon                                     float64
 			measured                                     int64
 		)
-		if err := rows.Scan(&id, &transport, &name, &tube, &country, &val, &unit, &lat, &lon, &measured, &extraRaw); err != nil {
+		if err := rows.Scan(&rowID, &id, &transport, &name, &tube, &country, &val, &unit, &lat, &lon, &measured, &extraRaw); err != nil {
 			return nil, fmt.Errorf("scan realtime: %w", err)
 		}
 		if lat == 0 && lon == 0 {
@@ -1435,6 +1436,7 @@ ORDER BY device_id,fetched_at DESC;`
 
 		seen[id] = true
 		marker := Marker{
+			ID:         rowID, // Preserve primary key so map updates can track devices reliably.
 			DoseRate:   doseRate,
 			Date:       measured,
 			Lon:        lon,
