@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -423,24 +424,62 @@ func parseClickHouseDSN(dsn string) (clickHouseConfig, error) {
 
 // decodeJSONResult converts the ClickHouse JSON payload into clickhouseRows.
 func decodeJSONResult(r io.Reader) (*clickhouseRows, error) {
-	var payload struct {
-		Meta []struct {
-			Name string `json:"name"`
-			Type string `json:"type"`
-		} `json:"meta"`
-		Data [][]any `json:"data"`
+	// We load the payload upfront so we can peek at the first rune and adapt
+	// to the chosen output format. ClickHouse can emit structured objects
+	// (FORMAT JSON) or newline-delimited arrays (FORMAT JSONCompactEachRowWithNamesAndTypes).
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("clickhouse: read json: %w", err)
 	}
-	if err := json.NewDecoder(r).Decode(&payload); err != nil {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return &clickhouseRows{}, nil
+	}
+	switch trimmed[0] {
+	case '{':
+		return decodeJSONObjectPayload(trimmed)
+	case '[':
+		return decodeJSONArrayStream(trimmed)
+	default:
+		return nil, fmt.Errorf("clickhouse: unsupported json payload starting with %q", trimmed[0])
+	}
+}
+
+// decodeJSONObjectPayload handles FORMAT JSON and JSONCompactEachRowWithNamesAndTypes
+// responses where ClickHouse wraps rows inside a single object. We support both the
+// "meta" structure (FORMAT JSON) and the "names"/"types" structure so older and newer
+// servers behave identically.
+func decodeJSONObjectPayload(payload []byte) (*clickhouseRows, error) {
+	var envelope struct {
+		Meta  json.RawMessage `json:"meta"`
+		Names []string        `json:"names"`
+		Types []string        `json:"types"`
+		Data  [][]any         `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return nil, fmt.Errorf("clickhouse: decode json: %w", err)
 	}
-	cols := make([]string, len(payload.Meta))
-	types := make([]string, len(payload.Meta))
-	for i, meta := range payload.Meta {
-		cols[i] = meta.Name
-		types[i] = meta.Type
+
+	var cols []string
+	var types []string
+
+	switch {
+	case len(envelope.Names) > 0 && len(envelope.Names) == len(envelope.Types):
+		cols = append([]string(nil), envelope.Names...)
+		types = append([]string(nil), envelope.Types...)
+	case len(envelope.Meta) > 0:
+		parsedCols, parsedTypes, err := parseMetaBlock(envelope.Meta)
+		if err != nil {
+			return nil, err
+		}
+		cols = parsedCols
+		types = parsedTypes
+	default:
+		return nil, fmt.Errorf("clickhouse: json payload missing metadata")
 	}
-	rows := make([][]driver.Value, 0, len(payload.Data))
-	for _, raw := range payload.Data {
+
+	rows := make([][]driver.Value, 0, len(envelope.Data))
+	for _, raw := range envelope.Data {
 		if len(raw) != len(types) {
 			return nil, fmt.Errorf("clickhouse: column mismatch: got %d values, expected %d", len(raw), len(types))
 		}
@@ -455,6 +494,91 @@ func decodeJSONResult(r io.Reader) (*clickhouseRows, error) {
 		rows = append(rows, converted)
 	}
 	return &clickhouseRows{columns: cols, data: rows}, nil
+}
+
+// parseMetaBlock understands the "meta" field regardless of whether ClickHouse
+// encodes it as an array of objects or a compact array of arrays. We keep the
+// behaviour flexible so both JSON and JSONCompact formats stay supported.
+func parseMetaBlock(meta json.RawMessage) ([]string, []string, error) {
+	var objectMeta []struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(meta, &objectMeta); err == nil && len(objectMeta) > 0 {
+		cols := make([]string, len(objectMeta))
+		types := make([]string, len(objectMeta))
+		for i, metaEntry := range objectMeta {
+			cols[i] = metaEntry.Name
+			types[i] = metaEntry.Type
+		}
+		return cols, types, nil
+	}
+
+	var compactMeta [][]string
+	if err := json.Unmarshal(meta, &compactMeta); err == nil && len(compactMeta) > 0 {
+		cols := make([]string, len(compactMeta))
+		types := make([]string, len(compactMeta))
+		for i, entry := range compactMeta {
+			if len(entry) == 0 {
+				return nil, nil, fmt.Errorf("clickhouse: compact meta row missing name at index %d", i)
+			}
+			cols[i] = entry[0]
+			if len(entry) > 1 {
+				types[i] = entry[1]
+			}
+		}
+		return cols, types, nil
+	}
+
+	return nil, nil, fmt.Errorf("clickhouse: unsupported meta payload")
+}
+
+// decodeJSONArrayStream handles FORMAT JSONCompactEachRowWithNamesAndTypes when
+// ClickHouse streams newline-delimited JSON arrays. The first array carries column
+// names, the second lists data types, and subsequent arrays hold row values.
+func decodeJSONArrayStream(payload []byte) (*clickhouseRows, error) {
+	dec := json.NewDecoder(bytes.NewReader(payload))
+
+	var names []string
+	if err := dec.Decode(&names); err != nil {
+		if errors.Is(err, io.EOF) {
+			return &clickhouseRows{}, nil
+		}
+		return nil, fmt.Errorf("clickhouse: decode column names: %w", err)
+	}
+
+	var types []string
+	if err := dec.Decode(&types); err != nil {
+		return nil, fmt.Errorf("clickhouse: decode column types: %w", err)
+	}
+	if len(names) != len(types) {
+		return nil, fmt.Errorf("clickhouse: names/types length mismatch (%d vs %d)", len(names), len(types))
+	}
+
+	rows := make([][]driver.Value, 0, 128)
+	for {
+		var rawRow []any
+		if err := dec.Decode(&rawRow); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("clickhouse: decode row: %w", err)
+		}
+		if len(rawRow) != len(types) {
+			return nil, fmt.Errorf("clickhouse: column mismatch: got %d values, expected %d", len(rawRow), len(types))
+		}
+		converted := make([]driver.Value, len(rawRow))
+		for i, val := range rawRow {
+			v, err := convertJSONValue(types[i], val)
+			if err != nil {
+				return nil, err
+			}
+			converted[i] = v
+		}
+		rows = append(rows, converted)
+	}
+
+	return &clickhouseRows{columns: names, data: rows}, nil
 }
 
 // convertJSONValue maps ClickHouse JSON types onto database/sql driver values.
