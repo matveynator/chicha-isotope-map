@@ -1275,53 +1275,65 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 		return err
 
 	case "duckdb":
-		// DuckDB currently refuses to update indexed columns inside an ON CONFLICT branch.
-		// To keep markers fresh we replace the row inside a transaction: delete the stale
-		// entry and insert the latest reading.  Concurrent writers may collide, so we
-		// retry politely when DuckDB reports a duplicate-key race, mirroring "Don't panic"
-		// by keeping the logic straightforward and resilient.
-		const maxDuckDBRetries = 3
-		var lastConflict error
+		// DuckDB refuses to update indexed columns during ON CONFLICT, so we rely on a
+		// predictable two-step dance: first try to refresh the row with an UPDATE, and
+		// only fall back to INSERT when the pair is genuinely new.  This keeps the
+		// logic database-agnostic while respecting Go's proverb about clear data flow.
+		updateQuery := `
+UPDATE realtime_measurements
+   SET transport = ?,
+       device_name = ?,
+       tube = ?,
+       country = ?,
+       value = ?,
+       unit = ?,
+       lat = ?,
+       lon = ?,
+       fetched_at = ?,
+       extra = ?
+ WHERE device_id = ? AND measured_at = ?`
+		updateArgs := []any{
+			m.Transport, m.DeviceName, m.Tube, m.Country,
+			m.Value, m.Unit, m.Lat, m.Lon, m.FetchedAt, m.Extra,
+			m.DeviceID, m.MeasuredAt,
+		}
 
-		for attempt := 0; attempt < maxDuckDBRetries; attempt++ {
-			tx, err := db.DB.BeginTx(context.Background(), nil)
-			if err != nil {
-				return fmt.Errorf("begin duckdb realtime tx: %w", err)
-			}
-
-			if _, execErr := tx.Exec(`DELETE FROM realtime_measurements WHERE device_id = ? AND measured_at = ?`, m.DeviceID, m.MeasuredAt); execErr != nil {
-				_ = tx.Rollback()
-				return fmt.Errorf("duckdb delete realtime: %w", execErr)
-			}
-
-			if _, execErr := tx.Exec(`
-INSERT INTO realtime_measurements
-      (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-				m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
-				m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra); execErr != nil {
-				_ = tx.Rollback()
-				if duckDBIsConflict(execErr) {
-					lastConflict = execErr
-					continue
-				}
-				return fmt.Errorf("duckdb insert realtime: %w", execErr)
-			}
-
-			if commitErr := tx.Commit(); commitErr != nil {
-				_ = tx.Rollback()
-				if duckDBIsConflict(commitErr) {
-					lastConflict = commitErr
-					continue
-				}
-				return fmt.Errorf("duckdb commit realtime: %w", commitErr)
-			}
+		updateResult, err := db.DB.Exec(updateQuery, updateArgs...)
+		if err != nil {
+			return fmt.Errorf("duckdb update realtime: %w", err)
+		}
+		if rows, rowsErr := updateResult.RowsAffected(); rowsErr == nil && rows > 0 {
 			return nil
 		}
-		if lastConflict != nil {
-			return fmt.Errorf("duckdb realtime conflict after retries: %w", lastConflict)
+
+		if m.ID == 0 {
+			m.ID = <-db.idGenerator
 		}
-		return fmt.Errorf("duckdb realtime conflict without error context")
+		insertQuery := `
+INSERT INTO realtime_measurements
+      (id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+		_, err = db.DB.Exec(insertQuery,
+			m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra,
+		)
+		if err == nil {
+			return nil
+		}
+		if !duckDBIsConflict(err) {
+			return fmt.Errorf("duckdb insert realtime: %w", err)
+		}
+
+		// A concurrent writer might have inserted the same key between our UPDATE and
+		// INSERT.  We simply refresh once more so both writers converge peacefully.
+		retryResult, retryErr := db.DB.Exec(updateQuery, updateArgs...)
+		if retryErr != nil {
+			return fmt.Errorf("duckdb retry update realtime: %w", retryErr)
+		}
+		if rows, rowsErr := retryResult.RowsAffected(); rowsErr == nil && rows > 0 {
+			return nil
+		}
+		return fmt.Errorf("duckdb realtime conflict without matching row")
 
 	case "clickhouse":
 		exists, err := db.realtimeExistsClickHouse(m.DeviceID, m.MeasuredAt)
