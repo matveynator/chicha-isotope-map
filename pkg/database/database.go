@@ -1246,12 +1246,24 @@ func (db *Database) realtimeExistsClickHouse(deviceID string, measuredAt int64) 
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
 	switch strings.ToLower(dbType) {
-	case "pgx", "duckdb":
+	case "pgx":
 		_, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
       (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
+			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
+		return err
+
+	case "duckdb":
+		// DuckDB (0.10.x) understands ON CONFLICT but still lacks the "ON CONSTRAINT" form.
+		// We target the unique key columns directly so duplicate samples are skipped without errors.
+		_, err := db.DB.Exec(`
+INSERT INTO realtime_measurements
+      (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+ON CONFLICT(device_id,measured_at) DO NOTHING`,
 			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
 		return err
