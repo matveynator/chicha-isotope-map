@@ -1257,27 +1257,39 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 		return err
 
 	case "duckdb":
-		// DuckDB (0.10.x) understands ON CONFLICT but still lacks the "ON CONSTRAINT" form.
-		// We therefore target the unique key columns directly and update the existing row so
-		// moving detectors keep their latest coordinates instead of freezing at the first insert.
-		_, err := db.DB.Exec(`
+		// DuckDB currently refuses to update indexed columns inside an ON CONFLICT branch.
+		// To keep markers fresh we replace the row inside a transaction: delete the stale
+		// entry and insert the latest reading. This stays portable and mirrors the Go
+		// Proverb "Don't communicate by sharing memory; share memory by communicating" by
+		// keeping the sequence deterministic without locks.
+		tx, err := db.DB.BeginTx(context.Background(), nil)
+		if err != nil {
+			return fmt.Errorf("begin duckdb realtime tx: %w", err)
+		}
+		// We make sure to roll back on any failure so callers never observe a partial write.
+		defer func() {
+			if err != nil {
+				_ = tx.Rollback()
+			}
+		}()
+
+		if _, err = tx.Exec(`DELETE FROM realtime_measurements WHERE device_id = ? AND measured_at = ?`, m.DeviceID, m.MeasuredAt); err != nil {
+			return fmt.Errorf("duckdb delete realtime: %w", err)
+		}
+
+		if _, err = tx.Exec(`
 INSERT INTO realtime_measurements
       (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-ON CONFLICT(device_id,measured_at) DO UPDATE SET
-      transport=excluded.transport,
-      device_name=excluded.device_name,
-      tube=excluded.tube,
-      country=excluded.country,
-      value=excluded.value,
-      unit=excluded.unit,
-      lat=excluded.lat,
-      lon=excluded.lon,
-      fetched_at=excluded.fetched_at,
-      extra=excluded.extra`,
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
-			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
-		return err
+			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra); err != nil {
+			return fmt.Errorf("duckdb insert realtime: %w", err)
+		}
+
+		if err = tx.Commit(); err != nil {
+			return fmt.Errorf("duckdb commit realtime: %w", err)
+		}
+		return nil
 
 	case "clickhouse":
 		exists, err := db.realtimeExistsClickHouse(m.DeviceID, m.MeasuredAt)
