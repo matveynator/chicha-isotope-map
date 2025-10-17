@@ -1258,12 +1258,23 @@ ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
 
 	case "duckdb":
 		// DuckDB (0.10.x) understands ON CONFLICT but still lacks the "ON CONSTRAINT" form.
-		// We target the unique key columns directly so duplicate samples are skipped without errors.
+		// We therefore target the unique key columns directly and update the existing row so
+		// moving detectors keep their latest coordinates instead of freezing at the first insert.
 		_, err := db.DB.Exec(`
 INSERT INTO realtime_measurements
       (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-ON CONFLICT(device_id,measured_at) DO NOTHING`,
+ON CONFLICT(device_id,measured_at) DO UPDATE SET
+      transport=excluded.transport,
+      device_name=excluded.device_name,
+      tube=excluded.tube,
+      country=excluded.country,
+      value=excluded.value,
+      unit=excluded.unit,
+      lat=excluded.lat,
+      lon=excluded.lon,
+      fetched_at=excluded.fetched_at,
+      extra=excluded.extra`,
 			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
 		return err
