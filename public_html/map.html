@@ -1877,7 +1877,7 @@ function buildRealtimeIcon(marker, zoomLevel, nowSec) {
   const textColor = isDarkColor(active ? baseColor : fill) ? '#ffffff' : '#000000';
 
   const radius = getRadius(marker.doseRate, zoomLevel) * 3;
-  const size = radius * 2;
+  const size = radius * 3.7;
   const value = formatMicroRoentgen(marker.doseRate);
   const fontSize = Math.max(Math.round(size * 0.32), 11);
   const heartSize = Math.max(Math.round(size * 0.5), 14);
