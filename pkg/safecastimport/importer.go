@@ -88,7 +88,18 @@ func schedule(ctx context.Context, jobs chan<- time.Time) {
 // We bound each run with a timeout to avoid dangling HTTP requests when the
 // application is shutting down.
 func worker(ctx context.Context, jobs <-chan time.Time, db *database.Database, dbType string, store StoreFunc, logf Logger) {
-	client := &http.Client{Timeout: 45 * time.Second}
+	// Safecast politely requests that automated clients keep concurrency low.
+	// We follow "Don't communicate by sharing memory" by keeping a single
+	// worker goroutine and also cap the HTTP transport to a single idle and
+	// active connection.  This honours the API guidance while still giving us
+	// keep-alive reuse for sequential downloads.
+	transport := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		MaxIdleConns:        1,
+		MaxIdleConnsPerHost: 1,
+		MaxConnsPerHost:     1,
+	}
+	client := &http.Client{Timeout: 45 * time.Second, Transport: transport}
 	importer := &syncer{db: db, dbType: dbType, store: store, logf: logf, client: client}
 
 	for {
@@ -168,11 +179,11 @@ func (s *syncer) run(ctx context.Context, now time.Time) error {
 		}
 	}
 
-	// When we have no record at all we rewind to the 2011 Fukushima window,
-	// ensuring a brand new database eventually picks up the entire Safecast
-	// archive.
+	// Safecast measurements stretch back well before Fukushima.  Brand new
+	// databases therefore rewind to the year 2000 so we do not accidentally
+	// skip early logs from legacy deployments.
 	if since.IsZero() {
-		since = time.Date(2011, time.March, 11, 0, 0, 0, 0, time.UTC)
+		since = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 	} else {
 		// Step back slightly to re-check records sharing the same second.
 		since = since.Add(-2 * time.Minute)
@@ -184,13 +195,16 @@ func (s *syncer) run(ctx context.Context, now time.Time) error {
 	}
 
 	const (
-		maxWindow = 30 * 24 * time.Hour
-		minWindow = time.Hour
+		maxWindow  = 30 * 24 * time.Hour
+		minWindow  = time.Hour
+		backoffMin = 30 * time.Second
+		backoffMax = 10 * time.Minute
 	)
 	window := 14 * 24 * time.Hour
 	if window < minWindow {
 		window = minWindow
 	}
+	backoff := backoffMin
 
 	cursor := since
 	for cursor.Before(until) {
@@ -202,21 +216,53 @@ func (s *syncer) run(ctx context.Context, now time.Time) error {
 			chunkEnd = cursor.Add(minWindow)
 		}
 
-		imports, err := s.collectImports(ctx, cursor, chunkEnd)
-		if err != nil {
-			var httpErr *statusError
-			if errors.As(err, &httpErr) && httpErr.retryable() && window > minWindow {
-				window = window / 2
-				if window < minWindow {
-					window = minWindow
+		var imports []importSummary
+		for {
+			var err error
+			imports, err = s.collectImports(ctx, cursor, chunkEnd)
+			if err != nil {
+				var httpErr *statusError
+				if errors.As(err, &httpErr) && httpErr.retryable() {
+					if window > minWindow {
+						window = window / 2
+						if window < minWindow {
+							window = minWindow
+						}
+						if s.logf != nil {
+							s.logf("safecast sync: reducing window to %s after status %d", window, httpErr.code)
+						}
+						chunkEnd = cursor.Add(window)
+						if chunkEnd.After(until) {
+							chunkEnd = until
+						}
+						if !chunkEnd.After(cursor) {
+							chunkEnd = cursor.Add(minWindow)
+						}
+						backoff = backoffMin
+						continue
+					}
+
+					wait := backoff
+					if s.logf != nil {
+						s.logf("safecast sync: waiting %s before retry after status %d", wait, httpErr.code)
+					}
+					if err := waitContext(ctx, wait); err != nil {
+						return err
+					}
+					if backoff < backoffMax {
+						backoff *= 2
+						if backoff > backoffMax {
+							backoff = backoffMax
+						}
+					}
+					continue
 				}
-				if s.logf != nil {
-					s.logf("safecast sync: reducing window to %s after status %d", window, httpErr.code)
-				}
-				continue
+				return err
 			}
-			return err
+			backoff = backoffMin
+			break
 		}
+
 		if len(imports) == 0 {
 			if s.logf != nil {
 				s.logf("safecast sync: no new imports between %s and %s", cursor.Format(time.RFC3339), chunkEnd.Format(time.RFC3339))
@@ -239,7 +285,15 @@ func (s *syncer) run(ctx context.Context, now time.Time) error {
 		})
 
 		latestSeen := cursor
+		throttle := time.Duration(0)
 		for _, imp := range imports {
+			if throttle > 0 {
+				if err := waitContext(ctx, throttle); err != nil {
+					return err
+				}
+			}
+			throttle = 2 * time.Second
+
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -378,8 +432,32 @@ func (s *syncer) collectImports(ctx context.Context, since, until time.Time) ([]
 		if len(batch) < perPage {
 			break
 		}
+
+		// Space out pagination slightly so we do not hammer the API when a
+		// window spans many pages.  The wait honours context cancellation so
+		// shutdown stays responsive.
+		if err := waitContext(ctx, 1500*time.Millisecond); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
+}
+
+// waitContext pauses for the requested duration unless the context is cancelled.
+// Using a helper keeps our throttling sites readable while still ensuring we do
+// not block shutdown paths.
+func waitContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // urlTime renders timestamps in the format expected by the Safecast endpoint,
