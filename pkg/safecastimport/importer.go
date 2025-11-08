@@ -118,6 +118,33 @@ type syncer struct {
 	client *http.Client
 }
 
+// statusError keeps HTTP error metadata so the caller can decide whether
+// shrinking the time window might help. We intentionally keep the struct tiny
+// so it is easy to construct without additional helpers.
+type statusError struct {
+	code int
+	body string
+}
+
+func (e *statusError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("unexpected status %d: %s", e.code, e.body)
+}
+
+func (e *statusError) retryable() bool {
+	if e == nil {
+		return false
+	}
+	switch e.code {
+	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
 // run collects metadata for all approved uploads since the last successful
 // import, downloads each missing track, converts the payload into markers, and
 // stores them via processAndStoreMarkers.  Errors are logged and skipped so the
@@ -127,99 +154,167 @@ func (s *syncer) run(ctx context.Context, now time.Time) error {
 		return errors.New("database unavailable")
 	}
 
-	// Fetch the most recent uploaded_at we have recorded.  Falling back to a
-	// 30-day window keeps the first sync bounded while still capturing recent
-	// activity when starting from an empty database.
-	since, err := s.db.LatestSafecastUpload(ctx, s.dbType)
+	// First try the generic cursor table so sources added later resume from the
+	// last successful run. Falling back to the legacy Safecast ledger keeps
+	// upgrades compatible with previously imported datasets.
+	since, err := s.db.ImportCursor(ctx, s.dbType, "safecast")
 	if err != nil {
 		return fmt.Errorf("query safecast cursor: %w", err)
 	}
 	if since.IsZero() {
-		since = now.Add(-30 * 24 * time.Hour)
+		since, err = s.db.LatestSafecastUpload(ctx, s.dbType)
+		if err != nil {
+			return fmt.Errorf("query safecast ledger: %w", err)
+		}
+	}
+
+	// When we have no record at all we rewind to the 2011 Fukushima window,
+	// ensuring a brand new database eventually picks up the entire Safecast
+	// archive.
+	if since.IsZero() {
+		since = time.Date(2011, time.March, 11, 0, 0, 0, 0, time.UTC)
 	} else {
 		// Step back slightly to re-check records sharing the same second.
 		since = since.Add(-2 * time.Minute)
 	}
 
-	until := now
-	if until.Before(since) {
+	until := now.UTC()
+	if !until.After(since) {
 		until = since.Add(time.Hour)
 	}
 
-	imports, err := s.collectImports(ctx, since, until)
-	if err != nil {
-		return err
-	}
-	if len(imports) == 0 {
-		if s.logf != nil {
-			s.logf("safecast sync: no new imports between %s and %s", since.Format(time.RFC3339), until.Format(time.RFC3339))
-		}
-		return nil
+	const (
+		maxWindow = 30 * 24 * time.Hour
+		minWindow = time.Hour
+	)
+	window := 14 * 24 * time.Hour
+	if window < minWindow {
+		window = minWindow
 	}
 
-	sort.Slice(imports, func(i, j int) bool {
-		if !imports[i].UploadedAt.Equal(imports[j].UploadedAt) {
-			return imports[i].UploadedAt.Before(imports[j].UploadedAt)
+	cursor := since
+	for cursor.Before(until) {
+		chunkEnd := cursor.Add(window)
+		if chunkEnd.After(until) {
+			chunkEnd = until
 		}
-		return imports[i].ID < imports[j].ID
-	})
-
-	for _, imp := range imports {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+		if !chunkEnd.After(cursor) {
+			chunkEnd = cursor.Add(minWindow)
 		}
 
-		exists, err := s.db.SafecastImportExists(ctx, s.dbType, imp.ID)
+		imports, err := s.collectImports(ctx, cursor, chunkEnd)
 		if err != nil {
-			if s.logf != nil {
-				s.logf("safecast sync: skip import %d due to existence probe: %v", imp.ID, err)
+			var httpErr *statusError
+			if errors.As(err, &httpErr) && httpErr.retryable() && window > minWindow {
+				window = window / 2
+				if window < minWindow {
+					window = minWindow
+				}
+				if s.logf != nil {
+					s.logf("safecast sync: reducing window to %s after status %d", window, httpErr.code)
+				}
+				continue
 			}
-			continue
+			return err
 		}
-		if exists {
+		if len(imports) == 0 {
+			if s.logf != nil {
+				s.logf("safecast sync: no new imports between %s and %s", cursor.Format(time.RFC3339), chunkEnd.Format(time.RFC3339))
+			}
+			cursor = chunkEnd
+			if window < maxWindow {
+				window *= 2
+				if window > maxWindow {
+					window = maxWindow
+				}
+			}
 			continue
 		}
 
-		if s.logf != nil {
-			s.logf("safecast sync: importing %d uploaded %s", imp.ID, imp.UploadedAt.Format(time.RFC3339))
+		sort.Slice(imports, func(i, j int) bool {
+			if !imports[i].UploadedAt.Equal(imports[j].UploadedAt) {
+				return imports[i].UploadedAt.Before(imports[j].UploadedAt)
+			}
+			return imports[i].ID < imports[j].ID
+		})
+
+		latestSeen := cursor
+		for _, imp := range imports {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			if imp.UploadedAt.After(latestSeen) {
+				latestSeen = imp.UploadedAt
+			}
+
+			exists, err := s.db.SafecastImportExists(ctx, s.dbType, imp.ID)
+			if err != nil {
+				if s.logf != nil {
+					s.logf("safecast sync: skip import %d due to existence probe: %v", imp.ID, err)
+				}
+				continue
+			}
+			if exists {
+				if err := s.db.UpdateImportCursor(ctx, s.dbType, "safecast", imp.UploadedAt); err != nil && s.logf != nil {
+					s.logf("safecast sync: cursor update failed: %v", err)
+				}
+				continue
+			}
+
+			if s.logf != nil {
+				s.logf("safecast sync: importing %d uploaded %s", imp.ID, imp.UploadedAt.Format(time.RFC3339))
+			}
+
+			markers, err := s.downloadAndParse(ctx, imp)
+			if err != nil {
+				if s.logf != nil {
+					s.logf("safecast sync: download %d failed: %v", imp.ID, err)
+				}
+				continue
+			}
+			if len(markers) == 0 {
+				if s.logf != nil {
+					s.logf("safecast sync: import %d had no valid markers", imp.ID)
+				}
+				continue
+			}
+
+			trackID := fmt.Sprintf("SC-%d", imp.ID)
+			sourceURL := fmt.Sprintf("https://api.safecast.org/en-US/bgeigie_imports/%d", imp.ID)
+			bbox, storedTrackID, err := s.store(markers, trackID, s.db, s.dbType, "safecast", sourceURL)
+			if err != nil {
+				if s.logf != nil {
+					s.logf("safecast sync: store %d failed: %v", imp.ID, err)
+				}
+				continue
+			}
+			if s.logf != nil {
+				s.logf("safecast sync: stored track %s (bbox %.4f,%.4f⇢%.4f,%.4f)", storedTrackID, bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon)
+			}
+
+			if err := s.db.MarkSafecastImport(ctx, s.dbType, imp.ID, imp.UploadedAt); err != nil {
+				if s.logf != nil {
+					s.logf("safecast sync: record %d failed: %v", imp.ID, err)
+				}
+			}
+			if err := s.db.UpdateImportCursor(ctx, s.dbType, "safecast", imp.UploadedAt); err != nil && s.logf != nil {
+				s.logf("safecast sync: cursor update failed: %v", err)
+			}
 		}
 
-		markers, err := s.downloadAndParse(ctx, imp)
-		if err != nil {
-			if s.logf != nil {
-				s.logf("safecast sync: download %d failed: %v", imp.ID, err)
+		nextCursor := latestSeen.Add(time.Second)
+		if nextCursor.Before(chunkEnd) {
+			nextCursor = chunkEnd
+		}
+		cursor = nextCursor
+		if window < maxWindow {
+			window *= 2
+			if window > maxWindow {
+				window = maxWindow
 			}
-			continue
-		}
-		if len(markers) == 0 {
-			if s.logf != nil {
-				s.logf("safecast sync: import %d had no valid markers", imp.ID)
-			}
-			continue
-		}
-
-		trackID := fmt.Sprintf("SC-%d", imp.ID)
-		sourceURL := fmt.Sprintf("https://api.safecast.org/en-US/bgeigie_imports/%d", imp.ID)
-		bbox, storedTrackID, err := s.store(markers, trackID, s.db, s.dbType, "safecast", sourceURL)
-		if err != nil {
-			if s.logf != nil {
-				s.logf("safecast sync: store %d failed: %v", imp.ID, err)
-			}
-			continue
-		}
-		if s.logf != nil {
-			s.logf("safecast sync: stored track %s (bbox %.4f,%.4f⇢%.4f,%.4f)", storedTrackID, bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon)
-		}
-
-		if err := s.db.MarkSafecastImport(ctx, s.dbType, imp.ID, imp.UploadedAt); err != nil {
-			if s.logf != nil {
-				s.logf("safecast sync: record %d failed: %v", imp.ID, err)
-			}
-		}
-		if err := s.db.UpdateImportCursor(ctx, s.dbType, "safecast", imp.UploadedAt); err != nil && s.logf != nil {
-			s.logf("safecast sync: cursor update failed: %v", err)
 		}
 	}
 	return nil
@@ -269,10 +364,7 @@ func (s *syncer) collectImports(ctx context.Context, since, until time.Time) ([]
 			return nil, fmt.Errorf("read import page: %w", err)
 		}
 		if resp.StatusCode != http.StatusOK {
-			if s.logf != nil {
-				s.logf("safecast sync: list page status %d body %s", resp.StatusCode, truncate(string(body), 240))
-			}
-			break
+			return out, &statusError{code: resp.StatusCode, body: truncate(string(body), 240)}
 		}
 
 		batch, err := parseImportPage(body)
@@ -460,17 +552,272 @@ func parseMarkers(body []byte, sourceURL string) []database.Marker {
 		return parseCSVMarkers(body)
 	case ".log", ".txt":
 		return parseLogMarkers(body)
+	case ".json":
+		return parseJSONMarkers(body)
 	default:
-		// fall back to heuristics based on payload contents
-		if bytes.HasPrefix(bytes.TrimSpace(body), []byte("$BNRDD")) {
-			return parseLogMarkers(body)
+		trimmed := bytes.TrimSpace(body)
+		if bytes.HasPrefix(trimmed, []byte("$BNRDD")) {
+			return parseLogMarkers(trimmed)
 		}
-		lowered := bytes.ToLower(bytes.TrimSpace(body))
+		if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+			if markers := parseJSONMarkers(trimmed); len(markers) > 0 {
+				return markers
+			}
+		}
+		lowered := bytes.ToLower(trimmed)
 		if bytes.Contains(lowered, []byte("latitude")) && bytes.Contains(lowered, []byte("longitude")) {
-			return parseCSVMarkers(body)
+			return parseCSVMarkers(trimmed)
 		}
 	}
 	return nil
+}
+
+// parseJSONMarkers decodes arrays or wrapper objects that expose Safecast style
+// measurement data. We treat a value as µSv/h unless unit metadata explicitly
+// states counts so the map honours upstream semantics.
+func parseJSONMarkers(data []byte) []database.Marker {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+
+	var payload any
+	if err := dec.Decode(&payload); err != nil {
+		return nil
+	}
+
+	records := flattenJSON(payload)
+	markers := make([]database.Marker, 0, len(records))
+
+	for _, record := range records {
+		lat := floatFromAny(getField(record, "latitude", "lat"))
+		lon := floatFromAny(getField(record, "longitude", "lon", "lng"))
+		if lat == 0 && lon == 0 {
+			continue
+		}
+
+		ts := timeFromAny(getField(record, "captured_at", "timestamp", "created_at", "measured_at", "time"))
+		if ts.IsZero() {
+			continue
+		}
+
+		dose := floatFromAny(getField(record, "usvh", "usv_per_h", "micro_sv", "microsieverts_per_hour"))
+		unitName := unitNameFromRecord(record)
+		if dose <= 0 {
+			value := floatFromAny(getField(record, "value", "radiation", "dose"))
+			switch {
+			case value <= 0:
+			case strings.Contains(unitName, "cpm"):
+				dose = convertCPMToMicroSv(value)
+			case strings.Contains(unitName, "cps"):
+				dose = convertCPSToMicroSv(value)
+			case unitName == "":
+				dose = value
+			case strings.Contains(unitName, "sv"):
+				dose = value
+			}
+		}
+		if dose <= 0 {
+			if cpm := floatFromAny(getField(record, "cpm")); cpm > 0 {
+				dose = convertCPMToMicroSv(cpm)
+			} else if cps := floatFromAny(getField(record, "cps")); cps > 0 {
+				dose = convertCPSToMicroSv(cps)
+			}
+		}
+		if dose <= 0 {
+			continue
+		}
+
+		countRate := floatFromAny(getField(record, "cps"))
+		if countRate <= 0 {
+			if cpm := floatFromAny(getField(record, "cpm")); cpm > 0 {
+				countRate = cpm / 60.0
+			} else {
+				value := floatFromAny(getField(record, "value"))
+				switch {
+				case value <= 0:
+				case strings.Contains(unitName, "cps"):
+					countRate = value
+				case strings.Contains(unitName, "cpm"):
+					countRate = value / 60.0
+				}
+			}
+		}
+
+		markers = append(markers, database.Marker{
+			DoseRate:  dose,
+			Date:      ts.Unix(),
+			Lon:       lon,
+			Lat:       lat,
+			CountRate: countRate,
+			Zoom:      0,
+			Speed:     0,
+		})
+	}
+	return markers
+}
+
+// flattenJSON unwraps common envelope structures such as {"measurements": [...]}
+// so downstream parsing only deals with individual measurement objects.
+func flattenJSON(payload any) []map[string]any {
+	switch v := payload.(type) {
+	case []any:
+		out := make([]map[string]any, 0, len(v))
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	case map[string]any:
+		for _, key := range []string{"measurements", "data", "results", "items", "entries"} {
+			if nested, ok := valueCaseInsensitive(v, key); ok {
+				switch t := nested.(type) {
+				case []any:
+					return flattenJSON(t)
+				case map[string]any:
+					return flattenJSON(t)
+				}
+			}
+		}
+		return []map[string]any{v}
+	default:
+		return nil
+	}
+}
+
+// getField retrieves the first matching key ignoring case differences.
+func getField(record map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if val, ok := valueCaseInsensitive(record, key); ok {
+			return val
+		}
+	}
+	return nil
+}
+
+// unitNameFromRecord extracts a lower-cased unit hint so callers can apply the
+// right conversion factors without guessing.
+func unitNameFromRecord(record map[string]any) string {
+	for _, key := range []string{"unit", "unit_name", "unitlabel", "unit_symbol"} {
+		val, ok := valueCaseInsensitive(record, key)
+		if !ok {
+			continue
+		}
+		if nested, ok := val.(map[string]any); ok {
+			if s := unitNameFromRecord(nested); s != "" {
+				return s
+			}
+		}
+		if s := strings.ToLower(stringFromAny(val)); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// valueCaseInsensitive mirrors sqlc helpers: we compare lower-cased keys so we
+// can tolerate upstream schema tweaks without expanding every branch.
+func valueCaseInsensitive(record map[string]any, key string) (any, bool) {
+	if record == nil {
+		return nil, false
+	}
+	want := strings.ToLower(strings.TrimSpace(key))
+	for k, v := range record {
+		if strings.ToLower(strings.TrimSpace(k)) == want {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
+// floatFromAny converts arbitrary JSON primitives to float64, keeping behaviour
+// consistent with parseFloat for string inputs.
+func floatFromAny(v any) float64 {
+	switch val := v.(type) {
+	case json.Number:
+		if f, err := val.Float64(); err == nil {
+			return f
+		}
+		if i, err := val.Int64(); err == nil {
+			return float64(i)
+		}
+	case float64:
+		return val
+	case float32:
+		return float64(val)
+	case int:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case uint64:
+		return float64(val)
+	case string:
+		return parseFloat(val)
+	case []byte:
+		return parseFloat(string(val))
+	}
+	return 0
+}
+
+// stringFromAny keeps string extraction centralised so we do not repeat trim
+// logic across callers.
+func stringFromAny(v any) string {
+	switch val := v.(type) {
+	case string:
+		return strings.TrimSpace(val)
+	case []byte:
+		return strings.TrimSpace(string(val))
+	case json.Number:
+		return strings.TrimSpace(val.String())
+	case fmt.Stringer:
+		return strings.TrimSpace(val.String())
+	}
+	return ""
+}
+
+// timeFromAny mirrors parseTimeFlexible but also understands JSON numbers and
+// nested timestamp containers.
+func timeFromAny(v any) time.Time {
+	switch val := v.(type) {
+	case time.Time:
+		if val.IsZero() {
+			return time.Time{}
+		}
+		return val.UTC()
+	case string:
+		return parseTimeFlexible(val)
+	case json.Number:
+		if i, err := val.Int64(); err == nil && i > 0 {
+			return time.Unix(i, 0).UTC()
+		}
+		if f, err := val.Float64(); err == nil && f > 0 {
+			return time.Unix(int64(f), 0).UTC()
+		}
+	case float64:
+		if val > 0 {
+			return time.Unix(int64(val), 0).UTC()
+		}
+	case float32:
+		if val > 0 {
+			return time.Unix(int64(val), 0).UTC()
+		}
+	case int64:
+		if val > 0 {
+			return time.Unix(val, 0).UTC()
+		}
+	case int:
+		if val > 0 {
+			return time.Unix(int64(val), 0).UTC()
+		}
+	case map[string]any:
+		for _, key := range []string{"time", "timestamp", "captured_at"} {
+			if nested, ok := valueCaseInsensitive(val, key); ok {
+				if ts := timeFromAny(nested); !ts.IsZero() {
+					return ts
+				}
+			}
+		}
+	}
+	return time.Time{}
 }
 
 // parseCSVMarkers extracts markers from CSV exports.  We only look at a subset
