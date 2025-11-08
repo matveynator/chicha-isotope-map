@@ -11,6 +11,8 @@ type Marker struct {
 	Zoom        int     `json:"zoom"`                  // Zoom level
 	Speed       float64 `json:"speed"`                 // Speed of the measurement point
 	TrackID     string  `json:"trackID"`               // Identifier of the track
+	Source      string  `json:"source,omitempty"`      // Origin of the measurement such as safecast, atomfast, radiacode
+	SourceURL   string  `json:"sourceURL,omitempty"`   // Canonical URL for the remote dataset when available
 	Altitude    float64 `json:"altitude,omitempty"`    // Elevation in metres above sea level when provided
 	Detector    string  `json:"detector,omitempty"`    // Detector model or type recorded for the point
 	Radiation   string  `json:"radiation,omitempty"`   // Radiation channels captured (alpha, beta, gamma)

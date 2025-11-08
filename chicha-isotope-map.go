@@ -48,11 +48,14 @@ import (
 	"chicha-isotope-map/pkg/api"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
+	"chicha-isotope-map/pkg/externalimport"
 	"chicha-isotope-map/pkg/jsonarchive"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
+	safecastimport "chicha-isotope-map/pkg/safecastimport"
 	"chicha-isotope-map/pkg/selfupgrade"
+	"chicha-isotope-map/pkg/trackjson"
 )
 
 // content bundles the UI and the license texts so single-file binaries still
@@ -76,6 +79,12 @@ var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+var safecastSyncEnabled = flag.Bool("safecast", false, "Continuously import approved Safecast bGeigie tracks")
+var atomFastSyncEnabled = flag.Bool("atomfast", false, "Continuously import AtomFast cloud measurements")
+var atomFastEndpointFlag = flag.String("atomfast-endpoint", "https://atomfast.net/api/measurements.json", "AtomFast measurements endpoint")
+var radiaverseSyncEnabled = flag.Bool("radiaverse", false, "Continuously import Radiacode measurements from Radioverse")
+var radiaverseEndpointFlag = flag.String("radiaverse-endpoint", "https://radiaverse.com/api/measurements.json", "Radiaverse measurements endpoint")
+var mirrorChichaFlag = flag.String("mirror-chicha", "", "Mirror tracks from another chicha map (domain or URL)")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
@@ -98,7 +107,7 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer"}},
-	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency"}},
+	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "safecast", "atomfast", "atomfast-endpoint", "radiaverse", "radiaverse-endpoint", "mirror-chicha", "json-archive-path", "json-archive-frequency"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
 
@@ -930,7 +939,7 @@ func processBGeigieZenFile(
 		return database.Bounds{}, trackID, fmt.Errorf("no valid $BNRDD points found (parsed=%d skipped=%d)", parsed, skipped)
 	}
 
-	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
+	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType, "", "")
 	if err != nil {
 		return bbox, trackID, err
 	}
@@ -2311,7 +2320,7 @@ func processAtomSwiftCSVFile(
 	}
 	logT(trackID, "CSV", "parsed %d markers", len(markers))
 
-	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
+	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType, "", "")
 	if err != nil {
 		return bbox, trackID, err
 	}
@@ -2334,7 +2343,7 @@ func processGPXFile(
 	}
 	logT(trackID, "GPX", "parsed %d markers", len(markers))
 
-	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
+	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType, "", "")
 	if err != nil {
 		return bbox, trackID, err
 	}
@@ -2358,7 +2367,7 @@ func processKMLFile(
 	}
 	logT(trackID, "KML", "parsed %d markers", len(markers))
 
-	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
+	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType, "", "")
 	if err != nil {
 		return bbox, trackID, err
 	}
@@ -2405,7 +2414,7 @@ func processKMZFile(
 		}
 		logT(trackID, "KMZ", "parsed %d markers from %q", len(kmlMarkers), zf.Name)
 
-		bbox, trackID, err := processAndStoreMarkers(kmlMarkers, trackID, db, dbType)
+		bbox, trackID, err := processAndStoreMarkers(kmlMarkers, trackID, db, dbType, "", "")
 		if err != nil {
 			return global, trackID, err
 		}
@@ -2478,7 +2487,7 @@ func processRCTRKFile(
 			data.Markers = convertRhToSv(data.Markers)
 		}
 
-		return processAndStoreMarkers(data.Markers, trackID, db, dbType)
+		return processAndStoreMarkers(data.Markers, trackID, db, dbType, "radiacode", "https://radiaverse.com")
 	}
 
 	// ---------- plain-text fallback ------------------------------------------
@@ -2488,7 +2497,7 @@ func processRCTRKFile(
 	}
 	logT(trackID, "RCTRK", "parsed %d markers (text)", len(markers))
 
-	return processAndStoreMarkers(markers, trackID, db, dbType)
+	return processAndStoreMarkers(markers, trackID, db, dbType, "radiacode", "https://radiaverse.com")
 }
 
 // processAtomFastFile handles Atom Fast JSON export (*.json).
@@ -2537,7 +2546,7 @@ func processAtomFastData(
 		})
 	}
 
-	return processAndStoreMarkers(markers, trackID, db, dbType)
+	return processAndStoreMarkers(markers, trackID, db, dbType, "atomfast", "https://atomfast.net/maps/")
 }
 
 func processChichaTrackJSON(
@@ -2546,192 +2555,18 @@ func processChichaTrackJSON(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, error) {
-	var payload struct {
-		Format  string `json:"format"`
-		Version int    `json:"version"`
-		Track   struct {
-			TrackID        string   `json:"trackID"`
-			DetectorName   string   `json:"detectorName"`
-			DetectorType   string   `json:"detectorType"`
-			RadiationTypes []string `json:"radiationTypes"`
-		} `json:"track"`
-		Markers []struct {
-			ID                 int64    `json:"id"`
-			TrackID            string   `json:"trackID"`
-			TimeUnix           int64    `json:"timeUnix"`
-			TimeUTC            string   `json:"timeUTC"`
-			Lat                float64  `json:"lat"`
-			Lon                float64  `json:"lon"`
-			AltitudeM          *float64 `json:"altitudeM"`
-			DoseMicroSvH       float64  `json:"doseRateMicroSvH"`
-			DoseMicroRoentgenH float64  `json:"doseRateMicroRh"`
-			DoseMilliSvH       float64  `json:"doseRateMilliSvH"`
-			DoseMilliRH        float64  `json:"doseRateMilliRH"`
-			CountRateCPS       float64  `json:"countRateCPS"`
-			SpeedMS            float64  `json:"speedMS"`
-			SpeedKMH           float64  `json:"speedKMH"`
-			TemperatureC       *float64 `json:"temperatureC"`
-			HumidityPercent    *float64 `json:"humidityPercent"`
-			DetectorName       string   `json:"detectorName"`
-			DetectorType       string   `json:"detectorType"`
-			RadiationTypes     []string `json:"radiationTypes"`
-		} `json:"markers"`
+	parsedTrackID, markers, err := trackjson.DecodeTrackJSON(data)
+	if err != nil {
+		if errors.Is(err, trackjson.ErrNotTrackJSON) {
+			return database.Bounds{}, trackID, errNotChichaTrackJSON
+		}
+		return database.Bounds{}, trackID, fmt.Errorf("decode chicha track json: %w", err)
 	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return database.Bounds{}, trackID, errNotChichaTrackJSON
+	if parsedTrackID == "" {
+		parsedTrackID = trackID
 	}
-	if !strings.EqualFold(payload.Format, "chicha-track-json") {
-		return database.Bounds{}, trackID, errNotChichaTrackJSON
-	}
-	if len(payload.Markers) == 0 {
-		return database.Bounds{}, trackID, fmt.Errorf("chicha track json: no markers")
-	}
-
-	candidateTrackID := strings.TrimSpace(payload.Track.TrackID)
-	defaultDetectorType := strings.TrimSpace(payload.Track.DetectorType)
-	defaultDetectorName := strings.TrimSpace(payload.Track.DetectorName)
-	defaultRadiation := normalizeRadiationList(payload.Track.RadiationTypes)
-
-	markers := make([]database.Marker, 0, len(payload.Markers))
-	for _, item := range payload.Markers {
-		ts := extractUnixSeconds(item.TimeUnix, item.TimeUTC)
-		dose := item.DoseMicroSvH
-		if dose == 0 && item.DoseMicroRoentgenH != 0 {
-			dose = item.DoseMicroRoentgenH / microRoentgenPerMicroSievert
-		}
-		if dose == 0 && item.DoseMilliSvH != 0 {
-			dose = item.DoseMilliSvH * 1000.0
-		}
-		if dose == 0 && item.DoseMilliRH != 0 {
-			dose = item.DoseMilliRH * 10.0
-		}
-
-		speed := item.SpeedMS
-		if speed == 0 && item.SpeedKMH != 0 {
-			speed = item.SpeedKMH / 3.6
-		}
-
-		detectorName := strings.TrimSpace(item.DetectorName)
-		if detectorName == "" {
-			detectorName = defaultDetectorName
-		}
-
-		detector := strings.TrimSpace(item.DetectorType)
-		if detector == "" {
-			detector = defaultDetectorType
-		}
-		if detector == "" {
-			detector = detectorTypeFromName(detectorName)
-		}
-
-		radiationList := normalizeRadiationList(item.RadiationTypes)
-		if len(radiationList) == 0 {
-			radiationList = defaultRadiation
-		}
-
-		var altitude float64
-		var altitudeValid bool
-		if item.AltitudeM != nil {
-			altitude = *item.AltitudeM
-			altitudeValid = true
-		}
-		var temperature float64
-		var temperatureValid bool
-		if item.TemperatureC != nil {
-			temperature = *item.TemperatureC
-			temperatureValid = true
-		}
-		var humidity float64
-		var humidityValid bool
-		if item.HumidityPercent != nil {
-			humidity = *item.HumidityPercent
-			humidityValid = true
-		}
-
-		markers = append(markers, database.Marker{
-			ID:               item.ID,
-			DoseRate:         dose,
-			Date:             ts,
-			Lon:              item.Lon,
-			Lat:              item.Lat,
-			CountRate:        item.CountRateCPS,
-			Speed:            speed,
-			Altitude:         altitude,
-			Temperature:      temperature,
-			Humidity:         humidity,
-			Detector:         detector,
-			Radiation:        strings.Join(radiationList, ","),
-			AltitudeValid:    altitudeValid,
-			TemperatureValid: temperatureValid,
-			HumidityValid:    humidityValid,
-		})
-
-		if candidateTrackID == "" {
-			candidateTrackID = strings.TrimSpace(item.TrackID)
-		}
-	}
-
-	if candidateTrackID != "" {
-		trackID = candidateTrackID
-	}
-
-	logT(trackID, "ChichaJSON", "parsed %d markers", len(markers))
-	return processAndStoreMarkers(markers, trackID, db, dbType)
-}
-
-func extractUnixSeconds(timeUnix int64, timeUTC string) int64 {
-	if timeUnix > 1_000_000_000_000 {
-		return timeUnix / 1000
-	}
-	if timeUnix > 0 {
-		return timeUnix
-	}
-	if strings.TrimSpace(timeUTC) != "" {
-		if ts, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(timeUTC)); err == nil {
-			return ts.Unix()
-		}
-	}
-	return 0
-}
-
-func normalizeRadiationList(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{})
-	out := make([]string, 0, len(values))
-	for _, raw := range values {
-		channel := strings.ToLower(strings.TrimSpace(raw))
-		if channel == "" {
-			continue
-		}
-		if _, ok := seen[channel]; ok {
-			continue
-		}
-		seen[channel] = struct{}{}
-		out = append(out, channel)
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-// detectorTypeFromName extracts the type hint that we encode into detectorName
-// during export. We slice on the first ':' because stableDetectorName prefixes
-// the trackID before the reported detector model.
-func detectorTypeFromName(detectorName string) string {
-	detectorName = strings.TrimSpace(detectorName)
-	if detectorName == "" {
-		return ""
-	}
-	if idx := strings.Index(detectorName, ":"); idx >= 0 && idx+1 < len(detectorName) {
-		candidate := strings.TrimSpace(detectorName[idx+1:])
-		if candidate != "" {
-			return candidate
-		}
-	}
-	return ""
+	logT(parsedTrackID, "ChichaJSON", "parsed %d markers", len(markers))
+	return processAndStoreMarkers(markers, parsedTrackID, db, dbType, "", "")
 }
 
 // parseBGeigieCoord parses coordinates that may have hemisphere suffix.
@@ -2800,6 +2635,8 @@ func processAndStoreMarkers(
 	initTrackID string, // initially generated ID
 	db *database.Database,
 	dbType string,
+	sourceLabel string,
+	sourceURL string,
 ) (database.Bounds, string, error) {
 
 	// ── step 0: bounding box (cheap) ────────────────────────────────
@@ -2834,8 +2671,16 @@ func processAndStoreMarkers(
 	}
 
 	// ── step 2: attach FINAL TrackID ────────────────────────────────
+	trimmedSource := strings.TrimSpace(sourceLabel)
+	trimmedURL := strings.TrimSpace(sourceURL)
 	for i := range markers {
 		markers[i].TrackID = trackID
+		if trimmedSource != "" && strings.TrimSpace(markers[i].Source) == "" {
+			markers[i].Source = trimmedSource
+		}
+		if trimmedURL != "" && strings.TrimSpace(markers[i].SourceURL) == "" {
+			markers[i].SourceURL = trimmedURL
+		}
 	}
 
 	// ── step 3: light filters ───────────────────────────────────────
@@ -4174,6 +4019,35 @@ func main() {
 		ctxRT, cancelRT := context.WithCancel(context.Background())
 		defer cancelRT()
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
+	}
+
+	if *safecastSyncEnabled {
+		// Import approved Safecast archives in the background so the map stays
+		// in sync without manual uploads. We wire the storage function from
+		// main to keep the pipeline identical to regular file uploads.
+		ctxSC, cancelSC := context.WithCancel(context.Background())
+		defer cancelSC()
+		safecastimport.Start(ctxSC, db, *dbType, processAndStoreMarkers, log.Printf)
+	} else {
+		log.Printf("safecast archive sync disabled: pass -safecast to enable hourly imports")
+	}
+
+	if *atomFastSyncEnabled {
+		ctxAF, cancelAF := context.WithCancel(context.Background())
+		defer cancelAF()
+		externalimport.StartAtomFast(ctxAF, db, *dbType, strings.TrimSpace(*atomFastEndpointFlag), processAndStoreMarkers, log.Printf)
+	}
+
+	if *radiaverseSyncEnabled {
+		ctxRV, cancelRV := context.WithCancel(context.Background())
+		defer cancelRV()
+		externalimport.StartRadiaverse(ctxRV, db, *dbType, strings.TrimSpace(*radiaverseEndpointFlag), processAndStoreMarkers, log.Printf)
+	}
+
+	if trimmedMirror := strings.TrimSpace(*mirrorChichaFlag); trimmedMirror != "" {
+		ctxMirror, cancelMirror := context.WithCancel(context.Background())
+		defer cancelMirror()
+		externalimport.StartChichaMirror(ctxMirror, trimmedMirror, db, *dbType, processAndStoreMarkers, log.Printf)
 	}
 
 	// Build a JSON archive tgz with all known .cim files only when operators

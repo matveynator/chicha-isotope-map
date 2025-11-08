@@ -411,6 +411,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
 			{"idx_realtime_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
+			{"idx_safecast_uploaded",
+				`CREATE INDEX IF NOT EXISTS idx_safecast_uploaded ON safecast_imports (uploaded_at)`},
 		}
 
 	case "duckdb":
@@ -448,6 +450,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
 			{"idx_realtime_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
+			{"idx_safecast_uploaded",
+				`CREATE INDEX IF NOT EXISTS idx_safecast_uploaded ON safecast_imports (uploaded_at)`},
 		}
 
 	case "sqlite", "chai":
@@ -486,6 +490,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
 			{"idx_realtime_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
+			{"idx_safecast_uploaded",
+				`CREATE INDEX IF NOT EXISTS idx_safecast_uploaded ON safecast_imports (uploaded_at)`},
 		}
 
 	case "clickhouse":
@@ -528,6 +534,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
 			{"idx_realtime_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
+			{"idx_safecast_uploaded",
+				`CREATE INDEX IF NOT EXISTS idx_safecast_uploaded ON safecast_imports (uploaded_at)`},
 		}
 	}
 }
@@ -595,6 +603,8 @@ CREATE TABLE IF NOT EXISTS markers (
   zoom        INTEGER,
   speed       DOUBLE PRECISION,
   trackID     TEXT,
+  source      TEXT,
+  source_url  TEXT,
   altitude    DOUBLE PRECISION,
   detector    TEXT,
   radiation   TEXT,
@@ -618,6 +628,20 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   fetched_at  BIGINT,
   extra       TEXT,
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
+);
+
+CREATE TABLE IF NOT EXISTS safecast_imports (
+  import_id   BIGINT PRIMARY KEY,
+  uploaded_at BIGINT,
+  processed_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_safecast_uploaded
+  ON safecast_imports (uploaded_at);
+
+CREATE TABLE IF NOT EXISTS import_cursors (
+  source     TEXT PRIMARY KEY,
+  cursor     BIGINT,
+  updated_at BIGINT
 );
 
 CREATE TABLE IF NOT EXISTS short_links (
@@ -646,6 +670,8 @@ CREATE TABLE IF NOT EXISTS markers (
   zoom        INTEGER,
   speed       REAL,
   trackID     TEXT,
+  source      TEXT,
+  source_url  TEXT,
   altitude    REAL,
   detector    TEXT,
   radiation   TEXT,
@@ -672,6 +698,20 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_realtime_unique
   ON realtime_measurements (device_id,measured_at);
+
+CREATE TABLE IF NOT EXISTS safecast_imports (
+  import_id   INTEGER PRIMARY KEY,
+  uploaded_at BIGINT,
+  processed_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_safecast_uploaded
+  ON safecast_imports (uploaded_at);
+
+CREATE TABLE IF NOT EXISTS import_cursors (
+  source     TEXT PRIMARY KEY,
+  cursor     BIGINT,
+  updated_at BIGINT
+);
 
 CREATE TABLE IF NOT EXISTS short_links (
   id         INTEGER PRIMARY KEY,
@@ -702,6 +742,8 @@ CREATE TABLE IF NOT EXISTS markers (
   zoom        INTEGER,
   speed       DOUBLE,
   trackID     TEXT,
+  source      TEXT,
+  source_url  TEXT,
   altitude    DOUBLE,
   detector    TEXT,
   radiation   TEXT,
@@ -726,6 +768,21 @@ CREATE TABLE IF NOT EXISTS realtime_measurements (
   fetched_at  BIGINT,
   extra       TEXT,
   CONSTRAINT realtime_unique UNIQUE (device_id,measured_at)
+);
+
+CREATE SEQUENCE IF NOT EXISTS safecast_imports_id_seq START 1;
+CREATE TABLE IF NOT EXISTS safecast_imports (
+  import_id   BIGINT PRIMARY KEY DEFAULT nextval('safecast_imports_id_seq'),
+  uploaded_at BIGINT,
+  processed_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_safecast_uploaded
+  ON safecast_imports (uploaded_at);
+
+CREATE TABLE IF NOT EXISTS import_cursors (
+  source     TEXT PRIMARY KEY,
+  cursor     BIGINT,
+  updated_at BIGINT
 );
 
 CREATE SEQUENCE IF NOT EXISTS short_links_id_seq START 1;
@@ -753,6 +810,8 @@ CREATE INDEX IF NOT EXISTS idx_short_links_created
   zoom        Int32,
   speed       Float64,
   trackID     String,
+  source      String,
+  source_url  String,
   altitude    Float64,
   detector    String,
   radiation   String,
@@ -776,6 +835,12 @@ ORDER BY (trackID, date, id);`,
   extra       String
 ) ENGINE = MergeTree()
 ORDER BY (device_id, measured_at);`,
+			`CREATE TABLE IF NOT EXISTS import_cursors (
+  source     String,
+  cursor     Int64,
+  updated_at Int64
+) ENGINE = MergeTree()
+ORDER BY (source);`,
 			`CREATE TABLE IF NOT EXISTS short_links (
   id         UInt64,
   code       String,
@@ -842,6 +907,8 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 		{name: "radiation", def: "radiation TEXT"},
 		{name: "temperature", def: "temperature DOUBLE PRECISION"},
 		{name: "humidity", def: "humidity DOUBLE PRECISION"},
+		{name: "source", def: "source TEXT"},
+		{name: "source_url", def: "source_url TEXT"},
 	}
 
 	switch strings.ToLower(dbType) {
@@ -855,7 +922,18 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 		return nil
 
 	case "clickhouse":
-		// ClickHouse schema already ships with the extended columns, so no ALTER needed.
+		// ClickHouse CREATE TABLE already contains the legacy metadata columns. We only add
+		// the newer source markers to keep existing deployments compatible.
+		toAdd := map[string]string{
+			"source":     "String",
+			"source_url": "String",
+		}
+		for name, typ := range toAdd {
+			stmt := fmt.Sprintf("ALTER TABLE markers ADD COLUMN IF NOT EXISTS %s %s", name, typ)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
 		return nil
 
 	default:
@@ -1005,14 +1083,14 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 		chunk := markers[i:end]
 
 		var sb strings.Builder
-		args := make([]interface{}, 0, len(chunk)*14) // 14 covers SQLite/Chai worst-case with id
+		args := make([]interface{}, 0, len(chunk)*16) // 16 covers SQLite/Chai worst-case with id and sources
 
 		switch strings.ToLower(dbType) {
 		case "pgx":
 			// PostgreSQL: BIGSERIAL fills id, so we only ship the payload columns.
-			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID,source,source_url,altitude,detector,radiation,temperature,humidity) VALUES ")
 			argn := 0
-			const cols = 13
+			const cols = 15
 			for j, m := range chunk {
 				if j > 0 {
 					sb.WriteString(",")
@@ -1029,6 +1107,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 				args = append(args,
 					m.DoseRate, m.Date, m.Lon, m.Lat,
 					m.CountRate, m.Zoom, m.Speed, m.TrackID,
+					nullableString(m.Source), nullableString(m.SourceURL),
 					nullableFloat64(m.AltitudeValid, m.Altitude),
 					m.Detector, m.Radiation,
 					nullableFloat64(m.TemperatureValid, m.Temperature),
@@ -1060,9 +1139,9 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 				continue
 			}
 
-			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,source,source_url,altitude,detector,radiation,temperature,humidity) VALUES ")
 			argn := 0
-			const cols = 14
+			const cols = 16
 			for j, m := range usable {
 				if j > 0 {
 					sb.WriteString(",")
@@ -1079,6 +1158,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 				args = append(args,
 					m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 					m.CountRate, m.Zoom, m.Speed, m.TrackID,
+					nullableString(m.Source), nullableString(m.SourceURL),
 					nullableFloat64(m.AltitudeValid, m.Altitude),
 					m.Detector, m.Radiation,
 					nullableFloat64(m.TemperatureValid, m.Temperature),
@@ -1088,9 +1168,9 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 
 		default:
 			// SQLite / Chai: keep explicit ids to avoid PRIMARY KEY clashes when aggregating zooms.
-			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,source,source_url,altitude,detector,radiation,temperature,humidity) VALUES ")
 			argn := 0
-			const cols = 14
+			const cols = 16
 			for j, m := range chunk {
 				if j > 0 {
 					sb.WriteString(",")
@@ -1111,6 +1191,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 				args = append(args,
 					m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 					m.CountRate, m.Zoom, m.Speed, m.TrackID,
+					nullableString(m.Source), nullableString(m.SourceURL),
 					nullableFloat64(m.AltitudeValid, m.Altitude),
 					m.Detector, m.Radiation,
 					nullableFloat64(m.TemperatureValid, m.Temperature),
@@ -1148,11 +1229,12 @@ func (db *Database) SaveMarkerAtomic(
 	case "pgx":
 		_, err := exec.Exec(`
 INSERT INTO markers
-      (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      (doseRate,date,lon,lat,countRate,zoom,speed,trackID,source,source_url,altitude,detector,radiation,temperature,humidity)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
+			nullableString(m.Source), nullableString(m.SourceURL),
 			nullableFloat64(m.AltitudeValid, m.Altitude),
 			m.Detector, m.Radiation,
 			nullableFloat64(m.TemperatureValid, m.Temperature),
@@ -1172,10 +1254,11 @@ ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 		}
 		_, err = exec.Exec(`
 INSERT INTO markers
-      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,source,source_url,altitude,detector,radiation,temperature,humidity)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
+			nullableString(m.Source), nullableString(m.SourceURL),
 			nullableFloat64(m.AltitudeValid, m.Altitude),
 			m.Detector, m.Radiation,
 			nullableFloat64(m.TemperatureValid, m.Temperature),
@@ -1190,11 +1273,12 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		}
 		_, err := exec.Exec(`
 INSERT INTO markers
-      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,source,source_url,altitude,detector,radiation,temperature,humidity)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT DO NOTHING`,
 			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
+			nullableString(m.Source), nullableString(m.SourceURL),
 			nullableFloat64(m.AltitudeValid, m.Altitude),
 			m.Detector, m.Radiation,
 			nullableFloat64(m.TemperatureValid, m.Temperature),
@@ -1210,6 +1294,16 @@ func nullableFloat64(valid bool, value float64) any {
 		return nil
 	}
 	return value
+}
+
+// nullableString trims optional text and returns sql.NullString so empty values become NULL.
+// Keeping trimming centralised avoids sprinkling whitespace handling across all insert callers.
+func nullableString(value string) sql.NullString {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: trimmed, Valid: true}
 }
 
 // markerExistsClickHouse checks for duplicates because MergeTree tables do not enforce unique keys.
@@ -2244,6 +2338,244 @@ func (db *Database) DetectExistingTrackID(
 	}
 
 	return "", nil // unique track — safe to create a new one
+}
+
+// =====================
+// Safecast import helpers
+// =====================
+
+// LatestSafecastUpload returns the newest uploaded_at timestamp we recorded in the
+// safecast_imports table. Returning time.Time{} signals the importer to fetch a
+// broader window while keeping error handling explicit for the caller.
+func (db *Database) LatestSafecastUpload(ctx context.Context, dbType string) (time.Time, error) {
+	if db == nil || db.DB == nil {
+		return time.Time{}, fmt.Errorf("database unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var ts sql.NullInt64
+	err := db.DB.QueryRowContext(ctx, `SELECT MAX(uploaded_at) FROM safecast_imports`).Scan(&ts)
+	if err != nil {
+		if isSafecastTableMissing(err) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
+	}
+	if !ts.Valid || ts.Int64 <= 0 {
+		return time.Time{}, nil
+	}
+	return time.Unix(ts.Int64, 0).UTC(), nil
+}
+
+// SafecastImportExists probes whether we already recorded a Safecast dataset.
+// The importer uses it to skip reprocessing when the table already tracks the
+// import_id.
+func (db *Database) SafecastImportExists(ctx context.Context, dbType string, importID int64) (bool, error) {
+	if db == nil || db.DB == nil {
+		return false, fmt.Errorf("database unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	engine := strings.ToLower(dbType)
+	query := "SELECT 1 FROM safecast_imports WHERE import_id = ? LIMIT 1"
+	if engine == "pgx" {
+		query = "SELECT 1 FROM safecast_imports WHERE import_id = $1 LIMIT 1"
+	}
+
+	var one int
+	err := db.DB.QueryRowContext(ctx, query, importID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		if isSafecastTableMissing(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// MarkSafecastImport inserts or updates the safecast_imports ledger. We avoid
+// vendor-specific UPSERT clauses by issuing an UPDATE followed by a best-effort
+// INSERT when no row existed. This keeps the query set portable across all
+// supported engines, matching the project's goal of leaning on simple SQL.
+func (db *Database) MarkSafecastImport(ctx context.Context, dbType string, importID int64, uploadedAt time.Time) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	uploaded := uploadedAt.UTC().Unix()
+	now := time.Now().UTC().Unix()
+	engine := strings.ToLower(dbType)
+
+	updateQuery := "UPDATE safecast_imports SET uploaded_at = ?, processed_at = ? WHERE import_id = ?"
+	insertQuery := "INSERT INTO safecast_imports (import_id, uploaded_at, processed_at) VALUES (?,?,?)"
+	if engine == "pgx" {
+		updateQuery = "UPDATE safecast_imports SET uploaded_at = $1, processed_at = $2 WHERE import_id = $3"
+		insertQuery = "INSERT INTO safecast_imports (import_id, uploaded_at, processed_at) VALUES ($1,$2,$3)"
+	}
+
+	tx, err := db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		if isSafecastTableMissing(err) {
+			return nil
+		}
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	res, err := tx.ExecContext(ctx, updateQuery, uploaded, now, importID)
+	if err != nil {
+		if isSafecastTableMissing(err) {
+			return nil
+		}
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		if _, err := tx.ExecContext(ctx, insertQuery, importID, uploaded, now); err != nil {
+			if isSafecastTableMissing(err) {
+				return nil
+			}
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		if isSafecastTableMissing(err) {
+			return nil
+		}
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func isSafecastTableMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "safecast_imports") {
+		return false
+	}
+	return strings.Contains(msg, "no such table") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined table")
+}
+
+// =====================
+// Generic import cursors
+// =====================
+
+// ImportCursor returns the last recorded cursor for a given source. Returning
+// time.Time{} signals that the importer should start from scratch. We store
+// cursors as seconds since epoch to keep the schema portable across engines.
+func (db *Database) ImportCursor(ctx context.Context, dbType, source string) (time.Time, error) {
+	if db == nil || db.DB == nil {
+		return time.Time{}, fmt.Errorf("database unavailable")
+	}
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return time.Time{}, fmt.Errorf("source required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var query string
+	switch strings.ToLower(dbType) {
+	case "pgx":
+		query = "SELECT cursor FROM import_cursors WHERE source = $1 LIMIT 1"
+	default:
+		query = "SELECT cursor FROM import_cursors WHERE source = ? LIMIT 1"
+	}
+
+	var cursor sql.NullInt64
+	err := db.DB.QueryRowContext(ctx, query, trimmed).Scan(&cursor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !cursor.Valid || cursor.Int64 <= 0 {
+		return time.Time{}, nil
+	}
+	return time.Unix(cursor.Int64, 0).UTC(), nil
+}
+
+// UpdateImportCursor stores the latest cursor for a source using a portable
+// UPDATE/INSERT pattern so every driver stays supported without vendor-specific
+// UPSERT syntax. The cursor is recorded as seconds since epoch.
+func (db *Database) UpdateImportCursor(ctx context.Context, dbType, source string, cursor time.Time) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return fmt.Errorf("source required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	unixCursor := cursor.UTC().Unix()
+	now := time.Now().UTC().Unix()
+
+	tx, err := db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	updateQuery := "UPDATE import_cursors SET cursor = ?, updated_at = ? WHERE source = ?"
+	insertQuery := "INSERT INTO import_cursors (source, cursor, updated_at) VALUES (?,?,?)"
+	if strings.ToLower(dbType) == "pgx" {
+		updateQuery = "UPDATE import_cursors SET cursor = $1, updated_at = $2 WHERE source = $3"
+		insertQuery = "INSERT INTO import_cursors (source, cursor, updated_at) VALUES ($1,$2,$3)"
+	}
+
+	res, execErr := tx.ExecContext(ctx, updateQuery, unixCursor, now, trimmed)
+	if execErr != nil {
+		err = execErr
+		return err
+	}
+	rows, rowsErr := res.RowsAffected()
+	if rowsErr != nil {
+		err = rowsErr
+		return err
+	}
+	if rows == 0 {
+		if _, execErr = tx.ExecContext(ctx, insertQuery, trimmed, unixCursor, now); execErr != nil {
+			err = execErr
+			return err
+		}
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		err = commitErr
+		return err
+	}
+	return nil
 }
 
 // mergeContinuousRanges tries to collapse several [Min,Max] speed ranges

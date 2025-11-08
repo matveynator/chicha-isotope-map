@@ -1,6 +1,9 @@
 package trackjson
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -16,6 +19,9 @@ import (
 // per hour. Keeping the constant public allows both the API and archive writers to
 // remain in lock-step without sprinkling magic numbers across packages.
 const MicroRoentgenPerMicroSievert = 100.0
+
+// ErrNotTrackJSON signals that the provided payload is not a chicha track dump.
+var ErrNotTrackJSON = errors.New("not chicha track json payload")
 
 // Disclaimers lists the language-specific warnings bundled with every export.
 // We never mutate the map after init so callers should clone it if they plan to
@@ -56,6 +62,8 @@ type MarkerPayload struct {
 	DetectorName           string   `json:"detectorName,omitempty"`
 	DetectorType           string   `json:"detectorType,omitempty"`
 	RadiationTypes         []string `json:"radiationTypes,omitempty"`
+	Source                 string   `json:"source,omitempty"`
+	SourceURL              string   `json:"sourceURL,omitempty"`
 }
 
 // MakeMarkerPayload converts raw database markers into JSON-ready payloads
@@ -94,7 +102,197 @@ func MakeMarkerPayload(marker database.Marker) (MarkerPayload, time.Time) {
 	if channels := splitRadiationChannels(marker.Radiation); len(channels) > 0 {
 		payload.RadiationTypes = channels
 	}
+	if src := strings.TrimSpace(marker.Source); src != "" {
+		payload.Source = src
+	}
+	if raw := strings.TrimSpace(marker.SourceURL); raw != "" {
+		payload.SourceURL = raw
+	}
 	return payload, ts
+}
+
+// DecodeTrackJSON converts a .cim track payload back into raw markers so callers
+// can store mirrored datasets. The function accepts both legacy and modern
+// fields to remain compatible with older exports.
+func DecodeTrackJSON(data []byte) (string, []database.Marker, error) {
+	var payload struct {
+		Format  string `json:"format"`
+		Version int    `json:"version"`
+		Track   struct {
+			TrackID        string   `json:"trackID"`
+			DetectorName   string   `json:"detectorName"`
+			DetectorType   string   `json:"detectorType"`
+			RadiationTypes []string `json:"radiationTypes"`
+		} `json:"track"`
+		Markers []struct {
+			ID                 int64    `json:"id"`
+			TrackID            string   `json:"trackID"`
+			TimeUnix           int64    `json:"timeUnix"`
+			TimeUTC            string   `json:"timeUTC"`
+			Lat                float64  `json:"lat"`
+			Lon                float64  `json:"lon"`
+			AltitudeM          *float64 `json:"altitudeM"`
+			DoseMicroSvH       float64  `json:"doseRateMicroSvH"`
+			DoseMicroRoentgenH float64  `json:"doseRateMicroRh"`
+			DoseMilliSvH       float64  `json:"doseRateMilliSvH"`
+			DoseMilliRH        float64  `json:"doseRateMilliRH"`
+			CountRateCPS       float64  `json:"countRateCPS"`
+			SpeedMS            float64  `json:"speedMS"`
+			SpeedKMH           float64  `json:"speedKMH"`
+			TemperatureC       *float64 `json:"temperatureC"`
+			HumidityPercent    *float64 `json:"humidityPercent"`
+			DetectorName       string   `json:"detectorName"`
+			DetectorType       string   `json:"detectorType"`
+			RadiationTypes     []string `json:"radiationTypes"`
+		} `json:"markers"`
+	}
+
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return "", nil, fmt.Errorf("%w: %v", ErrNotTrackJSON, err)
+	}
+	if !strings.EqualFold(payload.Format, "chicha-track-json") {
+		return "", nil, ErrNotTrackJSON
+	}
+	if len(payload.Markers) == 0 {
+		return "", nil, fmt.Errorf("empty track")
+	}
+
+	candidateTrackID := strings.TrimSpace(payload.Track.TrackID)
+	defaultDetectorType := strings.TrimSpace(payload.Track.DetectorType)
+	defaultDetectorName := strings.TrimSpace(payload.Track.DetectorName)
+	defaultRadiation := normalizeRadiationList(payload.Track.RadiationTypes)
+
+	markers := make([]database.Marker, 0, len(payload.Markers))
+	for _, item := range payload.Markers {
+		ts := extractUnixSeconds(item.TimeUnix, item.TimeUTC)
+		dose := item.DoseMicroSvH
+		if dose == 0 && item.DoseMicroRoentgenH != 0 {
+			dose = item.DoseMicroRoentgenH / MicroRoentgenPerMicroSievert
+		}
+		if dose == 0 && item.DoseMilliSvH != 0 {
+			dose = item.DoseMilliSvH * 1000.0
+		}
+		if dose == 0 && item.DoseMilliRH != 0 {
+			dose = item.DoseMilliRH * 10.0
+		}
+
+		speed := item.SpeedMS
+		if speed == 0 && item.SpeedKMH != 0 {
+			speed = item.SpeedKMH / 3.6
+		}
+
+		detectorName := strings.TrimSpace(item.DetectorName)
+		if detectorName == "" {
+			detectorName = defaultDetectorName
+		}
+
+		detector := strings.TrimSpace(item.DetectorType)
+		if detector == "" {
+			detector = defaultDetectorType
+		}
+		if detector == "" {
+			detector = detectorTypeFromName(detectorName)
+		}
+
+		radiationList := normalizeRadiationList(item.RadiationTypes)
+		if len(radiationList) == 0 {
+			radiationList = defaultRadiation
+		}
+
+		var altitude float64
+		var altitudeValid bool
+		if item.AltitudeM != nil {
+			altitude = *item.AltitudeM
+			altitudeValid = true
+		}
+		var temperature float64
+		var temperatureValid bool
+		if item.TemperatureC != nil {
+			temperature = *item.TemperatureC
+			temperatureValid = true
+		}
+		var humidity float64
+		var humidityValid bool
+		if item.HumidityPercent != nil {
+			humidity = *item.HumidityPercent
+			humidityValid = true
+		}
+
+		markers = append(markers, database.Marker{
+			ID:               item.ID,
+			DoseRate:         dose,
+			Date:             ts,
+			Lon:              item.Lon,
+			Lat:              item.Lat,
+			CountRate:        item.CountRateCPS,
+			Speed:            speed,
+			Altitude:         altitude,
+			Temperature:      temperature,
+			Humidity:         humidity,
+			Detector:         detector,
+			Radiation:        strings.Join(radiationList, ","),
+			AltitudeValid:    altitudeValid,
+			TemperatureValid: temperatureValid,
+			HumidityValid:    humidityValid,
+		})
+
+		if candidateTrackID == "" {
+			candidateTrackID = strings.TrimSpace(item.TrackID)
+		}
+	}
+
+	return candidateTrackID, markers, nil
+}
+
+func extractUnixSeconds(timeUnix int64, timeUTC string) int64 {
+	if timeUnix > 1_000_000_000_000 {
+		return timeUnix / 1000
+	}
+	if timeUnix > 0 {
+		return timeUnix
+	}
+	if trimmed := strings.TrimSpace(timeUTC); trimmed != "" {
+		if ts, err := time.Parse(time.RFC3339Nano, trimmed); err == nil {
+			return ts.Unix()
+		}
+	}
+	return 0
+}
+
+func normalizeRadiationList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(values))
+	for _, raw := range values {
+		channel := strings.ToLower(strings.TrimSpace(raw))
+		if channel == "" {
+			continue
+		}
+		if _, ok := seen[channel]; ok {
+			continue
+		}
+		seen[channel] = struct{}{}
+		out = append(out, channel)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func detectorTypeFromName(detectorName string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(detectorName))
+	switch {
+	case strings.Contains(trimmed, "radiacode"):
+		return "radiacode"
+	case strings.Contains(trimmed, "atomfast"):
+		return "atomfast"
+	case strings.Contains(trimmed, "bgeigie"):
+		return "bgeigie"
+	}
+	return strings.TrimSpace(detectorName)
 }
 
 // TrackAPIPath returns the canonical API URL for fetching the JSON track with a

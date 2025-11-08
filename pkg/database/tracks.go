@@ -245,6 +245,8 @@ func (db *Database) StreamMarkersByTrackRange(
 		}
 
 		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+       source,
+       source_url,
        altitude,
        COALESCE(detector, '') AS detector,
        COALESCE(radiation, '') AS radiation,
@@ -266,10 +268,18 @@ ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
 			var altitude sql.NullFloat64
 			var temperature sql.NullFloat64
 			var humidity sql.NullFloat64
+			var source sql.NullString
+			var sourceURL sql.NullString
 			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-				&altitude, &m.Detector, &m.Radiation, &temperature, &humidity); err != nil {
+				&source, &sourceURL, &altitude, &m.Detector, &m.Radiation, &temperature, &humidity); err != nil {
 				errs <- fmt.Errorf("scan marker: %w", err)
 				return
+			}
+			if source.Valid {
+				m.Source = source.String
+			}
+			if sourceURL.Valid {
+				m.SourceURL = sourceURL.String
 			}
 			if altitude.Valid {
 				m.Altitude = altitude.Float64

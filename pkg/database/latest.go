@@ -90,6 +90,8 @@ func (db *Database) StreamLatestMarkersNear(
 		limitPlaceholder := nextPlaceholder()
 
 		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+       source,
+       source_url,
        altitude,
        COALESCE(detector, '') AS detector,
        COALESCE(radiation, '') AS radiation,
@@ -119,6 +121,8 @@ LIMIT %s;`,
 			var altitude sql.NullFloat64
 			var temperature sql.NullFloat64
 			var humidity sql.NullFloat64
+			var source sql.NullString
+			var sourceURL sql.NullString
 
 			if err := rows.Scan(
 				&marker.ID,
@@ -130,6 +134,8 @@ LIMIT %s;`,
 				&marker.Zoom,
 				&marker.Speed,
 				&marker.TrackID,
+				&source,
+				&sourceURL,
 				&altitude,
 				&marker.Detector,
 				&marker.Radiation,
@@ -143,6 +149,12 @@ LIMIT %s;`,
 			if altitude.Valid {
 				marker.Altitude = altitude.Float64
 				marker.AltitudeValid = true
+			}
+			if source.Valid {
+				marker.Source = source.String
+			}
+			if sourceURL.Valid {
+				marker.SourceURL = sourceURL.String
 			}
 			if temperature.Valid {
 				marker.Temperature = temperature.Float64
