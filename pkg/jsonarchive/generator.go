@@ -51,6 +51,7 @@ type progressUpdate struct {
 	processedTracks int64
 	bytesWritten    int64
 	currentTrack    string
+	startedAt       time.Time // Anchors elapsed/ETA calculations for consistent logging.
 }
 
 // Start launches the background worker.
@@ -358,9 +359,10 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 	}
 
 	updates := make(chan progressUpdate, 64)
+	startedAt := time.Now()
 	progressWait := func() {}
 	if logf != nil {
-		progressWait = startProgressLogger(ctx, logf, destPath, updates)
+		progressWait = startProgressLogger(ctx, logf, destPath, updates, startedAt)
 	}
 	defer func() {
 		close(updates)
@@ -369,7 +371,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 
 	sendProgress := func(processed int64, current string) {
 		select {
-		case updates <- progressUpdate{totalTracks: totalTracks, processedTracks: processed, bytesWritten: counter.Bytes(), currentTrack: current}:
+		case updates <- progressUpdate{totalTracks: totalTracks, processedTracks: processed, bytesWritten: counter.Bytes(), currentTrack: current, startedAt: startedAt}:
 		default:
 		}
 	}
@@ -852,12 +854,12 @@ func purgeStaleTrackFiles(dir string, logf func(string, ...any)) error {
 // startProgressLogger spins a goroutine that periodically prints build
 // milestones. Returning a wait function lets the caller coordinate shutdown via
 // channels without resorting to mutexes.
-func startProgressLogger(ctx context.Context, logf func(string, ...any), destPath string, updates <-chan progressUpdate) func() {
+func startProgressLogger(ctx context.Context, logf func(string, ...any), destPath string, updates <-chan progressUpdate, startedAt time.Time) func() {
 	if logf == nil {
 		return func() {}
 	}
 	done := make(chan struct{})
-	go logProgress(ctx, logf, destPath, updates, done)
+	go logProgress(ctx, logf, destPath, updates, done, startedAt)
 	return func() { <-done }
 }
 
@@ -870,6 +872,7 @@ func logProgress(
 	destPath string,
 	updates <-chan progressUpdate,
 	done chan<- struct{},
+	startedAt time.Time,
 ) {
 	defer close(done)
 
@@ -888,7 +891,9 @@ func logProgress(
 		if strings.TrimSpace(current) == "" {
 			current = "startup"
 		}
-		logf("json archive %s: %.1f%% (%d/%d tracks) %s written to %s (current=%s)",
+		elapsed := time.Since(startedAt)
+		eta := estimateETA(last.processedTracks, last.totalTracks, elapsed)
+		logf("json archive %s: %.1f%% (%d/%d tracks) %s written to %s (current=%s) elapsed=%s eta=%s",
 			prefix,
 			percent,
 			last.processedTracks,
@@ -896,6 +901,8 @@ func logProgress(
 			formatBytes(last.bytesWritten),
 			destPath,
 			current,
+			elapsed.Round(time.Second),
+			eta,
 		)
 	}
 
@@ -927,6 +934,25 @@ func computePercent(done, total int64) float64 {
 		return 100.0
 	}
 	return float64(done) / float64(total) * 100.0
+}
+
+// estimateETA returns a human friendly ETA string based on the work rate.
+// The logger keeps the calculation simple so we retain stable output even
+// when progress updates arrive irregularly.
+func estimateETA(done, total int64, elapsed time.Duration) string {
+	if total <= 0 || done <= 0 {
+		return "unknown"
+	}
+	remaining := total - done
+	if remaining <= 0 {
+		return "0s"
+	}
+	rate := elapsed.Seconds() / float64(done)
+	if rate <= 0 {
+		return "unknown"
+	}
+	eta := time.Duration(rate*float64(remaining)) * time.Second
+	return eta.Round(time.Second).String()
 }
 
 // countingWriter wraps another writer and tracks how many bytes went through.
