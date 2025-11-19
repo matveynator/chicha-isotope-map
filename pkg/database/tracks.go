@@ -58,10 +58,11 @@ func (db *Database) streamTrackSummaries(
 
 		nextPlaceholder := newPlaceholderGenerator(dbType)
 		conditions := []string{fmt.Sprintf("trackID > %s", nextPlaceholder())}
-		// We only count raw markers (zoom=0) here so exports and
-		// summaries match the exact coordinates clients uploaded.
-		conditions = append(conditions, fmt.Sprintf("zoom = %s", nextPlaceholder()))
-		args := []any{startAfter, 0}
+		// Avoid filtering by zoom so every stored measurement contributes
+		// to the per-track metadata. Keeping the SQL simple mirrors the Go
+		// proverb "Simplicity is complicated", but it ensures archives do
+		// not miss tracks whose markers were ingested with varying zooms.
+		args := []any{startAfter}
 
 		if restrictDates {
 			// The API provides inclusive start and exclusive end boundaries
@@ -170,7 +171,9 @@ ORDER BY trackID%s;`, strings.Join(conditions, " AND "), limitClause)
 
 // CountTracks returns the total number of distinct track IDs.
 // The API layer uses this to hint clients about the upper bound of the
-// pagination sequence so they can plan how many requests to issue.
+// pagination sequence so they can plan how many requests to issue. We count all
+// markers here so archive exports never miss tracks whose data arrived with
+// differing zoom levels.
 func (db *Database) CountTracks(ctx context.Context) (int64, error) {
 	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers`)
 	var count sql.NullInt64
@@ -190,18 +193,19 @@ func (db *Database) GetTrackSummary(ctx context.Context, trackID, dbType string)
 	summary := TrackSummary{TrackID: trackID}
 	query := `SELECT MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
 FROM markers
-WHERE trackID = %s AND zoom = %s;`
+WHERE trackID = %s;`
 
 	placeholder := "?"
 	if strings.ToLower(dbType) == "pgx" {
 		placeholder = "$1"
 	}
 
-	// The second placeholder always pins to zoom 0 so callers export the
-	// precise coordinates rather than the clustered aggregates.
-	query = fmt.Sprintf(query, placeholder, placeholder)
+	// Keeping the SQL free of zoom filters ensures exports cover every
+	// marker tied to the track, even when ingestion recorded different zoom
+	// levels. We still rely on placeholders to stay portable across engines.
+	query = fmt.Sprintf(query, placeholder)
 
-	row := db.DB.QueryRowContext(ctx, query, trackID, 0)
+	row := db.DB.QueryRowContext(ctx, query, trackID)
 	if err := row.Scan(&summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
 		if err == sql.ErrNoRows {
 			return summary, nil
@@ -241,10 +245,9 @@ func (db *Database) StreamMarkersByTrackRange(
 		trackPlaceholder := nextPlaceholder()
 		fromPlaceholder := nextPlaceholder()
 		toPlaceholder := nextPlaceholder()
-		zoomPlaceholder := nextPlaceholder()
 
 		limitClause := ""
-		args := []any{trackID, fromID, toID, 0}
+		args := []any{trackID, fromID, toID}
 		if limit > 0 {
 			limitClause = fmt.Sprintf(" LIMIT %s", nextPlaceholder())
 			args = append(args, limit)
@@ -256,9 +259,9 @@ func (db *Database) StreamMarkersByTrackRange(
        COALESCE(radiation, '') AS radiation,
        temperature,
        humidity
- FROM markers
-WHERE trackID = %s AND id >= %s AND id <= %s AND zoom = %s
-ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, zoomPlaceholder, limitClause)
+FROM markers
+WHERE trackID = %s AND id >= %s AND id <= %s
+ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
 
 		rows, err := db.DB.QueryContext(ctx, query, args...)
 		if err != nil {
