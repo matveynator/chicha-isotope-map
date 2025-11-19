@@ -434,6 +434,23 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		startAfter = lastID
 	}
 
+	// Bail out if the stream delivered fewer tracks than expected so
+	// operators never get a silently truncated archive. Returning an
+	// error forces a retry instead of publishing an incomplete snapshot.
+	if processed == 0 {
+		tarw.Close()
+		gz.Close()
+		cleanup()
+		return "", time.Time{}, fmt.Errorf("build archive: no tracks exported")
+	}
+
+	if totalTracks > 0 && processed < totalTracks {
+		tarw.Close()
+		gz.Close()
+		cleanup()
+		return "", time.Time{}, fmt.Errorf("build archive: exported %d of %d tracks", processed, totalTracks)
+	}
+
 	if err := tarw.Close(); err != nil {
 		gz.Close()
 		cleanup()
