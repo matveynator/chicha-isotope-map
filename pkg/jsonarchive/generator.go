@@ -419,6 +419,19 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 			return "", time.Time{}, err
 		}
 
+		if len(summaries) > 0 {
+			// Track counts from COUNT(DISTINCT) can underreport when the backing driver
+			// applies throttling or stale statistics. We trust the streamed summary
+			// indices because they are derived from the same ordering used to export
+			// markers, ensuring progress percentages stay anchored to real work.
+			if pageTotal := summaries[len(summaries)-1].Index; pageTotal > totalTracks {
+				totalTracks = pageTotal
+				if logf != nil {
+					logf("json archive corrected total: %d tracks (via %s)", totalTracks, summaries[len(summaries)-1].TrackID)
+				}
+			}
+		}
+
 		// Process the page only after the summary query closes so SQLite releases
 		// its connection before we begin streaming markers. Without this staging
 		// step the marker query would block waiting for the still-open summary
