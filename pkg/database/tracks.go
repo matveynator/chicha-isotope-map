@@ -172,10 +172,14 @@ ORDER BY trackID%s;`, strings.Join(conditions, " AND "), limitClause)
 // CountTracks returns the total number of distinct track IDs.
 // The API layer uses this to hint clients about the upper bound of the
 // pagination sequence so they can plan how many requests to issue. We count all
-// markers here so archive exports never miss tracks whose data arrived with
-// differing zoom levels.
+// markers regardless of zoom so archive exports never miss tracks whose data
+// arrived with differing zoom levels.
 func (db *Database) CountTracks(ctx context.Context) (int64, error) {
-        row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers WHERE zoom = 0`)
+	// Counting without zoom filters keeps the archive progress estimates
+	// accurate because every stored measurement contributes to the total
+	// upfront. This follows the proverb "Simplicity is complicated" by
+	// preferring a portable query that still covers all ingestion paths.
+	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers`)
 	var count sql.NullInt64
 	if err := row.Scan(&count); err != nil {
 		return 0, fmt.Errorf("count tracks: %w", err)
