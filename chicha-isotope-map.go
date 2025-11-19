@@ -3018,7 +3018,12 @@ func processAndStoreMarkers(
 	markers = calculateSpeedForMarkers(markers)
 
 	// ── step 5: build aggregates for 20 zooms — O(N)+goroutines ─────
-	allZoom := precomputeMarkersForAllZoomLevels(markers)
+	// We keep the raw zoom=0 markers in front so downstream exports
+	// retain the exact coordinates users uploaded while still storing
+	// clustered variants for map views. Mixing raw and aggregates was
+	// the root cause of shifted coordinates in .cim exports because the
+	// database lacked an unsmoothed copy to serialize.
+	allZoom := append(markers, precomputeMarkersForAllZoomLevels(markers)...)
 	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoom))
 
 	// ── step 6: single transaction + multi-row VALUES ───────────────

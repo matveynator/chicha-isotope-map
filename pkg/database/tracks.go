@@ -58,7 +58,10 @@ func (db *Database) streamTrackSummaries(
 
 		nextPlaceholder := newPlaceholderGenerator(dbType)
 		conditions := []string{fmt.Sprintf("trackID > %s", nextPlaceholder())}
-		args := []any{startAfter}
+		// We only count raw markers (zoom=0) here so exports and
+		// summaries match the exact coordinates clients uploaded.
+		conditions = append(conditions, fmt.Sprintf("zoom = %s", nextPlaceholder()))
+		args := []any{startAfter, 0}
 
 		if restrictDates {
 			// The API provides inclusive start and exclusive end boundaries
@@ -187,16 +190,18 @@ func (db *Database) GetTrackSummary(ctx context.Context, trackID, dbType string)
 	summary := TrackSummary{TrackID: trackID}
 	query := `SELECT MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
 FROM markers
-WHERE trackID = %s;`
+WHERE trackID = %s AND zoom = %s;`
 
 	placeholder := "?"
 	if strings.ToLower(dbType) == "pgx" {
 		placeholder = "$1"
 	}
 
-	query = fmt.Sprintf(query, placeholder)
+	// The second placeholder always pins to zoom 0 so callers export the
+	// precise coordinates rather than the clustered aggregates.
+	query = fmt.Sprintf(query, placeholder, placeholder)
 
-	row := db.DB.QueryRowContext(ctx, query, trackID)
+	row := db.DB.QueryRowContext(ctx, query, trackID, 0)
 	if err := row.Scan(&summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
 		if err == sql.ErrNoRows {
 			return summary, nil
@@ -236,9 +241,10 @@ func (db *Database) StreamMarkersByTrackRange(
 		trackPlaceholder := nextPlaceholder()
 		fromPlaceholder := nextPlaceholder()
 		toPlaceholder := nextPlaceholder()
+		zoomPlaceholder := nextPlaceholder()
 
 		limitClause := ""
-		args := []any{trackID, fromID, toID}
+		args := []any{trackID, fromID, toID, 0}
 		if limit > 0 {
 			limitClause = fmt.Sprintf(" LIMIT %s", nextPlaceholder())
 			args = append(args, limit)
@@ -250,9 +256,9 @@ func (db *Database) StreamMarkersByTrackRange(
        COALESCE(radiation, '') AS radiation,
        temperature,
        humidity
-FROM markers
-WHERE trackID = %s AND id >= %s AND id <= %s
-ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
+ FROM markers
+WHERE trackID = %s AND id >= %s AND id <= %s AND zoom = %s
+ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, zoomPlaceholder, limitClause)
 
 		rows, err := db.DB.QueryContext(ctx, query, args...)
 		if err != nil {
