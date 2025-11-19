@@ -170,9 +170,13 @@ ORDER BY trackID%s;`, strings.Join(conditions, " AND "), limitClause)
 
 // CountTracks returns the total number of distinct track IDs.
 // The API layer uses this to hint clients about the upper bound of the
-// pagination sequence so they can plan how many requests to issue.
+// pagination sequence so they can plan how many requests to issue. We only
+// count raw (zoom=0) markers so archive builds and streaming endpoints agree on
+// the expected workload, following the Go proverb "A little copying is better
+// than a little dependency" by keeping the counting logic alongside the
+// streaming query.
 func (db *Database) CountTracks(ctx context.Context) (int64, error) {
-	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers`)
+        row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers WHERE zoom = 0`)
 	var count sql.NullInt64
 	if err := row.Scan(&count); err != nil {
 		return 0, fmt.Errorf("count tracks: %w", err)
