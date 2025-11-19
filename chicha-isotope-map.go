@@ -82,6 +82,7 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of .cim files, log progress, and exit once finished.")
+var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz of .cim files, log progress, and exit once finished.")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var debugIPsFlag = flag.String("debug", "", "Comma separated IP addresses allowed to view the debug overlay")
 
@@ -102,7 +103,7 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer"}},
-	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url"}},
+	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
 
@@ -2795,6 +2796,51 @@ func logArchiveImportProgress(
 	}
 }
 
+// importArchiveFromFile streams a local tgz through the shared parser so offline
+// operators can preload bundles without relying on HTTP. The function mirrors
+// the remote helper by emitting byte and entry progress over channels, keeping
+// the UI responsive on slow disks without extra mutexes.
+func importArchiveFromFile(
+	ctx context.Context,
+	path string,
+	trackID string,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) error {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open tgz file: %w", err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat tgz file: %w", err)
+	}
+
+	bytesCh := make(chan int64, 256)
+	entriesCh := make(chan archiveProgress, 64)
+	done := make(chan struct{})
+	go logArchiveImportProgress(ctx, logf, path, info.Size(), bytesCh, entriesCh, done)
+
+	reader := &countingReader{r: file, updates: bytesCh}
+	bounds, finalTrack, imported, err := processCIMArchiveReader(ctx, reader, trackID, db, dbType, entriesCh)
+	close(bytesCh)
+	close(entriesCh)
+	<-done
+	if err != nil {
+		return fmt.Errorf("local tgz import: %w", err)
+	}
+
+	logf("local tgz import complete: imported=%v track=%s bounds=%v", imported, finalTrack, bounds)
+	return nil
+}
+
 // importArchiveFromURL streams a remote tgz into the existing archive parser so
 // operators can refresh a deployment directly from an external weekly bundle.
 // The function runs synchronously to match the explicit CLI flag and exits the
@@ -4531,12 +4577,31 @@ func main() {
 		log.Fatalf("DB schema: %v", err)
 	}
 
-	if url := strings.TrimSpace(*importTGZURLFlag); url != "" {
+	remoteURL := strings.TrimSpace(*importTGZURLFlag)
+	localArchive := strings.TrimSpace(*importTGZFileFlag)
+	if remoteURL != "" && localArchive != "" {
+		log.Fatalf("choose only one import flag: -import-tgz-url or -import-tgz-file")
+	}
+
+	if localArchive != "" {
 		ctxImport, cancelImport := context.WithCancel(context.Background())
 		defer cancelImport()
 
 		fallback := GenerateSerialNumber()
-		if err := importArchiveFromURL(ctxImport, url, fallback, db, *dbType, log.Printf); err != nil {
+		if err := importArchiveFromFile(ctxImport, localArchive, fallback, db, *dbType, log.Printf); err != nil {
+			log.Fatalf("local tgz import: %v", err)
+		}
+
+		log.Printf("local tgz import finished; exiting per -import-tgz-file")
+		return
+	}
+
+	if remoteURL != "" {
+		ctxImport, cancelImport := context.WithCancel(context.Background())
+		defer cancelImport()
+
+		fallback := GenerateSerialNumber()
+		if err := importArchiveFromURL(ctxImport, remoteURL, fallback, db, *dbType, log.Printf); err != nil {
 			log.Fatalf("remote tgz import: %v", err)
 		}
 
