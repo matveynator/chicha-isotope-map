@@ -175,7 +175,7 @@ ORDER BY trackID%s;`, strings.Join(conditions, " AND "), limitClause)
 // markers here so archive exports never miss tracks whose data arrived with
 // differing zoom levels.
 func (db *Database) CountTracks(ctx context.Context) (int64, error) {
-	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers`)
+        row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers WHERE zoom = 0`)
 	var count sql.NullInt64
 	if err := row.Scan(&count); err != nil {
 		return 0, fmt.Errorf("count tracks: %w", err)
