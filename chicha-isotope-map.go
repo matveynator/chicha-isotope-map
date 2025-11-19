@@ -81,6 +81,8 @@ var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base l
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
+var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of .cim files, log progress, and exit once finished.")
+var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz of .cim files, log progress, and exit once finished.")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var debugIPsFlag = flag.String("debug", "", "Comma separated IP addresses allowed to view the debug overlay")
 
@@ -101,7 +103,7 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer"}},
-	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency"}},
+	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
 
@@ -2556,6 +2558,15 @@ func processCIMFile(
 	return processCIMReader(ctx, file, trackID, db, dbType)
 }
 
+// archiveProgress keeps the streaming import loop and the logger connected via
+// a channel so we avoid mutexes. Each update notes how many entries we have
+// consumed and the most recent filename so operators can track forward motion
+// on gigantic archives without staring at a static log line.
+type archiveProgress struct {
+	entries  int
+	filename string
+}
+
 // processCIMArchive handles the weekly tgz bundle produced by the API.
 // We iterate entries sequentially because tar readers are streaming, yet
 // still lean on channels inside the parser so each .cim stays memory-light.
@@ -2566,9 +2577,23 @@ func processCIMArchive(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, bool, error) {
+	return processCIMArchiveReader(ctx, file, trackID, db, dbType, nil)
+}
+
+// processCIMArchiveReader is the shared implementation for multipart uploads
+// and remote downloads. The optional progress channel lets callers stream
+// status to logs without blocking the parsing loop.
+func processCIMArchiveReader(
+	ctx context.Context,
+	r io.Reader,
+	trackID string,
+	db *database.Database,
+	dbType string,
+	updates chan<- archiveProgress,
+) (database.Bounds, string, bool, error) {
 	logT(trackID, "CIM-TGZ", "▶ start")
 
-	gz, err := gzip.NewReader(file)
+	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return database.Bounds{}, trackID, false, fmt.Errorf("open tgz: %w", err)
 	}
@@ -2581,6 +2606,16 @@ func processCIMArchive(
 	importedAny := false
 	primaryTrack := trackID
 	entryIndex := 0
+
+	sendProgress := func(name string) {
+		if updates == nil {
+			return
+		}
+		select {
+		case updates <- archiveProgress{entries: entryIndex, filename: name}:
+		default:
+		}
+	}
 
 	for {
 		select {
@@ -2605,6 +2640,7 @@ func processCIMArchive(
 		}
 
 		logT(trackID, "CIM-TGZ", "processing %s", hdr.Name)
+		sendProgress(hdr.Name)
 
 		entryBounds, entryTrack, inserted, err := processCIMReader(ctx, io.LimitReader(tr, hdr.Size), GenerateSerialNumber(), db, dbType)
 		if err != nil {
@@ -2618,6 +2654,7 @@ func processCIMArchive(
 			importedAny = true
 		}
 		entryIndex++
+		sendProgress(hdr.Name)
 	}
 
 	if entryIndex == 0 {
@@ -2682,6 +2719,176 @@ func processCIMReader(
 		return storedBounds, finalTrackID, false, err
 	}
 	return storedBounds, finalTrackID, true, nil
+}
+
+// countingReader forwards Read calls while emitting byte deltas over a channel.
+// We prefer this tiny helper over mutex-protected counters so the progress
+// logger can stay decoupled and responsive even when the network stream stalls.
+type countingReader struct {
+	r       io.Reader
+	updates chan<- int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	if n > 0 && c.updates != nil {
+		select {
+		case c.updates <- int64(n):
+		default:
+		}
+	}
+	return n, err
+}
+
+// logArchiveImportProgress aggregates download and parse progress for remote
+// tgz imports. A ticker throttles updates so huge archives do not overwhelm the
+// logs while still giving operators confidence that the stream is moving.
+func logArchiveImportProgress(
+	ctx context.Context,
+	logf func(string, ...any),
+	source string,
+	contentLength int64,
+	byteUpdates <-chan int64,
+	entryUpdates <-chan archiveProgress,
+	done chan<- struct{},
+) {
+	defer close(done)
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	var downloaded int64
+	var entries int
+	lastFile := ""
+
+	byteCh := byteUpdates
+	entryCh := entryUpdates
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case delta, ok := <-byteCh:
+			if !ok {
+				byteCh = nil
+				continue
+			}
+			downloaded += delta
+		case progress, ok := <-entryCh:
+			if !ok {
+				entryCh = nil
+				continue
+			}
+			entries = progress.entries
+			lastFile = progress.filename
+		case <-ticker.C:
+		}
+
+		if byteCh == nil && entryCh == nil {
+			break
+		}
+
+		percent := float64(0)
+		if contentLength > 0 && downloaded > 0 {
+			percent = (float64(downloaded) / float64(contentLength)) * 100
+		}
+		logf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
+	}
+}
+
+// importArchiveFromFile streams a local tgz through the shared parser so offline
+// operators can preload bundles without relying on HTTP. The function mirrors
+// the remote helper by emitting byte and entry progress over channels, keeping
+// the UI responsive on slow disks without extra mutexes.
+func importArchiveFromFile(
+	ctx context.Context,
+	path string,
+	trackID string,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) error {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open tgz file: %w", err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat tgz file: %w", err)
+	}
+
+	bytesCh := make(chan int64, 256)
+	entriesCh := make(chan archiveProgress, 64)
+	done := make(chan struct{})
+	go logArchiveImportProgress(ctx, logf, path, info.Size(), bytesCh, entriesCh, done)
+
+	reader := &countingReader{r: file, updates: bytesCh}
+	bounds, finalTrack, imported, err := processCIMArchiveReader(ctx, reader, trackID, db, dbType, entriesCh)
+	close(bytesCh)
+	close(entriesCh)
+	<-done
+	if err != nil {
+		return fmt.Errorf("local tgz import: %w", err)
+	}
+
+	logf("local tgz import complete: imported=%v track=%s bounds=%v", imported, finalTrack, bounds)
+	return nil
+}
+
+// importArchiveFromURL streams a remote tgz into the existing archive parser so
+// operators can refresh a deployment directly from an external weekly bundle.
+// The function runs synchronously to match the explicit CLI flag and exits the
+// program after finishing, keeping behaviour predictable for automation.
+func importArchiveFromURL(
+	ctx context.Context,
+	sourceURL string,
+	trackID string,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) error {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 0}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("download tgz: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("download tgz: unexpected status %s", resp.Status)
+	}
+
+	bytesCh := make(chan int64, 256)
+	entriesCh := make(chan archiveProgress, 64)
+	done := make(chan struct{})
+	go logArchiveImportProgress(ctx, logf, sourceURL, resp.ContentLength, bytesCh, entriesCh, done)
+
+	reader := &countingReader{r: resp.Body, updates: bytesCh}
+	bounds, finalTrack, imported, err := processCIMArchiveReader(ctx, reader, trackID, db, dbType, entriesCh)
+	close(bytesCh)
+	close(entriesCh)
+	<-done
+	if err != nil {
+		return fmt.Errorf("remote tgz import: %w", err)
+	}
+
+	logf("remote tgz import complete: imported=%v track=%s bounds=%v", imported, finalTrack, bounds)
+	return nil
 }
 
 // mergeBounds combines multiple bounding boxes while tracking whether we already
@@ -4368,6 +4575,38 @@ func main() {
 	}
 	if err = db.InitSchema(dbCfg); err != nil {
 		log.Fatalf("DB schema: %v", err)
+	}
+
+	remoteURL := strings.TrimSpace(*importTGZURLFlag)
+	localArchive := strings.TrimSpace(*importTGZFileFlag)
+	if remoteURL != "" && localArchive != "" {
+		log.Fatalf("choose only one import flag: -import-tgz-url or -import-tgz-file")
+	}
+
+	if localArchive != "" {
+		ctxImport, cancelImport := context.WithCancel(context.Background())
+		defer cancelImport()
+
+		fallback := GenerateSerialNumber()
+		if err := importArchiveFromFile(ctxImport, localArchive, fallback, db, *dbType, log.Printf); err != nil {
+			log.Fatalf("local tgz import: %v", err)
+		}
+
+		log.Printf("local tgz import finished; exiting per -import-tgz-file")
+		return
+	}
+
+	if remoteURL != "" {
+		ctxImport, cancelImport := context.WithCancel(context.Background())
+		defer cancelImport()
+
+		fallback := GenerateSerialNumber()
+		if err := importArchiveFromURL(ctxImport, remoteURL, fallback, db, *dbType, log.Printf); err != nil {
+			log.Fatalf("remote tgz import: %v", err)
+		}
+
+		log.Printf("remote tgz import finished; exiting per -import-tgz-url")
+		return
 	}
 
 	if *safecastRealtimeEnabled {
