@@ -353,6 +353,9 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		cleanup()
 		return "", time.Time{}, fmt.Errorf("count tracks: %w", err)
 	}
+	if logf != nil {
+		logf("json archive discovered %d tracks for export", totalTracks)
+	}
 
 	updates := make(chan progressUpdate, 64)
 	progressWait := func() {}
@@ -370,7 +373,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		default:
 		}
 	}
-	sendProgress(0, "")
+	sendProgress(0, "queued")
 
 	pageSize := 256
 	startAfter := ""
@@ -386,6 +389,10 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 			cleanup()
 			return "", time.Time{}, ctx.Err()
 		default:
+		}
+
+		if logf != nil {
+			logf("json archive page start: after=%q processed=%d/%d", startAfter, processed, totalTracks)
 		}
 
 		summariesCh, errCh := db.StreamTrackSummaries(buildCtx, startAfter, pageSize, dbType)
@@ -412,11 +419,25 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 			return "", time.Time{}, err
 		}
 
+		if len(summaries) > 0 {
+			// Track counts from COUNT(DISTINCT) can underreport when the backing driver
+			// applies throttling or stale statistics. We trust the streamed summary
+			// indices because they are derived from the same ordering used to export
+			// markers, ensuring progress percentages stay anchored to real work.
+			if pageTotal := summaries[len(summaries)-1].Index; pageTotal > totalTracks {
+				totalTracks = pageTotal
+				if logf != nil {
+					logf("json archive corrected total: %d tracks (via %s)", totalTracks, summaries[len(summaries)-1].TrackID)
+				}
+			}
+		}
+
 		// Process the page only after the summary query closes so SQLite releases
 		// its connection before we begin streaming markers. Without this staging
 		// step the marker query would block waiting for the still-open summary
 		// cursor, leading to the deadlock observed at startup.
 		for _, summary := range summaries {
+			sendProgress(processed, summary.TrackID)
 			if err := appendTrack(buildCtx, tarw, db, dbType, summary, tmpTrackDir); err != nil {
 				cancel()
 				tarw.Close()
