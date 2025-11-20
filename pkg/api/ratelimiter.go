@@ -30,6 +30,7 @@ const (
 // sharing memory; share memory by communicating".
 type RateLimiter struct {
 	heavyCooldown time.Duration
+	heavyBurst    int // allow a burst of heavy requests before throttling so normal browsing stays fast
 	requests      chan keyedRequest
 	now           func() time.Time
 }
@@ -78,6 +79,7 @@ func (p *Permit) Release() {
 func NewRateLimiter(heavyCooldown time.Duration) *RateLimiter {
 	limiter := &RateLimiter{
 		heavyCooldown: heavyCooldown,
+		heavyBurst:    8,
 		requests:      make(chan keyedRequest),
 		now:           time.Now,
 	}
@@ -145,7 +147,7 @@ func (l *RateLimiter) loop() {
 }
 
 func (l *RateLimiter) runIPWorker(ip string, requests <-chan ipRequest) {
-	var lastHeavyFinish time.Time
+	var heavyHistory []time.Time
 
 	for req := range requests {
 		select {
@@ -162,21 +164,32 @@ func (l *RateLimiter) runIPWorker(ip string, requests <-chan ipRequest) {
 		}
 		totalWait := queueWait
 
-		if req.kind == RequestHeavy && !lastHeavyFinish.IsZero() {
-			readyAt := lastHeavyFinish.Add(l.heavyCooldown)
-			now = l.now()
-			if now.Before(readyAt) {
-				cooldownWait := readyAt.Sub(now)
-				timer := time.NewTimer(cooldownWait)
-				select {
-				case <-req.ctx.Done():
-					if !timer.Stop() {
-						<-timer.C
+		if req.kind == RequestHeavy && l.heavyCooldown > 0 && l.heavyBurst > 0 {
+			cutoff := now.Add(-l.heavyCooldown)
+			dst := heavyHistory[:0]
+			for _, ts := range heavyHistory {
+				if ts.After(cutoff) {
+					dst = append(dst, ts)
+				}
+			}
+			heavyHistory = dst
+
+			if len(heavyHistory) >= l.heavyBurst {
+				readyAt := heavyHistory[0].Add(l.heavyCooldown)
+				now = l.now()
+				if now.Before(readyAt) {
+					cooldownWait := readyAt.Sub(now)
+					timer := time.NewTimer(cooldownWait)
+					select {
+					case <-req.ctx.Done():
+						if !timer.Stop() {
+							<-timer.C
+						}
+						req.response <- acquireResponse{err: req.ctx.Err()}
+						continue
+					case <-timer.C:
+						totalWait += cooldownWait
 					}
-					req.response <- acquireResponse{err: req.ctx.Err()}
-					continue
-				case <-timer.C:
-					totalWait += cooldownWait
 				}
 			}
 		}
@@ -202,9 +215,20 @@ func (l *RateLimiter) runIPWorker(ip string, requests <-chan ipRequest) {
 		}
 
 		if req.kind == RequestHeavy {
-			lastHeavyFinish = l.now()
-		} else if lastHeavyFinish.IsZero() {
-			// Nothing to update for general requests.
+			heavyHistory = append(heavyHistory, l.now())
+			// Trim stale timestamps promptly so a single burst cannot
+			// penalize a client forever. Storing the timestamps lets us
+			// detect real overloads instead of throttling casual
+			// browsing where the browser issues only a handful of
+			// downloads.
+			cutoff := l.now().Add(-l.heavyCooldown)
+			dst := heavyHistory[:0]
+			for _, ts := range heavyHistory {
+				if ts.After(cutoff) {
+					dst = append(dst, ts)
+				}
+			}
+			heavyHistory = dst
 		}
 	}
 }
