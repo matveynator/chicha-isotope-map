@@ -3283,32 +3283,63 @@ func processAndStoreMarkers(
 	allZoom := append(markers, precomputeMarkersForAllZoomLevels(markers)...)
 	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoom))
 
+	progressCh := make(chan database.MarkerBatchProgress, 16)
+	progressDone := make(chan struct{})
+
+	go func(total int) {
+		defer close(progressDone)
+		started := time.Now()
+		lastLog := time.Time{}
+		for p := range progressCh {
+			if lastLog.IsZero() || time.Since(lastLog) >= 5*time.Second || p.Done >= total {
+				logT(trackID, "Store", "storing markers %d/%d (+%d via %s) in %s elapsed %s",
+					p.Done, p.Total, p.Batch, p.Mode, p.Duration.Truncate(time.Millisecond),
+					time.Since(started).Truncate(time.Second))
+				lastLog = time.Now()
+			}
+		}
+	}(len(allZoom))
+
 	// ── step 6: single transaction + multi-row VALUES ───────────────
 	if strings.EqualFold(dbType, "clickhouse") {
-		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000); err != nil {
+		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000, progressCh); err != nil {
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
 	} else if strings.EqualFold(dbType, "duckdb") {
-		// DuckDB marks explicit transactions as aborted after a constraint error, which blocks
-		// the single-row conflict fallback. Using autocommit keeps retries alive and the import
-		// flowing even when legacy data contains duplicates.
-		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000); err != nil {
+		// DuckDB stays quick when inserts share a transaction but still aborts on constraint
+		// errors. InsertMarkersBulk wraps each batch in a savepoint so we keep the speed benefit
+		// of a single commit while still falling back to duplicate-tolerant single-row inserts
+		// when archives contain overlap.
+		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000, progressCh); err != nil {
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
 	} else {
 		tx, err := db.DB.Begin()
 		if err != nil {
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, err
 		}
 		// Batch size 500–1000 usually gives a good balance on large B-Trees.
-		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
+		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000, progressCh); err != nil {
 			_ = tx.Rollback()
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
 		if err := tx.Commit(); err != nil {
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, err
 		}
 	}
+
+	close(progressCh)
+	<-progressDone
 
 	logT(trackID, "Store", "✔ stored (new %d markers)", len(allZoom))
 	return bbox, trackID, nil
