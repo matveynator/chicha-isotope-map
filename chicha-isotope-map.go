@@ -53,7 +53,6 @@ import (
 	"chicha-isotope-map/pkg/database/drivers"
 	"chicha-isotope-map/pkg/jsonarchive"
 	"chicha-isotope-map/pkg/logger"
-	"chicha-isotope-map/pkg/markerstream"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
 	"chicha-isotope-map/pkg/selfupgrade"
@@ -68,7 +67,6 @@ import (
 var content embed.FS
 
 var doseData database.Data
-var markerBus = markerstream.NewBus(2048)
 
 var domain = flag.String("domain", "", "Serve HTTPS on 80/443 via Let's Encrypt when a domain is provided.")
 var dbType = flag.String("db-type", "sqlite", "Database driver: chai, sqlite, duckdb, pgx (PostgreSQL), or clickhouse")
@@ -3335,19 +3333,7 @@ func processAndStoreMarkers(
 	<-progressDone
 
 	logT(trackID, "Store", "✔ stored (new %d markers)", len(allZoom))
-	publishMarkers(allZoom)
 	return bbox, trackID, nil
-}
-
-// publishMarkers fans out freshly stored markers to streaming subscribers.
-// Sending after the transaction commits keeps clients aligned with durable state while still avoiding mutexes.
-func publishMarkers(markers []database.Marker) {
-	if markerBus == nil {
-		return
-	}
-	for _, m := range markers {
-		markerBus.Publish(m)
-	}
 }
 
 // enqueueArchiveImport writes the uploaded tgz to a temporary file and processes it in the background.
@@ -3533,7 +3519,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	status := "success"
 	if backgroundImport {
 		status = "processing"
-		logT(trackID, "Upload", "tgz archive queued; watch the map for new tracks")
+		logT(trackID, "Upload", "tgz archive queued for background import; map stays responsive during processing")
 	} else {
 		logT(trackID, "Upload", "redirecting browser to: %s", trackURL)
 	}
@@ -3989,7 +3975,7 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 // ========
 
 // aggregateMarkers chooses the most radioactive marker per grid cell while merging the
-// static query feed and the live update stream. Keeping the grid map inside the goroutine
+// static query feed with an optional live stream. Keeping the grid map inside the goroutine
 // lets us reuse previous emissions and drop later duplicates without mutexes.
 func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates <-chan database.Marker, zoom int) <-chan database.Marker {
 	out := make(chan database.Marker)
@@ -4039,52 +4025,6 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 	return out
 }
 
-// markerInsideBounds keeps SSE updates aligned with the requested viewport so the map only
-// re-renders when data actually intersects the visible area.
-func markerInsideBounds(m database.Marker, minLat, minLon, maxLat, maxLon float64) bool {
-	return m.Lat >= minLat && m.Lat <= maxLat && m.Lon >= minLon && m.Lon <= maxLon
-}
-
-// filterStreamingMarkers trims a marker feed to the requested zoom, bounds, and optional track ID.
-// Using a dedicated goroutine preserves backpressure without blocking the bus fan-out loop.
-func filterStreamingMarkers(
-	ctx context.Context,
-	in <-chan database.Marker,
-	zoom int,
-	minLat, minLon, maxLat, maxLon float64,
-	trackID string,
-) <-chan database.Marker {
-	out := make(chan database.Marker, 128)
-	go func() {
-		defer close(out)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case m, ok := <-in:
-				if !ok {
-					return
-				}
-				if m.Zoom != zoom {
-					continue
-				}
-				if trackID != "" && m.TrackID != trackID {
-					continue
-				}
-				if !markerInsideBounds(m, minLat, minLon, maxLat, maxLon) {
-					continue
-				}
-				select {
-				case out <- m:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
-	return out
-}
-
 // streamMarkersHandler streams markers via Server-Sent Events.
 // Markers are emitted as soon as they are read and aggregated.
 func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
@@ -4121,12 +4061,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
 
-	var updates <-chan database.Marker
-	if markerBus != nil {
-		updates = filterStreamingMarkers(ctx, markerBus.Subscribe(ctx, zoom, 256), zoom, minLat, minLon, maxLat, maxLon, trackID)
-	}
-
-	agg := aggregateMarkers(ctx, baseSrc, updates, zoom)
+	agg := aggregateMarkers(ctx, baseSrc, nil, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
