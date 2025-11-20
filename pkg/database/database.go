@@ -993,7 +993,9 @@ type MarkerBatchProgress struct {
 //   - "A little copying is better than a little dependency" — we build SQL by hand.
 //   - "Don't communicate by sharing memory; share memory by communicating" — idGenerator via channel.
 //   - "Make the zero value useful" — batch<=0 falls back to 500.
-func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) error {
+//   - "The bigger the interface, the weaker the abstraction" — DuckDB wraps in one transaction instead of
+//     leaking SAVEPOINT assumptions per chunk.
+func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) (err error) {
 	if len(markers) == 0 {
 		return nil
 	}
@@ -1005,10 +1007,11 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	driver := normalizeDBType(dbType)
 
 	var (
-		exec  sqlExecutor
-		txn   *sql.Tx
-		total = len(markers)
-		done  int
+		exec   sqlExecutor
+		txn    *sql.Tx
+		autoTx *sql.Tx
+		total  = len(markers)
+		done   int
 	)
 
 	if tx != nil {
@@ -1017,6 +1020,32 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	} else {
 		exec = db.DB
 	}
+
+	if driver == "duckdb" && txn == nil {
+		// DuckDB spends significant time creating and committing tiny transactions when imports
+		// run chunk-by-chunk. Starting a single transaction up front keeps checkpoints rare and
+		// removes per-chunk overhead without relying on SAVEPOINT support.
+		started, beginErr := db.DB.Begin()
+		if beginErr != nil {
+			return fmt.Errorf("begin duckdb bulk tx: %w", beginErr)
+		}
+		txn = started
+		exec = started
+		autoTx = started
+	}
+
+	defer func() {
+		if autoTx == nil {
+			return
+		}
+		if err != nil {
+			_ = autoTx.Rollback()
+			return
+		}
+		if commitErr := autoTx.Commit(); commitErr != nil {
+			err = fmt.Errorf("commit duckdb bulk tx: %w", commitErr)
+		}
+	}()
 
 	ph := func(n int) string {
 		if driver == "pgx" {
@@ -1028,19 +1057,6 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	i := 0
 	for i < len(markers) {
 		chunkExec := exec
-		var chunkTx *sql.Tx
-
-		if driver == "duckdb" && txn == nil {
-			// DuckDB can stream faster when inserts share a transaction, but some deployments
-			// disallow SAVEPOINT. To keep compatibility we wrap each chunk in its own
-			// transaction so conflicts can roll back cleanly without aborting the outer loop.
-			started, err := db.DB.Begin()
-			if err != nil {
-				return fmt.Errorf("begin duckdb chunk tx: %w", err)
-			}
-			chunkTx = started
-			chunkExec = started
-		}
 
 		end := i + batch
 		if end > len(markers) {
@@ -1187,23 +1203,10 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			// batch. This mirrors "Don't panic" while keeping the code portable across engines.
 			if driver == "duckdb" && duckDBIsConflict(err) {
 				mode = "fallback"
-				if chunkTx != nil {
-					_ = chunkTx.Rollback()
-					chunkTx = nil
-				}
-				fallbackTx, txErr := db.DB.Begin()
-				if txErr != nil {
-					return fmt.Errorf("duckdb fallback begin: %w", txErr)
-				}
-				chunkExec = fallbackTx
 				for _, marker := range chunk {
 					if saveErr := db.SaveMarkerAtomic(chunkExec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
-						_ = fallbackTx.Rollback()
 						return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
 					}
-				}
-				if err := fallbackTx.Commit(); err != nil {
-					return fmt.Errorf("duckdb fallback commit: %w", err)
 				}
 				done += len(chunk)
 				i = end
@@ -1215,16 +1218,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 				}
 				continue
 			}
-			if chunkTx != nil {
-				_ = chunkTx.Rollback()
-			}
 			return fmt.Errorf("bulk exec: %w", err)
-		}
-
-		if chunkTx != nil {
-			if err := chunkTx.Commit(); err != nil {
-				return fmt.Errorf("duckdb chunk commit: %w", err)
-			}
 		}
 		done += len(chunk)
 		if progress != nil {
