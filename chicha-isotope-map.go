@@ -2780,6 +2780,7 @@ func logArchiveImportProgress(
 	lastLoggedFile := ""
 	lastLoggedPercent := -1.0
 	var lastLogTime time.Time
+	lastLogLine := ""
 
 	byteCh := byteUpdates
 	entryCh := entryUpdates
@@ -2799,7 +2800,16 @@ func logArchiveImportProgress(
 			return
 		}
 
-		logf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
+		line := fmt.Sprintf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
+
+		// Avoid emitting identical consecutive snapshots so operators do not see doubled lines
+		// when the final forced update matches the last timed tick.
+		if line == lastLogLine {
+			return
+		}
+
+		logf("%s", line)
+		lastLogLine = line
 		lastLoggedBytes = downloaded
 		lastLoggedEntries = entries
 		lastLoggedFile = lastFile
@@ -3273,25 +3283,62 @@ func processAndStoreMarkers(
 	allZoom := append(markers, precomputeMarkersForAllZoomLevels(markers)...)
 	logT(trackID, "Store", "precomputed %d zoom-markers", len(allZoom))
 
+	progressCh := make(chan database.MarkerBatchProgress, 16)
+	progressDone := make(chan struct{})
+
+	go func(total int) {
+		defer close(progressDone)
+		started := time.Now()
+		lastLog := time.Time{}
+		for p := range progressCh {
+			if lastLog.IsZero() || time.Since(lastLog) >= 5*time.Second || p.Done >= total {
+				logT(trackID, "Store", "storing markers %d/%d (+%d via %s) in %s elapsed %s",
+					p.Done, p.Total, p.Batch, p.Mode, p.Duration.Truncate(time.Millisecond),
+					time.Since(started).Truncate(time.Second))
+				lastLog = time.Now()
+			}
+		}
+	}(len(allZoom))
+
 	// ── step 6: single transaction + multi-row VALUES ───────────────
 	if strings.EqualFold(dbType, "clickhouse") {
-		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000); err != nil {
+		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000, progressCh); err != nil {
+			close(progressCh)
+			<-progressDone
+			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
+		}
+	} else if strings.EqualFold(dbType, "duckdb") {
+		// DuckDB performs best with transactional batches, but some environments disable
+		// SAVEPOINT. InsertMarkersBulk now wraps each chunk in its own transaction so duplicate
+		// fallbacks remain isolated while retaining the throughput benefits of bulk inserts.
+		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000, progressCh); err != nil {
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
 	} else {
 		tx, err := db.DB.Begin()
 		if err != nil {
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, err
 		}
 		// Batch size 500–1000 usually gives a good balance on large B-Trees.
-		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000); err != nil {
+		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000, progressCh); err != nil {
 			_ = tx.Rollback()
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
 		if err := tx.Commit(); err != nil {
+			close(progressCh)
+			<-progressDone
 			return bbox, trackID, err
 		}
 	}
+
+	close(progressCh)
+	<-progressDone
 
 	logT(trackID, "Store", "✔ stored (new %d markers)", len(allZoom))
 	return bbox, trackID, nil

@@ -973,6 +973,17 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 	}
 }
 
+// MarkerBatchProgress reports how many markers a bulk insert has flushed so operators can track
+// forward momentum. We keep a mode flag to distinguish fast-path multi-row execution from fallback
+// duplicate handling, making stall investigations simpler when archives contain unexpected overlap.
+type MarkerBatchProgress struct {
+	Total    int
+	Done     int
+	Batch    int
+	Mode     string
+	Duration time.Duration
+}
+
 // InsertMarkersBulk inserts markers in batches using multi-row VALUES.
 // - Portable: only standard SQL and database/sql, no vendor extensions.
 // - Fast: far fewer statements, WAL and B-Tree updates coalesce better.
@@ -982,18 +993,26 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 //   - "A little copying is better than a little dependency" — we build SQL by hand.
 //   - "Don't communicate by sharing memory; share memory by communicating" — idGenerator via channel.
 //   - "Make the zero value useful" — batch<=0 falls back to 500.
-func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType string, batch int) error {
+func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) error {
 	if len(markers) == 0 {
 		return nil
 	}
+
 	if batch <= 0 {
 		batch = 500
 	}
 
 	driver := normalizeDBType(dbType)
 
-	var exec sqlExecutor
+	var (
+		exec  sqlExecutor
+		txn   *sql.Tx
+		total = len(markers)
+		done  int
+	)
+
 	if tx != nil {
+		txn = tx
 		exec = tx
 	} else {
 		exec = db.DB
@@ -1008,11 +1027,38 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 
 	i := 0
 	for i < len(markers) {
+		chunkExec := exec
+		var chunkTx *sql.Tx
+
+		if driver == "duckdb" && txn == nil {
+			// DuckDB can stream faster when inserts share a transaction, but some deployments
+			// disallow SAVEPOINT. To keep compatibility we wrap each chunk in its own
+			// transaction so conflicts can roll back cleanly without aborting the outer loop.
+			started, err := db.DB.Begin()
+			if err != nil {
+				return fmt.Errorf("begin duckdb chunk tx: %w", err)
+			}
+			chunkTx = started
+			chunkExec = started
+		}
+
 		end := i + batch
 		if end > len(markers) {
 			end = len(markers)
 		}
 		chunk := markers[i:end]
+
+		if driver == "duckdb" {
+			// DuckDB raises an error when multiple rows inside the same INSERT collide on the
+			// UNIQUE constraint, even with ON CONFLICT. Deduplicating the batch keeps imports
+			// streaming while avoiding driver-specific behaviour that would otherwise abort the
+			// statement. This follows "Clear is better than clever" by making conflict handling
+			// explicit before hitting the database.
+			chunk = deduplicateMarkers(chunk)
+		}
+
+		chunkStart := time.Now()
+		mode := "bulk"
 
 		var sb strings.Builder
 		args := make([]interface{}, 0, len(chunk)*14) // 14 covers SQLite/Chai worst-case with id
@@ -1134,26 +1180,105 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			i = end
 			continue
 		}
-		if _, err := exec.Exec(sb.String(), args...); err != nil {
-			// DuckDB may surface duplicates even with ON CONFLICT because older releases
-			// treat constraint violations as fatal during multi-row VALUES. To keep imports
-			// flowing we retry row-by-row and ignore the offending duplicates instead of
-			// aborting the entire batch. This mirrors "Don't panic" while keeping the code
-			// portable across engines.
+		if _, err := chunkExec.Exec(sb.String(), args...); err != nil {
+			// DuckDB may surface duplicates even with ON CONFLICT because older releases treat
+			// constraint violations as fatal during multi-row VALUES. To keep imports flowing we
+			// retry row-by-row and ignore the offending duplicates instead of aborting the entire
+			// batch. This mirrors "Don't panic" while keeping the code portable across engines.
 			if driver == "duckdb" && duckDBIsConflict(err) {
+				mode = "fallback"
+				if chunkTx != nil {
+					_ = chunkTx.Rollback()
+					chunkTx = nil
+				}
+				fallbackTx, txErr := db.DB.Begin()
+				if txErr != nil {
+					return fmt.Errorf("duckdb fallback begin: %w", txErr)
+				}
+				chunkExec = fallbackTx
 				for _, marker := range chunk {
-					if saveErr := db.SaveMarkerAtomic(exec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
+					if saveErr := db.SaveMarkerAtomic(chunkExec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
+						_ = fallbackTx.Rollback()
 						return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
 					}
 				}
+				if err := fallbackTx.Commit(); err != nil {
+					return fmt.Errorf("duckdb fallback commit: %w", err)
+				}
+				done += len(chunk)
 				i = end
+				if progress != nil {
+					select {
+					case progress <- MarkerBatchProgress{Total: total, Done: done, Batch: len(chunk), Mode: mode, Duration: time.Since(chunkStart)}:
+					default:
+					}
+				}
 				continue
 			}
+			if chunkTx != nil {
+				_ = chunkTx.Rollback()
+			}
 			return fmt.Errorf("bulk exec: %w", err)
+		}
+
+		if chunkTx != nil {
+			if err := chunkTx.Commit(); err != nil {
+				return fmt.Errorf("duckdb chunk commit: %w", err)
+			}
+		}
+		done += len(chunk)
+		if progress != nil {
+			select {
+			case progress <- MarkerBatchProgress{Total: total, Done: done, Batch: len(chunk), Mode: mode, Duration: time.Since(chunkStart)}:
+			default:
+			}
 		}
 		i = end
 	}
 	return nil
+}
+
+// deduplicateMarkers collapses markers that would collide on the UNIQUE constraint so DuckDB
+// never needs to resolve duplicate rows inside the same INSERT statement. This keeps imports
+// streaming without surfacing driver-specific errors when archives contain repeated points.
+func deduplicateMarkers(markers []Marker) []Marker {
+	if len(markers) < 2 {
+		return markers
+	}
+
+	type key struct {
+		doseRate  float64
+		date      int64
+		lon       float64
+		lat       float64
+		countRate float64
+		zoom      int
+		speed     float64
+		trackID   string
+	}
+
+	seen := make(map[key]struct{}, len(markers))
+	unique := make([]Marker, 0, len(markers))
+
+	for _, m := range markers {
+		k := key{
+			doseRate:  m.DoseRate,
+			date:      m.Date,
+			lon:       m.Lon,
+			lat:       m.Lat,
+			countRate: m.CountRate,
+			zoom:      m.Zoom,
+			speed:     m.Speed,
+			trackID:   m.TrackID,
+		}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		unique = append(unique, m)
+	}
+
+	return unique
 }
 
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
@@ -1288,7 +1413,13 @@ func duckDBIsConflict(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "constraint error")
+	if strings.Contains(msg, "duplicate key") || strings.Contains(msg, "constraint error") {
+		return true
+	}
+
+	// DuckDB reports intra-statement collisions with a dedicated error string when
+	// multiple rows try to update the same target during ON CONFLICT handling.
+	return strings.Contains(msg, "update the same row twice")
 }
 
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
