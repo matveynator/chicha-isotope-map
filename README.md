@@ -1,33 +1,28 @@
-
 [![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
-
 <img width="30%" align="left" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/39bfa7b1-03fb-43dd-89bd-8d6c516fd4db" />
-  
-- [🇬🇧 English](/README.md)  
-- [🇫🇷 Français](/doc/README_FR.md)  
-- [🇯🇵 日本語](/doc/README_JP.md)  
-- [🇷🇺 Русский](/doc/README_RU.md)  
 
-# ☢️ World Radiation Map.
-Example can be found at [https://pelora.org/](https://pelora.org/)
+- [🇬🇧 English](/README.md)
+- [🇫🇷 Français](/doc/README_FR.md)
+- [🇯🇵 日本語](/doc/README_JP.md)
+- [🇷🇺 Русский](/doc/README_RU.md)
 
-
----
-
-The **DeepWiki** page for *Chicha Isotope Map* was kindly created by [Rob Ouden](https://github.com/robouden) from the **Safecast** project, to whom we are deeply grateful.  This page opens the inner structure of our program, so that developers may understand its foundations, follow its logic, and continue the work by improving and extending it.  Thanks to DeepWiki, the code is not just a tool, but a living project that can grow and evolve with the help of many hands.  
+# ☢️ World Radiation Map
+Live demo: [https://pelora.org/](https://pelora.org/) — your own node looks the same.
 
 👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
 
 ---
 
+### 📸 Example view
+<a href="https://pelora.org" target="_blank"><img width="800" alt="pelora.org chicha-isotope-map example" src="https://github.com/user-attachments/assets/be706959-a2d5-4949-9378-811f4022aa98" /></a>
 
-## 🚀 Install & run your own node in 2 commands
+---
 
-No fluff. The image ships with the database (PostgreSQL) built in. Copy the command, run it — you’re done.
+## 🚀 Run with Docker (fastest)
+Both commands ship with the built-in PostgreSQL database. Copy, paste, done.
 
 #### 🔥 Local (port 8765)
-
 ```bash
 docker run -d \
   --name chicha-isotope-map \
@@ -40,11 +35,9 @@ docker run -d \
   --restart unless-stopped \
   matveynator/chicha-isotope-map:latest
 ```
-
 Open: [http://localhost:8765](http://localhost:8765)
 
-#### 🔥 Public node with HTTPS on your own domain
-
+#### 🔥 Public node with HTTPS
 ```bash
 docker run -d \
   --name chicha-isotope-map \
@@ -58,47 +51,17 @@ docker run -d \
   --restart unless-stopped \
   matveynator/chicha-isotope-map:latest
 ```
+After Let’s Encrypt finishes: [https://example.org](https://example.org)
 
-Once the certificate is issued, go to: [https://example.org](https://example.org)
-
----
-
-### ⚙️ Configure via environment variables (just what you need)
-
-* `DOMAIN` — enables HTTPS on ports 80/443 with automatic Let’s Encrypt certificates (for a public node).
-* `DEFAULT_LAT`, `DEFAULT_LON` — initial map coordinates.
-* `DEFAULT_ZOOM` — initial zoom (11 is a convenient city level).
-* `DEFAULT_LAYER` — `OpenStreetMap` or `Google Satellite`.
-* `PORT` — app’s internal port (defaults to 8765; you usually don’t change this).
-
-> Tip: keep your data on the volume `-v chicha-data:/var/lib/postgresql/data` so it survives container updates.
+**Env vars:**
+`DOMAIN` for HTTPS, `DEFAULT_LAT` / `DEFAULT_LON` / `DEFAULT_ZOOM` / `DEFAULT_LAYER` for the opening map view, `PORT` for the internal listener. Keep data on `-v chicha-data:/var/lib/postgresql/data` so container upgrades do not wipe history.
 
 ---
 
-### 💾 Backup & restore (simple)
-
-**Daily backup (03:00):**
-
-```bash
-0 3 * * * docker exec chicha-isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz
-```
-
-**Restore from archive:**
-
-```bash
-docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
-
-zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotope-map psql -U chicha_isotope_map chicha_isotope_map
-```
-
----
-
-## ⬇️ Download prebuilt apps (no Docker)
-
-Grab the binary for your OS, make it executable, and run.
+## ⬇️ Download a binary (no Docker)
+Grab the build for your OS, make it executable, run it.
 
 **Linux x64**
-
 ```bash
 sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 \
   -o /usr/local/bin/chicha-isotope-map \
@@ -106,10 +69,7 @@ sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download
   && chicha-isotope-map
 ```
 
-> DuckDB builds are compiled on Debian 11 (glibc 2.31) so they keep running on older distros without needing newer system libc versions.
-
-**macOS Intel (x86\_64)**
-
+**macOS Intel (x86_64)**
 ```bash
 sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 \
   -o /usr/local/bin/chicha-isotope-map \
@@ -118,7 +78,6 @@ sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download
 ```
 
 **macOS Apple Silicon (arm64)**
-
 ```bash
 sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 \
   -o /usr/local/bin/chicha-isotope-map \
@@ -126,229 +85,54 @@ sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download
   && chicha-isotope-map
 ```
 
-Other platforms (Windows / ARM / BSD) — see the releases page:
-[https://github.com/matveynator/chicha-isotope-map/releases/tag/latest](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)
+Other platforms (Windows / ARM / BSD): [latest release](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest).
 
 ---
 
-## 🖥 Running the binary (no Docker): flags & examples
+## 🖥 Running the binary
+Minimal flags for a clean start:
+- `-domain maps.example.org` — enable HTTPS on 80/443 (Let’s Encrypt).
+- `-port 8765` — HTTP port when running locally.
+- `-default-lat` / `-default-lon` / `-default-zoom` / `-default-layer` — initial map view.
+- Storage: `-db-type sqlite|duckdb|pgx|chai|clickhouse`, `-db-path` for file databases, or `-db-conn` for network drivers.
+- Utility: `-version` prints version.
 
-If you’re launching the `chicha-isotope-map` binary directly, here’s what matters. First the essentials; more options below.
+DuckDB builds require `CGO_ENABLED=1 go build -tags duckdb` and then `./chicha-isotope-map -db-type duckdb`.
 
-### Essentials
+---
 
-* `-domain string` — enables HTTPS and binds to ports 80 and 443 with automatic Let’s Encrypt certificates. Your domain must point to your server, and ports 80/443 must be open.
+## 📥 Import data
+- Supported uploads: `.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, bGeigie Nano/Zen `$BNRDD` logs (`.log` / `.txt`), AtomFast, RadiaCode, Safecast and similar exports.
+- Web UI: open your node → click **Upload** → pick files → the newest imported track opens automatically.
+- API: `curl -F 'files[]=@/path/to/file.log' http://localhost:8765/upload` (diagnostics: `/upload_diag`).
+- Latest markers near a point: `/api/latest?lat=...&lon=...&radius_m=1500&limit=20` streams fresh readings.
 
-  * Example: `sudo chicha-isotope-map -domain maps.example.org -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11 -default-layer "OpenStreetMap"`
+---
 
-* `-port int` — HTTP server port (defaults to 8765). Handy for local runs without a domain.
+## 📤 Export data
+- **Per track:** download `/api/track/{trackID}.json` (legacy `.cim` works). Optional `from`/`to` narrow marker IDs. Browsers save it as `{trackID}.json`.
+- **Bulk archive:** fetch `/api/json/weekly.tgz` (or `/daily.tgz`, `/monthly.tgz`, `/yearly.tgz` if configured). The bundle contains one JSON file per track.
+- **JSON schema:**
+  - Top-level: `trackID`, `trackIndex` (1-based position), `apiURL`, `firstID`, `lastID`, `markerCount`, `disclaimers`, `markers`.
+  - Each marker: `id`, `timeUnix`, `timeUTC` (RFC3339), `lat`, `lon`, optional `altitudeM`, `temperatureC`, `humidityPercent`, derived speeds (`speedMS`, `speedKMH`), dose rates (`doseRateMicroSvH`, `doseRateMicroRh`), `countRateCPS`, and optional detector info (`detectorType`, `detectorName`, `radiationTypes`).
+  - We keep `disclaimers` in multiple languages inside every export.
+- **Coming next:** the same JSON will likely embed per-point spectrometric data once we start recording it, so archives remain forward-compatible.
 
-  * Example: `chicha-isotope-map -port 8765`
+---
 
-* `-default-lat float` & `-default-lon float` — initial map latitude and longitude.
-
-  * Example: `-default-lat 44.08832 -default-lon 42.97577`
-
-* `-default-zoom int` — initial zoom level (city is usually 11–13).
-
-  * Example: `-default-zoom 11`
-
-* `-default-layer string` — base layer: `OpenStreetMap` or `Google Satellite`.
-
-  * Example: `-default-layer "Google Satellite"`
-
-### Storage (if you need it)
-
-* `-db-type string` — DB driver: `duckdb`, `chai`, `sqlite`, `pgx` (PostgreSQL). Default is `sqlite`.
-
-* `-db-path string` — DB file path for `duckdb`/`chai`/`sqlite` (defaults to current directory if not set).
-
-  * Example: `-db-type sqlite -db-path /var/lib/chicha/chicha.sqlite`
-
-* `-db-conn string` — single connection URI for network databases (`pgx`/PostgreSQL or `clickhouse`).
-
-  * PostgreSQL example: `-db-type pgx -db-conn postgres://postgres@127.0.0.1:5432/chicha_isotope_map?sslmode=require`
-
-  * ClickHouse example: `-db-type clickhouse -db-conn clickhouse://default@127.0.0.1:9000/IsotopePathways?secure=true`
-
-### Utility
-
-* `-version` — print version and exit.
-
-### Quick examples
-
-* **Local, no HTTPS:**
-
+## 💾 Backup & restore
+- **Daily backup (03:00):** `0 3 * * * docker exec chicha-isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz`
+- **Restore:**
   ```bash
-  chicha-isotope-map \
-    -port 8765 \
-    -default-lat 44.08832 -default-lon 42.97577 \
-    -default-zoom 11 \
-    -default-layer "OpenStreetMap"
-  ```
-
-* **Public server with HTTPS on 80/443:**
-
-  ```bash
-  sudo chicha-isotope-map \
-    -domain maps.example.org \
-    -default-lat 44.08832 -default-lon 42.97577 \
-    -default-zoom 11 \
-    -default-layer "OpenStreetMap"
-  ```
-
-* **Single‑file storage (SQLite):**
-
-  ```bash
-  chicha-isotope-map \
-    -db-type sqlite -db-path /var/lib/chicha-isotope-map.sqlite \
-    -port 8765 \
-    -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11
-  ```
-
-* **Connect to PostgreSQL:**
-
-  ```bash
-  chicha-isotope-map \
-    -db-type pgx \
-    -db-conn postgres://postgres:secret@127.0.0.1:5432/chicha_isotope_map?sslmode=verify-full \
-    -default-lat 44.08832 -default-lon 42.97577 -default-zoom 11
+  docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
+  zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotope-map psql -U chicha_isotope_map chicha_isotope_map
   ```
 
 ---
 
-## DuckDB
+## 🤝 Why host your own node?
+- Your community, your measurements, your history.
+- Local baseline of natural background (roughly 0.8–4 µR/h) stays with you.
+- More nodes → more transparency and resilience for everyone.
 
-DuckDB is an embedded database: one file, no server, written in C++.
-The Go driver depends on **CGO** and **shared libraries**, so we build it with:
-
-```bash
-CGO_ENABLED=1 go build -tags duckdb
-```
-
-Run with:
-
-```bash
-./chicha-isotope-map -db-type duckdb
-```
-
-*(On macOS you may simply download the [prebuilt releases](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest))*
-
-
----
-
-## 🤝 Why run your own node?
-
-* **Simple:** your community, your map.
-* **Useful:** a local history of background levels for your city/area/facility — and it’s yours to keep.
-* **Good for the network:** more nodes → more transparency and resilience.
-
----
-
-Chicha‑Isotope‑Map isn’t just software — it’s a window into a world of microparticles, invisible to the eye but obvious to an instrument. What used to be guesswork is now drawn as bright dots on a map, from calm greens to alarming reds.
-
-* **What does it read, and from where?**
-
-  * Files in `.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx` formats (AtomFast, RadiaCode, Safecast and others).
-  * bGeigie Nano/Zen `$BNRDD` logs in `.log` / `.txt` (Safecast).
-  * Everything is saved to its own database so that years later you can say, “On March 12, 2008, this spot measured 4.1 µR/h.”
-
-* **What’s our baseline?**
-
-  * Natural background radiation in a “clean” area is about 0.8–4 µR/h.
-  * Anything above that is anthropogenic contamination. You’ll see how isotopes were scattered by wind, traffic, and people — like footprints on fresh snow.
-
----
-
-## ⬆️ Uploading bGeigie Nano/Zen logs
-
-Chicha‑Isotope‑Map can ingest bGeigie Nano/Zen track logs that contain `$BNRDD` sentences.
-
-### From the web UI
-
-1. Open your node (for local runs: `http://localhost:8765`).
-2. Click the “Upload” button in the top‑right corner.
-3. Select one or more `.log` / `.txt` files exported from your bGeigie Nano/Zen.
-4. Wait until processing finishes — you’ll be automatically redirected to the uploaded track view.
-
-Notes
-
-- Multiple files can be uploaded at once; the last successful track will open automatically.
-- The parser supports Zen ISO‑8601 timestamps and DMM coordinates with hemispheres, as well as a legacy compact variant.
-
-### API: upload endpoint
-
-POST `/upload` with multipart form field `files[]` for each file. Example using curl:
-
-```bash
-curl -s -F 'files[]=@/path/to/your_bgeigie.log' \
-     -F 'files[]=@/path/to/another.log' \
-     http://localhost:8765/upload
-# → {"status":"success","trackURL":"/trackid/ABC123?minLat=..."}
-```
-
-The UI does the same under the hood (see `public_html/map.html`).
-
-### API: diagnostics for bGeigie ($BNRDD)
-
-If you need quick per‑file parsing stats (records/parsed/skipped and sample reasons), use:
-
-```bash
-curl -s -F 'files[]=@/path/to/your_bgeigie.log' \
-     http://localhost:8765/upload_diag | jq .
-```
-
-This endpoint does not change the regular `/upload` behavior; it just returns JSON with bounds, detected format, and parsing statistics for each file.
-
-### API: latest measurements near a location
-
-The `/api/latest` endpoint streams the freshest markers around a coordinate window. Provide decimal degrees for latitude and longitude, a radius in metres, and (optionally) a limit:
-
-```bash
-curl -s "http://localhost:8765/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=20" | jq '.returned'
-```
-
-For another quick check, compare Tokyo to Chernobyl by adjusting the coordinates:
-
-```bash
-curl -s "http://localhost:8765/api/latest?lat=51.3890&lon=30.0990&radius_m=2200&limit=15" | jq '.markers[0]' | jq '{timeUTC, doseRateMicroSvH}'
-```
-
-Parameters:
-
-- `lat`, `lon` — decimal degrees (`-90…90`, `-180…180`).
-- `radius_m` — search radius in metres (defaults to 1500; clamps to 25–50000).
-- `limit` — number of markers to return (defaults to 25; up to 200).
-
----
-
-### 📸 **Screenshots**
-
-... Back in the Soviet era, an open‑air pool was being built in Kislovodsk Park. They may have used concrete from a plant in Pyatigorsk that once processed radioactive ore from Mount Beshtau. Trucks drove along the road; dust from their wheels settled on the asphalt, leaving invisible marks. Years have passed, yet those traces still glow — memories of what once was. Dust that blew around the construction site settled in the park; on the map it shows up yellow, like patches of autumn leaves. The rest of the park is clean, calm, and green. <img src="https://repository-images.githubusercontent.com/870016860/11fd6abc-fe8b-4cd8-95c2-df1c631c8762">
-
----
-
-### 📣 How to announce your node to the community
-
-1. Bring up a node on a domain with HTTPS (`-e DOMAIN=...` + expose `80` and `443`).
-2. Add a screenshot and a brief blurb (city, area, what your measurements cover).
-3. Leave a note in the project repository’s Issues.
-
----
-
-The *Chicha Isotope Map* was created for the **Dmitry Ignatenko Radiation Research Lab**, and finds its inspiration in **Safecast** — the remarkable Japanese community of citizen-scientists who transformed the tragedy of Fukushima into a gift of scientific knowledge.
-
-By searching, measuring, and openly sharing the truth about radiation, you make the invisible visible. In doing so, you help the world avoid repeating the painful lessons of Chernobyl and Fukushima.
-
-Your work is a light — of science, of safety, and of hope. Thank you for turning background radiation from something feared into something understood.
-
-Thank you for your courage: for seeking, measuring, sharing, and — above all — for being the first to step forward.
-
-We also extend our heartfelt gratitude to the **AtomFast** and **Radiacode** communities for their invaluable contributions — for measuring, and for generously sharing their data with the world.
-
-
-
-
-
-
-
+Chicha‑Isotope‑Map was built for the **Dmitry Ignatenko Radiation Research Lab** and inspired by **Safecast**. Thank you to the AtomFast and Radiacode communities for openly sharing their data.

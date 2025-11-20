@@ -1,4 +1,4 @@
-[![最新の安定版リリースビルド](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
+[![最新の安定版](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
 <img width="30%" align="left" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/39bfa7b1-03fb-43dd-89bd-8d6c516fd4db" />
 
@@ -7,32 +7,22 @@
 * [🇯🇵 日本語](/doc/README_JP.md)
 * [🇷🇺 Русский](/doc/README_RU.md)
 
-# 世界の放射線マップ ☢️
-
-ライブデモ <a href="https://pelora.org" target="_blank">https://pelora.org</a>
-
----
-
-### 📸 **ライブデモ**
-
-<a href="https://pelora.org" target="_blank"><img width="800"  alt="pelora.org chicha-isotope-map example demo" src="https://github.com/user-attachments/assets/be706959-a2d5-4949-9378-811f4022aa98" /></a>
-
----
-
-**Chicha Isotope Map** の **DeepWiki** ページは、**Safecast** プロジェクトの [Rob Ouden](https://github.com/robouden) 氏により作成されました。心から感謝いたします。
-このページではソフトウェアの内部構造が丁寧に解説されており、開発者が基盤を理解し、論理を追い、改善や拡張を続けられるようになっています。
-DeepWiki のおかげで、コードは単なる道具ではなく、多くの人の手で成長し進化していく「生きたプロジェクト」となりました。
+# ☢️ 放射線マップ
+デモ: [https://pelora.org/](https://pelora.org/) — 自分のノードも同じ見た目です。
 
 👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
 
 ---
 
-## 🚀 自分のノードを 2 コマンドで立ち上げる
+### 📸 サンプル
+<a href="https://pelora.org" target="_blank"><img width="800" alt="pelora.org chicha-isotope-map" src="https://github.com/user-attachments/assets/be706959-a2d5-4949-9378-811f4022aa98" /></a>
 
-余計な作業は不要です。イメージにはデータベース（PostgreSQL）が同梱されています。コマンドをコピーして実行すれば完了です。
+---
 
-#### 🔥 ローカル（ポート 8765）
+## 🚀 Docker で即起動
+PostgreSQL 同梱。コピーして実行するだけ。
 
+#### 🔥 ローカル (ポート 8765)
 ```bash
 docker run -d \
   --name chicha-isotope-map \
@@ -45,11 +35,9 @@ docker run -d \
   --restart unless-stopped \
   matveynator/chicha-isotope-map:latest
 ```
-
 開く: [http://localhost:8765](http://localhost:8765)
 
-#### 🔥 独自ドメインで HTTPS 公開ノード
-
+#### 🔥 独自ドメインで HTTPS
 ```bash
 docker run -d \
   --name chicha-isotope-map \
@@ -63,37 +51,86 @@ docker run -d \
   --restart unless-stopped \
   matveynator/chicha-isotope-map:latest
 ```
+Let’s Encrypt 完了後: [https://example.org](https://example.org)
 
-証明書が発行されたらアクセス: [https://example.org](https://example.org)
-
----
-
-## DuckDB
-
-DuckDB は組み込みデータベースです。1 ファイル、サーバ不要、C++ で実装されています。
-Go ドライバは **CGO** と **共有ライブラリ** に依存しているため、次のようにビルドします：
-
-```bash
-CGO_ENABLED=1 go build -tags duckdb
-```
-
-実行例:
-
-```bash
-./chicha-isotope-map -db-type duckdb
-```
-
-※ macOS では単に [ビルド済みリリース](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest) をダウンロードして使うこともできます。
+**環境変数:** `DOMAIN`(HTTPS), `DEFAULT_LAT` / `DEFAULT_LON` / `DEFAULT_ZOOM` / `DEFAULT_LAYER`(初期表示), `PORT`(内部ポート)。データは `-v chicha-data:/var/lib/postgresql/data` に置き、アップデートで消えないようにします。
 
 ---
 
-Chicha-Isotope-Map は単なるソフトウェアではなく、目には見えない微粒子の世界を映し出す窓です。
-かつては推測にすぎなかったものが、今は地図上の点として描かれます。落ち着いた緑から警告の赤へ ― 背景放射の物語が色彩となって現れるのです。
+## ⬇️ バイナリを直接入手
+ダウンロード→実行権限付与→起動。
 
-このプロジェクトは **Dmitry Ignatenko 放射線研究所** によって作られ、そして **Safecast** ― 福島の悲劇を科学的知識の贈り物に変えた日本の市民科学者コミュニティ ― から大きな着想を得ています。
+**Linux x64**
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
+```
 
-見えないものを測り、記録し、分かち合うことで、チェルノブイリや福島の苦い教訓を繰り返さない。
-その行為自体が「科学の光」「安全の光」「希望の光」となります。
+**macOS Intel (x86_64)**
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
+```
 
-放射線を「恐れるもの」から「理解できるもの」へと変えてくれて、本当にありがとうございます。
+**macOS Apple Silicon (arm64)**
+```bash
+sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 \
+  -o /usr/local/bin/chicha-isotope-map \
+  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
+  && chicha-isotope-map
+```
 
+その他 (Windows / ARM / BSD): [最新リリース](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest)。
+
+---
+
+## 🖥 バイナリの主なフラグ
+- `-domain maps.example.org` — 80/443 で HTTPS (Let’s Encrypt)。
+- `-port 8765` — ローカル実行用ポート。
+- `-default-lat` / `-default-lon` / `-default-zoom` / `-default-layer` — 初期表示設定。
+- ストレージ: `-db-type sqlite|duckdb|pgx|chai|clickhouse`, `-db-path`(ファイルDB), `-db-conn`(ネットワークDB)。
+- ユーティリティ: `-version` でバージョン表示。
+
+DuckDB: `CGO_ENABLED=1 go build -tags duckdb` の後 `./chicha-isotope-map -db-type duckdb`。
+
+---
+
+## 📥 インポート
+- 対応: `.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, bGeigie Nano/Zen `$BNRDD` ログ (`.log` / `.txt`), AtomFast / RadiaCode / Safecast 等。
+- Web: ノードを開く → **Upload** → ファイル選択 → 直近の取り込みトラックが自動表示。
+- API: `curl -F 'files[]=@/path/to/file.log' http://localhost:8765/upload`（診断 `/upload_diag`）。
+- 近傍の最新測定: `/api/latest?lat=...&lon=...&radius_m=1500&limit=20`。
+
+---
+
+## 📤 エクスポート
+- **トラック単位:** `/api/track/{trackID}.json`（古い `.cim` も可）。`from`/`to` で ID 範囲を絞れます。
+- **まとめアーカイブ:** `/api/json/weekly.tgz`（設定により `/daily.tgz` `/monthly.tgz` `/yearly.tgz` も）。各トラックが1つの JSON に入ります。
+- **JSON スキーマ:**
+  - ルート: `trackID`, `trackIndex`(1始まり), `apiURL`, `firstID`, `lastID`, `markerCount`, `disclaimers`, `markers`。
+  - マーカー: `id`, `timeUnix`, `timeUTC`(RFC3339), `lat`, `lon`, 任意 `altitudeM`, `temperatureC`, `humidityPercent`, 速度 (`speedMS`, `speedKMH`), 線量 (`doseRateMicroSvH`, `doseRateMicroRh`), `countRateCPS`, 必要に応じ `detectorType`, `detectorName`, `radiationTypes`。
+  - `disclaimers` には多言語の注意書きを同梱。
+- **今後:** 各ポイントのスペクトルデータも同じ JSON に追加する予定です。
+
+---
+
+## 💾 バックアップ / 復元
+- **毎日 03:00:** `0 3 * * * docker exec chicha-isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz`
+- **復元:**
+  ```bash
+  docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
+  zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotope-map psql -U chicha_isotope_map chicha_isotope_map
+  ```
+
+---
+
+## 🤝 自前ノードを立てる理由
+- コミュニティの測定と履歴を自分で管理。
+- 自然バックグラウンド（おおむね 0.8–4 µR/h）の変化を把握。
+- ノードが増えるほど透明性とレジリエンスが高まります。
+
+Chicha‑Isotope‑Map は **Dmitry Ignatenko Radiation Research Lab** のために作られ、**Safecast** に着想を得ています。AtomFast と Radiacode のコミュニティにも感謝します。
