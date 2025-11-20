@@ -3307,15 +3307,6 @@ func processAndStoreMarkers(
 			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
-	} else if strings.EqualFold(dbType, "duckdb") {
-		// DuckDB performs best with transactional batches, but some environments disable
-		// SAVEPOINT. InsertMarkersBulk now wraps each chunk in its own transaction so duplicate
-		// fallbacks remain isolated while retaining the throughput benefits of bulk inserts.
-		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000, progressCh); err != nil {
-			close(progressCh)
-			<-progressDone
-			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
-		}
 	} else {
 		tx, err := db.DB.Begin()
 		if err != nil {
@@ -3323,7 +3314,8 @@ func processAndStoreMarkers(
 			<-progressDone
 			return bbox, trackID, err
 		}
-		// Batch size 500–1000 usually gives a good balance on large B-Trees.
+		// Batch size 500–1000 usually gives a good balance on large B-Trees and keeps DuckDB in
+		// a single transaction so inserts do not pay per-chunk commit costs.
 		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000, progressCh); err != nil {
 			_ = tx.Rollback()
 			close(progressCh)

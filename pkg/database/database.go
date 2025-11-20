@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 	"net/url"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -191,6 +192,11 @@ func NewDatabase(config Config) (*Database, error) {
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 		db.SetConnMaxLifetime(0)
+		tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := tuneDuckDBConnection(tuneCtx, db, log.Printf); err != nil {
+			log.Printf("duckdb tuning skipped: %v", err)
+		}
+		cancel()
 	case "clickhouse":
 		// ClickHouse benefits from a few parallel connections while remaining lightweight.
 		db.SetMaxOpenConns(8)
@@ -284,6 +290,63 @@ func tuneSQLiteLikeConnection(ctx context.Context, db *sql.DB, logf func(string,
 				return
 			}
 			logf("SQLite tuning %s applied", step.label)
+		}
+		errs <- nil
+	}()
+
+	go func() {
+		defer close(jobs)
+		for _, step := range steps {
+			jobs <- step
+		}
+	}()
+
+	if err := <-errs; err != nil {
+		return err
+	}
+	return nil
+}
+
+// tuneDuckDBConnection applies light-weight pragmas that keep imports CPU-bound rather than
+// pausing on checkpoints. We keep the steps portable by driving them through channels so the
+// caller remains responsive, and we only touch settings DuckDB documents as safe at runtime.
+func tuneDuckDBConnection(ctx context.Context, db *sql.DB, logf func(string, ...any)) error {
+	// Use available CPUs for vectorised operations; defaults can be conservative inside containers.
+	threads := runtime.NumCPU()
+	if threads < 1 {
+		threads = 1
+	}
+
+	type pragma struct {
+		label string
+		query string
+	}
+
+	steps := []pragma{
+		{label: "threads", query: fmt.Sprintf("PRAGMA threads=%d;", threads)},
+		// DuckDB checkpoints can stall long-running imports. Raising the threshold lets the bulk
+		// transaction flush once at commit time instead of pausing mid-stream.
+		{label: "checkpoint_threshold", query: "PRAGMA checkpoint_threshold='1GB';"},
+	}
+
+	jobs := make(chan pragma)
+	errs := make(chan error, 1)
+
+	go func() {
+		defer close(errs)
+		for step := range jobs {
+			select {
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			default:
+			}
+
+			if _, err := db.ExecContext(ctx, step.query); err != nil {
+				errs <- fmt.Errorf("apply %s: %w", step.label, err)
+				return
+			}
+			logf("DuckDB tuning %s applied", step.label)
 		}
 		errs <- nil
 	}()
@@ -993,7 +1056,9 @@ type MarkerBatchProgress struct {
 //   - "A little copying is better than a little dependency" — we build SQL by hand.
 //   - "Don't communicate by sharing memory; share memory by communicating" — idGenerator via channel.
 //   - "Make the zero value useful" — batch<=0 falls back to 500.
-func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) error {
+//   - "The bigger the interface, the weaker the abstraction" — DuckDB wraps in one transaction instead of
+//     leaking SAVEPOINT assumptions per chunk.
+func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) (err error) {
 	if len(markers) == 0 {
 		return nil
 	}
@@ -1004,11 +1069,22 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 
 	driver := normalizeDBType(dbType)
 
+	if driver == "duckdb" {
+		// DuckDB's parameter binding grows slower with huge argument lists. Smaller batches and
+		// pre-deduplication keep each statement tight while still streaming through the file
+		// quickly.
+		markers = deduplicateMarkers(markers)
+		if batch > 256 {
+			batch = 256
+		}
+	}
+
 	var (
-		exec  sqlExecutor
-		txn   *sql.Tx
-		total = len(markers)
-		done  int
+		exec   sqlExecutor
+		txn    *sql.Tx
+		autoTx *sql.Tx
+		total  = len(markers)
+		done   int
 	)
 
 	if tx != nil {
@@ -1017,6 +1093,32 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	} else {
 		exec = db.DB
 	}
+
+	if driver == "duckdb" && txn == nil {
+		// DuckDB spends significant time creating and committing tiny transactions when imports
+		// run chunk-by-chunk. Starting a single transaction up front keeps checkpoints rare and
+		// removes per-chunk overhead without relying on SAVEPOINT support.
+		started, beginErr := db.DB.Begin()
+		if beginErr != nil {
+			return fmt.Errorf("begin duckdb bulk tx: %w", beginErr)
+		}
+		txn = started
+		exec = started
+		autoTx = started
+	}
+
+	defer func() {
+		if autoTx == nil {
+			return
+		}
+		if err != nil {
+			_ = autoTx.Rollback()
+			return
+		}
+		if commitErr := autoTx.Commit(); commitErr != nil {
+			err = fmt.Errorf("commit duckdb bulk tx: %w", commitErr)
+		}
+	}()
 
 	ph := func(n int) string {
 		if driver == "pgx" {
@@ -1028,34 +1130,12 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	i := 0
 	for i < len(markers) {
 		chunkExec := exec
-		var chunkTx *sql.Tx
-
-		if driver == "duckdb" && txn == nil {
-			// DuckDB can stream faster when inserts share a transaction, but some deployments
-			// disallow SAVEPOINT. To keep compatibility we wrap each chunk in its own
-			// transaction so conflicts can roll back cleanly without aborting the outer loop.
-			started, err := db.DB.Begin()
-			if err != nil {
-				return fmt.Errorf("begin duckdb chunk tx: %w", err)
-			}
-			chunkTx = started
-			chunkExec = started
-		}
 
 		end := i + batch
 		if end > len(markers) {
 			end = len(markers)
 		}
 		chunk := markers[i:end]
-
-		if driver == "duckdb" {
-			// DuckDB raises an error when multiple rows inside the same INSERT collide on the
-			// UNIQUE constraint, even with ON CONFLICT. Deduplicating the batch keeps imports
-			// streaming while avoiding driver-specific behaviour that would otherwise abort the
-			// statement. This follows "Clear is better than clever" by making conflict handling
-			// explicit before hitting the database.
-			chunk = deduplicateMarkers(chunk)
-		}
 
 		chunkStart := time.Now()
 		mode := "bulk"
@@ -1094,22 +1174,9 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
 
 		case "clickhouse":
-			usable := make([]Marker, 0, len(chunk))
-			for j := range chunk {
-				idx := i + j
-				probe := markers[idx]
-				exists, err := db.markerExistsClickHouse(probe)
-				if err != nil {
-					return fmt.Errorf("clickhouse marker exists check: %w", err)
-				}
-				if exists {
-					continue
-				}
-				if probe.ID == 0 {
-					probe.ID = <-db.idGenerator
-					markers[idx].ID = probe.ID
-				}
-				usable = append(usable, probe)
+			usable, err := db.filterClickHouseNewMarkers(chunk)
+			if err != nil {
+				return fmt.Errorf("clickhouse marker exists check: %w", err)
 			}
 			if len(usable) == 0 {
 				i = end
@@ -1187,23 +1254,10 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			// batch. This mirrors "Don't panic" while keeping the code portable across engines.
 			if driver == "duckdb" && duckDBIsConflict(err) {
 				mode = "fallback"
-				if chunkTx != nil {
-					_ = chunkTx.Rollback()
-					chunkTx = nil
-				}
-				fallbackTx, txErr := db.DB.Begin()
-				if txErr != nil {
-					return fmt.Errorf("duckdb fallback begin: %w", txErr)
-				}
-				chunkExec = fallbackTx
 				for _, marker := range chunk {
 					if saveErr := db.SaveMarkerAtomic(chunkExec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
-						_ = fallbackTx.Rollback()
 						return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
 					}
-				}
-				if err := fallbackTx.Commit(); err != nil {
-					return fmt.Errorf("duckdb fallback commit: %w", err)
 				}
 				done += len(chunk)
 				i = end
@@ -1215,16 +1269,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 				}
 				continue
 			}
-			if chunkTx != nil {
-				_ = chunkTx.Rollback()
-			}
 			return fmt.Errorf("bulk exec: %w", err)
-		}
-
-		if chunkTx != nil {
-			if err := chunkTx.Commit(); err != nil {
-				return fmt.Errorf("duckdb chunk commit: %w", err)
-			}
 		}
 		done += len(chunk)
 		if progress != nil {
@@ -1279,6 +1324,106 @@ func deduplicateMarkers(markers []Marker) []Marker {
 	}
 
 	return unique
+}
+
+// filterClickHouseNewMarkers weeds out duplicates already persisted in ClickHouse using a pool of
+// goroutines. ClickHouse lacks portable ON CONFLICT semantics, so we probe for existing rows in
+// parallel and only return markers that still need insertion. Channels replace mutexes to keep the
+// synchronization simple and follow "Don't communicate by sharing memory; share memory by
+// communicating".
+func (db *Database) filterClickHouseNewMarkers(chunk []Marker) ([]Marker, error) {
+	if len(chunk) == 0 {
+		return nil, nil
+	}
+
+	unique := deduplicateMarkers(chunk)
+	workers := runtime.NumCPU()
+	if workers < 2 {
+		workers = 2
+	}
+	if workers > 8 {
+		workers = 8
+	}
+	if workers > len(unique) {
+		workers = len(unique)
+	}
+
+	type result struct {
+		marker Marker
+		err    error
+		ok     bool
+	}
+
+	jobs := make(chan Marker)
+	out := make(chan result)
+	stop := make(chan struct{})
+	done := make(chan struct{}, workers)
+
+	worker := func() {
+		defer func() { done <- struct{}{} }()
+		for m := range jobs {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+
+			exists, err := db.markerExistsClickHouse(m)
+			if err != nil {
+				select {
+				case out <- result{err: err}:
+				case <-stop:
+				}
+				return
+			}
+			if exists {
+				continue
+			}
+			if m.ID == 0 {
+				m.ID = <-db.idGenerator
+			}
+			select {
+			case out <- result{marker: m, ok: true}:
+			case <-stop:
+				return
+			}
+		}
+	}
+
+	for i := 0; i < workers; i++ {
+		go worker()
+	}
+
+	go func() {
+		defer close(jobs)
+		for _, m := range unique {
+			select {
+			case <-stop:
+				return
+			case jobs <- m:
+			}
+		}
+	}()
+
+	go func() {
+		for i := 0; i < workers; i++ {
+			<-done
+		}
+		close(out)
+	}()
+
+	usable := make([]Marker, 0, len(unique))
+	for res := range out {
+		if res.err != nil {
+			close(stop)
+			return nil, res.err
+		}
+		if res.ok {
+			usable = append(usable, res.marker)
+		}
+	}
+
+	return usable, nil
 }
 
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
