@@ -36,6 +36,14 @@ func SetRealtimeConverter(fn func(float64, string) (float64, bool)) {
 	realtimeConverter = fn
 }
 
+// normalizeDBType trims and lowercases driver names so downstream switch blocks
+// do not miss DuckDB-specific handling just because a caller passed mixed case
+// or incidental whitespace. Centralising the cleanup keeps the checks honest
+// without sprinkling strings.ToLower everywhere.
+func normalizeDBType(dbType string) string {
+	return strings.ToLower(strings.TrimSpace(dbType))
+}
+
 // startIDGenerator launches a goroutine for generating unique IDs.
 func startIDGenerator(initialID int64) chan int64 {
 	idChannel := make(chan int64)
@@ -982,6 +990,8 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 		batch = 500
 	}
 
+	driver := normalizeDBType(dbType)
+
 	var exec sqlExecutor
 	if tx != nil {
 		exec = tx
@@ -990,7 +1000,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	}
 
 	ph := func(n int) string {
-		if strings.EqualFold(dbType, "pgx") {
+		if driver == "pgx" {
 			return fmt.Sprintf("$%d", n)
 		}
 		return "?"
@@ -1007,7 +1017,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 		var sb strings.Builder
 		args := make([]interface{}, 0, len(chunk)*14) // 14 covers SQLite/Chai worst-case with id
 
-		switch strings.ToLower(dbType) {
+		switch driver {
 		case "pgx":
 			// PostgreSQL: BIGSERIAL fills id, so we only ship the payload columns.
 			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
@@ -1125,6 +1135,20 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			continue
 		}
 		if _, err := exec.Exec(sb.String(), args...); err != nil {
+			// DuckDB may surface duplicates even with ON CONFLICT because older releases
+			// treat constraint violations as fatal during multi-row VALUES. To keep imports
+			// flowing we retry row-by-row and ignore the offending duplicates instead of
+			// aborting the entire batch. This mirrors "Don't panic" while keeping the code
+			// portable across engines.
+			if driver == "duckdb" && duckDBIsConflict(err) {
+				for _, marker := range chunk {
+					if saveErr := db.SaveMarkerAtomic(exec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
+						return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
+					}
+				}
+				i = end
+				continue
+			}
 			return fmt.Errorf("bulk exec: %w", err)
 		}
 		i = end
@@ -1142,7 +1166,9 @@ func (db *Database) SaveMarkerAtomic(
 	exec sqlExecutor, m Marker, dbType string,
 ) error {
 
-	switch dbType {
+	driver := normalizeDBType(dbType)
+
+	switch driver {
 
 	// ──────────────────────────── PostgreSQL (pgx) ───────────
 	case "pgx":
@@ -1182,7 +1208,7 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			nullableFloat64(m.HumidityValid, m.Humidity))
 		return err
 
-	// ─────────────────────── SQLite / Chai / другие ─────────
+		// ─────────────────────── SQLite / Chai / другие ─────────
 	default:
 		if m.ID == 0 {
 			// берём следующий уникальный id из генератора
@@ -1199,6 +1225,11 @@ ON CONFLICT DO NOTHING`,
 			m.Detector, m.Radiation,
 			nullableFloat64(m.TemperatureValid, m.Temperature),
 			nullableFloat64(m.HumidityValid, m.Humidity))
+		if driver == "duckdb" && duckDBIsConflict(err) {
+			// DuckDB occasionally reports constraint violations even when ON CONFLICT is
+			// present. We treat those as benign so imports do not halt on duplicates.
+			return nil
+		}
 		return err
 	}
 }
