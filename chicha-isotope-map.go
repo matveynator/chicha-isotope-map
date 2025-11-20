@@ -2778,22 +2778,33 @@ func logArchiveImportProgress(
 	lastLoggedBytes := int64(-1)
 	lastLoggedEntries := -1
 	lastLoggedFile := ""
+	lastLoggedPercent := -1.0
+	var lastLogTime time.Time
 
 	byteCh := byteUpdates
 	entryCh := entryUpdates
 
 	logSnapshot := func(force bool) {
-		if !force && downloaded == lastLoggedBytes && entries == lastLoggedEntries && lastFile == lastLoggedFile {
-			return
-		}
 		percent := float64(0)
 		if contentLength > 0 && downloaded > 0 {
 			percent = (float64(downloaded) / float64(contentLength)) * 100
 		}
+
+		progressed := percent != lastLoggedPercent || entries != lastLoggedEntries || lastFile != lastLoggedFile
+		enoughTime := lastLogTime.IsZero() || time.Since(lastLogTime) >= 30*time.Second
+		percentJump := percent >= 0 && lastLoggedPercent >= 0 && (percent-lastLoggedPercent) >= 0.5
+		byteJump := contentLength == 0 && lastLoggedBytes >= 0 && (downloaded-lastLoggedBytes) >= 8*1024*1024
+
+		if !force && (!progressed || !(enoughTime || percentJump || byteJump)) {
+			return
+		}
+
 		logf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
 		lastLoggedBytes = downloaded
 		lastLoggedEntries = entries
 		lastLoggedFile = lastFile
+		lastLoggedPercent = percent
+		lastLogTime = time.Now()
 	}
 
 	for {
@@ -4577,8 +4588,11 @@ func main() {
 
 	// 3. База данных
 	driverName := strings.ToLower(strings.TrimSpace(*dbType))
+	// Persist the normalized driver back into the flag so downstream helpers never
+	// miss engine-specific branches because of incidental casing or whitespace.
+	*dbType = driverName
 	dbCfg := database.Config{
-		DBType: *dbType,
+		DBType: driverName,
 		DBPath: *dbPath,
 		Port:   *port,
 	}
@@ -4624,7 +4638,7 @@ func main() {
 		defer cancelImport()
 
 		fallback := GenerateSerialNumber()
-		if err := importArchiveFromFile(ctxImport, localArchive, fallback, db, *dbType, log.Printf); err != nil {
+		if err := importArchiveFromFile(ctxImport, localArchive, fallback, db, driverName, log.Printf); err != nil {
 			log.Fatalf("local tgz import: %v", err)
 		}
 
@@ -4637,7 +4651,7 @@ func main() {
 		defer cancelImport()
 
 		fallback := GenerateSerialNumber()
-		if err := importArchiveFromURL(ctxImport, remoteURL, fallback, db, *dbType, log.Printf); err != nil {
+		if err := importArchiveFromURL(ctxImport, remoteURL, fallback, db, driverName, log.Printf); err != nil {
 			log.Fatalf("remote tgz import: %v", err)
 		}
 
