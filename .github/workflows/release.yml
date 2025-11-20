@@ -149,8 +149,8 @@ jobs:
     if: contains(toJson(github.event.head_commit.message), 'stable release')
     runs-on: ubuntu-24.04
     container:
-      # Keep the DuckDB container on a supported Debian release so apt sources remain valid.
-      image: debian:12-slim
+      # Build DuckDB binaries on Debian 11 (glibc 2.31) so the released binary works on older hosts.
+      image: debian:11-slim
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -180,6 +180,15 @@ jobs:
           set -euo pipefail
           go get github.com/marcboeker/go-duckdb/v2@latest
           go mod tidy
+
+      - name: Rebuild DuckDB static library for glibc 2.31
+        shell: bash
+        run: |
+          set -euo pipefail
+          module_dir=$(go list -f '{{.Dir}}' -m github.com/marcboeker/go-duckdb)
+          # Rebuild the bundled static lib against Debian 11's toolchain to avoid
+          # newer GLIBC/GLIBCXX requirements in released binaries.
+          make -C "$module_dir" deps.linux.amd64
 
       - name: Build (Linux duckdb)
         shell: bash
