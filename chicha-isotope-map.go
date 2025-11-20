@@ -2780,6 +2780,7 @@ func logArchiveImportProgress(
 	lastLoggedFile := ""
 	lastLoggedPercent := -1.0
 	var lastLogTime time.Time
+	lastLogLine := ""
 
 	byteCh := byteUpdates
 	entryCh := entryUpdates
@@ -2799,7 +2800,16 @@ func logArchiveImportProgress(
 			return
 		}
 
-		logf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
+		line := fmt.Sprintf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
+
+		// Avoid emitting identical consecutive snapshots so operators do not see doubled lines
+		// when the final forced update matches the last timed tick.
+		if line == lastLogLine {
+			return
+		}
+
+		logf("%s", line)
+		lastLogLine = line
 		lastLoggedBytes = downloaded
 		lastLoggedEntries = entries
 		lastLoggedFile = lastFile
@@ -3275,6 +3285,13 @@ func processAndStoreMarkers(
 
 	// ── step 6: single transaction + multi-row VALUES ───────────────
 	if strings.EqualFold(dbType, "clickhouse") {
+		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000); err != nil {
+			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
+		}
+	} else if strings.EqualFold(dbType, "duckdb") {
+		// DuckDB marks explicit transactions as aborted after a constraint error, which blocks
+		// the single-row conflict fallback. Using autocommit keeps retries alive and the import
+		// flowing even when legacy data contains duplicates.
 		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000); err != nil {
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
