@@ -35,6 +35,14 @@ type RateLimiter struct {
 	now           func() time.Time
 }
 
+// completionNotice flows back to the per-IP worker once a handler finishes its
+// work. We keep it lean to avoid extra allocations while still carrying the
+// signal the worker needs to update its rolling heavy request history.
+type completionNotice struct {
+	kind        RequestKind
+	completedAt time.Time
+}
+
 type keyedRequest struct {
 	ip  string
 	req ipRequest
@@ -147,88 +155,130 @@ func (l *RateLimiter) loop() {
 }
 
 func (l *RateLimiter) runIPWorker(ip string, requests <-chan ipRequest) {
+	// We keep heavyHistory small by aggressively trimming timestamps from
+	// completed requests. activeHeavy tracks in-flight downloads so we can
+	// allow short bursts without waiting for earlier downloads to finish.
 	var heavyHistory []time.Time
+	activeHeavy := 0
 
-	for req := range requests {
+	// doneCh collects completion notices from handlers. Using a dedicated
+	// channel lets the worker keep processing new arrivals instead of
+	// blocking on long downloads, aligning with Go's preference to share
+	// memory by communicating.
+	doneCh := make(chan completionNotice)
+
+	for {
 		select {
-		case <-req.ctx.Done():
-			req.response <- acquireResponse{err: req.ctx.Err()}
-			continue
-		default:
-		}
-
-		now := l.now()
-		queueWait := now.Sub(req.arrived)
-		if queueWait < 0 {
-			queueWait = 0
-		}
-		totalWait := queueWait
-
-		if req.kind == RequestHeavy && l.heavyCooldown > 0 && l.heavyBurst > 0 {
-			cutoff := now.Add(-l.heavyCooldown)
-			dst := heavyHistory[:0]
-			for _, ts := range heavyHistory {
-				if ts.After(cutoff) {
-					dst = append(dst, ts)
-				}
+		case req, ok := <-requests:
+			if !ok {
+				return
 			}
-			heavyHistory = dst
 
-			if len(heavyHistory) >= l.heavyBurst {
-				readyAt := heavyHistory[0].Add(l.heavyCooldown)
-				now = l.now()
-				if now.Before(readyAt) {
-					cooldownWait := readyAt.Sub(now)
-					timer := time.NewTimer(cooldownWait)
-					select {
-					case <-req.ctx.Done():
-						if !timer.Stop() {
-							<-timer.C
+			select {
+			case <-req.ctx.Done():
+				req.response <- acquireResponse{err: req.ctx.Err()}
+				continue
+			default:
+			}
+
+			now := l.now()
+			queueWait := now.Sub(req.arrived)
+			if queueWait < 0 {
+				queueWait = 0
+			}
+			totalWait := queueWait
+
+			if req.kind == RequestHeavy && l.heavyCooldown > 0 && l.heavyBurst > 0 {
+				cutoff := now.Add(-l.heavyCooldown)
+				dst := heavyHistory[:0]
+				for _, ts := range heavyHistory {
+					if ts.After(cutoff) {
+						dst = append(dst, ts)
+					}
+				}
+				heavyHistory = dst
+
+				// Count both in-flight heavy downloads and recently
+				// completed ones so only sustained floods trigger
+				// throttling. This keeps normal browsing snappy
+				// while still dampening abusive bursts.
+				heavySeen := activeHeavy + len(heavyHistory)
+				if heavySeen >= l.heavyBurst {
+					readyAt := heavyHistory[0].Add(l.heavyCooldown)
+					now = l.now()
+					if now.Before(readyAt) {
+						cooldownWait := readyAt.Sub(now)
+						timer := time.NewTimer(cooldownWait)
+						select {
+						case <-req.ctx.Done():
+							if !timer.Stop() {
+								<-timer.C
+							}
+							req.response <- acquireResponse{err: req.ctx.Err()}
+							continue
+						case <-timer.C:
+							totalWait += cooldownWait
 						}
-						req.response <- acquireResponse{err: req.ctx.Err()}
-						continue
-					case <-timer.C:
-						totalWait += cooldownWait
 					}
 				}
 			}
-		}
 
-		release := make(chan struct{})
-		resp := acquireResponse{
-			release:      release,
-			wait:         totalWait > 0,
-			waitDuration: totalWait,
-		}
-
-		select {
-		case <-req.ctx.Done():
-			req.response <- acquireResponse{err: req.ctx.Err()}
-			continue
-		case req.response <- resp:
-		}
-
-		select {
-		case <-release:
-		case <-req.ctx.Done():
-			<-release
-		}
-
-		if req.kind == RequestHeavy {
-			heavyHistory = append(heavyHistory, l.now())
-			// Trim stale timestamps promptly so a single burst cannot
-			// penalize a client forever. Storing the timestamps lets us
-			// detect real overloads instead of throttling casual
-			// browsing where the browser issues only a handful of
-			// downloads.
-			cutoff := l.now().Add(-l.heavyCooldown)
-			dst := heavyHistory[:0]
-			for _, ts := range heavyHistory {
-				if ts.After(cutoff) {
-					dst = append(dst, ts)
-				}
+			release := make(chan struct{})
+			resp := acquireResponse{
+				release:      release,
+				wait:         totalWait > 0,
+				waitDuration: totalWait,
 			}
-			heavyHistory = dst
+
+			select {
+			case <-req.ctx.Done():
+				req.response <- acquireResponse{err: req.ctx.Err()}
+				continue
+			case req.response <- resp:
+			}
+
+			if req.kind == RequestHeavy {
+				activeHeavy++
+			}
+
+			go l.waitForRelease(req, release, doneCh)
+
+		case done := <-doneCh:
+			if done.kind == RequestHeavy {
+				if activeHeavy > 0 {
+					activeHeavy--
+				}
+				heavyHistory = append(heavyHistory, done.completedAt)
+				// Trim stale timestamps promptly so a single burst
+				// cannot penalize a client forever. Storing the
+				// timestamps lets us detect real overloads instead
+				// of throttling casual browsing where the browser
+				// issues only a handful of downloads.
+				cutoff := l.now().Add(-l.heavyCooldown)
+				dst := heavyHistory[:0]
+				for _, ts := range heavyHistory {
+					if ts.After(cutoff) {
+						dst = append(dst, ts)
+					}
+				}
+				heavyHistory = dst
+			}
 		}
 	}
+}
+
+// waitForRelease listens for handler completion signals and notifies the per-IP
+// worker once the request finishes. Keeping this separate keeps the hot path in
+// runIPWorker non-blocking even when handlers stream large payloads.
+func (l *RateLimiter) waitForRelease(req ipRequest, release <-chan struct{}, done chan<- completionNotice) {
+	select {
+	case <-release:
+	case <-req.ctx.Done():
+		// Ensure the worker still sees the release event even when the
+		// request context is cancelled. This mirrors the original
+		// behaviour where the worker always drained the release channel.
+		<-release
+	}
+
+	done <- completionNotice{kind: req.kind, completedAt: l.now()}
 }
