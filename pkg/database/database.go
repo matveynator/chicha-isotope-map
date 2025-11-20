@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 	"net/url"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -191,6 +192,11 @@ func NewDatabase(config Config) (*Database, error) {
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 		db.SetConnMaxLifetime(0)
+		tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := tuneDuckDBConnection(tuneCtx, db, log.Printf); err != nil {
+			log.Printf("duckdb tuning skipped: %v", err)
+		}
+		cancel()
 	case "clickhouse":
 		// ClickHouse benefits from a few parallel connections while remaining lightweight.
 		db.SetMaxOpenConns(8)
@@ -284,6 +290,63 @@ func tuneSQLiteLikeConnection(ctx context.Context, db *sql.DB, logf func(string,
 				return
 			}
 			logf("SQLite tuning %s applied", step.label)
+		}
+		errs <- nil
+	}()
+
+	go func() {
+		defer close(jobs)
+		for _, step := range steps {
+			jobs <- step
+		}
+	}()
+
+	if err := <-errs; err != nil {
+		return err
+	}
+	return nil
+}
+
+// tuneDuckDBConnection applies light-weight pragmas that keep imports CPU-bound rather than
+// pausing on checkpoints. We keep the steps portable by driving them through channels so the
+// caller remains responsive, and we only touch settings DuckDB documents as safe at runtime.
+func tuneDuckDBConnection(ctx context.Context, db *sql.DB, logf func(string, ...any)) error {
+	// Use available CPUs for vectorised operations; defaults can be conservative inside containers.
+	threads := runtime.NumCPU()
+	if threads < 1 {
+		threads = 1
+	}
+
+	type pragma struct {
+		label string
+		query string
+	}
+
+	steps := []pragma{
+		{label: "threads", query: fmt.Sprintf("PRAGMA threads=%d;", threads)},
+		// DuckDB checkpoints can stall long-running imports. Raising the threshold lets the bulk
+		// transaction flush once at commit time instead of pausing mid-stream.
+		{label: "checkpoint_threshold", query: "PRAGMA checkpoint_threshold='1GB';"},
+	}
+
+	jobs := make(chan pragma)
+	errs := make(chan error, 1)
+
+	go func() {
+		defer close(errs)
+		for step := range jobs {
+			select {
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			default:
+			}
+
+			if _, err := db.ExecContext(ctx, step.query); err != nil {
+				errs <- fmt.Errorf("apply %s: %w", step.label, err)
+				return
+			}
+			logf("DuckDB tuning %s applied", step.label)
 		}
 		errs <- nil
 	}()
@@ -1006,6 +1069,16 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 
 	driver := normalizeDBType(dbType)
 
+	if driver == "duckdb" {
+		// DuckDB's parameter binding grows slower with huge argument lists. Smaller batches and
+		// pre-deduplication keep each statement tight while still streaming through the file
+		// quickly.
+		markers = deduplicateMarkers(markers)
+		if batch > 256 {
+			batch = 256
+		}
+	}
+
 	var (
 		exec   sqlExecutor
 		txn    *sql.Tx
@@ -1063,15 +1136,6 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			end = len(markers)
 		}
 		chunk := markers[i:end]
-
-		if driver == "duckdb" {
-			// DuckDB raises an error when multiple rows inside the same INSERT collide on the
-			// UNIQUE constraint, even with ON CONFLICT. Deduplicating the batch keeps imports
-			// streaming while avoiding driver-specific behaviour that would otherwise abort the
-			// statement. This follows "Clear is better than clever" by making conflict handling
-			// explicit before hitting the database.
-			chunk = deduplicateMarkers(chunk)
-		}
 
 		chunkStart := time.Now()
 		mode := "bulk"
