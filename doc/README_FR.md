@@ -1,136 +1,93 @@
-[![Dernière version stable](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
+[![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
 <img width="30%" align="left" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/39bfa7b1-03fb-43dd-89bd-8d6c516fd4db" />
 
-* [🇬🇧 English](/README.md)
-* [🇫🇷 Français](/doc/README_FR.md)
-* [🇯🇵 日本語](/doc/README_JP.md)
-* [🇷🇺 Русский](/doc/README_RU.md)
+- [🇬🇧 English](/README.md)
+- [🇫🇷 Français](/doc/README_FR.md)
+- [🇯🇵 日本語](/doc/README_JP.md)
+- [🇷🇺 Русский](/doc/README_RU.md)
 
-# ☢️ Carte mondiale de la radioactivité
-Démo en ligne : [https://pelora.org/](https://pelora.org/) — votre nœud ressemble à cela.
+# ☢️ Carte mondiale de la radiation
+Cette carte est pensée pour qu’un visiteur sans préparation voie immédiatement si la radiation menace les maisons, champs, forêts ou points d’eau autour de lui. Les lieux sains tournent autour de 2–3 µR/h ; les zones plus sombres viennent presque toujours de l’activité humaine. La carte montre comment les mines d’uranium en Tchéquie, Russie, Kazakhstan ou Mongolie ont laissé de longues traces ; comment Fukushima ressort comme une « tache-tumeur » noir et rouge sur la côte japonaise ; comment Tchernobyl et la région de Briansk marquent le paysage ; comment les filons riches en radon en France, en Tchéquie ou aux Eaux minérales du Caucase augmentent les risques. Le lessivage de l’uranium et des terres rares laisse des sels solubles en profondeur : ils gagnent les nappes phréatiques, puis notre eau et notre nourriture. Si cette carte protège ne serait-ce qu’une personne ou un animal, elle aura servi.
 
-👉 [DeepWiki : Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
+Démo en ligne : [https://pelora.org/](https://pelora.org/) — votre nœud aura le même aspect.
+
+👉 [Page de téléchargement unique](https://github.com/matveynator/chicha-isotope-map/releases) (toutes plateformes, dernières versions)
+
+👉 [DeepWiki : Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
 
 ---
 
 ### 📸 Exemple
-<a href="https://pelora.org" target="_blank"><img width="800" alt="pelora.org chicha-isotope-map" src="https://github.com/user-attachments/assets/be706959-a2d5-4949-9378-811f4022aa98" /></a>
+<a href="https://pelora.org" target="_blank"><img width="800" alt="pelora.org chicha-isotope-map exemple" src="https://github.com/user-attachments/assets/be706959-a2d5-4949-9378-811f4022aa98" /></a>
 
 ---
 
-## 🚀 Lancer avec Docker (le plus simple)
-L’image contient déjà PostgreSQL. Copier, coller, c’est parti.
+## 🧭 Ce que contient la carte
+- Carte en direct avec mesures de nombreux détecteurs ; choisissez le fond qui vous plaît.
+- Téléversez vos traces ; les points récents apparaissent autour de la zone affichée.
+- Import par URL ou fichier, export en archive.
+- Fonctionne en nœud unique ou en réseau : plus il y a de nœuds, plus la transparence est grande.
 
-#### 🔥 En local (port 8765)
-```bash
-docker run -d \
-  --name chicha-isotope-map \
-  -p 8765:8765 \
-  -v chicha-data:/var/lib/postgresql/data \
-  -e DEFAULT_LAT=44.08832 \
-  -e DEFAULT_LON=42.97577 \
-  -e DEFAULT_ZOOM=11 \
-  -e DEFAULT_LAYER="OpenStreetMap" \
-  --restart unless-stopped \
-  matveynator/chicha-isotope-map:latest
-```
-Ouvrir : [http://localhost:8765](http://localhost:8765)
-
-#### 🔥 Nœud public avec HTTPS
-```bash
-docker run -d \
-  --name chicha-isotope-map \
-  -p 80:80 -p 443:443 \
-  -v chicha-data:/var/lib/postgresql/data \
-  -e DOMAIN=example.org \
-  -e DEFAULT_LAT=44.08832 \
-  -e DEFAULT_LON=42.97577 \
-  -e DEFAULT_ZOOM=11 \
-  -e DEFAULT_LAYER="OpenStreetMap" \
-  --restart unless-stopped \
-  matveynator/chicha-isotope-map:latest
-```
-Après l’émission Let’s Encrypt : [https://example.org](https://example.org)
-
-**Variables :** `DOMAIN` pour HTTPS, `DEFAULT_LAT` / `DEFAULT_LON` / `DEFAULT_ZOOM` / `DEFAULT_LAYER` pour la vue initiale, `PORT` pour le port interne. Stockez les données sur `-v chicha-data:/var/lib/postgresql/data` pour garder l’historique lors des mises à jour du conteneur.
+Le projet progresse grâce au soutien actif de **Safecast** et de la communauté : beaucoup d’idées précieuses viennent de **Rob Oudendijk** et des passionnés de dosimétrie ouverte dans le monde (merci à Greenpeace et aux autres équipes environnementales).
 
 ---
 
-## ⬇️ Binaries prêts à l’emploi (sans Docker)
-Téléchargez, rendez exécutable, lancez.
+## 🚀 Démarrage rapide (débutant)
+Le chemin le plus simple : télécharger le binaire. Pas de Docker, pas de base de données, pas d’outils supplémentaires — télécharger, lancer, c’est prêt.
 
-**Linux x64**
+### Option 1. Binaire (recommandé)
+1) Ouvrez la [page des versions](https://github.com/matveynator/chicha-isotope-map/releases) et téléchargez le binaire pour votre système.
+2) Rendez-le exécutable et lancez-le :
 ```bash
-sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 \
-  -o /usr/local/bin/chicha-isotope-map \
-  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
-  && chicha-isotope-map
+chmod +x ./chicha-isotope-map
+./chicha-isotope-map
 ```
+3) Ouvrez [http://localhost:8765](http://localhost:8765) — la carte est déjà en ligne.
 
-**macOS Intel (x86_64)**
-```bash
-sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_amd64 \
-  -o /usr/local/bin/chicha-isotope-map \
-  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
-  && chicha-isotope-map
-```
-
-**macOS Apple Silicon (arm64)**
-```bash
-sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_darwin_arm64 \
-  -o /usr/local/bin/chicha-isotope-map \
-  && sudo chmod +x /usr/local/bin/chicha-isotope-map \
-  && chicha-isotope-map
-```
-
-Autres plateformes (Windows / ARM / BSD) : [dernière version](https://github.com/matveynator/chicha-isotope-map/releases/tag/latest).
-
----
-
-## 🖥 Exécuter le binaire
-- `-domain maps.example.org` — HTTPS sur 80/443 (Let’s Encrypt).
-- `-port 8765` — port HTTP pour un lancement local.
+Réglages facultatifs :
+- `-port 8765` — port local.
+- `-domain maps.example.org` — HTTPS via Let’s Encrypt (ports 80/443 nécessaires).
 - `-default-lat` / `-default-lon` / `-default-zoom` / `-default-layer` — vue initiale.
-- Stockage : `-db-type sqlite|duckdb|pgx|chai|clickhouse`, `-db-path` pour les bases fichiers, `-db-conn` pour les bases réseau.
-- Outil : `-version` affiche la version.
+- Stockage : `-db-type sqlite|duckdb|chai|clickhouse|pgx`, `-db-path` pour les bases fichiers, `-db-conn` pour les bases réseau.
 
-DuckDB : `CGO_ENABLED=1 go build -tags duckdb`, puis `./chicha-isotope-map -db-type duckdb`.
+### Option 2. Nœud public avec domaine
+1) Lancez le binaire avec votre domaine :
+```bash
+./chicha-isotope-map -domain example.org
+```
+2) Laissez libres les ports 80/443 pour Let’s Encrypt. Une fois le certificat obtenu, la carte sera sur [https://example.org](https://example.org).
+
+### Option 3. Docker (tout emballé)
+1) Installez Docker (Desktop ou CLI).
+2) Trouvez **matveynator/chicha-isotope-map** sur Docker Hub et cliquez sur **Run** (ou exécutez une commande) :
+```bash
+docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-map:latest
+```
+3) Ouvrez [http://localhost:8765](http://localhost:8765) — c’est prêt.
 
 ---
 
 ## 📥 Importer des données
-- Formats acceptés : `.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, journaux bGeigie Nano/Zen `$BNRDD` (`.log` / `.txt`), exports AtomFast, RadiaCode, Safecast, etc.
-- Interface web : ouvrir le nœud → **Upload** → choisir les fichiers → le dernier tracé importé s’ouvre automatiquement.
-- API : `curl -F 'files[]=@/path/to/file.log' http://localhost:8765/upload` (diagnostics : `/upload_diag`).
-- Points récents autour d’une position : `/api/latest?lat=...&lon=...&radius_m=1500&limit=20`.
+- Sur la carte, cliquez sur le bouton vert **Upload** et déposez vos traces (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, journaux bGeigie Nano/Zen `$BNRDD`, exports AtomFast, RadiaCode, Safecast, etc.).
+- Commencer avec l’archive prête de pelora.org : téléchargez [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz) et chargez-la avec le même bouton vert, ou lancez une fois le binaire avec `-import-tgz-url https://pelora.org/api/json/weekly.tgz` pour pré-remplir automatiquement puis quitter avant un démarrage normal.
+
+## 📤 Exporter
+- Trace unique : `/api/track/{trackID}.json` (les anciens `.cim` fonctionnent aussi).
+- Archive planifiée : `/api/json/weekly.tgz` (ou `/daily.tgz`, `/monthly.tgz`, `/yearly.tgz`). À l’intérieur : un JSON par trace.
 
 ---
 
-## 📤 Exporter des données
-- **Par tracé :** `/api/track/{trackID}.json` (les anciennes URLs `.cim` fonctionnent). `from`/`to` pour limiter les IDs.
-- **Archive :** `/api/json/weekly.tgz` (ou `/daily.tgz`, `/monthly.tgz`, `/yearly.tgz` si configuré). Chaque tracé a son fichier JSON.
-- **Schéma JSON :**
-  - Niveau racine : `trackID`, `trackIndex` (position à partir de 1), `apiURL`, `firstID`, `lastID`, `markerCount`, `disclaimers`, `markers`.
-  - Marqueur : `id`, `timeUnix`, `timeUTC` (RFC3339), `lat`, `lon`, options `altitudeM`, `temperatureC`, `humidityPercent`, vitesses (`speedMS`, `speedKMH`), doses (`doseRateMicroSvH`, `doseRateMicroRh`), `countRateCPS`, et le cas échéant `detectorType`, `detectorName`, `radiationTypes`.
-  - Les `disclaimers` multilingues accompagnent chaque export.
-- **À venir :** le même JSON accueillera probablement des données spectrométriques par point dès que nous commencerons à les stocker.
+## 🧠 Options avancées
+- Bases de données : SQLite intégrée par défaut ; possibilité de passer à DuckDB, Chai, ClickHouse ou PostgreSQL (`pgx`).
+- Import : via URL ou fichier, archives acceptées.
+- Export : archives JSON, trace unique, anciens `.cim` pris en charge.
+- Apparence : coordonnées et couche de départ (`-default-*`).
 
 ---
 
-## 💾 Sauvegarde et restauration
-- **Sauvegarde quotidienne (03:00)** : `0 3 * * * docker exec chicha-isotope-map pg_dump -U chicha_isotope_map chicha_isotope_map | gzip > /backup/chicha_isotope_map_$(date +\%F).sql.gz`
-- **Restauration :**
-  ```bash
-  docker exec -it chicha-isotope-map psql -U postgres -c "DROP DATABASE IF EXISTS chicha_isotope_map; CREATE DATABASE chicha_isotope_map OWNER chicha_isotope_map;"
-  zcat /backup/chicha_isotope_map_2025-07-24.sql.gz | docker exec -i chicha-isotope-map psql -U chicha_isotope_map chicha_isotope_map
-  ```
+## 🤝 Pourquoi héberger son nœud et un peu d’histoire
+- Nous voulions que chacun, sans formation, voie si la radiation menace l’endroit où il vit, cultive ou puise l’eau.
+- Plus il y a de nœuds, plus il est difficile de rater une contamination.
 
----
-
-## 🤝 Pourquoi héberger votre nœud ?
-- Vos mesures, votre historique, pour votre communauté.
-- Suivre l’évolution du bruit de fond (≈0,8–4 µR/h) localement.
-- Plus de nœuds → plus de transparence et de résilience.
-
-Chicha‑Isotope‑Map est créée pour le **Laboratoire Dmitry Ignatenko** et inspirée par **Safecast**. Merci aux communautés AtomFast et Radiacode pour le partage de leurs données.
+Chicha-Isotope-Map est inspirée par les travaux de terrain de **Dmitry Ignatenko** et par **Rob Oudendijk** et le projet **Safecast**. Les données ouvertes des communautés AtomFast et Radiacode la rendent utile au quotidien. Si la carte sauve ne serait-ce qu’une vie, ce travail n’aura pas été vain.
