@@ -4089,6 +4089,22 @@ function centerMapToLocation() {
 
     <!-- File upload script -->
     <script>
+      let backgroundRefreshTimer = null;
+      function startBackgroundImportRefresh() {
+        if (backgroundRefreshTimer) {
+          clearInterval(backgroundRefreshTimer);
+        }
+        let rounds = 0;
+        backgroundRefreshTimer = setInterval(() => {
+          updateMarkers();
+          rounds += 1;
+          if (rounds >= 24) {
+            clearInterval(backgroundRefreshTimer);
+            backgroundRefreshTimer = null;
+          }
+        }, 5000);
+      }
+
       function uploadFiles() {
         const fileInput  = document.getElementById('fileInput');
         const files      = fileInput.files;
@@ -4143,9 +4159,14 @@ function centerMapToLocation() {
             if (xhr.status === 200) {
               const response = JSON.parse(xhr.responseText);
               if (response.status === 'success') {
-                lastTrackURL             = response.trackURL;   // remember
+                lastTrackURL               = response.trackURL;   // remember
                 serverProcessing.innerText = translate('processing_complete');
                 serverProcessing.style.color = 'green';
+              } else if (response.status === 'processing') {
+                lastTrackURL               = null;
+                serverProcessing.innerText = translate('processing_complete');
+                serverProcessing.style.color = 'green';
+                startBackgroundImportRefresh();
               } else {
                 serverProcessing.innerText = translate('error_processing_files');
                 serverProcessing.style.color = 'red';
@@ -4164,7 +4185,7 @@ function centerMapToLocation() {
                   if (lastTrackURL) {
                     window.location.href = lastTrackURL;
                   } else {
-                    location.reload();   // if all uploads failed
+                    updateMarkers();   // keep the map open for background imports
                   }
               }, 700);
             }

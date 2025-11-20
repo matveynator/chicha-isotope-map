@@ -53,6 +53,7 @@ import (
 	"chicha-isotope-map/pkg/database/drivers"
 	"chicha-isotope-map/pkg/jsonarchive"
 	"chicha-isotope-map/pkg/logger"
+	"chicha-isotope-map/pkg/markerstream"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
 	"chicha-isotope-map/pkg/selfupgrade"
@@ -67,6 +68,7 @@ import (
 var content embed.FS
 
 var doseData database.Data
+var markerBus = markerstream.NewBus(2048)
 
 var domain = flag.String("domain", "", "Serve HTTPS on 80/443 via Let's Encrypt when a domain is provided.")
 var dbType = flag.String("db-type", "sqlite", "Database driver: chai, sqlite, duckdb, pgx (PostgreSQL), or clickhouse")
@@ -3333,7 +3335,55 @@ func processAndStoreMarkers(
 	<-progressDone
 
 	logT(trackID, "Store", "✔ stored (new %d markers)", len(allZoom))
+	publishMarkers(allZoom)
 	return bbox, trackID, nil
+}
+
+// publishMarkers fans out freshly stored markers to streaming subscribers.
+// Sending after the transaction commits keeps clients aligned with durable state while still avoiding mutexes.
+func publishMarkers(markers []database.Marker) {
+	if markerBus == nil {
+		return
+	}
+	for _, m := range markers {
+		markerBus.Publish(m)
+	}
+}
+
+// enqueueArchiveImport writes the uploaded tgz to a temporary file and processes it in the background.
+// Using a goroutine prevents the HTTP handler from blocking while still reusing the common parser.
+func enqueueArchiveImport(fh *multipart.FileHeader, trackID string, db *database.Database, dbType string) error {
+	src, err := fh.Open()
+	if err != nil {
+		return fmt.Errorf("open upload: %w", err)
+	}
+	defer src.Close()
+
+	tmp, err := os.CreateTemp("", "upload-*.tgz")
+	if err != nil {
+		return fmt.Errorf("temp tgz: %w", err)
+	}
+	defer tmp.Close()
+
+	if _, err := io.Copy(tmp, src); err != nil {
+		return fmt.Errorf("copy tgz: %w", err)
+	}
+
+	path := tmp.Name()
+
+	go func(localPath string) {
+		defer os.Remove(localPath)
+		ctx := context.Background()
+		logf := func(format string, v ...any) {
+			logT(trackID, "Upload", format, v...)
+		}
+		logf("queued tgz import in background: %s", fh.Filename)
+		if err := importArchiveFromFile(ctx, localPath, trackID, db, dbType, logf); err != nil {
+			logf("background tgz import failed: %v", err)
+		}
+	}(path)
+
+	return nil
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -3352,6 +3402,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// глобальные границы всего набора файлов
 	global := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
+	hasBounds := false
+	backgroundImport := false
 
 	for _, fh := range files {
 		logT(trackID, "Upload", "file received: %s", fh.Filename)
@@ -3400,11 +3452,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 				logT(trackID, "Upload", "skipped duplicate track export JSON")
 			}
 		case ".tgz":
-			var imported bool
-			bbox, trackID, imported, err = processTrackExportArchive(r.Context(), f, trackID, db, *dbType)
-			if err == nil && !imported {
-				logT(trackID, "Upload", "tgz contained only duplicate track exports")
+			backgroundImport = true
+			_ = f.Close()
+			if queueErr := enqueueArchiveImport(fh, trackID, db, *dbType); queueErr != nil {
+				err = queueErr
+				break
 			}
+			continue
 		case ".log", ".txt":
 			bbox, trackID, err = processBGeigieZenFile(f, trackID, db, *dbType)
 		default:
@@ -3429,19 +3483,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if strings.HasSuffix(strings.ToLower(fh.Filename), ".tar.gz") {
+				backgroundImport = true
 				_ = f.Close()
-				f2, openErr := fh.Open()
-				if openErr != nil {
-					err = fmt.Errorf("reopen tar.gz: %w", openErr)
+				if queueErr := enqueueArchiveImport(fh, trackID, db, *dbType); queueErr != nil {
+					err = queueErr
 					break
 				}
-				f = f2
-				var imported bool
-				bbox, trackID, imported, err = processTrackExportArchive(r.Context(), f, trackID, db, *dbType)
-				if err == nil && !imported {
-					logT(trackID, "Upload", "tar.gz contained only duplicate track exports")
-				}
-				break
+				continue
 			}
 
 			logT(trackID, "Upload", "unsupported file type: %s (ext=%q)", fh.Filename, ext)
@@ -3456,31 +3504,43 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// расширяем глобальные границы
-		if bbox.MinLat < global.MinLat {
-			global.MinLat = bbox.MinLat
-		}
-		if bbox.MaxLat > global.MaxLat {
-			global.MaxLat = bbox.MaxLat
-		}
-		if bbox.MinLon < global.MinLon {
-			global.MinLon = bbox.MinLon
-		}
-		if bbox.MaxLon > global.MaxLon {
-			global.MaxLon = bbox.MaxLon
+		if bbox != (database.Bounds{}) {
+			hasBounds = true
+			// расширяем глобальные границы
+			if bbox.MinLat < global.MinLat {
+				global.MinLat = bbox.MinLat
+			}
+			if bbox.MaxLat > global.MaxLat {
+				global.MaxLat = bbox.MaxLat
+			}
+			if bbox.MinLon < global.MinLon {
+				global.MinLon = bbox.MinLon
+			}
+			if bbox.MaxLon > global.MaxLon {
+				global.MaxLon = bbox.MaxLon
+			}
 		}
 	}
 
-	trackURL := fmt.Sprintf(
-		"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
-		trackID, global.MinLat, global.MinLon, global.MaxLat, global.MaxLon,
-		"OpenStreetMap")
+	trackURL := "/"
+	if hasBounds {
+		trackURL = fmt.Sprintf(
+			"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
+			trackID, global.MinLat, global.MinLon, global.MaxLat, global.MaxLon,
+			"OpenStreetMap")
+	}
 
-	logT(trackID, "Upload", "redirecting browser to: %s", trackURL)
+	status := "success"
+	if backgroundImport {
+		status = "processing"
+		logT(trackID, "Upload", "tgz archive queued; watch the map for new tracks")
+	} else {
+		logT(trackID, "Upload", "redirecting browser to: %s", trackURL)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{
-		"status":   "success",
+		"status":   status,
 		"trackURL": trackURL,
 	}); err != nil {
 		if isClientDisconnect(err) {
@@ -3928,14 +3988,75 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 // Streaming markers via SSE
 // ========
 
-// aggregateMarkers chooses the most radioactive marker per grid cell.
-// Cells shrink with higher zoom to preserve detail.
-func aggregateMarkers(ctx context.Context, in <-chan database.Marker, zoom int) <-chan database.Marker {
+// aggregateMarkers chooses the most radioactive marker per grid cell while merging the
+// static query feed and the live update stream. Keeping the grid map inside the goroutine
+// lets us reuse previous emissions and drop later duplicates without mutexes.
+func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates <-chan database.Marker, zoom int) <-chan database.Marker {
 	out := make(chan database.Marker)
 	go func() {
 		defer close(out)
 		cells := make(map[string]database.Marker)
 		scale := math.Pow(2, float64(zoom))
+		baseCh := base
+		updateCh := updates
+
+		emit := func(m database.Marker) {
+			key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
+			if prev, ok := cells[key]; !ok || m.DoseRate > prev.DoseRate {
+				cells[key] = m
+				select {
+				case out <- m:
+				case <-ctx.Done():
+				}
+			}
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case m, ok := <-baseCh:
+				if !ok {
+					baseCh = nil
+					if baseCh == nil && updateCh == nil {
+						return
+					}
+					continue
+				}
+				emit(m)
+			case m, ok := <-updateCh:
+				if !ok {
+					updateCh = nil
+					if baseCh == nil && updateCh == nil {
+						return
+					}
+					continue
+				}
+				emit(m)
+			}
+		}
+	}()
+	return out
+}
+
+// markerInsideBounds keeps SSE updates aligned with the requested viewport so the map only
+// re-renders when data actually intersects the visible area.
+func markerInsideBounds(m database.Marker, minLat, minLon, maxLat, maxLon float64) bool {
+	return m.Lat >= minLat && m.Lat <= maxLat && m.Lon >= minLon && m.Lon <= maxLon
+}
+
+// filterStreamingMarkers trims a marker feed to the requested zoom, bounds, and optional track ID.
+// Using a dedicated goroutine preserves backpressure without blocking the bus fan-out loop.
+func filterStreamingMarkers(
+	ctx context.Context,
+	in <-chan database.Marker,
+	zoom int,
+	minLat, minLon, maxLat, maxLon float64,
+	trackID string,
+) <-chan database.Marker {
+	out := make(chan database.Marker, 128)
+	go func() {
+		defer close(out)
 		for {
 			select {
 			case <-ctx.Done():
@@ -3944,10 +4065,19 @@ func aggregateMarkers(ctx context.Context, in <-chan database.Marker, zoom int) 
 				if !ok {
 					return
 				}
-				key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
-				if prev, ok := cells[key]; !ok || m.DoseRate > prev.DoseRate {
-					cells[key] = m
-					out <- m
+				if m.Zoom != zoom {
+					continue
+				}
+				if trackID != "" && m.TrackID != trackID {
+					continue
+				}
+				if !markerInsideBounds(m, minLat, minLon, maxLat, maxLon) {
+					continue
+				}
+				select {
+				case out <- m:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}
@@ -3991,7 +4121,12 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
 
-	agg := aggregateMarkers(ctx, baseSrc, zoom)
+	var updates <-chan database.Marker
+	if markerBus != nil {
+		updates = filterStreamingMarkers(ctx, markerBus.Subscribe(ctx, zoom, 256), zoom, minLat, minLon, maxLat, maxLon, trackID)
+	}
+
+	agg := aggregateMarkers(ctx, baseSrc, updates, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -4012,14 +4147,17 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case err := <-errCh:
+		case err, ok := <-errCh:
+			if !ok {
+				errCh = nil
+				continue
+			}
 			if err != nil {
 				fmt.Fprintf(w, "event: done\ndata: %v\n\n", err)
-			} else {
-				fmt.Fprint(w, "event: done\ndata: end\n\n")
+				flusher.Flush()
+				return
 			}
-			flusher.Flush()
-			return
+			errCh = nil
 		case m, ok := <-agg:
 			if !ok {
 				fmt.Fprint(w, "event: done\ndata: end\n\n")
