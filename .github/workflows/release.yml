@@ -149,7 +149,8 @@ jobs:
     if: contains(toJson(github.event.head_commit.message), 'stable release')
     runs-on: ubuntu-24.04
     container:
-      image: debian:10-slim
+      # Keep the DuckDB container on a supported Debian release so apt sources remain valid.
+      image: debian:12-slim
     steps:
       - name: Checkout
         uses: actions/checkout@v4
