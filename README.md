@@ -106,6 +106,8 @@ sudo curl -L https://github.com/matveynator/chicha-isotope-map/releases/download
   && chicha-isotope-map
 ```
 
+> DuckDB builds are compiled on Debian 11 (glibc 2.31) so they keep running on older distros without needing newer system libc versions.
+
 **macOS Intel (x86\_64)**
 
 ```bash
