@@ -1985,8 +1985,8 @@ function refreshDownloadLink() {
     return;
   }
   if (currentTrackID) {
-    link.href = '/api/track/' + currentTrackID + '.cim';
-    link.setAttribute('download', currentTrackID + '.cim');
+    link.href = '/api/track/' + currentTrackID + '.json';
+    link.setAttribute('download', currentTrackID + '.json');
     box.style.display = 'block';
   } else {
     link.href = '#';

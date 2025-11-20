@@ -29,9 +29,9 @@ type Info struct {
 	ModTime time.Time
 }
 
-// Generator continuously maintains a tgz bundle of JSON .cim exports for all
-// tracks stored in the database. Synchronisation happens via channels so we rely
-// on message passing instead of mutexes.
+// Generator continuously maintains a tgz bundle of JSON exports for all tracks
+// stored in the database. Synchronisation happens via channels so we rely on
+// message passing instead of mutexes.
 type Generator struct {
 	requests chan chan result
 	done     chan struct{}
@@ -55,9 +55,9 @@ type progressUpdate struct {
 }
 
 // Start launches the background worker.
-// The worker exports every known track into temporary .cim JSON files, packs
-// them into a tgz archive, and atomically replaces the destination file once
-// the build succeeds. The initial build happens in the background so startup
+// The worker exports every known track into temporary JSON files, packs them
+// into a tgz archive, and atomically replaces the destination file once the
+// build succeeds. The initial build happens in the background so startup
 // remains responsive even on large databases while HTTP handlers can still
 // block until the first snapshot is ready if they need the data immediately.
 func Start(
@@ -505,9 +505,9 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 	return destPath, info.ModTime(), nil
 }
 
-// appendTrack exports a single track into a temporary .cim JSON file and then
-// copies it into the tar writer. We stream markers so archives stay memory
-// efficient even for very long tracks.
+// appendTrack exports a single track into a temporary JSON file and then copies
+// it into the tar writer. We stream markers so archives stay memory efficient
+// even for very long tracks.
 func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbType string, summary database.TrackSummary, tmpDir string) error {
 	if strings.TrimSpace(summary.TrackID) == "" || summary.MarkerCount == 0 {
 		return nil
@@ -525,7 +525,7 @@ func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbT
 		}
 	}
 
-	tmp, err := os.CreateTemp(tmpDir, "track-*.cim")
+	tmp, err := os.CreateTemp(tmpDir, "track-*.json")
 	if err != nil {
 		return fmt.Errorf("tmp track %s: %w", summary.TrackID, err)
 	}
@@ -730,12 +730,12 @@ func streamTrackMarkers(
 // appends the first marker ID to keep names unique even if sanitisation removes
 // characters.
 func safeTrackFilename(summary database.TrackSummary) string {
-	base := trackjson.SafeCIMFilename(summary.TrackID)
-	name := strings.TrimSuffix(base, ".cim")
+	base := trackjson.SafeExportFilename(summary.TrackID)
+	name := strings.TrimSuffix(base, ".json")
 	if name == "" {
 		name = "track"
 	}
-	return fmt.Sprintf("%s-%d.cim", name, summary.FirstID)
+	return fmt.Sprintf("%s-%d.json", name, summary.FirstID)
 }
 
 // replaceFile atomically replaces the destination with the temporary file.
@@ -840,7 +840,9 @@ func purgeStaleTrackFiles(dir string, logf func(string, ...any)) error {
 			continue
 		}
 		name := entry.Name()
-		if !strings.HasPrefix(name, "track-") || !strings.HasSuffix(name, ".cim") {
+		hasPrefix := strings.HasPrefix(name, "track-")
+		isExport := strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".cim")
+		if !hasPrefix || !isExport {
 			continue
 		}
 		full := filepath.Join(dir, name)

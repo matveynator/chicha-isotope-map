@@ -285,7 +285,7 @@
             <span class="api-path">/api/tracks/index/{number}</span>
           </div>
           <h3 class="api-card-title">Download track by index</h3>
-          <p class="api-card-desc">Resolves the Nth track and returns the same JSON document as <code>/api/track/{id}.cim</code>.</p>
+          <p class="api-card-desc">Resolves the Nth track and returns the same JSON document as <code>/api/track/{id}.json</code> (legacy <code>.cim</code> URLs remain available).</p>
           <a class="api-card-link" href="__BASE_URL__/api/tracks/index/1" target="_blank" rel="noopener">Fetch index 1</a>
           <p class="api-card-note">Replace the number to pick a different entry.</p>
         </article>
@@ -296,7 +296,7 @@
             <span class="api-path">/api/json/{frequency}.tgz</span>
           </div>
           <h3 class="api-card-title">JSON archive bundle</h3>
-          <p class="api-card-desc">Downloads a tgz archive with every published <code>.cim</code> file. Updated once per __ARCHIVE_FREQUENCY__.</p>
+          <p class="api-card-desc">Downloads a tgz archive with every published <code>.json</code> export (compatible with historic <code>.cim</code> readers). Updated once per __ARCHIVE_FREQUENCY__.</p>
           <a class="api-card-link" href="__BASE_URL____ARCHIVE_ROUTE__" target="_blank" rel="noopener">Download archive</a>
           <p class="api-card-note">Enabled when the node starts with <code>-json-archive-path</code>.</p>
         </article>
@@ -319,8 +319,8 @@
 
     <section class="card">
       <h2>Track payloads</h2>
-      <p>Each track streams as newline-delimited JSON with the <code>.cim</code> suffix so browsers save the file. Optional <code>from</code> and <code>to</code> parameters filter the marker ID range.</p>
-      <pre>curl -L -o sample.cim "__BASE_URL__/api/track/ABC123.cim"</pre>
+      <p>Each track streams as newline-delimited JSON with the <code>.json</code> suffix so browsers save the file. Optional <code>from</code> and <code>to</code> parameters filter the marker ID range. Older <code>.cim</code> URLs keep working for compatibility.</p>
+      <pre>curl -L -o sample.json "__BASE_URL__/api/track/ABC123.json"</pre>
     </section>
 
     <section class="card" data-requires-archive>

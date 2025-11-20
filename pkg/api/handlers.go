@@ -291,13 +291,13 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 			"trackByNumber": map[string]any{
 				"method":      "GET",
 				"path":        "/api/tracks/index/{number}",
-				"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/track/{trackID}.cim.",
+				"description": "Resolves a track by its 1-based numeric index and streams markers just like /api/track/{trackID}.json (with legacy .cim aliases still accepted).",
 			},
 			"trackMarkers": map[string]any{
 				"method":      "GET",
-				"path":        "/api/track/{trackID}.cim",
+				"path":        "/api/track/{trackID}.json",
 				"query":       []string{"from", "to"},
-				"description": "Downloads the full track as JSON with a .cim extension so browsers save it as a file. Optional 'from'/'to' IDs can narrow the range.",
+				"description": "Downloads the full track as JSON with a .json extension so browsers save it as a file. Optional 'from'/'to' IDs can narrow the range. Legacy .cim URLs remain compatible for older clients.",
 			},
 			"tracksByYear": map[string]any{
 				"method":      "GET",
@@ -318,7 +318,7 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 			endpoints["jsonArchive"] = map[string]any{
 				"method":      "GET",
 				"path":        route,
-				"description": "Downloads the current tgz bundle of all published .cim JSON tracks.",
+				"description": "Downloads the current tgz bundle of all published JSON track exports (compatible with the legacy .cim schema).",
 				"frequency":   h.ArchiveFrequency.Description(),
 			}
 		}
@@ -515,7 +515,10 @@ func (h *Handler) handleTrackData(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if strings.HasSuffix(trimmed, ".cim") {
+	switch {
+	case strings.HasSuffix(trimmed, ".json"):
+		trimmed = strings.TrimSuffix(trimmed, ".json")
+	case strings.HasSuffix(trimmed, ".cim"):
 		trimmed = strings.TrimSuffix(trimmed, ".cim")
 	}
 	decoded, err := url.PathUnescape(trimmed)
@@ -671,7 +674,7 @@ func (h *Handler) serveTrackData(w http.ResponseWriter, r *http.Request, trackID
 		return
 	}
 
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", trackjson.SafeCIMFilename(trackID)))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", trackjson.SafeExportFilename(trackID)))
 	writeJSONBytes(w, data)
 }
 
@@ -685,7 +688,7 @@ const (
 	archiveThrottleTick = 200 * time.Millisecond
 )
 
-// handleArchiveDownload streams the configured tgz bundle of .cim JSON tracks produced by the generator.
+// handleArchiveDownload streams the configured tgz bundle of JSON tracks produced by the generator.
 func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) {
 	if h.Archive == nil {
 		http.Error(w, "archive disabled", http.StatusServiceUnavailable)
