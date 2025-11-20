@@ -1174,22 +1174,9 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
 
 		case "clickhouse":
-			usable := make([]Marker, 0, len(chunk))
-			for j := range chunk {
-				idx := i + j
-				probe := markers[idx]
-				exists, err := db.markerExistsClickHouse(probe)
-				if err != nil {
-					return fmt.Errorf("clickhouse marker exists check: %w", err)
-				}
-				if exists {
-					continue
-				}
-				if probe.ID == 0 {
-					probe.ID = <-db.idGenerator
-					markers[idx].ID = probe.ID
-				}
-				usable = append(usable, probe)
+			usable, err := db.filterClickHouseNewMarkers(chunk)
+			if err != nil {
+				return fmt.Errorf("clickhouse marker exists check: %w", err)
 			}
 			if len(usable) == 0 {
 				i = end
@@ -1337,6 +1324,106 @@ func deduplicateMarkers(markers []Marker) []Marker {
 	}
 
 	return unique
+}
+
+// filterClickHouseNewMarkers weeds out duplicates already persisted in ClickHouse using a pool of
+// goroutines. ClickHouse lacks portable ON CONFLICT semantics, so we probe for existing rows in
+// parallel and only return markers that still need insertion. Channels replace mutexes to keep the
+// synchronization simple and follow "Don't communicate by sharing memory; share memory by
+// communicating".
+func (db *Database) filterClickHouseNewMarkers(chunk []Marker) ([]Marker, error) {
+	if len(chunk) == 0 {
+		return nil, nil
+	}
+
+	unique := deduplicateMarkers(chunk)
+	workers := runtime.NumCPU()
+	if workers < 2 {
+		workers = 2
+	}
+	if workers > 8 {
+		workers = 8
+	}
+	if workers > len(unique) {
+		workers = len(unique)
+	}
+
+	type result struct {
+		marker Marker
+		err    error
+		ok     bool
+	}
+
+	jobs := make(chan Marker)
+	out := make(chan result)
+	stop := make(chan struct{})
+	done := make(chan struct{}, workers)
+
+	worker := func() {
+		defer func() { done <- struct{}{} }()
+		for m := range jobs {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+
+			exists, err := db.markerExistsClickHouse(m)
+			if err != nil {
+				select {
+				case out <- result{err: err}:
+				case <-stop:
+				}
+				return
+			}
+			if exists {
+				continue
+			}
+			if m.ID == 0 {
+				m.ID = <-db.idGenerator
+			}
+			select {
+			case out <- result{marker: m, ok: true}:
+			case <-stop:
+				return
+			}
+		}
+	}
+
+	for i := 0; i < workers; i++ {
+		go worker()
+	}
+
+	go func() {
+		defer close(jobs)
+		for _, m := range unique {
+			select {
+			case <-stop:
+				return
+			case jobs <- m:
+			}
+		}
+	}()
+
+	go func() {
+		for i := 0; i < workers; i++ {
+			<-done
+		}
+		close(out)
+	}()
+
+	usable := make([]Marker, 0, len(unique))
+	for res := range out {
+		if res.err != nil {
+			close(stop)
+			return nil, res.err
+		}
+		if res.ok {
+			usable = append(usable, res.marker)
+		}
+	}
+
+	return usable, nil
 }
 
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
