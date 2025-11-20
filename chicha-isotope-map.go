@@ -2769,6 +2769,11 @@ func logArchiveImportProgress(
 ) {
 	defer close(done)
 
+	// Emit an immediate status line so operators see that the goroutine is alive
+	// even before bytes start flowing. This keeps "no logs" confusion at bay when
+	// network buffers stall at the start of a long transfer.
+	logf("tgz import [%s]: starting (size=%d bytes)", source, contentLength)
+
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
@@ -2800,7 +2805,7 @@ func logArchiveImportProgress(
 			return
 		}
 
-		line := fmt.Sprintf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
+		line := fmt.Sprintf("tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
 
 		// Avoid emitting identical consecutive snapshots so operators do not see doubled lines
 		// when the final forced update matches the last timed tick.
@@ -2939,6 +2944,32 @@ func importArchiveFromURL(
 
 	logf("remote tgz import complete: imported=%v track=%s bounds=%v", imported, finalTrack, bounds)
 	return nil
+}
+
+// startBackgroundArchiveImport kicks off a non-blocking import pipeline so startup
+// flags cannot prevent the HTTP listener from coming up. Progress and completion
+// are reported through the provided logger, keeping the goroutine simple and free
+// of shared state.
+func startBackgroundArchiveImport(
+	ctx context.Context,
+	label string,
+	importer func(context.Context) error,
+	logf func(string, ...any),
+) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if logf == nil {
+			logf = func(string, ...any) {}
+		}
+		logf("background tgz import queued: %s", label)
+		if err := importer(ctx); err != nil {
+			logf("background tgz import failed (%s): %v", label, err)
+			return
+		}
+		logf("background tgz import finished (%s)", label)
+	}()
+	return done
 }
 
 // mergeBounds combines multiple bounding boxes while tracking whether we already
@@ -4746,29 +4777,17 @@ func main() {
 	}
 
 	if localArchive != "" {
-		ctxImport, cancelImport := context.WithCancel(context.Background())
-		defer cancelImport()
-
 		fallback := GenerateSerialNumber()
-		if err := importArchiveFromFile(ctxImport, localArchive, fallback, db, driverName, log.Printf); err != nil {
-			log.Fatalf("local tgz import: %v", err)
-		}
-
-		log.Printf("local tgz import finished; exiting per -import-tgz-file")
-		return
+		startBackgroundArchiveImport(context.Background(), fmt.Sprintf("local file %s", localArchive), func(ctx context.Context) error {
+			return importArchiveFromFile(ctx, localArchive, fallback, db, driverName, log.Printf)
+		}, log.Printf)
 	}
 
 	if remoteURL != "" {
-		ctxImport, cancelImport := context.WithCancel(context.Background())
-		defer cancelImport()
-
 		fallback := GenerateSerialNumber()
-		if err := importArchiveFromURL(ctxImport, remoteURL, fallback, db, driverName, log.Printf); err != nil {
-			log.Fatalf("remote tgz import: %v", err)
-		}
-
-		log.Printf("remote tgz import finished; exiting per -import-tgz-url")
-		return
+		startBackgroundArchiveImport(context.Background(), fmt.Sprintf("remote url %s", remoteURL), func(ctx context.Context) error {
+			return importArchiveFromURL(ctx, remoteURL, fallback, db, driverName, log.Printf)
+		}, log.Printf)
 	}
 
 	if *safecastRealtimeEnabled {
@@ -4860,7 +4879,7 @@ func main() {
 		// Обычный HTTP на порт из -port
 		addr := fmt.Sprintf(":%d", *port)
 		go func() {
-			log.Printf("HTTP server ➜ http://localhost:%s", addr)
+			log.Printf("HTTP server ➜ http://localhost:%d", *port)
 			if err := http.ListenAndServe(addr, rootHandler); err != nil {
 				selfupgradeHandleServerError(err, log.Printf)
 			}
