@@ -986,6 +986,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	if len(markers) == 0 {
 		return nil
 	}
+
 	if batch <= 0 {
 		batch = 500
 	}
@@ -1013,6 +1014,15 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			end = len(markers)
 		}
 		chunk := markers[i:end]
+
+		if driver == "duckdb" {
+			// DuckDB raises an error when multiple rows inside the same INSERT collide on the
+			// UNIQUE constraint, even with ON CONFLICT. Deduplicating the batch keeps imports
+			// streaming while avoiding driver-specific behaviour that would otherwise abort the
+			// statement. This follows "Clear is better than clever" by making conflict handling
+			// explicit before hitting the database.
+			chunk = deduplicateMarkers(chunk)
+		}
 
 		var sb strings.Builder
 		args := make([]interface{}, 0, len(chunk)*14) // 14 covers SQLite/Chai worst-case with id
@@ -1156,6 +1166,30 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	return nil
 }
 
+// deduplicateMarkers collapses markers that would collide on the UNIQUE constraint so DuckDB
+// never needs to resolve duplicate rows inside the same INSERT statement. This keeps imports
+// streaming without surfacing driver-specific errors when archives contain repeated points.
+func deduplicateMarkers(markers []Marker) []Marker {
+	if len(markers) < 2 {
+		return markers
+	}
+
+	seen := make(map[string]struct{}, len(markers))
+	unique := make([]Marker, 0, len(markers))
+
+	for _, m := range markers {
+		key := fmt.Sprintf("%g|%d|%g|%g|%g|%d|%g|%s",
+			m.DoseRate, m.Date, m.Lon, m.Lat, m.CountRate, m.Zoom, m.Speed, m.TrackID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, m)
+	}
+
+	return unique
+}
+
 // SaveMarkerAtomic inserts a marker and silently ignores duplicates.
 //
 //   - PostgreSQL (pgx) – опираемся на BIGSERIAL, id не передаём;
@@ -1288,7 +1322,13 @@ func duckDBIsConflict(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "constraint error")
+	if strings.Contains(msg, "duplicate key") || strings.Contains(msg, "constraint error") {
+		return true
+	}
+
+	// DuckDB reports intra-statement collisions with a dedicated error string when
+	// multiple rows try to update the same target during ON CONFLICT handling.
+	return strings.Contains(msg, "update the same row twice")
 }
 
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
