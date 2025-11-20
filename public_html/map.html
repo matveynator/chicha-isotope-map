@@ -1962,6 +1962,11 @@ function getCurrentUrlParams() {
     <script>
       var map;
 var circleMarkers = {};
+// markerStacks keeps up to two visible markers per overlapping column so the map
+// stays responsive even when many points sit on top of each other. We avoid
+// retaining deeper layers entirely to free browser memory and let garbage
+// collection reclaim detached Leaflet objects.
+var markerStacks = [];
 var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
@@ -2903,6 +2908,124 @@ function getTooltipContent(marker) {
   return buildMarkerContent(marker);
 }
 
+// markerVisualRadius reports the rendered radius in pixels for overlap checks.
+// Realtime markers store their computed radius on the instance, while classic
+// circle markers expose it via getRadius(). Returning zero keeps the overlap
+// test resilient when a marker lacks geometry data.
+function markerVisualRadius(marker) {
+  if (!marker) return 0;
+  if (marker.isRealtime && typeof marker.__renderRadius === 'number') {
+    return marker.__renderRadius;
+  }
+  if (typeof marker.getRadius === 'function') {
+    return marker.getRadius();
+  }
+  if (typeof marker.__renderRadius === 'number') {
+    return marker.__renderRadius;
+  }
+  return 0;
+}
+
+// markerPoint converts a marker position into layer coordinates so radius
+// comparisons operate in the same pixel space Leaflet renders in.
+function markerPoint(marker) {
+  if (!marker || typeof marker.getLatLng !== 'function') return null;
+  const latLng = marker.getLatLng();
+  if (!latLng) return null;
+  return map.latLngToLayerPoint(latLng);
+}
+
+// overlapCoverage returns the fraction of the smaller circle covered by the
+// overlapping area. We compare against 0.5 to satisfy the "at least 50%" rule
+// before stacking markers together.
+function overlapCoverage(markerA, markerB) {
+  const pointA = markerPoint(markerA);
+  const pointB = markerPoint(markerB);
+  const radiusA = markerVisualRadius(markerA);
+  const radiusB = markerVisualRadius(markerB);
+  if (!pointA || !pointB || radiusA <= 0 || radiusB <= 0) return 0;
+
+  const dx = pointA.x - pointB.x;
+  const dy = pointA.y - pointB.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const minRadius = Math.min(radiusA, radiusB);
+  if (distance >= radiusA + radiusB) return 0; // separate circles
+  if (distance <= Math.abs(radiusA - radiusB)) return 1; // one fully inside the other
+
+  const r1Squared = radiusA * radiusA;
+  const r2Squared = radiusB * radiusB;
+  const part1 = r1Squared * Math.acos((distance * distance + r1Squared - r2Squared) / (2 * distance * radiusA));
+  const part2 = r2Squared * Math.acos((distance * distance + r2Squared - r1Squared) / (2 * distance * radiusB));
+  const part3 = 0.5 * Math.sqrt(Math.max(0, (-distance + radiusA + radiusB) * (distance + radiusA - radiusB) * (distance - radiusA + radiusB) * (distance + radiusA + radiusB)));
+  const overlapArea = part1 + part2 - part3;
+  const smallerArea = Math.PI * minRadius * minRadius;
+  if (smallerArea === 0) return 0;
+  return overlapArea / smallerArea;
+}
+
+// findStackForMarker locates an existing stack whose top markers cover at least
+// half of the candidate marker. We only test against visible layers so hidden
+// markers never consume memory.
+function findStackForMarker(marker) {
+  for (const stack of markerStacks) {
+    for (const entry of stack.markers) {
+      if (overlapCoverage(marker, entry.marker) >= 0.5) {
+        return stack;
+      }
+    }
+  }
+  return null;
+}
+
+// promoteStack keeps the highest dose markers on top, removes deeper layers
+// from the map, and frees references so the browser can reclaim memory.
+function promoteStack(stack) {
+  const survivors = [];
+  const ids = stack.markers.map(entry => entry.id);
+  ids.forEach(id => delete circleMarkers[id]);
+
+  stack.markers.sort((a, b) => (b.marker.doseRate || 0) - (a.marker.doseRate || 0));
+  stack.markers.forEach((entry, idx) => {
+    if (idx < 2) {
+      survivors.push(entry);
+      circleMarkers[entry.id] = entry.marker;
+      if (typeof entry.marker.bringToFront === 'function') {
+        entry.marker.bringToFront();
+      } else if (typeof entry.marker.setZIndexOffset === 'function') {
+        entry.marker.setZIndexOffset(2000 - idx);
+      }
+    } else {
+      map.removeLayer(entry.marker);
+    }
+  });
+
+  stack.markers = survivors;
+}
+
+// placeMarkerInStacks inserts a marker into the appropriate stack, creating one
+// when necessary, while ensuring only the top two layers stay visible.
+function placeMarkerInStacks(markerId, marker) {
+  const stack = findStackForMarker(marker);
+  if (stack) {
+    stack.markers.push({ id: markerId, marker: marker });
+    promoteStack(stack);
+    return;
+  }
+
+  const newStack = { markers: [{ id: markerId, marker: marker }] };
+  markerStacks.push(newStack);
+  promoteStack(newStack);
+}
+
+// restackVisibleMarkers rebuilds stacking after a zoom-driven radius change so
+// the 50% overlap rule continues to hold as markers shrink or grow.
+function restackVisibleMarkers() {
+  const entries = Object.entries(circleMarkers).map(([id, marker]) => ({ id, marker }));
+  markerStacks = [];
+  circleMarkers = {};
+  entries.forEach(entry => placeMarkerInStacks(entry.id, entry.marker));
+}
+
 
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
@@ -2929,6 +3052,7 @@ function updateMarkers(){
 
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
+  markerStacks = [];
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
@@ -2946,6 +3070,7 @@ function updateMarkers(){
     if (!shouldDisplayBySpeed(m.speed)) return;
 
     let marker;
+    const markerId = m.id || m.trackID || `marker-${Date.now()}-${Math.random()}`;
     if (isLive) { // realtime marker with value inside the circle
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
@@ -2956,6 +3081,7 @@ function updateMarkers(){
       .addTo(map)
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
+      marker.__renderRadius = icon.radius;
     } else {
       marker = L.circleMarker([m.lat, m.lon], {
         radius      : getRadius(m.doseRate, zoom),
@@ -2968,13 +3094,14 @@ function updateMarkers(){
       .addTo(map)
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
+      marker.__renderRadius = typeof marker.getRadius === 'function' ? marker.getRadius() : 0;
     }
 
     // Store dose rate and timestamp on marker for later size updates
     marker.doseRate  = m.doseRate;
     marker.date      = m.date;
     marker.isRealtime = isLive;
-    circleMarkers[m.id || m.trackID] = marker;
+    placeMarkerInStacks(markerId, marker);
   };
 
   es.addEventListener('done', () => {
@@ -3713,12 +3840,15 @@ function adjustMarkerRadius() {
         continue;
       }
       marker.setIcon(L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]}));
+      marker.__renderRadius = icon.radius;
     } else if (typeof marker.setRadius === 'function') {
       // Circle markers scale by adjusting radius directly
       let newRadius = getRadius(marker.doseRate, zoomLevel);
       marker.setRadius(newRadius);
+      marker.__renderRadius = newRadius;
     }
   }
+  restackVisibleMarkers();
 }
 
 /* -----------------------------------------------------------------
