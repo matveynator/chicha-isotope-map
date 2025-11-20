@@ -1125,6 +1125,20 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			continue
 		}
 		if _, err := exec.Exec(sb.String(), args...); err != nil {
+			// DuckDB may surface duplicates even with ON CONFLICT because older releases
+			// treat constraint violations as fatal during multi-row VALUES. To keep imports
+			// flowing we retry row-by-row and ignore the offending duplicates instead of
+			// aborting the entire batch. This mirrors "Don't panic" while keeping the code
+			// portable across engines.
+			if strings.EqualFold(dbType, "duckdb") && duckDBIsConflict(err) {
+				for _, marker := range chunk {
+					if saveErr := db.SaveMarkerAtomic(exec, marker, dbType); saveErr != nil && !duckDBIsConflict(saveErr) {
+						return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
+					}
+				}
+				i = end
+				continue
+			}
 			return fmt.Errorf("bulk exec: %w", err)
 		}
 		i = end
@@ -1199,6 +1213,11 @@ ON CONFLICT DO NOTHING`,
 			m.Detector, m.Radiation,
 			nullableFloat64(m.TemperatureValid, m.Temperature),
 			nullableFloat64(m.HumidityValid, m.Humidity))
+		if strings.EqualFold(dbType, "duckdb") && duckDBIsConflict(err) {
+			// DuckDB occasionally reports constraint violations even when ON CONFLICT is
+			// present. We treat those as benign so imports do not halt on duplicates.
+			return nil
+		}
 		return err
 	}
 }

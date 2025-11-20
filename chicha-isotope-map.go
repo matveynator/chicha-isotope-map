@@ -2775,9 +2775,26 @@ func logArchiveImportProgress(
 	var downloaded int64
 	var entries int
 	lastFile := ""
+	lastLoggedBytes := int64(-1)
+	lastLoggedEntries := -1
+	lastLoggedFile := ""
 
 	byteCh := byteUpdates
 	entryCh := entryUpdates
+
+	logSnapshot := func(force bool) {
+		if !force && downloaded == lastLoggedBytes && entries == lastLoggedEntries && lastFile == lastLoggedFile {
+			return
+		}
+		percent := float64(0)
+		if contentLength > 0 && downloaded > 0 {
+			percent = (float64(downloaded) / float64(contentLength)) * 100
+		}
+		logf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
+		lastLoggedBytes = downloaded
+		lastLoggedEntries = entries
+		lastLoggedFile = lastFile
+	}
 
 	for {
 		select {
@@ -2797,18 +2814,15 @@ func logArchiveImportProgress(
 			entries = progress.entries
 			lastFile = progress.filename
 		case <-ticker.C:
+			logSnapshot(false)
 		}
 
 		if byteCh == nil && entryCh == nil {
 			break
 		}
-
-		percent := float64(0)
-		if contentLength > 0 && downloaded > 0 {
-			percent = (float64(downloaded) / float64(contentLength)) * 100
-		}
-		logf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
 	}
+
+	logSnapshot(true)
 }
 
 // importArchiveFromFile streams a local tgz through the shared parser so offline
