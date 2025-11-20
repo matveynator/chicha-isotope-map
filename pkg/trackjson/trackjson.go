@@ -98,15 +98,19 @@ func MakeMarkerPayload(marker database.Marker) (MarkerPayload, time.Time) {
 }
 
 // TrackAPIPath returns the canonical API URL for fetching the JSON track with a
-// .cim extension. Keeping the function here lets the archive embed correct
-// references without reaching into HTTP-specific code.
+// .json extension. Keeping the function here lets the archive embed correct
+// references without reaching into HTTP-specific code. The API still serves
+// legacy .cim aliases for backward compatibility, but new exports prefer .json
+// so that file names reflect their true format.
 func TrackAPIPath(trackID string) string {
-	return "/api/track/" + url.PathEscape(trackID) + ".cim"
+	return "/api/track/" + url.PathEscape(trackID) + ".json"
 }
 
-// SafeCIMFilename normalises track IDs for use as download filenames while
-// preserving the .cim suffix expected by downstream tools.
-func SafeCIMFilename(trackID string) string {
+// SafeExportFilename normalises track IDs for use as download filenames while
+// preserving the .json suffix expected by downstream tools. We keep the
+// derived name stable so browsers and archives reuse cached filenames between
+// downloads.
+func SafeExportFilename(trackID string) string {
 	var b strings.Builder
 	for _, r := range trackID {
 		switch {
@@ -126,7 +130,14 @@ func SafeCIMFilename(trackID string) string {
 	if name == "" {
 		name = "track"
 	}
-	return name + ".cim"
+	return name + ".json"
+}
+
+// SafeCIMFilename retains the legacy name for callers that still expect the
+// old helper. We now return a .json extension but keep the function so existing
+// wiring keeps working during the transition.
+func SafeCIMFilename(trackID string) string {
+	return SafeExportFilename(trackID)
 }
 
 // CopyDisclaimers provides a defensive clone so callers can mutate the map

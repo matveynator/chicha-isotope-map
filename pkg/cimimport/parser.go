@@ -3,6 +3,7 @@ package cimimport
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -13,7 +14,7 @@ import (
 )
 
 // ==========================
-// .cim JSON track utilities
+// Export JSON track utilities
 // ==========================
 
 // File represents the JSON structure produced by the archive exporter.
@@ -53,7 +54,12 @@ type markerPayload struct {
 	RadiationTypes     []string `json:"radiationTypes"`
 }
 
-// Parse consumes the provided reader and decodes a JSON .cim payload.
+// ErrInvalidExportFormat marks inputs that are not JSON exports produced by
+// this service. Having a sentinel error lets callers fall back to other JSON
+// parsers without guessing based on the file extension alone.
+var ErrInvalidExportFormat = errors.New("invalid track export payload")
+
+// Parse consumes the provided reader and decodes a JSON export payload.
 // A small buffered reader keeps the decoder from issuing tiny syscalls
 // when uploads arrive over the network, aligning with the "Performance is
 // often gained by eliminating unnecessary work" proverb.
@@ -61,10 +67,10 @@ func Parse(r io.Reader) (File, error) {
 	dec := json.NewDecoder(bufio.NewReader(r))
 	var doc File
 	if err := dec.Decode(&doc); err != nil {
-		return File{}, fmt.Errorf("decode .cim: %w", err)
+		return File{}, fmt.Errorf("%w: %v", ErrInvalidExportFormat, err)
 	}
 	if len(doc.Markers) == 0 {
-		return File{}, fmt.Errorf("decode .cim: no markers present")
+		return File{}, fmt.Errorf("decode export: no markers present")
 	}
 	return doc, nil
 }
