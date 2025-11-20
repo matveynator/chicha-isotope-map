@@ -8,7 +8,7 @@
 - [🇷🇺 Русский](/doc/README_RU.md)
 
 # ☢️ World Radiation Map
-We keep this map humble and clear, in the spirit of Dmitry Likhachov: a newcomer should instantly see whether radiation is nearby — where they live, grow food, gather mushrooms and herbs, herd cattle, or draw water. In most clean forests, fields, and rivers the background stays near 2–3 µR/h; anything above is usually man-made. You can trace how uranium mines in Czechia, Russia, Kazakhstan, and Mongolia left long scars; how Fukushima created a dark blotch; how Chernobyl and the Bryansk region became “tumors” on the map; how radon-rich seams in France, Czechia, and the Caucasian Mineral Waters raise the risk of lung and stomach cancer. Leaching uranium and rare earths leaves soluble salts underground; they slip into aquifers and then into our water and food. If this map protects even one person or animal, it was worth building.
+This map is built so an unprepared visitor can instantly see whether radiation threatens nearby homes, fields, forests, and water. Clean places stay near 2–3 µR/h; the darker spots are almost always human-made. The map shows how uranium mines in Czechia, Russia, Kazakhstan, and Mongolia left long traces; how Fukushima stands out as a black-red “tumor” on Japan’s coast; how Chernobyl and the Bryansk region scar the land; how radon seams in France, Czechia, and the Caucasian Mineral Waters raise cancer risks. Leaching for uranium and rare earths leaves soluble salts that slip into aquifers and then into our water and food. If this map protects even one person or animal, it was worth building.
 
 Live demo: [https://pelora.org/](https://pelora.org/) — your node will look the same.
 
@@ -29,7 +29,7 @@ Live demo: [https://pelora.org/](https://pelora.org/) — your node will look th
 - Import via URL or file, export as an archive.
 - Run as a single node or join a network: more nodes → more transparency.
 
-The project grows with active help from the community: many great ideas came from **Rob Alden** and friends in open dosimetry worldwide (thank you, Greenpeace and other environmental teams).
+The project grows with active help from **Safecast** and the wider community: many great ideas came from **Rob Oudendijk** and friends in open dosimetry worldwide (thank you, Greenpeace and other environmental teams).
 
 ---
 
@@ -69,9 +69,8 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 ---
 
 ## 📥 Import data
-- Ready-made database: a full archive is on [pelora.org](https://pelora.org/); point the loader at its URL or download and add via **Upload**.
-- Web import: **Upload** → pick files (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, bGeigie Nano/Zen `$BNRDD`, AtomFast, RadiaCode, Safecast, etc.).
-- API import: `curl -F 'files[]=@/path/to/file.log' http://localhost:8765/upload` (diagnostics: `/upload_diag`).
+- On the map page, click the green **Upload** button and drop your tracks (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, bGeigie Nano/Zen `$BNRDD`, AtomFast, RadiaCode, Safecast, etc.).
+- Start with the ready archive from pelora.org: download [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz) and upload it with the same green button, or launch once with `-import-tgz-url https://pelora.org/api/json/weekly.tgz` to prefill automatically and exit before your normal run.
 
 ## 📤 Export
 - Single track: `/api/track/{trackID}.json` (legacy `.cim` also works).
@@ -89,7 +88,6 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 
 ## 🤝 Why your own node & a bit of history
 - We wanted anyone, without training, to see if radiation threatens where they live, grow food, or collect water.
-- Your node gives a baseline and history (typically 0.8–4 µR/h), so deviations stand out.
 - The more nodes exist, the harder it is to miss contamination.
 
-Chicha-Isotope-Map was created for the **Dmitry Ignatenko laboratory**, inspired by **Safecast**, and fueled by open data from the AtomFast and Radiacode communities. If the map spares even one life, it was not in vain.
+Chicha-Isotope-Map was inspired by **Dmitry Ignatenko** and his forward steps in field research, and is deeply influenced by **Rob Oudendijk** and **Safecast**. Open data from the AtomFast and Radiacode communities keeps it useful. If the map spares even one life, it was not in vain.

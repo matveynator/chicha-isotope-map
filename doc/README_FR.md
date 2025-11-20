@@ -8,7 +8,7 @@
 - [🇷🇺 Русский](/doc/README_RU.md)
 
 # ☢️ Carte mondiale de la radiation
-Nous gardons cette carte simple et sobre, dans l’esprit de Dmitri Likhatchov : un débutant doit voir immédiatement s’il y a de la radiation près de chez lui, là où il vit, cultive, cueille des champignons et des herbes, fait paître le bétail ou puise l’eau. Dans la nature, la plupart des forêts, champs et rivières restent autour de 2–3 µR/h ; ce qui dépasse vient le plus souvent de l’activité humaine. On voit comment les mines d’uranium en Tchéquie, Russie, Kazakhstan ou Mongolie ont laissé de longues cicatrices ; comment Fukushima a créé une tache sombre ; comment Tchernobyl et la région de Briansk sont devenues des « tumeurs » sur la carte ; comment les filons riches en radon en France, en Tchéquie ou aux Eaux minérales du Caucase augmentent le risque de cancer du poumon et de l’estomac. Le lessivage de l’uranium et des terres rares laisse des sels solubles en profondeur ; ils gagnent les nappes phréatiques, puis notre eau et notre nourriture. Si cette carte protège ne serait-ce qu’une personne ou un animal, elle aura servi.
+Cette carte est pensée pour qu’un visiteur sans préparation voie immédiatement si la radiation menace les maisons, champs, forêts ou points d’eau autour de lui. Les lieux sains tournent autour de 2–3 µR/h ; les zones plus sombres viennent presque toujours de l’activité humaine. La carte montre comment les mines d’uranium en Tchéquie, Russie, Kazakhstan ou Mongolie ont laissé de longues traces ; comment Fukushima ressort comme une « tache-tumeur » noir et rouge sur la côte japonaise ; comment Tchernobyl et la région de Briansk marquent le paysage ; comment les filons riches en radon en France, en Tchéquie ou aux Eaux minérales du Caucase augmentent les risques. Le lessivage de l’uranium et des terres rares laisse des sels solubles en profondeur : ils gagnent les nappes phréatiques, puis notre eau et notre nourriture. Si cette carte protège ne serait-ce qu’une personne ou un animal, elle aura servi.
 
 Démo en ligne : [https://pelora.org/](https://pelora.org/) — votre nœud aura le même aspect.
 
@@ -29,7 +29,7 @@ Démo en ligne : [https://pelora.org/](https://pelora.org/) — votre nœud aura
 - Import par URL ou fichier, export en archive.
 - Fonctionne en nœud unique ou en réseau : plus il y a de nœuds, plus la transparence est grande.
 
-Le projet progresse grâce à la communauté : beaucoup d’idées précieuses viennent de **Rob Alden** et des passionnés de dosimétrie ouverte dans le monde (merci à Greenpeace et aux autres équipes environnementales).
+Le projet progresse grâce au soutien actif de **Safecast** et de la communauté : beaucoup d’idées précieuses viennent de **Rob Oudendijk** et des passionnés de dosimétrie ouverte dans le monde (merci à Greenpeace et aux autres équipes environnementales).
 
 ---
 
@@ -69,9 +69,8 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 ---
 
 ## 📥 Importer des données
-- Base prête à l’emploi : un archive complète est disponible sur [pelora.org](https://pelora.org/) ; indiquez son URL dans le chargeur ou téléchargez-la puis ajoutez-la via **Upload**.
-- Import web : **Upload** → choisissez vos fichiers (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, journaux bGeigie Nano/Zen `$BNRDD`, exports AtomFast, RadiaCode, Safecast, etc.).
-- Import API : `curl -F 'files[]=@/chemin/vers/fichier.log' http://localhost:8765/upload` (diagnostic : `/upload_diag`).
+- Sur la carte, cliquez sur le bouton vert **Upload** et déposez vos traces (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, journaux bGeigie Nano/Zen `$BNRDD`, exports AtomFast, RadiaCode, Safecast, etc.).
+- Commencer avec l’archive prête de pelora.org : téléchargez [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz) et chargez-la avec le même bouton vert, ou lancez une fois le binaire avec `-import-tgz-url https://pelora.org/api/json/weekly.tgz` pour pré-remplir automatiquement puis quitter avant un démarrage normal.
 
 ## 📤 Exporter
 - Trace unique : `/api/track/{trackID}.json` (les anciens `.cim` fonctionnent aussi).
@@ -89,7 +88,6 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 
 ## 🤝 Pourquoi héberger son nœud et un peu d’histoire
 - Nous voulions que chacun, sans formation, voie si la radiation menace l’endroit où il vit, cultive ou puise l’eau.
-- Votre nœud donne une ligne de base et une histoire (souvent 0,8–4 µR/h), ce qui rend les écarts visibles.
 - Plus il y a de nœuds, plus il est difficile de rater une contamination.
 
-Chicha-Isotope-Map a été créée pour le **laboratoire Dmitry Ignatenko**, inspirée par **Safecast**, et portée par les données ouvertes des communautés AtomFast et Radiacode. Si la carte sauve ne serait-ce qu’une vie, ce travail n’aura pas été vain.
+Chicha-Isotope-Map est inspirée par les travaux de terrain de **Dmitry Ignatenko** et par **Rob Oudendijk** et le projet **Safecast**. Les données ouvertes des communautés AtomFast et Radiacode la rendent utile au quotidien. Si la carte sauve ne serait-ce qu’une vie, ce travail n’aura pas été vain.
