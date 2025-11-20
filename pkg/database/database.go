@@ -1007,7 +1007,6 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 	var (
 		exec  sqlExecutor
 		txn   *sql.Tx
-		ownTx *sql.Tx
 		total = len(markers)
 		done  int
 	)
@@ -1019,20 +1018,6 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 		exec = db.DB
 	}
 
-	if driver == "duckdb" && txn == nil {
-		// DuckDB performs best when bulk inserts are grouped inside a single transaction, but a
-		// constraint error would otherwise abort the transaction and block the duplicate-handling
-		// fallback. Owning a transaction here lets us combine speed with per-chunk savepoints so
-		// the work keeps flowing after a duplicate is discovered.
-		started, err := db.DB.Begin()
-		if err != nil {
-			return fmt.Errorf("begin duckdb bulk tx: %w", err)
-		}
-		ownTx = started
-		txn = started
-		exec = started
-	}
-
 	ph := func(n int) string {
 		if driver == "pgx" {
 			return fmt.Sprintf("$%d", n)
@@ -1042,6 +1027,21 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 
 	i := 0
 	for i < len(markers) {
+		chunkExec := exec
+		var chunkTx *sql.Tx
+
+		if driver == "duckdb" && txn == nil {
+			// DuckDB can stream faster when inserts share a transaction, but some deployments
+			// disallow SAVEPOINT. To keep compatibility we wrap each chunk in its own
+			// transaction so conflicts can roll back cleanly without aborting the outer loop.
+			started, err := db.DB.Begin()
+			if err != nil {
+				return fmt.Errorf("begin duckdb chunk tx: %w", err)
+			}
+			chunkTx = started
+			chunkExec = started
+		}
+
 		end := i + batch
 		if end > len(markers) {
 			end = len(markers)
@@ -1180,73 +1180,50 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			i = end
 			continue
 		}
-		if driver == "duckdb" && txn != nil {
-			sp := fmt.Sprintf("bulk_chunk_%d", i)
-			if _, err := txn.Exec("SAVEPOINT " + sp); err != nil {
-				return fmt.Errorf("duckdb savepoint: %w", err)
+		if _, err := chunkExec.Exec(sb.String(), args...); err != nil {
+			// DuckDB may surface duplicates even with ON CONFLICT because older releases treat
+			// constraint violations as fatal during multi-row VALUES. To keep imports flowing we
+			// retry row-by-row and ignore the offending duplicates instead of aborting the entire
+			// batch. This mirrors "Don't panic" while keeping the code portable across engines.
+			if driver == "duckdb" && duckDBIsConflict(err) {
+				mode = "fallback"
+				if chunkTx != nil {
+					_ = chunkTx.Rollback()
+					chunkTx = nil
+				}
+				fallbackTx, txErr := db.DB.Begin()
+				if txErr != nil {
+					return fmt.Errorf("duckdb fallback begin: %w", txErr)
+				}
+				chunkExec = fallbackTx
+				for _, marker := range chunk {
+					if saveErr := db.SaveMarkerAtomic(chunkExec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
+						_ = fallbackTx.Rollback()
+						return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
+					}
+				}
+				if err := fallbackTx.Commit(); err != nil {
+					return fmt.Errorf("duckdb fallback commit: %w", err)
+				}
+				done += len(chunk)
+				i = end
+				if progress != nil {
+					select {
+					case progress <- MarkerBatchProgress{Total: total, Done: done, Batch: len(chunk), Mode: mode, Duration: time.Since(chunkStart)}:
+					default:
+					}
+				}
+				continue
 			}
+			if chunkTx != nil {
+				_ = chunkTx.Rollback()
+			}
+			return fmt.Errorf("bulk exec: %w", err)
+		}
 
-			if _, err := exec.Exec(sb.String(), args...); err != nil {
-				// DuckDB may surface duplicates even with ON CONFLICT because older releases
-				// treat constraint violations as fatal during multi-row VALUES. Savepoints let
-				// us roll back the failed statement and keep streaming via the single-row
-				// conflict fallback instead of aborting the whole transaction.
-				if _, rbErr := txn.Exec("ROLLBACK TO SAVEPOINT " + sp); rbErr != nil {
-					return fmt.Errorf("duckdb savepoint rollback: %v (original: %w)", rbErr, err)
-				}
-				if duckDBIsConflict(err) {
-					mode = "fallback"
-					for _, marker := range chunk {
-						if saveErr := db.SaveMarkerAtomic(exec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
-							if _, rbErr := txn.Exec("ROLLBACK TO SAVEPOINT " + sp); rbErr != nil {
-								return fmt.Errorf("duckdb fallback rollback: %v (original: %w)", rbErr, saveErr)
-							}
-							return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
-						}
-					}
-					if _, relErr := txn.Exec("RELEASE SAVEPOINT " + sp); relErr != nil {
-						return fmt.Errorf("duckdb release savepoint: %w", relErr)
-					}
-					done += len(chunk)
-					i = end
-					if progress != nil {
-						select {
-						case progress <- MarkerBatchProgress{Total: total, Done: done, Batch: len(chunk), Mode: mode, Duration: time.Since(chunkStart)}:
-						default:
-						}
-					}
-					continue
-				}
-				return fmt.Errorf("bulk exec: %w", err)
-			}
-			if _, relErr := txn.Exec("RELEASE SAVEPOINT " + sp); relErr != nil {
-				return fmt.Errorf("duckdb release savepoint: %w", relErr)
-			}
-		} else {
-			if _, err := exec.Exec(sb.String(), args...); err != nil {
-				// DuckDB may surface duplicates even with ON CONFLICT because older releases
-				// treat constraint violations as fatal during multi-row VALUES. To keep imports
-				// flowing we retry row-by-row and ignore the offending duplicates instead of
-				// aborting the entire batch. This mirrors "Don't panic" while keeping the code
-				// portable across engines.
-				if driver == "duckdb" && duckDBIsConflict(err) {
-					mode = "fallback"
-					for _, marker := range chunk {
-						if saveErr := db.SaveMarkerAtomic(exec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
-							return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
-						}
-					}
-					done += len(chunk)
-					i = end
-					if progress != nil {
-						select {
-						case progress <- MarkerBatchProgress{Total: total, Done: done, Batch: len(chunk), Mode: mode, Duration: time.Since(chunkStart)}:
-						default:
-						}
-					}
-					continue
-				}
-				return fmt.Errorf("bulk exec: %w", err)
+		if chunkTx != nil {
+			if err := chunkTx.Commit(); err != nil {
+				return fmt.Errorf("duckdb chunk commit: %w", err)
 			}
 		}
 		done += len(chunk)
@@ -1257,12 +1234,6 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			}
 		}
 		i = end
-	}
-	if ownTx != nil {
-		if err := ownTx.Commit(); err != nil {
-			_ = ownTx.Rollback()
-			return fmt.Errorf("commit duckdb bulk tx: %w", err)
-		}
 	}
 	return nil
 }

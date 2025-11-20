@@ -3308,10 +3308,9 @@ func processAndStoreMarkers(
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
 	} else if strings.EqualFold(dbType, "duckdb") {
-		// DuckDB stays quick when inserts share a transaction but still aborts on constraint
-		// errors. InsertMarkersBulk wraps each batch in a savepoint so we keep the speed benefit
-		// of a single commit while still falling back to duplicate-tolerant single-row inserts
-		// when archives contain overlap.
+		// DuckDB performs best with transactional batches, but some environments disable
+		// SAVEPOINT. InsertMarkersBulk now wraps each chunk in its own transaction so duplicate
+		// fallbacks remain isolated while retaining the throughput benefits of bulk inserts.
 		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000, progressCh); err != nil {
 			close(progressCh)
 			<-progressDone
