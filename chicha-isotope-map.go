@@ -2769,6 +2769,11 @@ func logArchiveImportProgress(
 ) {
 	defer close(done)
 
+	// Emit an immediate status line so operators see that the goroutine is alive
+	// even before bytes start flowing. This keeps "no logs" confusion at bay when
+	// network buffers stall at the start of a long transfer.
+	logf("tgz import [%s]: starting (size=%d bytes)", source, contentLength)
+
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
@@ -2800,7 +2805,7 @@ func logArchiveImportProgress(
 			return
 		}
 
-		line := fmt.Sprintf("remote tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
+		line := fmt.Sprintf("tgz import [%s]: %.1f%% (%d/%d bytes) entries=%d last=%s", source, percent, downloaded, contentLength, entries, lastFile)
 
 		// Avoid emitting identical consecutive snapshots so operators do not see doubled lines
 		// when the final forced update matches the last timed tick.
@@ -2939,6 +2944,32 @@ func importArchiveFromURL(
 
 	logf("remote tgz import complete: imported=%v track=%s bounds=%v", imported, finalTrack, bounds)
 	return nil
+}
+
+// startBackgroundArchiveImport kicks off a non-blocking import pipeline so startup
+// flags cannot prevent the HTTP listener from coming up. Progress and completion
+// are reported through the provided logger, keeping the goroutine simple and free
+// of shared state.
+func startBackgroundArchiveImport(
+	ctx context.Context,
+	label string,
+	importer func(context.Context) error,
+	logf func(string, ...any),
+) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if logf == nil {
+			logf = func(string, ...any) {}
+		}
+		logf("background tgz import queued: %s", label)
+		if err := importer(ctx); err != nil {
+			logf("background tgz import failed (%s): %v", label, err)
+			return
+		}
+		logf("background tgz import finished (%s)", label)
+	}()
+	return done
 }
 
 // mergeBounds combines multiple bounding boxes while tracking whether we already
@@ -3336,6 +3367,42 @@ func processAndStoreMarkers(
 	return bbox, trackID, nil
 }
 
+// enqueueArchiveImport writes the uploaded tgz to a temporary file and processes it in the background.
+// Using a goroutine prevents the HTTP handler from blocking while still reusing the common parser.
+func enqueueArchiveImport(fh *multipart.FileHeader, trackID string, db *database.Database, dbType string) error {
+	src, err := fh.Open()
+	if err != nil {
+		return fmt.Errorf("open upload: %w", err)
+	}
+	defer src.Close()
+
+	tmp, err := os.CreateTemp("", "upload-*.tgz")
+	if err != nil {
+		return fmt.Errorf("temp tgz: %w", err)
+	}
+	defer tmp.Close()
+
+	if _, err := io.Copy(tmp, src); err != nil {
+		return fmt.Errorf("copy tgz: %w", err)
+	}
+
+	path := tmp.Name()
+
+	go func(localPath string) {
+		defer os.Remove(localPath)
+		ctx := context.Background()
+		logf := func(format string, v ...any) {
+			logT(trackID, "Upload", format, v...)
+		}
+		logf("queued tgz import in background: %s", fh.Filename)
+		if err := importArchiveFromFile(ctx, localPath, trackID, db, dbType, logf); err != nil {
+			logf("background tgz import failed: %v", err)
+		}
+	}(path)
+
+	return nil
+}
+
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		http.Error(w, "multipart parse error", http.StatusBadRequest)
@@ -3352,6 +3419,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// глобальные границы всего набора файлов
 	global := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
+	hasBounds := false
+	backgroundImport := false
 
 	for _, fh := range files {
 		logT(trackID, "Upload", "file received: %s", fh.Filename)
@@ -3400,11 +3469,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 				logT(trackID, "Upload", "skipped duplicate track export JSON")
 			}
 		case ".tgz":
-			var imported bool
-			bbox, trackID, imported, err = processTrackExportArchive(r.Context(), f, trackID, db, *dbType)
-			if err == nil && !imported {
-				logT(trackID, "Upload", "tgz contained only duplicate track exports")
+			backgroundImport = true
+			_ = f.Close()
+			if queueErr := enqueueArchiveImport(fh, trackID, db, *dbType); queueErr != nil {
+				err = queueErr
+				break
 			}
+			continue
 		case ".log", ".txt":
 			bbox, trackID, err = processBGeigieZenFile(f, trackID, db, *dbType)
 		default:
@@ -3429,19 +3500,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if strings.HasSuffix(strings.ToLower(fh.Filename), ".tar.gz") {
+				backgroundImport = true
 				_ = f.Close()
-				f2, openErr := fh.Open()
-				if openErr != nil {
-					err = fmt.Errorf("reopen tar.gz: %w", openErr)
+				if queueErr := enqueueArchiveImport(fh, trackID, db, *dbType); queueErr != nil {
+					err = queueErr
 					break
 				}
-				f = f2
-				var imported bool
-				bbox, trackID, imported, err = processTrackExportArchive(r.Context(), f, trackID, db, *dbType)
-				if err == nil && !imported {
-					logT(trackID, "Upload", "tar.gz contained only duplicate track exports")
-				}
-				break
+				continue
 			}
 
 			logT(trackID, "Upload", "unsupported file type: %s (ext=%q)", fh.Filename, ext)
@@ -3456,31 +3521,43 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// расширяем глобальные границы
-		if bbox.MinLat < global.MinLat {
-			global.MinLat = bbox.MinLat
-		}
-		if bbox.MaxLat > global.MaxLat {
-			global.MaxLat = bbox.MaxLat
-		}
-		if bbox.MinLon < global.MinLon {
-			global.MinLon = bbox.MinLon
-		}
-		if bbox.MaxLon > global.MaxLon {
-			global.MaxLon = bbox.MaxLon
+		if bbox != (database.Bounds{}) {
+			hasBounds = true
+			// расширяем глобальные границы
+			if bbox.MinLat < global.MinLat {
+				global.MinLat = bbox.MinLat
+			}
+			if bbox.MaxLat > global.MaxLat {
+				global.MaxLat = bbox.MaxLat
+			}
+			if bbox.MinLon < global.MinLon {
+				global.MinLon = bbox.MinLon
+			}
+			if bbox.MaxLon > global.MaxLon {
+				global.MaxLon = bbox.MaxLon
+			}
 		}
 	}
 
-	trackURL := fmt.Sprintf(
-		"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
-		trackID, global.MinLat, global.MinLon, global.MaxLat, global.MaxLon,
-		"OpenStreetMap")
+	trackURL := "/"
+	if hasBounds {
+		trackURL = fmt.Sprintf(
+			"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
+			trackID, global.MinLat, global.MinLon, global.MaxLat, global.MaxLon,
+			"OpenStreetMap")
+	}
 
-	logT(trackID, "Upload", "redirecting browser to: %s", trackURL)
+	status := "success"
+	if backgroundImport {
+		status = "processing"
+		logT(trackID, "Upload", "tgz archive queued for background import; map stays responsive during processing")
+	} else {
+		logT(trackID, "Upload", "redirecting browser to: %s", trackURL)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{
-		"status":   "success",
+		"status":   status,
 		"trackURL": trackURL,
 	}); err != nil {
 		if isClientDisconnect(err) {
@@ -3928,27 +4005,51 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 // Streaming markers via SSE
 // ========
 
-// aggregateMarkers chooses the most radioactive marker per grid cell.
-// Cells shrink with higher zoom to preserve detail.
-func aggregateMarkers(ctx context.Context, in <-chan database.Marker, zoom int) <-chan database.Marker {
+// aggregateMarkers chooses the most radioactive marker per grid cell while merging the
+// static query feed with an optional live stream. Keeping the grid map inside the goroutine
+// lets us reuse previous emissions and drop later duplicates without mutexes.
+func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates <-chan database.Marker, zoom int) <-chan database.Marker {
 	out := make(chan database.Marker)
 	go func() {
 		defer close(out)
 		cells := make(map[string]database.Marker)
 		scale := math.Pow(2, float64(zoom))
+		baseCh := base
+		updateCh := updates
+
+		emit := func(m database.Marker) {
+			key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
+			if prev, ok := cells[key]; !ok || m.DoseRate > prev.DoseRate {
+				cells[key] = m
+				select {
+				case out <- m:
+				case <-ctx.Done():
+				}
+			}
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case m, ok := <-in:
+			case m, ok := <-baseCh:
 				if !ok {
-					return
+					baseCh = nil
+					if baseCh == nil && updateCh == nil {
+						return
+					}
+					continue
 				}
-				key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
-				if prev, ok := cells[key]; !ok || m.DoseRate > prev.DoseRate {
-					cells[key] = m
-					out <- m
+				emit(m)
+			case m, ok := <-updateCh:
+				if !ok {
+					updateCh = nil
+					if baseCh == nil && updateCh == nil {
+						return
+					}
+					continue
 				}
+				emit(m)
 			}
 		}
 	}()
@@ -3991,7 +4092,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
 
-	agg := aggregateMarkers(ctx, baseSrc, zoom)
+	agg := aggregateMarkers(ctx, baseSrc, nil, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -4012,14 +4113,17 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case err := <-errCh:
+		case err, ok := <-errCh:
+			if !ok {
+				errCh = nil
+				continue
+			}
 			if err != nil {
 				fmt.Fprintf(w, "event: done\ndata: %v\n\n", err)
-			} else {
-				fmt.Fprint(w, "event: done\ndata: end\n\n")
+				flusher.Flush()
+				return
 			}
-			flusher.Flush()
-			return
+			errCh = nil
 		case m, ok := <-agg:
 			if !ok {
 				fmt.Fprint(w, "event: done\ndata: end\n\n")
@@ -4673,29 +4777,17 @@ func main() {
 	}
 
 	if localArchive != "" {
-		ctxImport, cancelImport := context.WithCancel(context.Background())
-		defer cancelImport()
-
 		fallback := GenerateSerialNumber()
-		if err := importArchiveFromFile(ctxImport, localArchive, fallback, db, driverName, log.Printf); err != nil {
-			log.Fatalf("local tgz import: %v", err)
-		}
-
-		log.Printf("local tgz import finished; exiting per -import-tgz-file")
-		return
+		startBackgroundArchiveImport(context.Background(), fmt.Sprintf("local file %s", localArchive), func(ctx context.Context) error {
+			return importArchiveFromFile(ctx, localArchive, fallback, db, driverName, log.Printf)
+		}, log.Printf)
 	}
 
 	if remoteURL != "" {
-		ctxImport, cancelImport := context.WithCancel(context.Background())
-		defer cancelImport()
-
 		fallback := GenerateSerialNumber()
-		if err := importArchiveFromURL(ctxImport, remoteURL, fallback, db, driverName, log.Printf); err != nil {
-			log.Fatalf("remote tgz import: %v", err)
-		}
-
-		log.Printf("remote tgz import finished; exiting per -import-tgz-url")
-		return
+		startBackgroundArchiveImport(context.Background(), fmt.Sprintf("remote url %s", remoteURL), func(ctx context.Context) error {
+			return importArchiveFromURL(ctx, remoteURL, fallback, db, driverName, log.Printf)
+		}, log.Printf)
 	}
 
 	if *safecastRealtimeEnabled {
@@ -4787,7 +4879,7 @@ func main() {
 		// Обычный HTTP на порт из -port
 		addr := fmt.Sprintf(":%d", *port)
 		go func() {
-			log.Printf("HTTP server ➜ http://localhost:%s", addr)
+			log.Printf("HTTP server ➜ http://localhost:%d", *port)
 			if err := http.ListenAndServe(addr, rootHandler); err != nil {
 				selfupgradeHandleServerError(err, log.Printf)
 			}
