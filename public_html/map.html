@@ -2318,9 +2318,10 @@ document.addEventListener('DOMContentLoaded', function () {
   // Google tiles always use satellite imagery for consistent look
   const googleSat   = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
 
+  // Attribution kept minimal to fit constrained UI space while retaining the required OSM credit.
   osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
     maxZoom: 18,
-    attribution: '&copy; OpenStreetMap contributors, &copy; OpenFreeMap'
+    attribution: '&copy; OpenStreetMap contributors'
   });
 
   // Use the same satellite layer regardless of theme
