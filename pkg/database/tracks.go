@@ -58,11 +58,13 @@ func (db *Database) streamTrackSummaries(
 
 		nextPlaceholder := newPlaceholderGenerator(dbType)
 		conditions := []string{fmt.Sprintf("trackID > %s", nextPlaceholder())}
+		// Skip realtime-only track IDs so JSON archives focus on persisted journeys.
+		conditions = append(conditions, fmt.Sprintf("trackID NOT LIKE %s", nextPlaceholder()))
+		args := []any{startAfter, "live:%"}
 		// Avoid filtering by zoom so every stored measurement contributes
 		// to the per-track metadata. Keeping the SQL simple mirrors the Go
 		// proverb "Simplicity is complicated", but it ensures archives do
 		// not miss tracks whose markers were ingested with varying zooms.
-		args := []any{startAfter}
 
 		if restrictDates {
 			// The API provides inclusive start and exclusive end boundaries

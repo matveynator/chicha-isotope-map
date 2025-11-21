@@ -2759,6 +2759,14 @@ func processTrackExportReader(
 		trackID = parsedTrackID
 	}
 
+	// Ignore live-only exports because they belong to the realtime cache.
+	// Skipping them keeps weekly archives from stalling on transient snapshots
+	// while the map still renders live points directly from the realtime table.
+	if strings.HasPrefix(trackID, "live:") {
+		logT(trackID, "Export", "skip live track export payload")
+		return database.Bounds{}, trackID, false, nil
+	}
+
 	markers, bounds := payload.ToDatabaseMarkers(trackID)
 	if len(markers) == 0 {
 		return bounds, trackID, false, fmt.Errorf("track export import: no usable markers")
