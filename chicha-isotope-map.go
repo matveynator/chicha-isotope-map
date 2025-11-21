@@ -2567,6 +2567,30 @@ type archiveProgress struct {
 	filename string
 }
 
+// archiveEntryResult carries the outcome of a single archive item import through
+// a channel so the tar reader loop can enforce timeouts without blocking on a
+// stuck DB call. Using a struct keeps the select statement tidy while remaining
+// explicit about the data we expect back.
+type archiveEntryResult struct {
+	bounds   database.Bounds
+	track    string
+	inserted bool
+	err      error
+}
+
+// observeContext lets long-running import stages bail out quickly when the caller
+// cancels, keeping goroutines from running past their deadlines. Returning the
+// context error keeps the caller aware that nothing beyond this point was
+// committed, which in turn prevents duplicate progress accounting.
+func observeContext(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
+}
+
 // processTrackExportArchive handles the weekly tgz bundle produced by the API.
 // We iterate entries sequentially because tar readers are streaming, yet still
 // lean on channels inside the parser so each export stays memory-light.
@@ -2642,19 +2666,62 @@ func processTrackExportArchiveReader(
 		logT(trackID, "Export-TGZ", "processing %s", hdr.Name)
 		sendProgress(hdr.Name)
 
-		entryBounds, entryTrack, inserted, err := processTrackExportReader(ctx, io.LimitReader(tr, hdr.Size), GenerateSerialNumber(), db, dbType)
-		if err != nil {
-			return combined, primaryTrack, importedAny, fmt.Errorf("import %s: %w", hdr.Name, err)
+		limited := io.LimitReader(tr, hdr.Size)
+		payload, readErr := io.ReadAll(limited)
+		if readErr != nil {
+			logT(trackID, "Export-TGZ", "skip %s: read failure: %v", hdr.Name, readErr)
+			entryIndex++
+			sendProgress(hdr.Name)
+			continue
 		}
-		if entryTrack != "" && primaryTrack == trackID {
-			primaryTrack = entryTrack
+
+		entryCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		results := make(chan archiveEntryResult, 1)
+		go func(data []byte) {
+			defer close(results)
+			entryBounds, entryTrack, inserted, err := processTrackExportReader(entryCtx, bytes.NewReader(data), GenerateSerialNumber(), db, dbType)
+			results <- archiveEntryResult{bounds: entryBounds, track: entryTrack, inserted: inserted, err: err}
+		}(payload)
+
+		select {
+		case <-ctx.Done():
+			cancel()
+			if result, ok := <-results; ok && result.err != nil {
+				_ = result // already returning context error; discard partials
+			}
+			return combined, primaryTrack, importedAny, ctx.Err()
+		case <-entryCtx.Done():
+			cancel()
+			logT(trackID, "Export-TGZ", "skip %s: import stalled: %v", hdr.Name, entryCtx.Err())
+			select {
+			case result, ok := <-results:
+				if ok && result.inserted {
+					logT(trackID, "Export-TGZ", "ignored late completion for %s after timeout", hdr.Name)
+				}
+			case <-time.After(15 * time.Second):
+				logT(trackID, "Export-TGZ", "waited for stalled %s worker to exit", hdr.Name)
+			}
+			entryIndex++
+			sendProgress(hdr.Name)
+			continue
+		case result := <-results:
+			cancel()
+			if result.err != nil {
+				logT(trackID, "Export-TGZ", "skip %s: %v", hdr.Name, result.err)
+				entryIndex++
+				sendProgress(hdr.Name)
+				continue
+			}
+			if result.track != "" && primaryTrack == trackID {
+				primaryTrack = result.track
+			}
+			combined, haveBounds = mergeBounds(combined, result.bounds, haveBounds)
+			if result.inserted {
+				importedAny = true
+			}
+			entryIndex++
+			sendProgress(hdr.Name)
 		}
-		combined, haveBounds = mergeBounds(combined, entryBounds, haveBounds)
-		if inserted {
-			importedAny = true
-		}
-		entryIndex++
-		sendProgress(hdr.Name)
 	}
 
 	if entryIndex == 0 {
@@ -2674,10 +2741,10 @@ func processTrackExportReader(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, bool, error) {
-	select {
-	case <-ctx.Done():
-		return database.Bounds{}, fallbackTrackID, false, ctx.Err()
-	default:
+	// Early exit keeps the goroutine responsive to caller cancellation so timeouts
+	// never leak work into the next archive entry.
+	if err := observeContext(ctx); err != nil {
+		return database.Bounds{}, fallbackTrackID, false, err
 	}
 
 	payload, err := cimimport.Parse(r)
@@ -2685,10 +2752,19 @@ func processTrackExportReader(
 		return database.Bounds{}, fallbackTrackID, false, err
 	}
 
+	// Respect overrides in the payload but keep a fallback for archive-level defaults.
 	parsedTrackID := strings.TrimSpace(payload.TrackID)
 	trackID := fallbackTrackID
 	if parsedTrackID != "" {
 		trackID = parsedTrackID
+	}
+
+	// Ignore live-only exports because they belong to the realtime cache.
+	// Skipping them keeps weekly archives from stalling on transient snapshots
+	// while the map still renders live points directly from the realtime table.
+	if strings.HasPrefix(trackID, "live:") {
+		logT(trackID, "Export", "skip live track export payload")
+		return database.Bounds{}, trackID, false, nil
 	}
 
 	markers, bounds := payload.ToDatabaseMarkers(trackID)
@@ -2697,6 +2773,10 @@ func processTrackExportReader(
 	}
 
 	logT(trackID, "Export", "parsed %d markers", len(markers))
+
+	if err := observeContext(ctx); err != nil {
+		return bounds, trackID, false, err
+	}
 
 	probe := pickIdentityProbe(markers, 128)
 	threshold := min(len(probe), 10)
@@ -2714,7 +2794,7 @@ func processTrackExportReader(
 		}
 	}
 
-	storedBounds, finalTrackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
+	storedBounds, finalTrackID, err := processAndStoreMarkersWithContext(ctx, markers, trackID, db, dbType)
 	if err != nil {
 		return storedBounds, finalTrackID, false, err
 	}
@@ -3258,10 +3338,24 @@ func processAndStoreMarkers(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, error) {
+	// Keep legacy callers working by delegating to the context-aware variant.
+	return processAndStoreMarkersWithContext(context.Background(), markers, initTrackID, db, dbType)
+}
+
+func processAndStoreMarkersWithContext(
+	ctx context.Context,
+	markers []database.Marker,
+	initTrackID string, // initially generated ID
+	db *database.Database,
+	dbType string,
+) (database.Bounds, string, error) {
 
 	// ── step 0: bounding box (cheap) ────────────────────────────────
 	bbox := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
 	for _, m := range markers {
+		if err := observeContext(ctx); err != nil {
+			return bbox, initTrackID, err
+		}
 		if m.Lat < bbox.MinLat {
 			bbox.MinLat = m.Lat
 		}
@@ -3280,6 +3374,10 @@ func processAndStoreMarkers(
 
 	// ── step 1: fast probe instead of full-scan ─────────────────────
 	// Limit DB random lookups to a tiny sample (e.g. 128 points).
+	if err := observeContext(ctx); err != nil {
+		return bbox, trackID, err
+	}
+
 	probe := pickIdentityProbe(markers, 128)
 	if existing, err := db.DetectExistingTrackID(probe, 10, dbType); err != nil {
 		return bbox, trackID, err
@@ -3292,11 +3390,17 @@ func processAndStoreMarkers(
 
 	// ── step 2: attach FINAL TrackID ────────────────────────────────
 	for i := range markers {
+		if err := observeContext(ctx); err != nil {
+			return bbox, trackID, err
+		}
 		markers[i].TrackID = trackID
 	}
 
 	// ── step 3: light filters ───────────────────────────────────────
 	markers = filterZeroMarkers(markers)
+	if err := observeContext(ctx); err != nil {
+		return bbox, trackID, err
+	}
 	markers = filterInvalidDateMarkers(markers)
 	if len(markers) == 0 {
 		return bbox, trackID, fmt.Errorf("all markers filtered out")
@@ -3304,8 +3408,14 @@ func processAndStoreMarkers(
 
 	// ── step 4: speed calculation (pure Go) ─────────────────────────
 	markers = calculateSpeedForMarkers(markers)
+	if err := observeContext(ctx); err != nil {
+		return bbox, trackID, err
+	}
 
 	// ── step 5: build aggregates for 20 zooms — O(N)+goroutines ─────
+	if err := observeContext(ctx); err != nil {
+		return bbox, trackID, err
+	}
 	// We keep the raw zoom=0 markers in front so downstream exports
 	// retain the exact coordinates users uploaded while still storing
 	// clustered variants for map views. Mixing raw and aggregates was
@@ -3332,8 +3442,13 @@ func processAndStoreMarkers(
 	}(len(allZoom))
 
 	// ── step 6: single transaction + multi-row VALUES ───────────────
+	if err := observeContext(ctx); err != nil {
+		close(progressCh)
+		<-progressDone
+		return bbox, trackID, err
+	}
 	if strings.EqualFold(dbType, "clickhouse") {
-		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000, progressCh); err != nil {
+		if err := db.InsertMarkersBulk(ctx, nil, allZoom, dbType, 1000, progressCh); err != nil {
 			close(progressCh)
 			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
@@ -3347,7 +3462,13 @@ func processAndStoreMarkers(
 		}
 		// Batch size 500–1000 usually gives a good balance on large B-Trees and keeps DuckDB in
 		// a single transaction so inserts do not pay per-chunk commit costs.
-		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000, progressCh); err != nil {
+		if err := observeContext(ctx); err != nil {
+			_ = tx.Rollback()
+			close(progressCh)
+			<-progressDone
+			return bbox, trackID, err
+		}
+		if err := db.InsertMarkersBulk(ctx, tx, allZoom, dbType, 1000, progressCh); err != nil {
 			_ = tx.Rollback()
 			close(progressCh)
 			<-progressDone
