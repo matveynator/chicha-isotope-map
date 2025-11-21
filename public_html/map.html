@@ -2317,6 +2317,28 @@ document.addEventListener('DOMContentLoaded', function () {
   // Keep the currently active dark source in window scope so the theme switcher can reuse it.
   window.osmLight = osmLight;
   window.osmDark  = osmDarkPrimary;
+  // Probe the preferred dark tiles up front so we can fall back before the user only sees a gray grid.
+  function probeDarkTiles(url, onFailure) {
+    // Build a cheap sample request without Leaflet so we can quickly learn if the endpoint is reachable.
+    var sampleUrl = url.replace('{s}', 'a').replace('{r}', '');
+    sampleUrl     = sampleUrl.replace('{z}', '1').replace('{x}', '1').replace('{y}', '1');
+    var img = new Image();
+    function cleanup() {
+      img.onload = null;
+      img.onerror = null;
+    }
+    img.onload = function () {
+      // Success means we can keep using the higher-detail OpenFreeMap tiles.
+      cleanup();
+    };
+    img.onerror = function () {
+      // Failure means we should immediately switch to the fallback to avoid leaving the UI blank.
+      cleanup();
+      onFailure();
+    };
+    img.referrerPolicy = 'no-referrer';
+    img.src = sampleUrl;
+  }
   // Swap the dark source only through this helper to keep the UI and layer URL in sync.
   function setDarkTiles(url) {
     window.osmDark = url;
@@ -2340,6 +2362,13 @@ document.addEventListener('DOMContentLoaded', function () {
       setDarkTiles(osmDarkFallback);
     }
   });
+
+  // Apply the same fallback early when we already know the dark tiles cannot load, keeping the map usable.
+  if (media.matches) {
+    probeDarkTiles(osmDarkPrimary, function () {
+      setDarkTiles(osmDarkFallback);
+    });
+  }
 
   // Use the same satellite layer regardless of theme
   googleSatellite = L.tileLayer(googleSat, {
