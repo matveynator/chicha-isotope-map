@@ -2311,7 +2311,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // Initialize layers and auto theme switch
   const media = window.matchMedia('(prefers-color-scheme: dark)');
   const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-  const osmDark  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  // Using OpenFreeMap dark tiles for higher detail compared to the previous CartoCDN Dark Matter layer.
+  const osmDark  = 'https://tile.openfreemap.org/dark/{z}/{x}/{y}.png';
   window.osmLight = osmLight; // expose for theme toggle
   window.osmDark  = osmDark;  // expose for theme toggle
   // Google tiles always use satellite imagery for consistent look
@@ -2319,7 +2320,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
     maxZoom: 18,
-    attribution: '&copy; OSM contributors'
+    attribution: '&copy; OpenStreetMap contributors, &copy; OpenFreeMap'
   });
 
   // Use the same satellite layer regardless of theme
