@@ -2311,15 +2311,34 @@ document.addEventListener('DOMContentLoaded', function () {
   // Initialize layers and auto theme switch
   const media = window.matchMedia('(prefers-color-scheme: dark)');
   const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-  const osmDark  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-  window.osmLight = osmLight; // expose for theme toggle
-  window.osmDark  = osmDark;  // expose for theme toggle
+  // Using OpenFreeMap dark tiles for higher detail compared to the previous CartoCDN Dark Matter layer.
+  const osmDarkPrimary  = 'https://tile.openfreemap.org/dark/{z}/{x}/{y}.png';
+  const osmDarkFallback = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  // Keep the currently active dark source in window scope so the theme switcher can reuse it.
+  window.osmLight = osmLight;
+  window.osmDark  = osmDarkPrimary;
+  // Swap the dark source only through this helper to keep the UI and layer URL in sync.
+  function setDarkTiles(url) {
+    window.osmDark = url;
+    var preferredDark = document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && media.matches);
+    if (window.osmLayer && preferredDark) {
+      window.osmLayer.setUrl(url);
+    }
+  }
   // Google tiles always use satellite imagery for consistent look
   const googleSat   = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
 
-  osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
+  // Attribution kept minimal to fit constrained UI space while retaining the required OSM credit.
+  osmLayer = L.tileLayer(media.matches ? osmDarkPrimary : osmLight, {
     maxZoom: 18,
-    attribution: '&copy; OSM contributors'
+    attribution: '&copy; OpenStreetMap contributors'
+  });
+
+  // Switch to the fallback dark tiles if the primary OpenFreeMap source is unavailable, preventing a blank map in the UI.
+  osmLayer.on('tileerror', function (ev) {
+    if (window.osmDark === osmDarkPrimary) {
+      setDarkTiles(osmDarkFallback);
+    }
   });
 
   // Use the same satellite layer regardless of theme
