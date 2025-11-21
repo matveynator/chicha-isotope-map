@@ -3440,7 +3440,7 @@ func processAndStoreMarkersWithContext(
 		return bbox, trackID, err
 	}
 	if strings.EqualFold(dbType, "clickhouse") {
-		if err := db.InsertMarkersBulk(nil, allZoom, dbType, 1000, progressCh); err != nil {
+		if err := db.InsertMarkersBulk(ctx, nil, allZoom, dbType, 1000, progressCh); err != nil {
 			close(progressCh)
 			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
@@ -3460,7 +3460,7 @@ func processAndStoreMarkersWithContext(
 			<-progressDone
 			return bbox, trackID, err
 		}
-		if err := db.InsertMarkersBulk(tx, allZoom, dbType, 1000, progressCh); err != nil {
+		if err := db.InsertMarkersBulk(ctx, tx, allZoom, dbType, 1000, progressCh); err != nil {
 			_ = tx.Rollback()
 			close(progressCh)
 			<-progressDone

@@ -1058,9 +1058,17 @@ type MarkerBatchProgress struct {
 //   - "Make the zero value useful" — batch<=0 falls back to 500.
 //   - "The bigger the interface, the weaker the abstraction" — DuckDB wraps in one transaction instead of
 //     leaking SAVEPOINT assumptions per chunk.
-func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) (err error) {
+//
+// Context is threaded through so stalled archive entries can abandon long-running
+// database calls instead of blocking later work. We check cancellation between
+// batches and rely on ExecContext to let drivers break out promptly.
+func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) (err error) {
 	if len(markers) == 0 {
 		return nil
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	if batch <= 0 {
@@ -1129,6 +1137,12 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 
 	i := 0
 	for i < len(markers) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		chunkExec := exec
 
 		end := i + batch
@@ -1247,7 +1261,7 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			i = end
 			continue
 		}
-		if _, err := chunkExec.Exec(sb.String(), args...); err != nil {
+		if _, err := chunkExec.ExecContext(ctx, sb.String(), args...); err != nil {
 			// DuckDB may surface duplicates even with ON CONFLICT because older releases treat
 			// constraint violations as fatal during multi-row VALUES. To keep imports flowing we
 			// retry row-by-row and ignore the offending duplicates instead of aborting the entire
@@ -1255,7 +1269,10 @@ func (db *Database) InsertMarkersBulk(tx *sql.Tx, markers []Marker, dbType strin
 			if driver == "duckdb" && duckDBIsConflict(err) {
 				mode = "fallback"
 				for _, marker := range chunk {
-					if saveErr := db.SaveMarkerAtomic(chunkExec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					if saveErr := db.SaveMarkerAtomic(ctx, chunkExec, marker, driver); saveErr != nil && !duckDBIsConflict(saveErr) {
 						return fmt.Errorf("duckdb bulk fallback: %w", saveErr)
 					}
 				}
@@ -1433,8 +1450,13 @@ func (db *Database) filterClickHouseNewMarkers(chunk []Marker) ([]Marker, error)
 //     Это устраняет ошибку, когда все агрегатные маркеры имели id-0
 //     и вторая вставка ломалась на UNIQUE PRIMARY KEY.
 func (db *Database) SaveMarkerAtomic(
+	ctx context.Context,
 	exec sqlExecutor, m Marker, dbType string,
 ) error {
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	driver := normalizeDBType(dbType)
 
@@ -1442,7 +1464,7 @@ func (db *Database) SaveMarkerAtomic(
 
 	// ──────────────────────────── PostgreSQL (pgx) ───────────
 	case "pgx":
-		_, err := exec.Exec(`
+		_, err := exec.ExecContext(ctx, `
 INSERT INTO markers
       (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -1466,7 +1488,7 @@ ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 		if m.ID == 0 {
 			m.ID = <-db.idGenerator
 		}
-		_, err = exec.Exec(`
+		_, err = exec.ExecContext(ctx, `
 INSERT INTO markers
       (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -1484,7 +1506,7 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			// берём следующий уникальный id из генератора
 			m.ID = <-db.idGenerator
 		}
-		_, err := exec.Exec(`
+		_, err := exec.ExecContext(ctx, `
 INSERT INTO markers
       (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -1860,6 +1882,7 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 	}()
 
 	// process each device sequentially; no mutex is needed
+	ctx := context.Background()
 	for id := range ids {
 		ms, err := db.fetchRealtimeByDevice(id, dbType)
 		if err != nil {
@@ -1905,7 +1928,7 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 				Speed:     0,
 				TrackID:   id,
 			}
-			if err := db.SaveMarkerAtomic(exec, marker, dbType); err != nil {
+			if err := db.SaveMarkerAtomic(ctx, exec, marker, dbType); err != nil {
 				if tx != nil {
 					tx.Rollback()
 				}
@@ -1981,9 +2004,11 @@ func moved(ms []RealtimeMeasurement) bool {
 	return false
 }
 
-// sqlExecutor is satisfied by both *sql.Tx and *sql.DB.
+// sqlExecutor is satisfied by both *sql.Tx and *sql.DB while carrying context-aware
+// execution so imports can cancel long statements on timeout.
 type sqlExecutor interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
 }
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.
