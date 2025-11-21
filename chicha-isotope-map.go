@@ -2567,6 +2567,17 @@ type archiveProgress struct {
 	filename string
 }
 
+// archiveEntryResult carries the outcome of a single archive item import through
+// a channel so the tar reader loop can enforce timeouts without blocking on a
+// stuck DB call. Using a struct keeps the select statement tidy while remaining
+// explicit about the data we expect back.
+type archiveEntryResult struct {
+	bounds   database.Bounds
+	track    string
+	inserted bool
+	err      error
+}
+
 // processTrackExportArchive handles the weekly tgz bundle produced by the API.
 // We iterate entries sequentially because tar readers are streaming, yet still
 // lean on channels inside the parser so each export stays memory-light.
@@ -2642,19 +2653,51 @@ func processTrackExportArchiveReader(
 		logT(trackID, "Export-TGZ", "processing %s", hdr.Name)
 		sendProgress(hdr.Name)
 
-		entryBounds, entryTrack, inserted, err := processTrackExportReader(ctx, io.LimitReader(tr, hdr.Size), GenerateSerialNumber(), db, dbType)
-		if err != nil {
-			return combined, primaryTrack, importedAny, fmt.Errorf("import %s: %w", hdr.Name, err)
+		limited := io.LimitReader(tr, hdr.Size)
+		payload, readErr := io.ReadAll(limited)
+		if readErr != nil {
+			logT(trackID, "Export-TGZ", "skip %s: read failure: %v", hdr.Name, readErr)
+			entryIndex++
+			sendProgress(hdr.Name)
+			continue
 		}
-		if entryTrack != "" && primaryTrack == trackID {
-			primaryTrack = entryTrack
+
+		entryCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		results := make(chan archiveEntryResult, 1)
+		go func(data []byte) {
+			defer close(results)
+			entryBounds, entryTrack, inserted, err := processTrackExportReader(entryCtx, bytes.NewReader(data), GenerateSerialNumber(), db, dbType)
+			results <- archiveEntryResult{bounds: entryBounds, track: entryTrack, inserted: inserted, err: err}
+		}(payload)
+
+		select {
+		case <-ctx.Done():
+			cancel()
+			return combined, primaryTrack, importedAny, ctx.Err()
+		case <-entryCtx.Done():
+			cancel()
+			logT(trackID, "Export-TGZ", "skip %s: import stalled: %v", hdr.Name, entryCtx.Err())
+			entryIndex++
+			sendProgress(hdr.Name)
+			continue
+		case result := <-results:
+			cancel()
+			if result.err != nil {
+				logT(trackID, "Export-TGZ", "skip %s: %v", hdr.Name, result.err)
+				entryIndex++
+				sendProgress(hdr.Name)
+				continue
+			}
+			if result.track != "" && primaryTrack == trackID {
+				primaryTrack = result.track
+			}
+			combined, haveBounds = mergeBounds(combined, result.bounds, haveBounds)
+			if result.inserted {
+				importedAny = true
+			}
+			entryIndex++
+			sendProgress(hdr.Name)
 		}
-		combined, haveBounds = mergeBounds(combined, entryBounds, haveBounds)
-		if inserted {
-			importedAny = true
-		}
-		entryIndex++
-		sendProgress(hdr.Name)
 	}
 
 	if entryIndex == 0 {
