@@ -70,7 +70,19 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 
 ## 📥 データを入れる
 - 地図ページで緑の **Upload** ボタンを押し、トラックをドロップします（`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, bGeigie Nano/Zen `$BNRDD`, AtomFast, RadiaCode, Safecast など）。
-- pelora.org の完成アーカイブから始める: [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz) をダウンロードして同じ緑ボタンで読み込むか、一度だけ `-import-tgz-url https://pelora.org/api/json/weekly.tgz` 付きで起動して自動投入後に終了させ、通常起動に進みます。
+- pelora.org を丸ごとミラーするには一回だけ `chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz` を実行します。毎週のアーカイブを取り込み、データベースを満たしてから終了するので、次の起動ですぐ地図が賑やかに見えます。
+- 先にアーカイブをローカル保存したい場合: [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz) をダウンロードし、`-import-tgz-path /path/to/weekly.tgz` を付けて自分のコピーから読み込みます。
+
+### 🗺️ 初回から実データを入れて立ち上げる一行
+まっさらな環境なら、この一行で既存の計測を取り込みつつそのまま地図を公開できます。
+```bash
+chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
+```
+取り込み後は通常どおり再起動するだけ（または同じコマンドを systemd などに登録）。[http://localhost:8765](http://localhost:8765) に開けば最初から実測値が見えます。
+
+### 🛢️ データベースの選び方
+- **PostgreSQL（`pgx`）** — 複数ユーザーでも速い本命。例: `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
+- **DuckDB / SQLite / Chai** — 単独利用向けのシンプルなファイル型。複数人が同時に書き込むと衝突しやすいので、個人用に向きます。例: `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
 
 ## 📤 エクスポート
 - 単一トラック: `/api/track/{trackID}.json`（古い `.cim` も動作）。
