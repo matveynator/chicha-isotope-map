@@ -1145,10 +1145,21 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 	// repeating the duplicate probe for each chunk and let the engine apply one large write.
 	if trackID, ok := singleTrack(markers); ok && (driver == "duckdb" || driver == "clickhouse") {
 		fastStart := time.Now()
-		if err := db.insertMarkersSingleStatement(ctx, exec, markers, driver); err == nil {
+		fastMarkers := markers
+		if driver == "clickhouse" {
+			usable, filterErr := db.filterClickHouseNewMarkers(markers)
+			if filterErr != nil {
+				return fmt.Errorf("clickhouse marker exists check: %w", filterErr)
+			}
+			if len(usable) == 0 {
+				return nil
+			}
+			fastMarkers = usable
+		}
+		if err := db.insertMarkersSingleStatement(ctx, exec, fastMarkers, driver); err == nil {
 			if progress != nil {
 				select {
-				case progress <- MarkerBatchProgress{Total: len(markers), Done: len(markers), Batch: len(markers), Mode: fmt.Sprintf("track:%s", trackID), Duration: time.Since(fastStart)}:
+				case progress <- MarkerBatchProgress{Total: len(fastMarkers), Done: len(fastMarkers), Batch: len(fastMarkers), Mode: fmt.Sprintf("track:%s", trackID), Duration: time.Since(fastStart)}:
 				default:
 				}
 			}
