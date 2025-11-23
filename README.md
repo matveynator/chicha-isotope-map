@@ -6,6 +6,13 @@
 - [🇫🇷 Français](/doc/README_FR.md)
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
+- [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md)
+- [🇮🇹 Italiano](/doc/README_IT.md)
+- [🇨🇳 中文](/doc/README_ZH.md)
+- [🇮🇳 हिन्दी](/doc/README_HI.md)
+- [🇮🇷 فارسی](/doc/README_FA.md)
+- [🇲🇳 Монгол](/doc/README_MN.md)
+- [🇰🇿 Қазақша](/doc/README_KK.md)
 
 # ☢️ World Radiation Map
 This map is built so an unprepared visitor can instantly see whether radiation threatens nearby homes, fields, forests, and water. Clean places stay near 2–3 µR/h; the darker spots are almost always human-made. The map shows how uranium mines in Czechia, Russia, Kazakhstan, and Mongolia left long traces; how Fukushima stands out as a black-red “tumor” on Japan’s coast; how Chernobyl and the Bryansk region scar the land; how radon seams in France, Czechia, and the Caucasian Mineral Waters raise cancer risks. Leaching for uranium and rare earths leaves soluble salts that slip into aquifers and then into our water and food. If this map protects even one person or animal, it was worth building.

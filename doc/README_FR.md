@@ -6,6 +6,13 @@
 - [🇫🇷 Français](/doc/README_FR.md)
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
+- [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md)
+- [🇮🇹 Italiano](/doc/README_IT.md)
+- [🇨🇳 中文](/doc/README_ZH.md)
+- [🇮🇳 हिन्दी](/doc/README_HI.md)
+- [🇮🇷 فارسی](/doc/README_FA.md)
+- [🇲🇳 Монгол](/doc/README_MN.md)
+- [🇰🇿 Қазақша](/doc/README_KK.md)
 
 # ☢️ Carte mondiale de la radiation
 Cette carte est pensée pour qu’un visiteur sans préparation voie immédiatement si la radiation menace les maisons, champs, forêts ou points d’eau autour de lui. Les lieux sains tournent autour de 2–3 µR/h ; les zones plus sombres viennent presque toujours de l’activité humaine. La carte montre comment les mines d’uranium en Tchéquie, Russie, Kazakhstan ou Mongolie ont laissé de longues traces ; comment Fukushima ressort comme une « tache-tumeur » noir et rouge sur la côte japonaise ; comment Tchernobyl et la région de Briansk marquent le paysage ; comment les filons riches en radon en France, en Tchéquie ou aux Eaux minérales du Caucase augmentent les risques. Le lessivage de l’uranium et des terres rares laisse des sels solubles en profondeur : ils gagnent les nappes phréatiques, puis notre eau et notre nourriture. Si cette carte protège ne serait-ce qu’une personne ou un animal, elle aura servi.
