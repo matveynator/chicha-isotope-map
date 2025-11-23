@@ -1140,22 +1140,22 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 		return "?"
 	}
 
-	// Fast-path: when importing a single track into DuckDB or ClickHouse we can assemble one
-	// INSERT statement for the whole payload. This keeps tgz imports quick because we avoid
-	// repeating the duplicate probe for each chunk and let the engine apply one large write.
-	if trackID, ok := singleTrack(markers); ok && (driver == "duckdb" || driver == "clickhouse") {
+	// Fast-path: when importing a single track into ClickHouse we can assemble one INSERT for
+	// the whole payload. DuckDB struggled with giant VALUES blocks and stalled when tgz imports
+	// fanned out tens of thousands of placeholders, so we keep it on the chunked path to
+	// respect context timeouts. ClickHouse benefits from the one-shot INSERT because it avoids
+	// repeating duplicate probes and keeps the HTTP round-trips low.
+	if trackID, ok := singleTrack(markers); ok && driver == "clickhouse" {
 		fastStart := time.Now()
 		fastMarkers := markers
-		if driver == "clickhouse" {
-			usable, filterErr := db.filterClickHouseNewMarkers(markers)
-			if filterErr != nil {
-				return fmt.Errorf("clickhouse marker exists check: %w", filterErr)
-			}
-			if len(usable) == 0 {
-				return nil
-			}
-			fastMarkers = usable
+		usable, filterErr := db.filterClickHouseNewMarkers(markers)
+		if filterErr != nil {
+			return fmt.Errorf("clickhouse marker exists check: %w", filterErr)
 		}
+		if len(usable) == 0 {
+			return nil
+		}
+		fastMarkers = usable
 		if err := db.insertMarkersSingleStatement(ctx, exec, fastMarkers, driver); err == nil {
 			if progress != nil {
 				select {
