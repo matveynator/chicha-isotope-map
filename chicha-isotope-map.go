@@ -81,7 +81,7 @@ var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base l
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
-var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of exported JSON files, log progress, and exit once finished.")
+var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of exported JSON files, log progress, and exit once finished. Example: https://pelora.org/api/json/weekly.tgz")
 var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz of exported JSON files, log progress, and exit once finished.")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var debugIPsFlag = flag.String("debug", "", "Comma separated IP addresses allowed to view the debug overlay")
@@ -3052,6 +3052,96 @@ func startBackgroundArchiveImport(
 	return done
 }
 
+// isSingleUserDriver reports whether the selected database driver relies on a
+// single process-local connection. We gate import shielding on this so that
+// multi-tenant engines like PostgreSQL keep serving traffic while the archive
+// loader runs without any extra branching.
+func isSingleUserDriver(dbType string) bool {
+	switch strings.ToLower(strings.TrimSpace(dbType)) {
+	case "sqlite", "chai", "duckdb":
+		return true
+	default:
+		return false
+	}
+}
+
+// importStillRunning checks the done channel without blocking, letting HTTP
+// handlers quickly decide whether to short-circuit DB-heavy paths. Using a
+// select keeps the check goroutine-free and stays faithful to "Don't
+// communicate by sharing memory; share memory by communicating."
+func importStillRunning(done <-chan struct{}) bool {
+	if done == nil {
+		return false
+	}
+	select {
+	case <-done:
+		return false
+	default:
+		return true
+	}
+}
+
+// importShield builds a middleware that gently throttles DB-backed HTTP
+// requests while an import is inflight against single-user file databases. We
+// prefer to stream read traffic through short-lived contexts so web users see
+// fresh tracks without starving the importer, keeping with "Don't communicate
+// by sharing memory; share memory by communicating."
+func importShield(done <-chan struct{}, dbType string, logf func(string, ...any)) func(http.Handler) http.Handler {
+	if !isSingleUserDriver(dbType) || done == nil {
+		return nil
+	}
+
+	blockedPrefixes := []string{
+		"/get_markers",
+		"/stream_markers",
+		"/realtime_history",
+		"/trackid/",
+		"/upload",
+		"/qrpng",
+		"/s/",
+		"/api/",
+	}
+
+	// Allow a narrow set of endpoints to hit the DB while importing so
+	// operators can still see API docs or read static assets. The matcher
+	// stays deliberately small to avoid surprise lock contention.
+	requiresImportQuiescence := func(path string) bool {
+		for _, prefix := range blockedPrefixes {
+			if strings.HasPrefix(path, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !importStillRunning(done) || !requiresImportQuiescence(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Let safe methods continue but cap their wait so the importer is not
+			// starved by UI refreshes. A visible notice keeps expectations clear in
+			// both HTTP headers and error bodies when we must decline a request.
+			notice := "Идет импорт новых данных; ответы могут задерживаться."
+			w.Header().Set("Retry-After", "5")
+			w.Header().Set("X-Import-Notice", notice)
+			if r.Method == http.MethodGet || r.Method == http.MethodHead {
+				ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+				defer cancel()
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			http.Error(w, notice, http.StatusServiceUnavailable)
+			if logf != nil {
+				logf("deprioritised %s during single-user import to keep writer ahead", r.URL.Path)
+			}
+		})
+	}
+}
+
 // mergeBounds combines multiple bounding boxes while tracking whether we already
 // have a baseline. This keeps archive imports from misreporting coordinates when
 // the first few entries happen to be duplicates.
@@ -4897,16 +4987,18 @@ func main() {
 		log.Fatalf("choose only one import flag: -import-tgz-url or -import-tgz-file")
 	}
 
+	var importDone <-chan struct{}
+
 	if localArchive != "" {
 		fallback := GenerateSerialNumber()
-		startBackgroundArchiveImport(context.Background(), fmt.Sprintf("local file %s", localArchive), func(ctx context.Context) error {
+		importDone = startBackgroundArchiveImport(context.Background(), fmt.Sprintf("local file %s", localArchive), func(ctx context.Context) error {
 			return importArchiveFromFile(ctx, localArchive, fallback, db, driverName, log.Printf)
 		}, log.Printf)
 	}
 
 	if remoteURL != "" {
 		fallback := GenerateSerialNumber()
-		startBackgroundArchiveImport(context.Background(), fmt.Sprintf("remote url %s", remoteURL), func(ctx context.Context) error {
+		importDone = startBackgroundArchiveImport(context.Background(), fmt.Sprintf("remote url %s", remoteURL), func(ctx context.Context) error {
 			return importArchiveFromURL(ctx, remoteURL, fallback, db, driverName, log.Printf)
 		}, log.Printf)
 	}
@@ -4990,7 +5082,14 @@ func main() {
 		defer selfUpgradeCancel()
 	}
 
-	rootHandler := withServerHeader(http.DefaultServeMux)
+	var rootHandler http.Handler = http.DefaultServeMux
+	if shield := importShield(importDone, driverName, log.Printf); shield != nil {
+		// Keep HTTP responsive while a single-user DB import runs by declining
+		// DB-backed endpoints. The middleware only activates for file engines
+		// so multi-user databases remain fully live during imports.
+		rootHandler = shield(rootHandler)
+	}
+	rootHandler = withServerHeader(rootHandler)
 
 	// 5. HTTP/HTTPS-серверы
 	if *domain != "" {
