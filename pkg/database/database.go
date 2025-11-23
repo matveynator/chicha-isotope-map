@@ -1084,13 +1084,14 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 		markers = deduplicateMarkers(markers)
 	}
 
-	if driver == "duckdb" {
-		// Columnar engines thrive on wide batches. We stretch the DuckDB chunk size so vectorised
-		// operators stay fed, while still capping the VALUES list to avoid pathological placeholder
-		// counts that previously stalled tgz imports. The helper keeps the choice centralized and
-		// easy to reason about.
-		batch = tuneDuckDBBatchSize(batch, len(markers))
-	}
+       if driver == "duckdb" {
+               // Columnar engines thrive on wide batches, but widening beyond a few hundred markers has
+               // shown to slow our tgz imports. We keep the DuckDB chunk size at or below a lean ceiling
+               // so VALUES lists stay small and responsive while still allowing callers to request even
+               // smaller batches when latency matters. The helper keeps the choice centralized and easy
+               // to reason about.
+               batch = tuneDuckDBBatchSize(batch, len(markers))
+       }
 
 	var (
 		exec   sqlExecutor
@@ -1375,31 +1376,25 @@ func deduplicateMarkers(markers []Marker) []Marker {
 	return unique
 }
 
-// tuneDuckDBBatchSize widens batch inserts so DuckDB can process larger columnar stripes without
-// waiting on many small statements. We bound the size to keep placeholder counts reasonable and
-// return a value that respects both caller hints and the total workload. Channels are unnecessary
-// here because the calculation is deterministic and side-effect free.
+// tuneDuckDBBatchSize keeps DuckDB batches compact so VALUES lists remain responsive even when tgz
+// imports carry tens of thousands of markers. We cap the size to a lean ceiling while still honoring
+// caller hints for even smaller chunks. Channels are unnecessary here because the calculation is
+// deterministic and side-effect free.
 func tuneDuckDBBatchSize(requested int, total int) int {
-	const (
-		defaultBatch = 500  // backstop when callers leave the value unset
-		narrowFloor  = 256  // smaller floor avoids overly wide VALUES lists that stalled imports
-		softCeiling  = 1200 // keep placeholder counts tame; larger values slowed tgz uploads
-	)
+        const (
+                defaultBatch = 256 // backstop when callers leave the value unset
+                softCeiling  = 256 // keep statements tight; larger values slowed tgz uploads
+        )
 
-	size := requested
-	if size <= 0 {
-		size = defaultBatch
-	}
-	if size < narrowFloor {
-		size = narrowFloor
-	}
-
-	// DuckDB benefits from vectorised batches but stalls when statements become too wide.
-	// We gently cap the chunk size so columnar stripes stay healthy without flooding the
-	// engine with tens of thousands of placeholders.
-	if size > softCeiling {
-		size = softCeiling
-	}
+        size := requested
+        if size <= 0 {
+                size = defaultBatch
+        }
+        // DuckDB benefits from compact batches; we cap aggressively so statements stay quick to
+        // execute and do not overwhelm the planner with long VALUES tuples.
+        if size > softCeiling {
+                size = softCeiling
+        }
 
 	if total > 0 && size > total {
 		size = total
