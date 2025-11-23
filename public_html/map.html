@@ -1161,7 +1161,8 @@ body, html {
         lat:  {{printf "%.6f" .DefaultLat}},
         lon:  {{printf "%.6f" .DefaultLon}},
         zoom: {{.DefaultZoom}},
-        layer: {{ printf "%q" .DefaultLayer }}
+        layer: {{ printf "%q" .DefaultLayer }},
+        autoLocate: {{if .AutoLocateDefault}}true{{else}}false{{end}}
       };
     </script>
     <script>
@@ -1956,6 +1957,49 @@ function getCurrentUrlParams() {
 
   return `?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
 }
+
+// Persist the last opened view so a fresh browser session resumes the same
+// place and zoom, keeping orientation intuitive for returning visitors.
+function saveMapViewState() {
+  if (!map) return;
+  try {
+    const center = map.getCenter();
+    const layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
+    const state = {
+      lat: center.lat,
+      lon: center.lng,
+      zoom: map.getZoom(),
+      layer: layer
+    };
+    localStorage.setItem(mapViewStorageKey, JSON.stringify(state));
+  } catch (err) {
+    console.warn('save view failed', err);
+  }
+}
+
+// Load previously saved coordinates/zoom/layer when available. Corrupted
+// payloads simply fall back to null so first-run users stay on defaults.
+function loadMapViewState() {
+  try {
+    const raw = localStorage.getItem(mapViewStorageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.lat !== 'number' || typeof parsed.lon !== 'number' || typeof parsed.zoom !== 'number') {
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('load view failed', err);
+    return null;
+  }
+}
+
+// Remember where the user actually is so we can reframe the map once
+// radiation markers finish streaming in for the new viewport.
+function setStoredUserCenter(lat, lon) {
+  storedUserCenter = { lat: lat, lon: lon };
+  waitForDangerFit = true;
+}
     </script>
 
     <!-- Map initialization and markers -->
@@ -1972,6 +2016,9 @@ let shortLinkAbort = null;
 let lastShortLinkFull = '';
 let pendingShortLinkFull = '';
 let shortLinkCommitPromise = null;
+const mapViewStorageKey = 'cim.map.view.v1';
+let storedUserCenter = null;
+let waitForDangerFit = false;
 
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
@@ -2991,6 +3038,9 @@ function updateMarkers(){
     if (needSlider && window.__syncDateSliders && isFinite(minTs) && isFinite(maxTs)){
       window.__syncDateSliders(minTs, maxTs);
     }
+    if (waitForDangerFit && storedUserCenter) {
+      reframeAroundUser();
+    }
     if (loadingEl) loadingEl.style.display='none';
     es.close();
   });
@@ -3968,11 +4018,109 @@ function copyShortLinkToClipboard() {
     });
 }
 
+// Locate the nearest marker exceeding 30 µR/h (0.30 µSv/h) so the user can
+// immediately see the closest high reading relative to their position.
+function findNearestDanger(userLatLng) {
+  if (!map || !userLatLng) return null;
+  const threshold = 0.30; // µSv/h
+  let closest = null;
+  let minDistance = Infinity;
+  Object.values(circleMarkers).forEach(marker => {
+    if (!marker || typeof marker.doseRate !== 'number') return;
+    if (marker.doseRate < threshold) return;
+    const dist = map.distance(userLatLng, marker.getLatLng());
+    if (!isFinite(dist)) return;
+    if (dist < minDistance) {
+      minDistance = dist;
+      closest = marker;
+    }
+  });
+  return closest;
+}
+
+// Keep the map centered on the user while zooming just enough so the closest
+// dangerous marker sits near the edge of the viewport. We never zoom out
+// below level 10 to avoid losing city-level context.
+function reframeAroundUser() {
+  if (!storedUserCenter || !map) return;
+  const userLatLng = L.latLng(storedUserCenter.lat, storedUserCenter.lon);
+  const nearest = findNearestDanger(userLatLng);
+  let targetZoom = Math.max(10, map.getZoom());
+
+  if (nearest) {
+    const bounds = L.latLngBounds(userLatLng, nearest.getLatLng());
+    targetZoom = Math.max(10, map.getBoundsZoom(bounds, true));
+  } else {
+    targetZoom = Math.max(12, targetZoom);
+  }
+
+  map.setView(userLatLng, targetZoom);
+  saveMapViewState();
+  waitForDangerFit = false;
+}
+
+// Kick off a GeoIP fetch when browser geolocation is unavailable. The endpoint
+// relies on the user's remote address, so the client does not have to expose
+// extra personal data to third parties.
+async function requestGeoIPFallback() {
+  try {
+    const resp = await fetch('/api/geoip', { method: 'GET' });
+    if (!resp.ok || resp.status === 204) return null;
+    const payload = await resp.json();
+    if (typeof payload.lat !== 'number' || typeof payload.lon !== 'number') {
+      return null;
+    }
+    return { lat: payload.lat, lon: payload.lon };
+  } catch (err) {
+    console.warn('geoip fallback failed', err);
+    return null;
+  }
+}
+
+// Try to resolve the user's position via browser APIs first, then fall back to
+// GeoIP. We only run this when the operator enabled auto-locate and there is no
+// stored or URL-provided state to respect.
+function autoLocateUser() {
+  if (!defaultCfg.autoLocate) return;
+  const params = new URLSearchParams(window.location.search);
+  const hasExplicitBounds = params.has('minLat') && params.has('minLon') && params.has('maxLat') && params.has('maxLon');
+  if (hasExplicitBounds || loadMapViewState()) return;
+  if (isTrackView && trackBounds) return;
+
+  const usePosition = ({ lat, lon }) => {
+    setStoredUserCenter(lat, lon);
+    map.setView([lat, lon], Math.max(12, defaultCfg.zoom));
+    saveMapViewState();
+  };
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        usePosition({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+      },
+      async () => {
+        const ipGuess = await requestGeoIPFallback();
+        if (ipGuess) {
+          usePosition(ipGuess);
+        }
+      },
+      { enableHighAccuracy: false, timeout: 5000 }
+    );
+  } else {
+    requestGeoIPFallback().then(guess => {
+      if (guess) {
+        usePosition(guess);
+      }
+    });
+  }
+}
+
 function loadMapFromUrl() {
   const params = new URLSearchParams(window.location.search);
+  const storedView = loadMapViewState();
 
   /* base layer from URL or default */
-  const layer = decodeURIComponent(params.get('layer') || defaultCfg.layer);
+  const layer = decodeURIComponent(params.get('layer') || (storedView && storedView.layer) || defaultCfg.layer);
   setBaseLayer(layer);
 
   /* read remaining params */
@@ -3984,11 +4132,16 @@ function loadMapFromUrl() {
   if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
     map.fitBounds([[minLat, minLon], [maxLat, maxLon]]);
     adjustMarkerRadius();
+  } else if (storedView) {
+    map.setView([storedView.lat, storedView.lon], storedView.zoom);
+    adjustMarkerRadius();
   } else if (isTrackView && trackBounds) {
     map.fitBounds(trackBounds);
   } else {
     map.setView([defaultCfg.lat, defaultCfg.lon], defaultCfg.zoom);
   }
+
+  autoLocateUser();
 }
 
 function updateUrl() {
@@ -4003,6 +4156,7 @@ function updateUrl() {
   var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
 
   window.history.replaceState({}, '', newUrl);
+  saveMapViewState();
   scheduleShortLinkRefresh();
 }
 
@@ -4059,12 +4213,14 @@ function centerMapToLocation() {
         var userLat = position.coords.latitude;
         var userLon = position.coords.longitude;
 
-        map.setView([userLat, userLon], 15);
+        setStoredUserCenter(userLat, userLon);
+        map.setView([userLat, userLon], Math.max(12, defaultCfg.zoom));
+        saveMapViewState();
 
         L.marker([userLat, userLon]).addTo(map)
           .bindPopup(translate("your_location")).openPopup();
       },
-      function(error) {
+      async function(error) {
         switch(error.code) {
           case error.PERMISSION_DENIED:
             alert(translate("location_permission_denied"));
@@ -4079,10 +4235,23 @@ function centerMapToLocation() {
             alert(translate("location_error"));
             break;
         }
+        const ipGuess = await requestGeoIPFallback();
+        if (ipGuess) {
+          setStoredUserCenter(ipGuess.lat, ipGuess.lon);
+          map.setView([ipGuess.lat, ipGuess.lon], Math.max(12, defaultCfg.zoom));
+          saveMapViewState();
+        }
       }
     );
   } else {
     alert(translate("geolocation_not_supported"));
+    requestGeoIPFallback().then(guess => {
+      if (guess) {
+        setStoredUserCenter(guess.lat, guess.lon);
+        map.setView([guess.lat, guess.lon], Math.max(12, defaultCfg.zoom));
+        saveMapViewState();
+      }
+    });
   }
 }
     </script>
