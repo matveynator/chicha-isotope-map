@@ -4082,10 +4082,14 @@ async function requestGeoIPFallback() {
 // stored or URL-provided state to respect.
 function autoLocateUser() {
   if (!defaultCfg.autoLocate) return;
+  if (isTrackView) {
+    // Track views should remain centered on the track; skipping auto-locate
+    // avoids overriding the live track stream with a GeoIP/geolocation guess.
+    return;
+  }
   const params = new URLSearchParams(window.location.search);
   const hasExplicitBounds = params.has('minLat') && params.has('minLon') && params.has('maxLat') && params.has('maxLon');
   if (hasExplicitBounds || loadMapViewState()) return;
-  if (isTrackView && trackBounds) return;
 
   const usePosition = ({ lat, lon }) => {
     setStoredUserCenter(lat, lon);
