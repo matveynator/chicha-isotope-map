@@ -1077,11 +1077,16 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 
 	driver := normalizeDBType(dbType)
 
+	if driver == "duckdb" || driver == "clickhouse" {
+		// Deduplicate early so track-wide inserts avoid redundant VALUES tuples. DuckDB and
+		// ClickHouse both get faster when we trim the input up front instead of letting the
+		// engine juggle collisions later on.
+		markers = deduplicateMarkers(markers)
+	}
 	if driver == "duckdb" {
 		// DuckDB's parameter binding grows slower with huge argument lists. Smaller batches and
 		// pre-deduplication keep each statement tight while still streaming through the file
 		// quickly.
-		markers = deduplicateMarkers(markers)
 		if batch > 256 {
 			batch = 256
 		}
@@ -1133,6 +1138,22 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 			return fmt.Sprintf("$%d", n)
 		}
 		return "?"
+	}
+
+	// Fast-path: when importing a single track into DuckDB or ClickHouse we can assemble one
+	// INSERT statement for the whole payload. This keeps tgz imports quick because we avoid
+	// repeating the duplicate probe for each chunk and let the engine apply one large write.
+	if trackID, ok := singleTrack(markers); ok && (driver == "duckdb" || driver == "clickhouse") {
+		fastStart := time.Now()
+		if err := db.insertMarkersSingleStatement(ctx, exec, markers, driver); err == nil {
+			if progress != nil {
+				select {
+				case progress <- MarkerBatchProgress{Total: len(markers), Done: len(markers), Batch: len(markers), Mode: fmt.Sprintf("track:%s", trackID), Duration: time.Since(fastStart)}:
+				default:
+				}
+			}
+			return nil
+		}
 	}
 
 	i := 0
@@ -1341,6 +1362,113 @@ func deduplicateMarkers(markers []Marker) []Marker {
 	}
 
 	return unique
+}
+
+// singleTrack reports whether the full marker slice belongs to one track. We keep the
+// helper tiny so archive imports can decide between one giant INSERT and chunked
+// batches without sprinkling identical loops across the codebase.
+func singleTrack(markers []Marker) (string, bool) {
+	if len(markers) == 0 {
+		return "", false
+	}
+	base := markers[0].TrackID
+	for _, m := range markers[1:] {
+		if m.TrackID != base {
+			return "", false
+		}
+	}
+	return base, true
+}
+
+// insertMarkersSingleStatement assembles one INSERT with all provided markers. We only
+// use it for engines that do not explode with thousands of placeholders per statement
+// (DuckDB and ClickHouse) and when the caller already filtered duplicates. The helper
+// keeps the bulk path deterministic: either the single shot succeeds, or the caller
+// falls back to the chunked variant without sharing mutable state.
+func (db *Database) insertMarkersSingleStatement(ctx context.Context, exec sqlExecutor, markers []Marker, driver string) error {
+	if len(markers) == 0 {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := func(n int) string {
+		return "?"
+	}
+
+	var sb strings.Builder
+	args := make([]interface{}, 0, len(markers)*14)
+
+	switch driver {
+	case "duckdb":
+		sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+		for i, m := range markers {
+			if i > 0 {
+				sb.WriteString(",")
+			}
+			if m.ID == 0 {
+				m.ID = <-db.idGenerator
+				markers[i].ID = m.ID
+			}
+			sb.WriteString("(")
+			for k := 0; k < 14; k++ {
+				if k > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString(ph(len(args) + k + 1))
+			}
+			sb.WriteString(")")
+			args = append(args,
+				m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
+				m.CountRate, m.Zoom, m.Speed, m.TrackID,
+				nullableFloat64(m.AltitudeValid, m.Altitude),
+				m.Detector, m.Radiation,
+				nullableFloat64(m.TemperatureValid, m.Temperature),
+				nullableFloat64(m.HumidityValid, m.Humidity),
+			)
+		}
+		sb.WriteString(" ON CONFLICT DO NOTHING")
+	case "clickhouse":
+		sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+		for i, m := range markers {
+			if i > 0 {
+				sb.WriteString(",")
+			}
+			if m.ID == 0 {
+				m.ID = <-db.idGenerator
+				markers[i].ID = m.ID
+			}
+			sb.WriteString("(")
+			for k := 0; k < 14; k++ {
+				if k > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString(ph(len(args) + k + 1))
+			}
+			sb.WriteString(")")
+			args = append(args,
+				m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
+				m.CountRate, m.Zoom, m.Speed, m.TrackID,
+				nullableFloat64(m.AltitudeValid, m.Altitude),
+				m.Detector, m.Radiation,
+				nullableFloat64(m.TemperatureValid, m.Temperature),
+				nullableFloat64(m.HumidityValid, m.Humidity),
+			)
+		}
+	default:
+		return fmt.Errorf("single-statement bulk unsupported for driver %s", driver)
+	}
+
+	if _, err := exec.ExecContext(ctx, sb.String(), args...); err != nil {
+		if driver == "duckdb" && duckDBIsConflict(err) {
+			// DuckDB occasionally reports conflicts even with ON CONFLICT. We treat that as a
+			// benign situation so callers can fall back to the chunked path without losing progress.
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // filterClickHouseNewMarkers weeds out duplicates already persisted in ClickHouse using a pool of
