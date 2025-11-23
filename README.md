@@ -30,7 +30,7 @@ Live demo: [https://pelora.org/](https://pelora.org/) — your node will look th
 ---
 
 ### 📸 Example view
-<a href="https://pelora.org" target="_blank"><img width="800" alt="pelora.org chicha-isotope-map example" src="https://github.com/user-attachments/assets/be706959-a2d5-4949-9378-811f4022aa98" /></a>
+<a href="https://pelora.org" target="_blank"><img width="1177" height="827" alt="Fukushima" src="https://github.com/user-attachments/assets/617a0ced-4280-41c2-9320-de1cfd33a61f" /></a>
 
 ---
 
