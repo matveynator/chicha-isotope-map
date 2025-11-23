@@ -25,7 +25,9 @@ jobs:
           - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14" }
           # *BSD
           - { goos: freebsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04" }
+          - { goos: freebsd, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04" }
           - { goos: openbsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04" }
+          - { goos: openbsd, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04" }
           - { goos: netbsd,  goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04" }
           # Windows
           - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest" }
