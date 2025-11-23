@@ -166,13 +166,17 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("error opening the database: %v", err)
 	}
 
-	// === CRITICAL: serialize SQLite/Chai access over a single underlying connection ===
+// === CRITICAL: tune single-user engines so imports and UI reads can coexist ===
 	switch driverName {
 	case "sqlite", "chai":
-		// One physical connection; no concurrent statements at DB layer.
-		db.SetMaxOpenConns(1)
-		db.SetMaxIdleConns(1)
-		// Never recycle the single connection (keeps it stable for the whole process).
+		// Allow a handful of concurrent readers while keeping writes funnelled through
+		// WAL so imports stay ahead of UI polls. Multiple connections avoid a single
+		// blocked query from stalling the importer, following "A little copying is"
+		// "better than a little dependency" by leaning on SQLite's own lock manager
+		// instead of layering mutexes in Go.
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(4)
+		// Never recycle the pooled connections (keeps them stable for the whole process).
 		db.SetConnMaxLifetime(0)
 		// Tuning WAL/synchronous/busy_timeout keeps inserts fast enough for realtime uploads.
 		if applySQLitePragmas {
@@ -1084,14 +1088,14 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 		markers = deduplicateMarkers(markers)
 	}
 
-       if driver == "duckdb" {
-               // Columnar engines thrive on wide batches, but widening beyond a few hundred markers has
-               // shown to slow our tgz imports. We keep the DuckDB chunk size at or below a lean ceiling
-               // so VALUES lists stay small and responsive while still allowing callers to request even
-               // smaller batches when latency matters. The helper keeps the choice centralized and easy
-               // to reason about.
-               batch = tuneDuckDBBatchSize(batch, len(markers))
-       }
+	if driver == "duckdb" {
+		// Columnar engines thrive on wide batches, but widening beyond a few hundred markers has
+		// shown to slow our tgz imports. We keep the DuckDB chunk size at or below a lean ceiling
+		// so VALUES lists stay small and responsive while still allowing callers to request even
+		// smaller batches when latency matters. The helper keeps the choice centralized and easy
+		// to reason about.
+		batch = tuneDuckDBBatchSize(batch, len(markers))
+	}
 
 	var (
 		exec   sqlExecutor
@@ -1381,20 +1385,20 @@ func deduplicateMarkers(markers []Marker) []Marker {
 // caller hints for even smaller chunks. Channels are unnecessary here because the calculation is
 // deterministic and side-effect free.
 func tuneDuckDBBatchSize(requested int, total int) int {
-        const (
-                defaultBatch = 256 // backstop when callers leave the value unset
-                softCeiling  = 256 // keep statements tight; larger values slowed tgz uploads
-        )
+	const (
+		defaultBatch = 256 // backstop when callers leave the value unset
+		softCeiling  = 256 // keep statements tight; larger values slowed tgz uploads
+	)
 
-        size := requested
-        if size <= 0 {
-                size = defaultBatch
-        }
-        // DuckDB benefits from compact batches; we cap aggressively so statements stay quick to
-        // execute and do not overwhelm the planner with long VALUES tuples.
-        if size > softCeiling {
-                size = softCeiling
-        }
+	size := requested
+	if size <= 0 {
+		size = defaultBatch
+	}
+	// DuckDB benefits from compact batches; we cap aggressively so statements stay quick to
+	// execute and do not overwhelm the planner with long VALUES tuples.
+	if size > softCeiling {
+		size = softCeiling
+	}
 
 	if total > 0 && size > total {
 		size = total
