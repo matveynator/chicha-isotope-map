@@ -6,9 +6,20 @@
 - [🇫🇷 Français](/doc/README_FR.md)
 - [🇯🇵 日本語](/doc/README_JP.md)
 - [🇷🇺 Русский](/doc/README_RU.md)
+- [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md)
+- [🇮🇹 Italiano](/doc/README_IT.md)
+- [🇨🇳 中文](/doc/README_ZH.md)
+- [🇮🇳 हिन्दी](/doc/README_HI.md)
+- [🇮🇷 فارسی](/doc/README_FA.md)
+- [🇲🇳 Монгол](/doc/README_MN.md)
+- [🇰🇿 Қазақша](/doc/README_KK.md)
 
 # ☢️ World Radiation Map
-This map is built so an unprepared visitor can instantly see whether radiation threatens nearby homes, fields, forests, and water. Clean places stay near 2–3 µR/h; the darker spots are almost always human-made. The map shows how uranium mines in Czechia, Russia, Kazakhstan, and Mongolia left long traces; how Fukushima stands out as a black-red “tumor” on Japan’s coast; how Chernobyl and the Bryansk region scar the land; how radon seams in France, Czechia, and the Caucasian Mineral Waters raise cancer risks. Leaching for uranium and rare earths leaves soluble salts that slip into aquifers and then into our water and food. If this map protects even one person or animal, it was worth building.
+We built this map so anyone can quickly understand whether the place they live or work is safe. Many grow food, keep livestock, or drink from springs without knowing if the environment is healthy.
+
+Natural background radiation stays low. Danger appears only where the levels rise well above that — because of human activity or specific local geology. In such places, water, air, and soil can eventually affect health: harming lungs, stomach, and other organs.
+
+If this map protects even one person or animal, building it was worth it. Let it serve as a simple, clear guide for choosing a safer path.
 
 Live demo: [https://pelora.org/](https://pelora.org/) — your node will look the same.
 
@@ -24,12 +35,15 @@ Live demo: [https://pelora.org/](https://pelora.org/) — your node will look th
 ---
 
 ## 🧭 What’s inside
-- A live map of measurements from many detectors; pick the layer you like.
-- Upload your own tracks; fresh points pop up around the place you view.
-- Import via URL or file, export as an archive.
-- Run as a single node or join a network: more nodes → more transparency.
+- The map gathers measurements from many instruments; layers are neatly separated by movement speed — on foot, by car, or in flight.
+- You can upload your own tracks: new points immediately appear on the map to clarify the situation.
+- Import archives by URL or file, and save your own data as an archive (handy for backups).
+- Track how radiation changed over time in a chosen place — getting better or worse.
+- Create a short link to any area of the map.
+- Use print mode: mark hazardous spots with QR codes so a person can scan and instantly see the radiation level for that exact point. This helps highlight environmental risks where drinking water, long stays, or farming are undesirable. It is useful for ecologists, monitoring specialists, and teams that must warn people about danger.
+- The Map offers an API for integrating its data into external services under the open CC license.
 
-The project grows with active help from **Safecast** and the wider community: many great ideas came from **Rob Oudendijk** and friends in open dosimetry worldwide (thank you, Greenpeace and other environmental teams).
+The project grows thanks to careful support from the **Safecast** community, the huge work of **Rob Oudendijk**, and countless people worldwide working in open dosimetry. We thank Safecast, AtomFast, Radiacode, DoseMap, and other initiatives for their contribution and involvement.
 
 ---
 
@@ -80,9 +94,9 @@ chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
 ```
 After it imports, rerun normally (or keep the same command in a systemd service) — the map opens with real measurements visible at [http://localhost:8765](http://localhost:8765).
 
-### 🛢️ Database choices (pick what fits you)
-- **PostgreSQL (`pgx`)** — fastest and best for multiple users. Example: `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
-- **DuckDB / SQLite / Chai** — simplest file-based setups for single users. Parallel writes by several users can conflict, so prefer them for personal maps. Example: `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
+### 🛢️ Database options for import and regular use
+- **PostgreSQL (`pgx`)** — the fastest and most convenient with several users. Example: `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
+- **DuckDB / SQLite / Chai** — simple file databases for a single user. Concurrent writes can conflict, so keep them for personal maps. Example: `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
 
 ## 📤 Export
 - Single track: `/api/track/{trackID}.json` (legacy `.cim` also works).
@@ -91,9 +105,9 @@ After it imports, rerun normally (or keep the same command in a systemd service)
 ---
 
 ## 🧠 Advanced options
-- Databases: built-in SQLite by default; switch to DuckDB, Chai, ClickHouse, or PostgreSQL (`pgx`).
-- Import: via URL or file, archives accepted.
-- Export: JSON archives, single track, old `.cim` still supported.
+- Databases: built-in SQLite by default; you can switch to DuckDB, Chai, ClickHouse, or PostgreSQL (`pgx`).
+- Import: by URL or file; you can feed an archive directly.
+- Export: JSON archives, a single track, legacy `.cim` files supported.
 - Appearance: starting coordinates and layer (`-default-*`).
 
 ---
