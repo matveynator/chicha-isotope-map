@@ -70,7 +70,19 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 
 ## 📥 Importer des données
 - Sur la carte, cliquez sur le bouton vert **Upload** et déposez vos traces (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, journaux bGeigie Nano/Zen `$BNRDD`, exports AtomFast, RadiaCode, Safecast, etc.).
-- Commencer avec l’archive prête de pelora.org : téléchargez [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz) et chargez-la avec le même bouton vert, ou lancez une fois le binaire avec `-import-tgz-url https://pelora.org/api/json/weekly.tgz` pour pré-remplir automatiquement puis quitter avant un démarrage normal.
+- Miroir instantané de pelora.org : exécutez `chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz` une seule fois — il récupère l’archive hebdomadaire, remplit votre base puis s’arrête pour que le lancement suivant démarre déjà avec des données réelles.
+- Vous préférez télécharger l’archive avant ? Téléchargez [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz), indiquez `-import-tgz-path /chemin/vers/weekly.tgz` et démarrez avec votre propre copie locale.
+
+### 🗺️ Premier démarrage en une commande avec des données réelles
+Pour un poste tout neuf, cette commande charge les mesures existantes puis sert la carte immédiatement :
+```bash
+chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
+```
+Après l’import, relancez normalement (ou gardez la même commande dans un service systemd) — la carte s’ouvre avec des mesures visibles sur [http://localhost:8765](http://localhost:8765).
+
+### 🛢️ Choisir sa base (selon l’usage)
+- **PostgreSQL (`pgx`)** — le plus rapide et idéal pour plusieurs utilisateurs. Exemple : `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
+- **DuckDB / SQLite / Chai** — bases fichiers simples pour un usage solo. Les écritures concurrentes peuvent se gêner ; privilégiez-les pour un usage personnel. Exemple : `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
 
 ## 📤 Exporter
 - Trace unique : `/api/track/{trackID}.json` (les anciens `.cim` fonctionnent aussi).

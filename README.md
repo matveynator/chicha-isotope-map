@@ -70,7 +70,19 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 
 ## 📥 Import data
 - On the map page, click the green **Upload** button and drop your tracks (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, bGeigie Nano/Zen `$BNRDD`, AtomFast, RadiaCode, Safecast, etc.).
-- Start with the ready archive from pelora.org: download [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz) and upload it with the same green button, or launch once with `-import-tgz-url https://pelora.org/api/json/weekly.tgz` to prefill automatically and exit before your normal run.
+- Instant mirror of pelora.org: run `chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz` once — it fetches the weekly archive, fills your database, and quits so the next launch starts fully populated.
+- Want the archive saved locally first? Download [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz), point `-import-tgz-path /path/to/weekly.tgz`, and start with your own copy.
+
+### 🗺️ One-command first run with live data
+For a completely fresh install, this single command both preloads real-world tracks and serves the map right away:
+```bash
+chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
+```
+After it imports, rerun normally (or keep the same command in a systemd service) — the map opens with real measurements visible at [http://localhost:8765](http://localhost:8765).
+
+### 🛢️ Database choices (pick what fits you)
+- **PostgreSQL (`pgx`)** — fastest and best for multiple users. Example: `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
+- **DuckDB / SQLite / Chai** — simplest file-based setups for single users. Parallel writes by several users can conflict, so prefer them for personal maps. Example: `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
 
 ## 📤 Export
 - Single track: `/api/track/{trackID}.json` (legacy `.cim` also works).
