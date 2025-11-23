@@ -1083,13 +1083,13 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 		// engine juggle collisions later on.
 		markers = deduplicateMarkers(markers)
 	}
+
 	if driver == "duckdb" {
-		// DuckDB's parameter binding grows slower with huge argument lists. Smaller batches and
-		// pre-deduplication keep each statement tight while still streaming through the file
-		// quickly.
-		if batch > 256 {
-			batch = 256
-		}
+		// Columnar engines thrive on wide batches. We stretch the DuckDB chunk size so vectorised
+		// operators stay fed, while still capping the VALUES list to avoid pathological placeholder
+		// counts that previously stalled tgz imports. The helper keeps the choice centralized and
+		// easy to reason about.
+		batch = tuneDuckDBBatchSize(batch, len(markers))
 	}
 
 	var (
@@ -1373,6 +1373,33 @@ func deduplicateMarkers(markers []Marker) []Marker {
 	}
 
 	return unique
+}
+
+// tuneDuckDBBatchSize widens batch inserts so DuckDB can process larger columnar stripes without
+// waiting on many small statements. We bound the size to keep placeholder counts reasonable and
+// return a value that respects both caller hints and the total workload. Channels are unnecessary
+// here because the calculation is deterministic and side-effect free.
+func tuneDuckDBBatchSize(requested int, total int) int {
+	const (
+		defaultBatch = 500  // falls back to existing default when callers provide zero/negative
+		wideFloor    = 1000 // minimum width keeps vectorised execution efficient
+		ceiling      = 4000 // cap prevents timeouts from massive VALUES lists
+	)
+
+	size := requested
+	if size <= 0 {
+		size = defaultBatch
+	}
+	if size < wideFloor {
+		size = wideFloor
+	}
+	if size > ceiling {
+		size = ceiling
+	}
+	if total > 0 && size > total {
+		size = total
+	}
+	return size
 }
 
 // singleTrack reports whether the full marker slice belongs to one track. We keep the
