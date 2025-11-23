@@ -78,6 +78,7 @@ var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
+var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
@@ -102,7 +103,7 @@ type usageSection struct {
 var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
-	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer"}},
+	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
@@ -3835,6 +3836,41 @@ func requestClientIP(r *http.Request) string {
 	return ""
 }
 
+// geoIPLookup asks an external service for approximate coordinates of the
+// caller. A short timeout keeps page loads responsive, following the Go
+// proverb that "a little copying is better than a little dependency" by using
+// the standard library instead of bundling heavy GeoIP datasets.
+func geoIPLookup(ctx context.Context, ip string) (float64, float64, error) {
+	if strings.TrimSpace(ip) == "" {
+		return 0, 0, errors.New("missing ip")
+	}
+
+	endpoint := fmt.Sprintf("https://ipapi.co/%s/json/", url.PathEscape(ip))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("geoip status %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return 0, 0, err
+	}
+	return payload.Latitude, payload.Longitude, nil
+}
+
 // debugEnabledForRequest checks whether the caller IP is in the allowlist.
 // Keeping the lookup in one spot makes it simple to extend later with CIDR
 // matching or runtime toggles without touching handlers.
@@ -3894,6 +3930,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLon        float64
 		DefaultZoom       int
 		DefaultLayer      string
+		AutoLocateDefault bool
 		RealtimeAvailable bool
 		SupportEmail      string
 		TranslationsJSON  template.JS
@@ -3907,6 +3944,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLon:        *defaultLon,
 		DefaultZoom:       *defaultZoom,
 		DefaultLayer:      *defaultLayer,
+		AutoLocateDefault: *autoLocateDefault,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		SupportEmail:      strings.TrimSpace(*supportEmail),
 		TranslationsJSON:  translationsJSON,
@@ -3929,6 +3967,42 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			log.Printf("Error writing response: %v", err)
 		}
+	}
+}
+
+// geoIPHandler returns a lightweight latitude/longitude pair derived from the
+// remote address. We keep it optional behind a flag so operators can disable
+// automatic centring if local policy demands manual map starts instead.
+func geoIPHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !*autoLocateDefault {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	ip := requestClientIP(r)
+	if ip == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	lat, lon, err := geoIPLookup(ctx, ip)
+	if err != nil {
+		log.Printf("geoip lookup failed for %s: %v", ip, err)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(map[string]float64{"lat": lat, "lon": lon}); err != nil {
+		log.Printf("geoip response encode failed: %v", err)
 	}
 }
 
@@ -4054,6 +4128,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLon        float64
 		DefaultZoom       int
 		DefaultLayer      string
+		AutoLocateDefault bool
 		RealtimeAvailable bool
 		SupportEmail      string
 		TranslationsJSON  template.JS
@@ -4067,6 +4142,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLon:        *defaultLon,
 		DefaultZoom:       *defaultZoom,
 		DefaultLayer:      *defaultLayer,
+		AutoLocateDefault: *autoLocateDefault,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		SupportEmail:      strings.TrimSpace(*supportEmail),
 		TranslationsJSON:  translationsJSON,
@@ -5064,6 +5140,7 @@ func main() {
 	http.HandleFunc("/realtime_history", realtimeHistoryHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
+	http.HandleFunc("/api/geoip", geoIPHandler)
 	http.HandleFunc("/s/", shortRedirectHandler)
 	http.HandleFunc("/api/docs", apiDocsHandler)
 
