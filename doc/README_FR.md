@@ -15,7 +15,11 @@
 - [🇰🇿 Қазақша](/doc/README_KK.md)
 
 # ☢️ Carte mondiale de la radiation
-Cette carte est pensée pour qu’un visiteur sans préparation voie immédiatement si la radiation menace les maisons, champs, forêts ou points d’eau autour de lui. Les lieux sains tournent autour de 2–3 µR/h ; les zones plus sombres viennent presque toujours de l’activité humaine. La carte montre comment les mines d’uranium en Tchéquie, Russie, Kazakhstan ou Mongolie ont laissé de longues traces ; comment Fukushima ressort comme une « tache-tumeur » noir et rouge sur la côte japonaise ; comment Tchernobyl et la région de Briansk marquent le paysage ; comment les filons riches en radon en France, en Tchéquie ou aux Eaux minérales du Caucase augmentent les risques. Le lessivage de l’uranium et des terres rares laisse des sels solubles en profondeur : ils gagnent les nappes phréatiques, puis notre eau et notre nourriture. Si cette carte protège ne serait-ce qu’une personne ou un animal, elle aura servi.
+Cette carte est conçue pour que chacun voie rapidement si l’endroit où il vit ou travaille est sûr. Beaucoup cultivent des légumes, élèvent des animaux ou boivent l’eau des sources sans toujours savoir si l’environnement est sain.
+
+Le fond naturel reste faible. Le danger n’apparaît que là où les niveaux montent nettement — à cause de l’activité humaine ou des spécificités locales. Dans ces lieux, l’eau, l’air et le sol peuvent finir par affecter la santé : poumons, estomac et autres organes.
+
+Si cette carte protège ne serait-ce qu’une personne ou un animal, elle aura été utile. Qu’elle serve de repère simple et clair pour choisir un chemin plus sûr.
 
 Démo en ligne : [https://pelora.org/](https://pelora.org/) — votre nœud aura le même aspect.
 
@@ -31,12 +35,15 @@ Démo en ligne : [https://pelora.org/](https://pelora.org/) — votre nœud aura
 ---
 
 ## 🧭 Ce que contient la carte
-- Carte en direct avec mesures de nombreux détecteurs ; choisissez le fond qui vous plaît.
-- Téléversez vos traces ; les points récents apparaissent autour de la zone affichée.
-- Import par URL ou fichier, export en archive.
-- Fonctionne en nœud unique ou en réseau : plus il y a de nœuds, plus la transparence est grande.
+- La carte rassemble les mesures de nombreux instruments ; les couches sont séparées selon la vitesse de déplacement — à pied, en voiture ou en vol.
+- Vous pouvez téléverser vos propres traces : de nouveaux points apparaissent immédiatement sur la carte pour éclairer la situation.
+- Importez des archives par URL ou fichier, et sauvegardez vos données en archive (pratique pour la sauvegarde).
+- Suivez comment la radiation a évolué dans un lieu précis — si la situation s’améliore ou se dégrade.
+- Créez un lien court vers n’importe quelle zone de la carte.
+- Mode impression : marquez les zones dangereuses avec des QR codes pour qu’une personne puisse scanner et voir aussitôt le niveau exact sur ce point. C’est utile pour signaler les risques environnementaux où il vaut mieux éviter de boire, de rester longtemps ou d’exploiter la terre. Les écologues, spécialistes du suivi et services d’alerte peuvent ainsi prévenir efficacement.
+- La carte dispose d’une API pour intégrer ses données dans des services externes sous licence CC ouverte.
 
-Le projet progresse grâce au soutien actif de **Safecast** et de la communauté : beaucoup d’idées précieuses viennent de **Rob Oudendijk** et des passionnés de dosimétrie ouverte dans le monde (merci à Greenpeace et aux autres équipes environnementales).
+Le projet progresse grâce au soutien attentif de la communauté **Safecast**, à l’énorme travail de **Rob Oudendijk** et aux efforts de nombreuses personnes dans le monde engagées dans la dosimétrie ouverte. Nous remercions Safecast, AtomFast, Radiacode, DoseMap et d’autres initiatives pour leurs contributions et leur participation.
 
 ---
 
@@ -87,9 +94,9 @@ chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
 ```
 Après l’import, relancez normalement (ou gardez la même commande dans un service systemd) — la carte s’ouvre avec des mesures visibles sur [http://localhost:8765](http://localhost:8765).
 
-### 🛢️ Choisir sa base (selon l’usage)
-- **PostgreSQL (`pgx`)** — le plus rapide et idéal pour plusieurs utilisateurs. Exemple : `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
-- **DuckDB / SQLite / Chai** — bases fichiers simples pour un usage solo. Les écritures concurrentes peuvent se gêner ; privilégiez-les pour un usage personnel. Exemple : `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
+### 🛢️ Choisir sa base pour l’import et l’usage courant
+- **PostgreSQL (`pgx`)** — la plus rapide et la plus confortable avec plusieurs utilisateurs. Exemple : `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
+- **DuckDB / SQLite / Chai** — bases fichiers simples pour un seul utilisateur. Des écritures concurrentes peuvent entrer en conflit, réservez-les donc aux cartes personnelles. Exemple : `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
 
 ## 📤 Exporter
 - Trace unique : `/api/track/{trackID}.json` (les anciens `.cim` fonctionnent aussi).
@@ -99,7 +106,7 @@ Après l’import, relancez normalement (ou gardez la même commande dans un ser
 
 ## 🧠 Options avancées
 - Bases de données : SQLite intégrée par défaut ; possibilité de passer à DuckDB, Chai, ClickHouse ou PostgreSQL (`pgx`).
-- Import : via URL ou fichier, archives acceptées.
+- Import : via URL ou fichier ; vous pouvez fournir directement une archive.
 - Export : archives JSON, trace unique, anciens `.cim` pris en charge.
 - Apparence : coordonnées et couche de départ (`-default-*`).
 
