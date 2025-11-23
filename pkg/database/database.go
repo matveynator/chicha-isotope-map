@@ -1381,21 +1381,26 @@ func deduplicateMarkers(markers []Marker) []Marker {
 // here because the calculation is deterministic and side-effect free.
 func tuneDuckDBBatchSize(requested int, total int) int {
 	const (
-		defaultBatch = 500  // falls back to existing default when callers provide zero/negative
-		wideFloor    = 1000 // minimum width keeps vectorised execution efficient
-		ceiling      = 4000 // cap prevents timeouts from massive VALUES lists
+		defaultBatch = 500  // backstop when callers leave the value unset
+		narrowFloor  = 256  // smaller floor avoids overly wide VALUES lists that stalled imports
+		softCeiling  = 1200 // keep placeholder counts tame; larger values slowed tgz uploads
 	)
 
 	size := requested
 	if size <= 0 {
 		size = defaultBatch
 	}
-	if size < wideFloor {
-		size = wideFloor
+	if size < narrowFloor {
+		size = narrowFloor
 	}
-	if size > ceiling {
-		size = ceiling
+
+	// DuckDB benefits from vectorised batches but stalls when statements become too wide.
+	// We gently cap the chunk size so columnar stripes stay healthy without flooding the
+	// engine with tens of thousands of placeholders.
+	if size > softCeiling {
+		size = softCeiling
 	}
+
 	if total > 0 && size > total {
 		size = total
 	}
