@@ -3082,63 +3082,36 @@ func importStillRunning(done <-chan struct{}) bool {
 	}
 }
 
-// importShield builds a middleware that gently throttles DB-backed HTTP
-// requests while an import is inflight against single-user file databases. We
-// prefer to stream read traffic through short-lived contexts so web users see
-// fresh tracks without starving the importer, keeping with "Don't communicate
-// by sharing memory; share memory by communicating."
+// importShield builds a middleware that gently nudges DB-backed HTTP requests
+// while an import is inflight against single-user file databases. The earlier
+// version deprioritised uploads and URL shortener calls, but now that all
+// engines flow through the serialized channel pipeline we can let requests
+// proceed with a bounded deadline instead of outright rejecting them. This
+// keeps user interactions responsive while still protecting the importer from
+// unbounded queues.
 func importShield(done <-chan struct{}, dbType string, logf func(string, ...any)) func(http.Handler) http.Handler {
 	if !isSingleUserDriver(dbType) || done == nil {
 		return nil
 	}
 
-	blockedPrefixes := []string{
-		"/get_markers",
-		"/stream_markers",
-		"/realtime_history",
-		"/trackid/",
-		"/upload",
-		"/qrpng",
-		"/s/",
-		"/api/",
-	}
-
-	// Allow a narrow set of endpoints to hit the DB while importing so
-	// operators can still see API docs or read static assets. The matcher
-	// stays deliberately small to avoid surprise lock contention.
-	requiresImportQuiescence := func(path string) bool {
-		for _, prefix := range blockedPrefixes {
-			if strings.HasPrefix(path, prefix) {
-				return true
-			}
-		}
-		return false
-	}
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !importStillRunning(done) || !requiresImportQuiescence(r.URL.Path) {
+			if !importStillRunning(done) {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Let safe methods continue but cap their wait so the importer is not
-			// starved by UI refreshes. A visible notice keeps expectations clear in
-			// both HTTP headers and error bodies when we must decline a request.
+			// Keep the middleware non-blocking by always passing work through with
+			// a bounded context. This mirrors the round-robin lane scheduler in the
+			// database package so imports, uploads, and reads all get a turn without
+			// starving each other.
 			notice := "Идет импорт новых данных; ответы могут задерживаться."
-			w.Header().Set("Retry-After", "5")
+			w.Header().Set("Retry-After", "1")
 			w.Header().Set("X-Import-Notice", notice)
-			if r.Method == http.MethodGet || r.Method == http.MethodHead {
-				ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
-				defer cancel()
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
-			}
 
-			http.Error(w, notice, http.StatusServiceUnavailable)
-			if logf != nil {
-				logf("deprioritised %s during single-user import to keep writer ahead", r.URL.Path)
-			}
+			ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+			defer cancel()
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
