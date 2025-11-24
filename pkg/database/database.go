@@ -34,7 +34,7 @@ type serializedJob struct {
 	ctx    context.Context
 	fn     func(context.Context, *sql.DB) (any, error)
 	result chan serializedResult
-	kind   workloadKind
+	kind   WorkloadKind
 }
 
 // serializedResult holds the outcome of a serializedJob. Keeping it separate helps the
@@ -44,19 +44,19 @@ type serializedResult struct {
 	err   error
 }
 
-// workloadKind enumerates the separate queues we run through select/case so realtime feeds,
+// WorkloadKind enumerates the separate queues we run through select/case so realtime feeds,
 // archive imports, user uploads, and web readers time-share the single connection without
 // letting one long backlog starve the others. Using an explicit type keeps the routing logic
 // readable and mirrors the Go Proverb "Make the zero value useful" by defaulting to the
 // general queue.
-type workloadKind int
+type WorkloadKind int
 
 const (
-	workloadGeneral    workloadKind = iota // catch-all when callers do not care
-	workloadWebRead                        // API/UI fetches for map tiles and history
-	workloadUserUpload                     // single track uploads from the web form
-	workloadArchive                        // large TGZ imports and bulk archive loaders
-	workloadRealtime                       // live Safecast device updates
+	WorkloadGeneral    WorkloadKind = iota // catch-all when callers do not care
+	WorkloadWebRead                        // API/UI fetches for map tiles and history
+	WorkloadUserUpload                     // single track uploads from the web form
+	WorkloadArchive                        // large TGZ imports and bulk archive loaders
+	WorkloadRealtime                       // live Safecast device updates
 )
 
 // serializedPipeline owns per-workload channels and orchestrates fair selection so one busy
@@ -79,13 +79,13 @@ func startSerializedPipeline(db *sql.DB) *serializedPipeline {
 	// dependency" by avoiding extra indirection.
 	p := &serializedPipeline{
 		lanes: []chan serializedJob{
-			make(chan serializedJob, 64),  // workloadGeneral
-			make(chan serializedJob, 128), // workloadWebRead
-			make(chan serializedJob, 32),  // workloadUserUpload
-			make(chan serializedJob, 32),  // workloadArchive
-			make(chan serializedJob, 128), // workloadRealtime
+			make(chan serializedJob, 64),  // WorkloadGeneral
+			make(chan serializedJob, 128), // WorkloadWebRead
+			make(chan serializedJob, 32),  // WorkloadUserUpload
+			make(chan serializedJob, 32),  // WorkloadArchive
+			make(chan serializedJob, 128), // WorkloadRealtime
 		},
-		order: []int{int(workloadRealtime), int(workloadArchive), int(workloadUserUpload), int(workloadWebRead), int(workloadGeneral)},
+		order: []int{int(WorkloadRealtime), int(WorkloadArchive), int(WorkloadUserUpload), int(WorkloadWebRead), int(WorkloadGeneral)},
 	}
 
 	// getNextJob rotates over queues with a non-blocking pass before blocking so we keep
@@ -177,24 +177,24 @@ func (p *serializedPipeline) enqueue(ctx context.Context, job serializedJob) err
 // laneFor resolves the channel for a workloadKind without a switch so the routing stays
 // channel-centric. If an unknown kind arrives we fall back to the general lane to keep the
 // pipeline robust.
-func (p *serializedPipeline) laneFor(kind workloadKind) chan serializedJob {
+func (p *serializedPipeline) laneFor(kind WorkloadKind) chan serializedJob {
 	if int(kind) >= 0 && int(kind) < len(p.lanes) {
 		return p.lanes[kind]
 	}
-	return p.lanes[workloadGeneral]
+	return p.lanes[WorkloadGeneral]
 }
 
 // withSerializedConnection queues the given function onto the requested workload lane so
 // long imports or realtime spikes do not block web readers. The default workload keeps
 // backward compatibility while letting specific callers opt into their own lanes.
 func (db *Database) withSerializedConnection(ctx context.Context, fn func(context.Context, *sql.DB) error) error {
-	return db.withSerializedConnectionFor(ctx, workloadGeneral, fn)
+	return db.withSerializedConnectionFor(ctx, WorkloadGeneral, fn)
 }
 
 // withSerializedConnectionFor routes work onto a specific workload queue. We stick to
 // channels/select instead of mutexes so the scheduling remains explicit and follows the
 // Go proverb "Don't communicate by sharing memory; share memory by communicating."
-func (db *Database) withSerializedConnectionFor(ctx context.Context, kind workloadKind, fn func(context.Context, *sql.DB) error) error {
+func (db *Database) withSerializedConnectionFor(ctx context.Context, kind WorkloadKind, fn func(context.Context, *sql.DB) error) error {
 	if db == nil || db.DB == nil {
 		return fmt.Errorf("database unavailable")
 	}
@@ -1284,6 +1284,28 @@ type MarkerBatchProgress struct {
 	Duration time.Duration
 }
 
+// serializedExecutor routes Exec calls through the serialized pipeline so single-writer
+// engines can interleave large imports with web reads. We avoid mutexes entirely,
+// leaning on the channel scheduler to keep work fair.
+type serializedExecutor struct {
+	db   *Database
+	lane WorkloadKind
+}
+
+func (s serializedExecutor) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return s.ExecContext(context.Background(), query, args...)
+}
+
+func (s serializedExecutor) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	var res sql.Result
+	err := s.db.withSerializedConnectionFor(ctx, s.lane, func(ctx context.Context, conn *sql.DB) error {
+		var err error
+		res, err = conn.ExecContext(ctx, query, args...)
+		return err
+	})
+	return res, err
+}
+
 // InsertMarkersBulk inserts markers in batches using multi-row VALUES.
 // - Portable: only standard SQL and database/sql, no vendor extensions.
 // - Fast: far fewer statements, WAL and B-Tree updates coalesce better.
@@ -1298,8 +1320,11 @@ type MarkerBatchProgress struct {
 //
 // Context is threaded through so stalled archive entries can abandon long-running
 // database calls instead of blocking later work. We check cancellation between
-// batches and rely on ExecContext to let drivers break out promptly.
-func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) (err error) {
+// batches and rely on ExecContext to let drivers break out promptly. When the
+// serialized pipeline is enabled we funnel each batch through the provided
+// workload lane so long TGZ imports cannot monopolize the single DuckDB writer
+// and block web reads or one-off uploads.
+func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress, lane WorkloadKind) (err error) {
 	if len(markers) == 0 {
 		return nil
 	}
@@ -1313,6 +1338,7 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 	}
 
 	driver := normalizeDBType(dbType)
+	serialized := db.serializedEnabled() && db.pipeline != nil
 
 	if driver == "duckdb" || driver == "clickhouse" {
 		// Deduplicate early so track-wide inserts avoid redundant VALUES tuples. DuckDB and
@@ -1341,11 +1367,13 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 	if tx != nil {
 		txn = tx
 		exec = tx
+	} else if serialized {
+		exec = serializedExecutor{db: db, lane: lane}
 	} else {
 		exec = db.DB
 	}
 
-	if driver == "duckdb" && txn == nil {
+	if driver == "duckdb" && txn == nil && !serialized {
 		// DuckDB spends significant time creating and committing tiny transactions when imports
 		// run chunk-by-chunk. Starting a single transaction up front keeps checkpoints rare and
 		// removes per-chunk overhead without relying on SAVEPOINT support.
@@ -1995,7 +2023,7 @@ func duckDBIsConflict(err error) bool {
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
-	return db.withSerializedConnectionFor(context.Background(), workloadRealtime, func(ctx context.Context, conn *sql.DB) error {
+	return db.withSerializedConnectionFor(context.Background(), WorkloadRealtime, func(ctx context.Context, conn *sql.DB) error {
 		switch strings.ToLower(dbType) {
 		case "pgx":
 			_, err := conn.ExecContext(ctx, `
@@ -2111,7 +2139,7 @@ ORDER BY device_id,fetched_at DESC;`
 	}
 
 	var out []Marker
-	err := db.withSerializedConnectionFor(context.Background(), workloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+	err := db.withSerializedConnectionFor(context.Background(), WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
 		rows, err := conn.QueryContext(ctx, query, minLat, maxLat, minLon, maxLon)
 		if err != nil {
 			return fmt.Errorf("query realtime: %w", err)
@@ -2222,7 +2250,7 @@ ORDER BY measured_at ASC;`
 	}
 
 	var out []RealtimeMeasurement
-	err := db.withSerializedConnectionFor(context.Background(), workloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+	err := db.withSerializedConnectionFor(context.Background(), WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
 		rows, err := conn.QueryContext(ctx, query, deviceID, since)
 		if err != nil {
 			return fmt.Errorf("realtime history: %w", err)
@@ -2267,7 +2295,7 @@ ORDER BY measured_at ASC;`
 // (seconds) – any device whose newest fetched_at is older is eligible.
 func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 	var ids []string
-	gatherErr := db.withSerializedConnectionFor(context.Background(), workloadArchive, func(ctx context.Context, conn *sql.DB) error {
+	gatherErr := db.withSerializedConnectionFor(context.Background(), WorkloadArchive, func(ctx context.Context, conn *sql.DB) error {
 		var q string
 		switch strings.ToLower(dbType) {
 		case "pgx", "duckdb":
@@ -2305,7 +2333,7 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 			continue
 		}
 
-		if err := db.withSerializedConnectionFor(ctx, workloadArchive, func(ctx context.Context, conn *sql.DB) error {
+		if err := db.withSerializedConnectionFor(ctx, WorkloadArchive, func(ctx context.Context, conn *sql.DB) error {
 			var tx *sql.Tx
 			var exec sqlExecutor
 			switch db.Driver {
@@ -2383,7 +2411,7 @@ func (db *Database) fetchRealtimeByDevice(id, dbType string) ([]RealtimeMeasurem
 		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=?`
 	}
 	var out []RealtimeMeasurement
-	err := db.withSerializedConnectionFor(context.Background(), workloadRealtime, func(ctx context.Context, conn *sql.DB) error {
+	err := db.withSerializedConnectionFor(context.Background(), WorkloadRealtime, func(ctx context.Context, conn *sql.DB) error {
 		rows, err := conn.QueryContext(ctx, q, id)
 		if err != nil {
 			return fmt.Errorf("fetch realtime: %w", err)
@@ -2451,7 +2479,7 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5))
 
 	args := []interface{}{zoom, minLat, maxLat, minLon, maxLon}
-	return db.queryMarkers(where, args, dbType, workloadWebRead)
+	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackID retrieves markers filtered by trackID.
@@ -2459,7 +2487,7 @@ func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker
 	where := fmt.Sprintf("trackID = %s",
 		placeholder(dbType, 1))
 
-	return db.queryMarkers(where, []interface{}{trackID}, dbType, workloadWebRead)
+	return db.queryMarkers(where, []interface{}{trackID}, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackIDAndBounds retrieves markers filtered by trackID and geographical bounds.
@@ -2468,7 +2496,7 @@ func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon,
 		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5))
 
 	args := []interface{}{trackID, minLat, maxLat, minLon, maxLon}
-	return db.queryMarkers(where, args, dbType, workloadWebRead)
+	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackIDZoomAndBounds исправленный вариант
@@ -2483,7 +2511,7 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5), placeholder(dbType, 6))
 
 	args := []interface{}{trackID, zoom, minLat, maxLat, minLon, maxLon}
-	return db.queryMarkers(where, args, dbType, workloadWebRead)
+	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
 }
 
 // SpeedRange задаёт замкнутый диапазон [Min, Max] скорости.
@@ -2545,7 +2573,7 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 		}
 	}
 
-	return db.queryMarkers(sb.String(), args, dbType, workloadWebRead)
+	return db.queryMarkers(sb.String(), args, dbType, WorkloadWebRead)
 }
 
 // ------------------------------------------------------------------
@@ -2623,13 +2651,13 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 		}
 	}
 
-	return db.queryMarkers(sb.String(), args, dbType, workloadWebRead)
+	return db.queryMarkers(sb.String(), args, dbType, WorkloadWebRead)
 }
 
 // queryMarkers runs a SELECT against the markers table using the serialized pipeline so
 // that live writes and heavy imports cannot starve web readers. A shared scanner keeps
 // the call sites compact while still returning fully populated Marker structs.
-func (db *Database) queryMarkers(where string, args []interface{}, dbType string, lane workloadKind) ([]Marker, error) {
+func (db *Database) queryMarkers(where string, args []interface{}, dbType string, lane WorkloadKind) ([]Marker, error) {
 	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
                                      COALESCE(altitude, 0) AS altitude,
                                      COALESCE(detector, '') AS detector,

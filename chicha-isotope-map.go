@@ -3512,36 +3512,45 @@ func processAndStoreMarkersWithContext(
 		return bbox, trackID, err
 	}
 	if strings.EqualFold(dbType, "clickhouse") {
-		if err := db.InsertMarkersBulk(ctx, nil, allZoom, dbType, 1000, progressCh); err != nil {
+		if err := db.InsertMarkersBulk(ctx, nil, allZoom, dbType, 1000, progressCh, database.WorkloadUserUpload); err != nil {
 			close(progressCh)
 			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
 	} else {
-		tx, err := db.DB.Begin()
-		if err != nil {
-			close(progressCh)
-			<-progressDone
-			return bbox, trackID, err
+		useTx := !(strings.EqualFold(dbType, "duckdb") || strings.EqualFold(dbType, "sqlite") || strings.EqualFold(dbType, "chai"))
+		var tx *sql.Tx
+		var err error
+		if useTx {
+			tx, err = db.DB.Begin()
+			if err != nil {
+				close(progressCh)
+				<-progressDone
+				return bbox, trackID, err
+			}
+			// Batch size 500–1000 usually gives a good balance on large B-Trees and keeps DuckDB in
+			// a single transaction so inserts do not pay per-chunk commit costs.
+			if err := observeContext(ctx); err != nil {
+				_ = tx.Rollback()
+				close(progressCh)
+				<-progressDone
+				return bbox, trackID, err
+			}
 		}
-		// Batch size 500–1000 usually gives a good balance on large B-Trees and keeps DuckDB in
-		// a single transaction so inserts do not pay per-chunk commit costs.
-		if err := observeContext(ctx); err != nil {
-			_ = tx.Rollback()
-			close(progressCh)
-			<-progressDone
-			return bbox, trackID, err
-		}
-		if err := db.InsertMarkersBulk(ctx, tx, allZoom, dbType, 1000, progressCh); err != nil {
-			_ = tx.Rollback()
+		if err := db.InsertMarkersBulk(ctx, tx, allZoom, dbType, 1000, progressCh, database.WorkloadUserUpload); err != nil {
+			if tx != nil {
+				_ = tx.Rollback()
+			}
 			close(progressCh)
 			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
-		if err := tx.Commit(); err != nil {
-			close(progressCh)
-			<-progressDone
-			return bbox, trackID, err
+		if tx != nil {
+			if err := tx.Commit(); err != nil {
+				close(progressCh)
+				<-progressDone
+				return bbox, trackID, err
+			}
 		}
 	}
 
