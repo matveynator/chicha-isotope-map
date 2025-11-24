@@ -31,8 +31,13 @@ const (
 type RateLimiter struct {
 	heavyCooldown time.Duration
 	heavyBurst    int // allow a burst of heavy requests before throttling so normal browsing stays fast
-	requests      chan keyedRequest
-	now           func() time.Time
+	// noticeFloor defines a safe delay threshold. Requests that wait less than
+	// this duration are treated as immediate so valid users do not see rate
+	// limit headers while casually exploring the map. We prefer an explicit
+	// floor over silent magic to keep the behaviour predictable.
+	noticeFloor time.Duration
+	requests    chan keyedRequest
+	now         func() time.Time
 }
 
 // completionNotice flows back to the per-IP worker once a handler finishes its
@@ -88,6 +93,7 @@ func NewRateLimiter(heavyCooldown time.Duration) *RateLimiter {
 	limiter := &RateLimiter{
 		heavyCooldown: heavyCooldown,
 		heavyBurst:    8,
+		noticeFloor:   50 * time.Millisecond,
 		requests:      make(chan keyedRequest),
 		now:           time.Now,
 	}
@@ -224,9 +230,16 @@ func (l *RateLimiter) runIPWorker(ip string, requests <-chan ipRequest) {
 			}
 
 			release := make(chan struct{})
+			// Apply the safe floor so incidental overlaps from real users do not
+			// look like throttling. We still record the actual duration so metrics
+			// remain honest when the limiter genuinely intervenes.
+			effectiveWait := totalWait
+			if effectiveWait < l.noticeFloor {
+				effectiveWait = 0
+			}
 			resp := acquireResponse{
 				release:      release,
-				wait:         totalWait > 0,
+				wait:         effectiveWait > 0,
 				waitDuration: totalWait,
 			}
 

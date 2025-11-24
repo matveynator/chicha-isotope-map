@@ -2016,6 +2016,11 @@ let shortLinkAbort = null;
 let lastShortLinkFull = '';
 let pendingShortLinkFull = '';
 let shortLinkCommitPromise = null;
+let shortLinkFocusDelayTimer = null;
+let shortLinkPendingUrl = '';
+let shortLinkFocusReady = (typeof document.hasFocus === 'function') ? document.hasFocus() : false;
+const shortLinkIdleDelayMs = 1200;
+const shortLinkFocusDelayMs = 900;
 const mapViewStorageKey = 'cim.map.view.v1';
 let storedUserCenter = null;
 let waitForDangerFit = false;
@@ -3807,19 +3812,70 @@ function setBaseLayer(layerName) {
   }
 }
 
+// markShortLinkFocusReady flips the readiness flag once the user keeps the
+// page focused long enough. Delaying the readiness ensures /api/shorten is
+// only reached once a visitor pauses, avoiding noisy calls while they zoom.
+function markShortLinkFocusReady() {
+  shortLinkFocusReady = true;
+  flushPendingShortLink();
+}
+
+// handleShortLinkFocus starts a short delay after the user focuses the page so
+// intermediate zoom steps never trigger /api/shorten. The delay gives the
+// visitor time to stop at the zoom level they actually want to share.
+function handleShortLinkFocus() {
+  shortLinkFocusReady = false;
+  if (shortLinkFocusDelayTimer) {
+    clearTimeout(shortLinkFocusDelayTimer);
+  }
+  shortLinkFocusDelayTimer = setTimeout(() => {
+    shortLinkFocusDelayTimer = null;
+    markShortLinkFocusReady();
+  }, shortLinkFocusDelayMs);
+}
+
+// handleShortLinkBlur resets readiness immediately on blur so returning to the
+// tab always waits for the focus grace period. This keeps outbound shorten
+// requests aligned with intentional interaction.
+function handleShortLinkBlur() {
+  shortLinkFocusReady = false;
+  if (shortLinkFocusDelayTimer) {
+    clearTimeout(shortLinkFocusDelayTimer);
+    shortLinkFocusDelayTimer = null;
+  }
+}
+
+// flushPendingShortLink sends the queued /api/shorten request only when the
+// focus delay has elapsed and the URL differs from the last confirmed target.
+// Keeping this narrow prevents redundant backend calls while people are still
+// zooming toward their desired level.
+function flushPendingShortLink() {
+  if (!shortLinkBox) return;
+  if (!shortLinkFocusReady) return;
+  if (!shortLinkPendingUrl) return;
+  if (shortLinkPendingUrl === lastShortLinkFull) {
+    shortLinkPendingUrl = '';
+    return;
+  }
+  const target = shortLinkPendingUrl;
+  shortLinkPendingUrl = '';
+  requestShortLink(target);
+}
+
 function scheduleShortLinkRefresh() {
   if (!shortLinkBox) return;
+  const full = window.location.href;
+  if (!full) {
+    return;
+  }
+  shortLinkPendingUrl = full;
   if (shortLinkTimer) {
     clearTimeout(shortLinkTimer);
   }
   shortLinkTimer = setTimeout(() => {
     shortLinkTimer = null;
-    const full = window.location.href;
-    if (!full || full === lastShortLinkFull) {
-      return;
-    }
-    requestShortLink(full);
-  }, 500);
+    flushPendingShortLink();
+  }, shortLinkIdleDelayMs);
 }
 
 function requestShortLink(fullURL) {
@@ -4205,6 +4261,15 @@ function initializeUIElements() {
         copyShortLinkToClipboard();
       }
     });
+  }
+
+  // Respect focus state before requesting short links so intermediate zoom
+  // steps do not bombard /api/shorten. Waiting for the focus grace period
+  // keeps the backend in sync with intentional sharing.
+  window.addEventListener('focus', handleShortLinkFocus);
+  window.addEventListener('blur', handleShortLinkBlur);
+  if (typeof document.hasFocus === 'function' && document.hasFocus()) {
+    handleShortLinkFocus();
   }
 
   scheduleShortLinkRefresh();
