@@ -63,13 +63,9 @@ const (
 // feed cannot monopolize the single-writer engines. We avoid mutexes and keep the rotation
 // explicit so maintainers can reason about how different callers interleave.
 type serializedPipeline struct {
-	live     chan serializedJob
-	archive  chan serializedJob
-	uploads  chan serializedJob
-	webReads chan serializedJob
-	general  chan serializedJob
-	order    []chan serializedJob
-	turn     int
+	lanes []chan serializedJob // Indexed by workloadKind so selection happens without switches
+	order []int                // Round-robin order to rotate through lanes fairly
+	turn  int                  // Tracks the next lane index to probe first
 }
 
 // startSerializedPipeline spins up a goroutine that owns the shared *sql.DB for single-user
@@ -77,24 +73,30 @@ type serializedPipeline struct {
 // bursts or TGZ imports cannot starve web readers. We stay within channels/select and avoid
 // mutexes to keep the coordination simple and observable.
 func startSerializedPipeline(db *sql.DB) *serializedPipeline {
+	// We allocate lanes in the same index order as workloadKind values so callers can
+	// select the lane via array indexing instead of switches. This keeps channel usage
+	// explicit and follows the Go proverb "A little copying is better than a little
+	// dependency" by avoiding extra indirection.
 	p := &serializedPipeline{
-		live:     make(chan serializedJob, 128),
-		archive:  make(chan serializedJob, 32),
-		uploads:  make(chan serializedJob, 32),
-		webReads: make(chan serializedJob, 128),
-		general:  make(chan serializedJob, 64),
+		lanes: []chan serializedJob{
+			make(chan serializedJob, 64),  // workloadGeneral
+			make(chan serializedJob, 128), // workloadWebRead
+			make(chan serializedJob, 32),  // workloadUserUpload
+			make(chan serializedJob, 32),  // workloadArchive
+			make(chan serializedJob, 128), // workloadRealtime
+		},
+		order: []int{int(workloadRealtime), int(workloadArchive), int(workloadUserUpload), int(workloadWebRead), int(workloadGeneral)},
 	}
-	p.order = []chan serializedJob{p.live, p.archive, p.uploads, p.webReads, p.general}
 
 	// getNextJob rotates over queues with a non-blocking pass before blocking so we keep
 	// latency low for lighter queues even while a heavy import continues to stream.
 	getNextJob := func() serializedJob {
 		// First attempt: non-blocking sweep in round-robin order.
 		for i := 0; i < len(p.order); i++ {
-			ch := p.order[p.turn%len(p.order)]
+			laneIdx := p.order[p.turn%len(p.order)]
 			p.turn++
 			select {
-			case job := <-ch:
+			case job := <-p.lanes[laneIdx]:
 				return job
 			default:
 			}
@@ -102,15 +104,15 @@ func startSerializedPipeline(db *sql.DB) *serializedPipeline {
 
 		// Second attempt: block until any queue receives work to avoid busy waiting.
 		select {
-		case job := <-p.live:
+		case job := <-p.lanes[p.order[0]]:
 			return job
-		case job := <-p.archive:
+		case job := <-p.lanes[p.order[1]]:
 			return job
-		case job := <-p.uploads:
+		case job := <-p.lanes[p.order[2]]:
 			return job
-		case job := <-p.webReads:
+		case job := <-p.lanes[p.order[3]]:
 			return job
-		case job := <-p.general:
+		case job := <-p.lanes[p.order[4]]:
 			return job
 		}
 	}
@@ -157,26 +159,29 @@ func (db *Database) serializedEnabled() bool {
 // keeps context cancellation responsive and guarantees that only one job runs at a time when
 // the pipeline is active.
 func (p *serializedPipeline) enqueue(ctx context.Context, job serializedJob) error {
-	var target chan serializedJob
-	switch job.kind {
-	case workloadRealtime:
-		target = p.live
-	case workloadArchive:
-		target = p.archive
-	case workloadUserUpload:
-		target = p.uploads
-	case workloadWebRead:
-		target = p.webReads
-	default:
-		target = p.general
-	}
+	lane := p.laneFor(job.kind)
 
-	select {
-	case target <- job:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case lane <- job:
+			return nil
+		default:
+			// Yield so other goroutines can place work without blocking; select keeps this non-busy.
+			runtime.Gosched()
+		}
 	}
+}
+
+// laneFor resolves the channel for a workloadKind without a switch so the routing stays
+// channel-centric. If an unknown kind arrives we fall back to the general lane to keep the
+// pipeline robust.
+func (p *serializedPipeline) laneFor(kind workloadKind) chan serializedJob {
+	if int(kind) >= 0 && int(kind) < len(p.lanes) {
+		return p.lanes[kind]
+	}
+	return p.lanes[workloadGeneral]
 }
 
 // withSerializedConnection queues the given function onto the requested workload lane so
