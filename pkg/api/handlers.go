@@ -77,6 +77,23 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	}
 }
 
+// minimumDeadline ensures that API handlers give the serialized DB pipeline
+// enough room to schedule work even when long TGZ imports are active. We avoid
+// mutexes and rely on channels and context deadlines, so stretching the timer
+// keeps single-writer engines responsive without masking client cancellations.
+func minimumDeadline(ctx context.Context, min time.Duration) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), min)
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		if time.Until(deadline) >= min {
+			return ctx, func() {}
+		}
+		return context.WithTimeout(context.WithoutCancel(ctx), min)
+	}
+	return context.WithTimeout(ctx, min)
+}
+
 // acquirePermit enforces the per-IP rate limiter and writes an informative
 // response if the caller exceeded their allowance. Returning false means the
 // handler should stop processing because a response was already sent.
@@ -198,7 +215,10 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	// Allow the serialized workload lanes to drain during TGZ imports so
+	// short link writes do not fail with premature deadlines. We still cap
+	// the wait to keep responses bounded for callers.
+	ctx, cancel := minimumDeadline(r.Context(), 30*time.Second)
 	defer cancel()
 
 	var (

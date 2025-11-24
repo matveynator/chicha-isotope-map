@@ -8,45 +8,45 @@ import (
 	// go tool pprof -http=:8080 Downloads/profile
 	//_ "net/http/pprof"
 
-"archive/tar"
-"archive/zip"
-"bufio"
-"bytes"
-"compress/gzip"
-"context"
-"crypto/tls"
-"database/sql"
-"embed"
-"encoding/csv"
-"encoding/json"
-"encoding/xml"
-"errors"
-"flag"
-"fmt"
-"golang.org/x/crypto/acme/autocert"
-"html"
-"html/template"
-"image/color"
-"io"
-"io/fs"
-"io/ioutil"
-"log"
-"math"
-"math/rand"
-"mime/multipart"
-"net"
-"net/http"
-"net/url"
-"os"
-"os/exec"
-"path/filepath"
-"regexp"
-"runtime"
-"sort"
-"strconv"
-"strings"
-"syscall"
-"time"
+	"archive/tar"
+	"archive/zip"
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/tls"
+	"database/sql"
+	"embed"
+	"encoding/csv"
+	"encoding/json"
+	"encoding/xml"
+	"errors"
+	"flag"
+	"fmt"
+	"golang.org/x/crypto/acme/autocert"
+	"html"
+	"html/template"
+	"image/color"
+	"io"
+	"io/fs"
+	"io/ioutil"
+	"log"
+	"math"
+	"math/rand"
+	"mime/multipart"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
 
 	"chicha-isotope-map/pkg/api"
 	"chicha-isotope-map/pkg/cimimport"
@@ -3090,6 +3090,29 @@ func importStillRunning(done <-chan struct{}) bool {
 // proceed with a bounded deadline instead of outright rejecting them. This
 // keeps user interactions responsive while still protecting the importer from
 // unbounded queues.
+// withMinimumDeadline ensures requests get a chance to wait in the serialized
+// pipeline instead of failing instantly when an import is running. We only add
+// a timeout when the caller has none or when it is too short to let the round-
+// robin scheduler pick the job. This keeps the single-writer engines feeling
+// multi-user without hiding cancellations from the client. The helper follows
+// the Go Proverb "Don't communicate by sharing memory; share memory by
+// communicating" by letting the channel-owned pipeline enforce ordering while
+// we merely bound total wait time.
+func withMinimumDeadline(ctx context.Context, min time.Duration) (context.Context, context.CancelFunc) {
+	deadline, ok := ctx.Deadline()
+	if ok {
+		if time.Until(deadline) >= min {
+			// Caller already supplied a generous deadline; keep it.
+			return ctx, func() {}
+		}
+		// Extend only if the existing deadline is shorter than we need while
+		// preserving values stored on the incoming context.
+		return context.WithTimeout(context.WithoutCancel(ctx), min)
+	}
+	// No deadline: give the pipeline room to queue the work.
+	return context.WithTimeout(ctx, min)
+}
+
 func importShield(done <-chan struct{}, dbType string, logf func(string, ...any)) func(http.Handler) http.Handler {
 	if !isSingleUserDriver(dbType) || done == nil {
 		return nil
@@ -3102,15 +3125,18 @@ func importShield(done <-chan struct{}, dbType string, logf func(string, ...any)
 				return
 			}
 
-			// Keep the middleware non-blocking by always passing work through with
-			// a bounded context. This mirrors the round-robin lane scheduler in the
-			// database package so imports, uploads, and reads all get a turn without
-			// starving each other.
+			// Keep the middleware non-blocking by always passing work through while
+			// allowing enough time for the queue to drain. This mirrors the round-
+			// robin lane scheduler in the database package so imports, uploads, and
+			// reads all get a turn without starving each other.
 			notice := "Идет импорт новых данных; ответы могут задерживаться."
 			w.Header().Set("Retry-After", "1")
 			w.Header().Set("X-Import-Notice", notice)
 
-			ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+			// Give uploads and map queries a healthy window to reach the worker
+			// goroutine instead of cancelling after one second when a TGZ import is
+			// active. We still cap the wait to avoid hiding client disconnects.
+			ctx, cancel := withMinimumDeadline(r.Context(), 2*time.Minute)
 			defer cancel()
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -4044,7 +4070,11 @@ func shortRedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	// Give short redirects room to wait behind archive work while still
+	// respecting caller cancellations. Two seconds was too short once TGZ
+	// imports filled the serialized queue, so we stretch the deadline to a
+	// friendly window instead of forcing retries.
+	ctx, cancel := withMinimumDeadline(r.Context(), 30*time.Second)
 	defer cancel()
 
 	target, err := db.ResolveShortLink(ctx, code)
