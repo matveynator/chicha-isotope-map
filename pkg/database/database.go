@@ -68,6 +68,11 @@ type serializedPipeline struct {
 	turn  int                  // Tracks the next lane index to probe first
 }
 
+// serializedWaitFloor keeps serialized operations from failing fast when long-running archive jobs occupy the
+// queue. We deliberately stretch deadlines so single-writer engines like Chai, SQLite, and DuckDB can finish
+// the work instead of racing short timeouts. The helper below centralises the policy so callers stay small.
+const serializedWaitFloor = 45 * time.Second
+
 // startSerializedPipeline spins up a goroutine that owns the shared *sql.DB for single-user
 // engines. The worker picks jobs in a round-robin order across workload queues so realtime
 // bursts or TGZ imports cannot starve web readers. We stay within channels/select and avoid
@@ -182,6 +187,25 @@ func (p *serializedPipeline) laneFor(kind WorkloadKind) chan serializedJob {
 		return p.lanes[kind]
 	}
 	return p.lanes[WorkloadGeneral]
+}
+
+// queueFriendlyContext guarantees a minimum timeout so queued work has a fair chance to reach the single
+// worker even while archive imports fill the channel buffers. We avoid mutexes and instead lean on context
+// deadlines to keep the select/case scheduler responsive.
+func queueFriendlyContext(ctx context.Context, min time.Duration) (context.Context, context.CancelFunc) {
+	if min <= 0 {
+		min = serializedWaitFloor
+	}
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), min)
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		if time.Until(deadline) >= min {
+			return ctx, func() {}
+		}
+		return context.WithTimeout(context.WithoutCancel(ctx), min)
+	}
+	return context.WithTimeout(ctx, min)
 }
 
 // withSerializedConnection queues the given function onto the requested workload lane so
