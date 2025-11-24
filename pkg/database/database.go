@@ -2443,165 +2443,32 @@ type sqlExecutor interface {
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.
 func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
-	var query string
+	// The helper below keeps all marker lookups flowing through the serialized
+	// pipeline. This mirrors the Go proverb "Don't communicate by sharing
+	// memory; share memory by communicating" by letting the channel scheduler
+	// juggle imports and web reads without mutexes.
+	where := fmt.Sprintf("zoom = %s AND lat BETWEEN %s AND %s AND lon BETWEEN %s AND %s",
+		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5))
 
-	// Use appropriate placeholders depending on the database type
-	switch dbType {
-	case "pgx": // PostgreSQL
-		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
-		`
-	default: // SQLite or Chai
-		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
-		`
-	}
-
-	// Execute the query with the appropriate placeholders
-	rows, err := db.DB.Query(query, zoom, minLat, maxLat, minLon, maxLon)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers: %v", err)
-	}
-	defer rows.Close()
-
-	var markers []Marker
-
-	// Iterate over the rows and scan each result into a Marker struct
-	for rows.Next() {
-		var marker Marker
-		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID)
-		if err != nil {
-			return nil, fmt.Errorf("error scanning marker: %v", err)
-		}
-		markers = append(markers, marker)
-	}
-
-	// Check for any errors encountered during iteration
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over result set: %v", err)
-	}
-
-	return markers, nil
+	args := []interface{}{zoom, minLat, maxLat, minLon, maxLon}
+	return db.queryMarkers(where, args, dbType, workloadWebRead)
 }
 
 // GetMarkersByTrackID retrieves markers filtered by trackID.
 func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker, error) {
-	var query string
+	where := fmt.Sprintf("trackID = %s",
+		placeholder(dbType, 1))
 
-	// Use appropriate placeholders depending on the database type
-	switch dbType {
-	case "pgx":
-		query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-                       COALESCE(altitude, 0),
-                       COALESCE(detector, ''),
-                       COALESCE(radiation, ''),
-                       COALESCE(temperature, 0),
-                       COALESCE(humidity, 0)
-                FROM markers
-                WHERE trackID = $1;
-                `
-	default:
-		query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-                       COALESCE(altitude, 0),
-                       COALESCE(detector, ''),
-                       COALESCE(radiation, ''),
-                       COALESCE(temperature, 0),
-                       COALESCE(humidity, 0)
-                FROM markers
-                WHERE trackID = ?;
-                `
-	}
-
-	rows, err := db.DB.Query(query, trackID)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers by trackID: %v", err)
-	}
-	defer rows.Close()
-
-	var markers []Marker
-	for rows.Next() {
-		var marker Marker
-		if err := rows.Scan(
-			&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat,
-			&marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID,
-			&marker.Altitude, &marker.Detector, &marker.Radiation, &marker.Temperature, &marker.Humidity,
-		); err != nil {
-			return nil, fmt.Errorf("error scanning marker: %v", err)
-		}
-		markers = append(markers, marker)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over result set: %v", err)
-	}
-
-	return markers, nil
+	return db.queryMarkers(where, []interface{}{trackID}, dbType, workloadWebRead)
 }
 
 // GetMarkersByTrackIDAndBounds retrieves markers filtered by trackID and geographical bounds.
 func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
-	var query string
+	where := fmt.Sprintf("trackID = %s AND lat BETWEEN %s AND %s AND lon BETWEEN %s AND %s",
+		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5))
 
-	// Use appropriate placeholders depending on the database type
-	switch dbType {
-	case "pgx":
-		query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-                       COALESCE(altitude, 0),
-                       COALESCE(detector, ''),
-                       COALESCE(radiation, ''),
-                       COALESCE(temperature, 0),
-                       COALESCE(humidity, 0)
-                FROM markers
-                WHERE trackID = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
-                `
-	default:
-		query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-                       COALESCE(altitude, 0),
-                       COALESCE(detector, ''),
-                       COALESCE(radiation, ''),
-                       COALESCE(temperature, 0),
-                       COALESCE(humidity, 0)
-                FROM markers
-                WHERE trackID = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
-                `
-	}
-
-	// Execute the query
-	rows, err := db.DB.Query(query, trackID, minLat, maxLat, minLon, maxLon)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers by trackID and bounds: %v", err)
-	}
-	defer rows.Close()
-
-	var markers []Marker
-
-	// Iterate over the rows and scan each result into a Marker struct
-	for rows.Next() {
-		var marker Marker
-		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat,
-			&marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID,
-			&marker.Altitude, &marker.Detector, &marker.Radiation, &marker.Temperature, &marker.Humidity)
-		if err != nil {
-			return nil, fmt.Errorf("error scanning marker: %v", err)
-		}
-		markers = append(markers, marker)
-	}
-
-	// Check for any errors encountered during iteration
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over result set: %v", err)
-	}
-
-	log.Printf("Found %d markers for TrackID=%s", len(markers), trackID)
-	return markers, nil
+	args := []interface{}{trackID, minLat, maxLat, minLon, maxLon}
+	return db.queryMarkers(where, args, dbType, workloadWebRead)
 }
 
 // GetMarkersByTrackIDZoomAndBounds исправленный вариант
@@ -2612,54 +2479,11 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 	dbType string,
 ) ([]Marker, error) {
 
-	var query string
-	switch dbType {
-	case "pgx": // PostgreSQL
-		query = `
-        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-               COALESCE(altitude, 0),
-               COALESCE(detector, ''),
-               COALESCE(radiation, ''),
-               COALESCE(temperature, 0),
-               COALESCE(humidity, 0)
-        FROM   markers
-        WHERE  trackID = $1
-          AND  zoom     = $2
-          AND  lat BETWEEN $3 AND $4
-          AND  lon BETWEEN $5 AND $6;`
-	default: // SQLite / Chai
-		query = `
-        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-               COALESCE(altitude, 0),
-               COALESCE(detector, ''),
-               COALESCE(radiation, ''),
-               COALESCE(temperature, 0),
-               COALESCE(humidity, 0)
-        FROM   markers
-        WHERE  trackID = ?
-          AND  zoom     = ?
-          AND  lat BETWEEN ? AND ?
-          AND  lon BETWEEN ? AND ?;`
-	}
+	where := fmt.Sprintf("trackID = %s AND zoom = %s AND lat BETWEEN %s AND %s AND lon BETWEEN %s AND %s",
+		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5), placeholder(dbType, 6))
 
-	rows, err := db.DB.Query(query,
-		trackID, zoom, minLat, maxLat, minLon, maxLon)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers: %w", err)
-	}
-	defer rows.Close()
-
-	var markers []Marker
-	for rows.Next() {
-		var m Marker
-		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date,
-			&m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
-			return nil, fmt.Errorf("error scanning marker: %w", err)
-		}
-		markers = append(markers, m)
-	}
-	return markers, rows.Err()
+	args := []interface{}{trackID, zoom, minLat, maxLat, minLon, maxLon}
+	return db.queryMarkers(where, args, dbType, workloadWebRead)
 }
 
 // SpeedRange задаёт замкнутый диапазон [Min, Max] скорости.
@@ -2677,42 +2501,35 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 	dbType string,
 ) ([]Marker, error) {
 
-	ph := func(n int) string {
-		if dbType == "pgx" {
-			return fmt.Sprintf("$%d", n)
-		}
-		return "?"
-	}
-
 	var (
 		sb   strings.Builder
 		args []interface{}
 	)
 
 	// ---- обязательные условия -----------------------------------
-	sb.WriteString("zoom = " + ph(len(args)+1))
+	sb.WriteString("zoom = " + placeholder(dbType, len(args)+1))
 	args = append(args, zoom)
 
-	sb.WriteString(" AND lat BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	sb.WriteString(" AND lat BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 	args = append(args, minLat, maxLat)
 
-	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	sb.WriteString(" AND lon BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 	args = append(args, minLon, maxLon)
 
 	// ---- фильтр по времени (опционально) ------------------------
 	if dateFrom > 0 {
-		sb.WriteString(" AND date >= " + ph(len(args)+1))
+		sb.WriteString(" AND date >= " + placeholder(dbType, len(args)+1))
 		args = append(args, dateFrom)
 	}
 	if dateTo > 0 {
-		sb.WriteString(" AND date <= " + ph(len(args)+1))
+		sb.WriteString(" AND date <= " + placeholder(dbType, len(args)+1))
 		args = append(args, dateTo)
 	}
 
 	// ---- скорость: склейка смежных диапазонов в один BETWEEN ----
 	if len(speedRanges) > 0 {
 		if ok, lo, hi := mergeContinuousRanges(speedRanges); ok {
-			sb.WriteString(" AND speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+			sb.WriteString(" AND speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 			args = append(args, lo, hi)
 		} else {
 			// Непрерывной склейки нет → оставляем OR-цепочку (старое поведение).
@@ -2721,38 +2538,14 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 				if i > 0 {
 					sb.WriteString(" OR ")
 				}
-				sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+				sb.WriteString("speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 				args = append(args, r.Min, r.Max)
 			}
 			sb.WriteString(")")
 		}
 	}
 
-	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
-                                     COALESCE(altitude, 0) AS altitude,
-                                     COALESCE(detector, '') AS detector,
-                                     COALESCE(radiation, '') AS radiation,
-                                     COALESCE(temperature, 0) AS temperature,
-                                     COALESCE(humidity, 0) AS humidity
-                              FROM markers WHERE %s;`, sb.String())
-
-	rows, err := db.DB.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query: %w", err)
-	}
-	defer rows.Close()
-
-	var out []Marker
-	for rows.Next() {
-		var m Marker
-		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
-			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
-			return nil, fmt.Errorf("scan: %w", err)
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
+	return db.queryMarkers(sb.String(), args, dbType, workloadWebRead)
 }
 
 // ------------------------------------------------------------------
@@ -2787,42 +2580,35 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	dbType string,
 ) ([]Marker, error) {
 
-	ph := func(n int) string {
-		if dbType == "pgx" {
-			return fmt.Sprintf("$%d", n)
-		}
-		return "?"
-	}
-
 	var (
 		sb   strings.Builder
 		args []interface{}
 	)
 
-	sb.WriteString("trackID = " + ph(len(args)+1))
+	sb.WriteString("trackID = " + placeholder(dbType, len(args)+1))
 	args = append(args, trackID)
 
-	sb.WriteString(" AND zoom = " + ph(len(args)+1))
+	sb.WriteString(" AND zoom = " + placeholder(dbType, len(args)+1))
 	args = append(args, zoom)
 
-	sb.WriteString(" AND lat BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	sb.WriteString(" AND lat BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 	args = append(args, minLat, maxLat)
 
-	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	sb.WriteString(" AND lon BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 	args = append(args, minLon, maxLon)
 
 	if dateFrom > 0 {
-		sb.WriteString(" AND date >= " + ph(len(args)+1))
+		sb.WriteString(" AND date >= " + placeholder(dbType, len(args)+1))
 		args = append(args, dateFrom)
 	}
 	if dateTo > 0 {
-		sb.WriteString(" AND date <= " + ph(len(args)+1))
+		sb.WriteString(" AND date <= " + placeholder(dbType, len(args)+1))
 		args = append(args, dateTo)
 	}
 
 	if len(speedRanges) > 0 {
 		if ok, lo, hi := mergeContinuousRanges(speedRanges); ok {
-			sb.WriteString(" AND speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+			sb.WriteString(" AND speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 			args = append(args, lo, hi)
 		} else {
 			sb.WriteString(" AND (")
@@ -2830,38 +2616,65 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 				if i > 0 {
 					sb.WriteString(" OR ")
 				}
-				sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+				sb.WriteString("speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 				args = append(args, r.Min, r.Max)
 			}
 			sb.WriteString(")")
 		}
 	}
 
+	return db.queryMarkers(sb.String(), args, dbType, workloadWebRead)
+}
+
+// queryMarkers runs a SELECT against the markers table using the serialized pipeline so
+// that live writes and heavy imports cannot starve web readers. A shared scanner keeps
+// the call sites compact while still returning fully populated Marker structs.
+func (db *Database) queryMarkers(where string, args []interface{}, dbType string, lane workloadKind) ([]Marker, error) {
 	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
                                      COALESCE(altitude, 0) AS altitude,
                                      COALESCE(detector, '') AS detector,
                                      COALESCE(radiation, '') AS radiation,
                                      COALESCE(temperature, 0) AS temperature,
                                      COALESCE(humidity, 0) AS humidity
-                              FROM markers WHERE %s;`, sb.String())
-
-	rows, err := db.DB.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query: %w", err)
-	}
-	defer rows.Close()
+                              FROM markers WHERE %s;`, where)
 
 	var out []Marker
-	for rows.Next() {
-		var m Marker
-		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
-			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
-			return nil, fmt.Errorf("scan: %w", err)
+
+	err := db.withSerializedConnectionFor(context.Background(), lane, func(ctx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query markers: %w", err)
 		}
-		out = append(out, m)
+		defer rows.Close()
+
+		for rows.Next() {
+			var m Marker
+			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
+				&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+				&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+				return fmt.Errorf("scan markers: %w", err)
+			}
+			out = append(out, m)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate markers: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	return out, nil
+}
+
+// placeholder keeps SQL assembly consistent across callers so PostgreSQL dollar
+// placeholders stay in sync with SQLite-style question marks. Keeping it near the
+// query helper reduces repeated switch statements.
+func placeholder(dbType string, n int) string {
+	if strings.ToLower(dbType) == "pgx" {
+		return fmt.Sprintf("$%d", n)
+	}
+	return "?"
 }
 
 // DetectExistingTrackID scans the first incoming markers and tries to
