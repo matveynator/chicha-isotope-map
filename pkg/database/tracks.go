@@ -211,12 +211,21 @@ WHERE trackID = %s;`
 	// levels. We still rely on placeholders to stay portable across engines.
 	query = fmt.Sprintf(query, placeholder)
 
-	row := db.DB.QueryRowContext(ctx, query, trackID)
-	if err := row.Scan(&summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
-		if err == sql.ErrNoRows {
-			return summary, nil
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		row := conn.QueryRowContext(ctx, query, trackID)
+		if err := row.Scan(&summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("track summary: %w", err)
 		}
-		return summary, fmt.Errorf("track summary: %w", err)
+		return nil
+	})
+	if err != nil {
+		return summary, err
 	}
 	return summary, nil
 }
@@ -242,6 +251,9 @@ func (db *Database) StreamMarkersByTrackRange(
 	go func() {
 		defer close(out)
 		defer close(errs)
+
+		ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+		defer cancel()
 
 		if toID <= 0 || toID < fromID {
 			toID = math.MaxInt64
@@ -269,46 +281,55 @@ FROM markers
 WHERE trackID = %s AND id >= %s AND id <= %s
 ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
 
-		rows, err := db.DB.QueryContext(ctx, query, args...)
+		var batch []Marker
+		err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+			rows, err := conn.QueryContext(ctx, query, args...)
+			if err != nil {
+				return fmt.Errorf("stream markers: %w", err)
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var m Marker
+				var altitude sql.NullFloat64
+				var temperature sql.NullFloat64
+				var humidity sql.NullFloat64
+				if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+					&altitude, &m.Detector, &m.Radiation, &temperature, &humidity); err != nil {
+					return fmt.Errorf("scan marker: %w", err)
+				}
+				if altitude.Valid {
+					m.Altitude = altitude.Float64
+					m.AltitudeValid = true
+				}
+				if temperature.Valid {
+					m.Temperature = temperature.Float64
+					m.TemperatureValid = true
+				}
+				if humidity.Valid {
+					m.Humidity = humidity.Float64
+					m.HumidityValid = true
+				}
+				batch = append(batch, m)
+			}
+
+			if err := rows.Err(); err != nil {
+				return fmt.Errorf("iterate markers: %w", err)
+			}
+			return nil
+		})
 		if err != nil {
-			errs <- fmt.Errorf("stream markers: %w", err)
+			errs <- err
 			return
 		}
-		defer rows.Close()
 
-		for rows.Next() {
-			var m Marker
-			var altitude sql.NullFloat64
-			var temperature sql.NullFloat64
-			var humidity sql.NullFloat64
-			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-				&altitude, &m.Detector, &m.Radiation, &temperature, &humidity); err != nil {
-				errs <- fmt.Errorf("scan marker: %w", err)
-				return
-			}
-			if altitude.Valid {
-				m.Altitude = altitude.Float64
-				m.AltitudeValid = true
-			}
-			if temperature.Valid {
-				m.Temperature = temperature.Float64
-				m.TemperatureValid = true
-			}
-			if humidity.Valid {
-				m.Humidity = humidity.Float64
-				m.HumidityValid = true
-			}
+		for _, m := range batch {
 			select {
 			case <-ctx.Done():
 				errs <- ctx.Err()
 				return
 			case out <- m:
 			}
-		}
-
-		if err := rows.Err(); err != nil {
-			errs <- fmt.Errorf("iterate markers: %w", err)
-			return
 		}
 
 		errs <- nil
@@ -329,10 +350,19 @@ func (db *Database) CountTrackIDsUpTo(ctx context.Context, trackID, dbType strin
 	where := fmt.Sprintf("trackID <= %s", nextPlaceholder())
 	query := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT DISTINCT trackID FROM markers WHERE %s) AS sub;`, where)
 
-	row := db.DB.QueryRowContext(ctx, query, trackID)
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
 	var count sql.NullInt64
-	if err := row.Scan(&count); err != nil {
-		return 0, fmt.Errorf("count track ids up to: %w", err)
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		row := conn.QueryRowContext(ctx, query, trackID)
+		if err := row.Scan(&count); err != nil {
+			return fmt.Errorf("count track ids up to: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 	if !count.Valid {
 		return 0, nil
@@ -352,13 +382,22 @@ func (db *Database) GetTrackIDByIndex(ctx context.Context, index int64, dbType s
 	offsetPlaceholder := nextPlaceholder()
 	query := fmt.Sprintf(`SELECT trackID FROM (SELECT DISTINCT trackID FROM markers ORDER BY trackID LIMIT 1 OFFSET %s) AS sub;`, offsetPlaceholder)
 
-	row := db.DB.QueryRowContext(ctx, query, index-1)
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
 	var trackID string
-	if err := row.Scan(&trackID); err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		row := conn.QueryRowContext(ctx, query, index-1)
+		if err := row.Scan(&trackID); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("track id by index: %w", err)
 		}
-		return "", fmt.Errorf("track id by index: %w", err)
+		return nil
+	})
+	if err != nil {
+		return "", err
 	}
 	return trackID, nil
 }
@@ -372,10 +411,19 @@ func (db *Database) CountTracksInRange(ctx context.Context, from, to int64, dbTy
 	condTo := fmt.Sprintf("date < %s", nextPlaceholder())
 	query := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT DISTINCT trackID FROM markers WHERE %s AND %s) AS sub;`, condFrom, condTo)
 
-	row := db.DB.QueryRowContext(ctx, query, from, to)
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
 	var count sql.NullInt64
-	if err := row.Scan(&count); err != nil {
-		return 0, fmt.Errorf("count tracks in range: %w", err)
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		row := conn.QueryRowContext(ctx, query, from, to)
+		if err := row.Scan(&count); err != nil {
+			return fmt.Errorf("count tracks in range: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 	if !count.Valid {
 		return 0, nil

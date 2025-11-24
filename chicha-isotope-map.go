@@ -15,6 +15,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"embed"
 	"encoding/csv"
 	"encoding/json"
@@ -3082,63 +3083,62 @@ func importStillRunning(done <-chan struct{}) bool {
 	}
 }
 
-// importShield builds a middleware that gently throttles DB-backed HTTP
-// requests while an import is inflight against single-user file databases. We
-// prefer to stream read traffic through short-lived contexts so web users see
-// fresh tracks without starving the importer, keeping with "Don't communicate
-// by sharing memory; share memory by communicating."
+// importShield builds a middleware that gently nudges DB-backed HTTP requests
+// while an import is inflight against single-user file databases. The earlier
+// version deprioritised uploads and URL shortener calls, but now that all
+// engines flow through the serialized channel pipeline we can let requests
+// proceed with a bounded deadline instead of outright rejecting them. This
+// keeps user interactions responsive while still protecting the importer from
+// unbounded queues.
+// withMinimumDeadline ensures requests get a chance to wait in the serialized
+// pipeline instead of failing instantly when an import is running. We only add
+// a timeout when the caller has none or when it is too short to let the round-
+// robin scheduler pick the job. This keeps the single-writer engines feeling
+// multi-user without hiding cancellations from the client. The helper follows
+// the Go Proverb "Don't communicate by sharing memory; share memory by
+// communicating" by letting the channel-owned pipeline enforce ordering while
+// we merely bound total wait time.
+func withMinimumDeadline(ctx context.Context, min time.Duration) (context.Context, context.CancelFunc) {
+	deadline, ok := ctx.Deadline()
+	if ok {
+		if time.Until(deadline) >= min {
+			// Caller already supplied a generous deadline; keep it.
+			return ctx, func() {}
+		}
+		// Extend only if the existing deadline is shorter than we need while
+		// preserving values stored on the incoming context.
+		return context.WithTimeout(context.WithoutCancel(ctx), min)
+	}
+	// No deadline: give the pipeline room to queue the work.
+	return context.WithTimeout(ctx, min)
+}
+
 func importShield(done <-chan struct{}, dbType string, logf func(string, ...any)) func(http.Handler) http.Handler {
 	if !isSingleUserDriver(dbType) || done == nil {
 		return nil
 	}
 
-	blockedPrefixes := []string{
-		"/get_markers",
-		"/stream_markers",
-		"/realtime_history",
-		"/trackid/",
-		"/upload",
-		"/qrpng",
-		"/s/",
-		"/api/",
-	}
-
-	// Allow a narrow set of endpoints to hit the DB while importing so
-	// operators can still see API docs or read static assets. The matcher
-	// stays deliberately small to avoid surprise lock contention.
-	requiresImportQuiescence := func(path string) bool {
-		for _, prefix := range blockedPrefixes {
-			if strings.HasPrefix(path, prefix) {
-				return true
-			}
-		}
-		return false
-	}
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !importStillRunning(done) || !requiresImportQuiescence(r.URL.Path) {
+			if !importStillRunning(done) {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Let safe methods continue but cap their wait so the importer is not
-			// starved by UI refreshes. A visible notice keeps expectations clear in
-			// both HTTP headers and error bodies when we must decline a request.
+			// Keep the middleware non-blocking by always passing work through while
+			// allowing enough time for the queue to drain. This mirrors the round-
+			// robin lane scheduler in the database package so imports, uploads, and
+			// reads all get a turn without starving each other.
 			notice := "Идет импорт новых данных; ответы могут задерживаться."
-			w.Header().Set("Retry-After", "5")
+			w.Header().Set("Retry-After", "1")
 			w.Header().Set("X-Import-Notice", notice)
-			if r.Method == http.MethodGet || r.Method == http.MethodHead {
-				ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
-				defer cancel()
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
-			}
 
-			http.Error(w, notice, http.StatusServiceUnavailable)
-			if logf != nil {
-				logf("deprioritised %s during single-user import to keep writer ahead", r.URL.Path)
-			}
+			// Give uploads and map queries a healthy window to reach the worker
+			// goroutine instead of cancelling after one second when a TGZ import is
+			// active. We still cap the wait to avoid hiding client disconnects.
+			ctx, cancel := withMinimumDeadline(r.Context(), 2*time.Minute)
+			defer cancel()
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -3539,36 +3539,45 @@ func processAndStoreMarkersWithContext(
 		return bbox, trackID, err
 	}
 	if strings.EqualFold(dbType, "clickhouse") {
-		if err := db.InsertMarkersBulk(ctx, nil, allZoom, dbType, 1000, progressCh); err != nil {
+		if err := db.InsertMarkersBulk(ctx, nil, allZoom, dbType, 1000, progressCh, database.WorkloadUserUpload); err != nil {
 			close(progressCh)
 			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
 	} else {
-		tx, err := db.DB.Begin()
-		if err != nil {
-			close(progressCh)
-			<-progressDone
-			return bbox, trackID, err
+		useTx := !(strings.EqualFold(dbType, "duckdb") || strings.EqualFold(dbType, "sqlite") || strings.EqualFold(dbType, "chai"))
+		var tx *sql.Tx
+		var err error
+		if useTx {
+			tx, err = db.DB.Begin()
+			if err != nil {
+				close(progressCh)
+				<-progressDone
+				return bbox, trackID, err
+			}
+			// Batch size 500–1000 usually gives a good balance on large B-Trees and keeps DuckDB in
+			// a single transaction so inserts do not pay per-chunk commit costs.
+			if err := observeContext(ctx); err != nil {
+				_ = tx.Rollback()
+				close(progressCh)
+				<-progressDone
+				return bbox, trackID, err
+			}
 		}
-		// Batch size 500–1000 usually gives a good balance on large B-Trees and keeps DuckDB in
-		// a single transaction so inserts do not pay per-chunk commit costs.
-		if err := observeContext(ctx); err != nil {
-			_ = tx.Rollback()
-			close(progressCh)
-			<-progressDone
-			return bbox, trackID, err
-		}
-		if err := db.InsertMarkersBulk(ctx, tx, allZoom, dbType, 1000, progressCh); err != nil {
-			_ = tx.Rollback()
+		if err := db.InsertMarkersBulk(ctx, tx, allZoom, dbType, 1000, progressCh, database.WorkloadUserUpload); err != nil {
+			if tx != nil {
+				_ = tx.Rollback()
+			}
 			close(progressCh)
 			<-progressDone
 			return bbox, trackID, fmt.Errorf("bulk insert: %w", err)
 		}
-		if err := tx.Commit(); err != nil {
-			close(progressCh)
-			<-progressDone
-			return bbox, trackID, err
+		if tx != nil {
+			if err := tx.Commit(); err != nil {
+				close(progressCh)
+				<-progressDone
+				return bbox, trackID, err
+			}
 		}
 	}
 
@@ -4061,7 +4070,11 @@ func shortRedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	// Give short redirects room to wait behind archive work while still
+	// respecting caller cancellations. Two seconds was too short once TGZ
+	// imports filled the serialized queue, so we stretch the deadline to a
+	// friendly window instead of forcing retries.
+	ctx, cancel := withMinimumDeadline(r.Context(), 30*time.Second)
 	defer cancel()
 
 	target, err := db.ResolveShortLink(ctx, code)

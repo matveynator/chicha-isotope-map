@@ -19,9 +19,231 @@ import (
 
 // Database represents the interface for interacting with the database.
 type Database struct {
-	DB          *sql.DB    // The underlying SQL database connection
-	idGenerator chan int64 // Channel for generating unique IDs
-	Driver      string     // Normalized driver name so SQL builders can stay declarative
+	DB          *sql.DB             // The underlying SQL database connection
+	idGenerator chan int64          // Channel for generating unique IDs
+	Driver      string              // Normalized driver name so SQL builders can stay declarative
+	pipeline    *serializedPipeline // Serialises reads and writes for single-writer engines with workload-aware queues
+}
+
+// serializedJob represents a unit of work that must run in isolation for engines such as
+// DuckDB, SQLite, and Chai. We avoid mutexes and keep coordination explicit with channels,
+// following the Go Proverb "Don't communicate by sharing memory; share memory by
+// communicating." Each job carries its own response channel so callers can await results
+// without blocking the worker loop.
+type serializedJob struct {
+	ctx    context.Context
+	fn     func(context.Context, *sql.DB) (any, error)
+	result chan serializedResult
+	kind   WorkloadKind
+}
+
+// serializedResult holds the outcome of a serializedJob. Keeping it separate helps the
+// worker return values without coupling callers to concrete types.
+type serializedResult struct {
+	value any
+	err   error
+}
+
+// WorkloadKind enumerates the separate queues we run through select/case so realtime feeds,
+// archive imports, user uploads, and web readers time-share the single connection without
+// letting one long backlog starve the others. Using an explicit type keeps the routing logic
+// readable and mirrors the Go Proverb "Make the zero value useful" by defaulting to the
+// general queue.
+type WorkloadKind int
+
+const (
+	WorkloadGeneral    WorkloadKind = iota // catch-all when callers do not care
+	WorkloadWebRead                        // API/UI fetches for map tiles and history
+	WorkloadUserUpload                     // single track uploads from the web form
+	WorkloadArchive                        // large TGZ imports and bulk archive loaders
+	WorkloadRealtime                       // live Safecast device updates
+)
+
+// serializedPipeline owns per-workload channels and orchestrates fair selection so one busy
+// feed cannot monopolize the single-writer engines. We avoid mutexes and keep the rotation
+// explicit so maintainers can reason about how different callers interleave.
+type serializedPipeline struct {
+	lanes []chan serializedJob // Indexed by workloadKind so selection happens without switches
+	order []int                // Round-robin order to rotate through lanes fairly
+	turn  int                  // Tracks the next lane index to probe first
+}
+
+// serializedWaitFloor keeps serialized operations from failing fast when long-running archive jobs occupy the
+// queue. We deliberately stretch deadlines so single-writer engines like Chai, SQLite, and DuckDB can finish
+// the work instead of racing short timeouts. The helper below centralises the policy so callers stay small.
+const serializedWaitFloor = 45 * time.Second
+
+// startSerializedPipeline spins up a goroutine that owns the shared *sql.DB for single-user
+// engines. The worker picks jobs in a round-robin order across workload queues so realtime
+// bursts or TGZ imports cannot starve web readers. We stay within channels/select and avoid
+// mutexes to keep the coordination simple and observable.
+func startSerializedPipeline(db *sql.DB) *serializedPipeline {
+	// We allocate lanes in the same index order as workloadKind values so callers can
+	// select the lane via array indexing instead of switches. This keeps channel usage
+	// explicit and follows the Go proverb "A little copying is better than a little
+	// dependency" by avoiding extra indirection.
+	p := &serializedPipeline{
+		lanes: []chan serializedJob{
+			make(chan serializedJob, 64),  // WorkloadGeneral
+			make(chan serializedJob, 128), // WorkloadWebRead
+			make(chan serializedJob, 32),  // WorkloadUserUpload
+			make(chan serializedJob, 32),  // WorkloadArchive
+			make(chan serializedJob, 128), // WorkloadRealtime
+		},
+		order: []int{int(WorkloadRealtime), int(WorkloadArchive), int(WorkloadUserUpload), int(WorkloadWebRead), int(WorkloadGeneral)},
+	}
+
+	// getNextJob rotates over queues with a non-blocking pass before blocking so we keep
+	// latency low for lighter queues even while a heavy import continues to stream.
+	getNextJob := func() serializedJob {
+		// First attempt: non-blocking sweep in round-robin order.
+		for i := 0; i < len(p.order); i++ {
+			laneIdx := p.order[p.turn%len(p.order)]
+			p.turn++
+			select {
+			case job := <-p.lanes[laneIdx]:
+				return job
+			default:
+			}
+		}
+
+		// Second attempt: block until any queue receives work to avoid busy waiting.
+		select {
+		case job := <-p.lanes[p.order[0]]:
+			return job
+		case job := <-p.lanes[p.order[1]]:
+			return job
+		case job := <-p.lanes[p.order[2]]:
+			return job
+		case job := <-p.lanes[p.order[3]]:
+			return job
+		case job := <-p.lanes[p.order[4]]:
+			return job
+		}
+	}
+
+	go func() {
+		defer func() {
+			// keep the pattern explicit: ownership stays with the creator, not the worker
+		}()
+
+		for {
+			job := getNextJob()
+
+			select {
+			case <-job.ctx.Done():
+				job.result <- serializedResult{nil, job.ctx.Err()}
+				continue
+			default:
+			}
+
+			value, err := job.fn(job.ctx, db)
+			job.result <- serializedResult{value, err}
+		}
+	}()
+
+	return p
+}
+
+// serializedEnabled reports whether the database should route operations through the
+// single-owner pipeline.
+func (db *Database) serializedEnabled() bool {
+	if db == nil {
+		return false
+	}
+	switch db.Driver {
+	case "duckdb", "sqlite", "chai":
+		return true
+	default:
+		return false
+	}
+}
+
+// withSerializedConnection executes the provided function either directly (for engines that
+// tolerate concurrency) or through the pipeline (for single-writer engines). The select/case
+// keeps context cancellation responsive and guarantees that only one job runs at a time when
+// the pipeline is active.
+func (p *serializedPipeline) enqueue(ctx context.Context, job serializedJob) error {
+	lane := p.laneFor(job.kind)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case lane <- job:
+			return nil
+		default:
+			// Yield so other goroutines can place work without blocking; select keeps this non-busy.
+			runtime.Gosched()
+		}
+	}
+}
+
+// laneFor resolves the channel for a workloadKind without a switch so the routing stays
+// channel-centric. If an unknown kind arrives we fall back to the general lane to keep the
+// pipeline robust.
+func (p *serializedPipeline) laneFor(kind WorkloadKind) chan serializedJob {
+	if int(kind) >= 0 && int(kind) < len(p.lanes) {
+		return p.lanes[kind]
+	}
+	return p.lanes[WorkloadGeneral]
+}
+
+// queueFriendlyContext guarantees a minimum timeout so queued work has a fair chance to reach the single
+// worker even while archive imports fill the channel buffers. We avoid mutexes and instead lean on context
+// deadlines to keep the select/case scheduler responsive.
+func queueFriendlyContext(ctx context.Context, min time.Duration) (context.Context, context.CancelFunc) {
+	if min <= 0 {
+		min = serializedWaitFloor
+	}
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), min)
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		if time.Until(deadline) >= min {
+			return ctx, func() {}
+		}
+		return context.WithTimeout(context.WithoutCancel(ctx), min)
+	}
+	return context.WithTimeout(ctx, min)
+}
+
+// withSerializedConnection queues the given function onto the requested workload lane so
+// long imports or realtime spikes do not block web readers. The default workload keeps
+// backward compatibility while letting specific callers opt into their own lanes.
+func (db *Database) withSerializedConnection(ctx context.Context, fn func(context.Context, *sql.DB) error) error {
+	return db.withSerializedConnectionFor(ctx, WorkloadGeneral, fn)
+}
+
+// withSerializedConnectionFor routes work onto a specific workload queue. We stick to
+// channels/select instead of mutexes so the scheduling remains explicit and follows the
+// Go proverb "Don't communicate by sharing memory; share memory by communicating."
+func (db *Database) withSerializedConnectionFor(ctx context.Context, kind WorkloadKind, fn func(context.Context, *sql.DB) error) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+
+	if !db.serializedEnabled() || db.pipeline == nil {
+		return fn(ctx, db.DB)
+	}
+
+	job := serializedJob{
+		ctx:    ctx,
+		fn:     func(c context.Context, conn *sql.DB) (any, error) { return nil, fn(c, conn) },
+		result: make(chan serializedResult, 1),
+		kind:   kind,
+	}
+
+	if err := db.pipeline.enqueue(ctx, job); err != nil {
+		return err
+	}
+
+	select {
+	case res := <-job.result:
+		return res.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // realtimeConverter is configured by the safecastrealtime package to translate
@@ -166,7 +388,7 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("error opening the database: %v", err)
 	}
 
-// === CRITICAL: tune single-user engines so imports and UI reads can coexist ===
+	// === CRITICAL: tune single-user engines so imports and UI reads can coexist ===
 	switch driverName {
 	case "sqlite", "chai":
 		// Allow a handful of concurrent readers while keeping writes funnelled through
@@ -240,10 +462,20 @@ func NewDatabase(config Config) (*Database, error) {
 	}
 	idChannel := startIDGenerator(initialID)
 
+	var pipeline *serializedPipeline
+	if driverName == "duckdb" || driverName == "sqlite" || driverName == "chai" {
+		// Single-writer engines benefit from a serialized pipeline so realtime uploads,
+		// archive imports, and UI reads can time-share the connection without tripping
+		// over unique constraints. Channels keep the coordination honest and avoid
+		// mutexes, leaning into Go's concurrency primitives.
+		pipeline = startSerializedPipeline(db)
+	}
+
 	return &Database{
 		DB:          db,
 		idGenerator: idChannel,
 		Driver:      driverName,
+		pipeline:    pipeline,
 	}, nil
 }
 
@@ -675,6 +907,11 @@ CREATE TABLE IF NOT EXISTS markers (
   radiation   TEXT,
   temperature DOUBLE PRECISION,
   humidity    DOUBLE PRECISION,
+  device_id   TEXT,
+  transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
@@ -725,7 +962,12 @@ CREATE TABLE IF NOT EXISTS markers (
   detector    TEXT,
   radiation   TEXT,
   temperature REAL,
-  humidity    REAL
+  humidity    REAL,
+  device_id   TEXT,
+  transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
   ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
@@ -782,6 +1024,11 @@ CREATE TABLE IF NOT EXISTS markers (
   radiation   TEXT,
   temperature DOUBLE,
   humidity    DOUBLE,
+  device_id   TEXT,
+  transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
@@ -832,7 +1079,12 @@ CREATE INDEX IF NOT EXISTS idx_short_links_created
   detector    String,
   radiation   String,
   temperature Float64,
-  humidity    Float64
+  humidity    Float64,
+  device_id   String,
+  transport   String,
+  device_name String,
+  tube        String,
+  country     String
 ) ENGINE = MergeTree()
 ORDER BY (trackID, date, id);`,
 			`CREATE TABLE IF NOT EXISTS realtime_measurements (
@@ -904,8 +1156,8 @@ func execStatements(db *sql.DB, stmts []string) error {
 // ensureRealtimeMetadataColumns upgrades realtime_measurements with optional metadata columns.
 // Each column is added lazily so existing installations keep their history without manual SQL.
 // ensureMarkerMetadataColumns upgrades the markers table with optional telemetry columns.
-// We add altitude, detector type, radiation channel, temperature, and humidity lazily so
-// historical databases built before this format continue working without manual SQL.
+// We add altitude, detector type, radiation channel, temperature, humidity, and live metadata
+// lazily so historical databases built before this format continue working without manual SQL.
 func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 	type column struct {
 		name string
@@ -917,6 +1169,11 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 		{name: "radiation", def: "radiation TEXT"},
 		{name: "temperature", def: "temperature DOUBLE PRECISION"},
 		{name: "humidity", def: "humidity DOUBLE PRECISION"},
+		{name: "device_id", def: "device_id TEXT"},
+		{name: "transport", def: "transport TEXT"},
+		{name: "device_name", def: "device_name TEXT"},
+		{name: "tube", def: "tube TEXT"},
+		{name: "country", def: "country TEXT"},
 	}
 
 	switch strings.ToLower(dbType) {
@@ -1051,6 +1308,28 @@ type MarkerBatchProgress struct {
 	Duration time.Duration
 }
 
+// serializedExecutor routes Exec calls through the serialized pipeline so single-writer
+// engines can interleave large imports with web reads. We avoid mutexes entirely,
+// leaning on the channel scheduler to keep work fair.
+type serializedExecutor struct {
+	db   *Database
+	lane WorkloadKind
+}
+
+func (s serializedExecutor) Exec(query string, args ...interface{}) (sql.Result, error) {
+	return s.ExecContext(context.Background(), query, args...)
+}
+
+func (s serializedExecutor) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	var res sql.Result
+	err := s.db.withSerializedConnectionFor(ctx, s.lane, func(ctx context.Context, conn *sql.DB) error {
+		var err error
+		res, err = conn.ExecContext(ctx, query, args...)
+		return err
+	})
+	return res, err
+}
+
 // InsertMarkersBulk inserts markers in batches using multi-row VALUES.
 // - Portable: only standard SQL and database/sql, no vendor extensions.
 // - Fast: far fewer statements, WAL and B-Tree updates coalesce better.
@@ -1065,8 +1344,11 @@ type MarkerBatchProgress struct {
 //
 // Context is threaded through so stalled archive entries can abandon long-running
 // database calls instead of blocking later work. We check cancellation between
-// batches and rely on ExecContext to let drivers break out promptly.
-func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress) (err error) {
+// batches and rely on ExecContext to let drivers break out promptly. When the
+// serialized pipeline is enabled we funnel each batch through the provided
+// workload lane so long TGZ imports cannot monopolize the single DuckDB writer
+// and block web reads or one-off uploads.
+func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers []Marker, dbType string, batch int, progress chan<- MarkerBatchProgress, lane WorkloadKind) (err error) {
 	if len(markers) == 0 {
 		return nil
 	}
@@ -1080,6 +1362,7 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 	}
 
 	driver := normalizeDBType(dbType)
+	serialized := db.serializedEnabled() && db.pipeline != nil
 
 	if driver == "duckdb" || driver == "clickhouse" {
 		// Deduplicate early so track-wide inserts avoid redundant VALUES tuples. DuckDB and
@@ -1108,11 +1391,13 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 	if tx != nil {
 		txn = tx
 		exec = tx
+	} else if serialized {
+		exec = serializedExecutor{db: db, lane: lane}
 	} else {
 		exec = db.DB
 	}
 
-	if driver == "duckdb" && txn == nil {
+	if driver == "duckdb" && txn == nil && !serialized {
 		// DuckDB spends significant time creating and committing tiny transactions when imports
 		// run chunk-by-chunk. Starting a single transaction up front keeps checkpoints rare and
 		// removes per-chunk overhead without relying on SAVEPOINT support.
@@ -1762,98 +2047,100 @@ func duckDBIsConflict(err error) bool {
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
-	switch strings.ToLower(dbType) {
-	case "pgx":
-		_, err := db.DB.Exec(`
+	return db.withSerializedConnectionFor(context.Background(), WorkloadRealtime, func(ctx context.Context, conn *sql.DB) error {
+		switch strings.ToLower(dbType) {
+		case "pgx":
+			_, err := conn.ExecContext(ctx, `
 INSERT INTO realtime_measurements
       (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 ON CONFLICT ON CONSTRAINT realtime_unique DO NOTHING`,
-			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
-			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
-		return err
+				m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+				m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
+			return err
 
-	case "duckdb":
-		// DuckDB currently refuses to update indexed columns inside an ON CONFLICT branch.
-		// To keep markers fresh we replace the row inside a transaction: delete the stale
-		// entry and insert the latest reading.  Concurrent writers may collide, so we
-		// retry politely when DuckDB reports a duplicate-key race, mirroring "Don't panic"
-		// by keeping the logic straightforward and resilient.
-		const maxDuckDBRetries = 3
-		var lastConflict error
+		case "duckdb":
+			// DuckDB currently refuses to update indexed columns inside an ON CONFLICT branch.
+			// To keep markers fresh we replace the row inside a transaction: delete the stale
+			// entry and insert the latest reading.  Concurrent writers may collide, so we
+			// retry politely when DuckDB reports a duplicate-key race, mirroring "Don't panic"
+			// by keeping the logic straightforward and resilient.
+			const maxDuckDBRetries = 3
+			var lastConflict error
 
-		for attempt := 0; attempt < maxDuckDBRetries; attempt++ {
-			tx, err := db.DB.BeginTx(context.Background(), nil)
-			if err != nil {
-				return fmt.Errorf("begin duckdb realtime tx: %w", err)
-			}
+			for attempt := 0; attempt < maxDuckDBRetries; attempt++ {
+				tx, err := conn.BeginTx(ctx, nil)
+				if err != nil {
+					return fmt.Errorf("begin duckdb realtime tx: %w", err)
+				}
 
-			if _, execErr := tx.Exec(`DELETE FROM realtime_measurements WHERE device_id = ? AND measured_at = ?`, m.DeviceID, m.MeasuredAt); execErr != nil {
-				_ = tx.Rollback()
-				return fmt.Errorf("duckdb delete realtime: %w", execErr)
-			}
+				if _, execErr := tx.ExecContext(ctx, `DELETE FROM realtime_measurements WHERE device_id = ? AND measured_at = ?`, m.DeviceID, m.MeasuredAt); execErr != nil {
+					_ = tx.Rollback()
+					return fmt.Errorf("duckdb delete realtime: %w", execErr)
+				}
 
-			if _, execErr := tx.Exec(`
+				if _, execErr := tx.ExecContext(ctx, `
 INSERT INTO realtime_measurements
       (device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-				m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
-				m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra); execErr != nil {
-				_ = tx.Rollback()
-				if duckDBIsConflict(execErr) {
-					lastConflict = execErr
-					continue
+					m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+					m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra); execErr != nil {
+					_ = tx.Rollback()
+					if duckDBIsConflict(execErr) {
+						lastConflict = execErr
+						continue
+					}
+					return fmt.Errorf("duckdb insert realtime: %w", execErr)
 				}
-				return fmt.Errorf("duckdb insert realtime: %w", execErr)
-			}
 
-			if commitErr := tx.Commit(); commitErr != nil {
-				_ = tx.Rollback()
-				if duckDBIsConflict(commitErr) {
-					lastConflict = commitErr
-					continue
+				if commitErr := tx.Commit(); commitErr != nil {
+					_ = tx.Rollback()
+					if duckDBIsConflict(commitErr) {
+						lastConflict = commitErr
+						continue
+					}
+					return fmt.Errorf("duckdb commit realtime: %w", commitErr)
 				}
-				return fmt.Errorf("duckdb commit realtime: %w", commitErr)
+				return nil
 			}
-			return nil
-		}
-		if lastConflict != nil {
-			return fmt.Errorf("duckdb realtime conflict after retries: %w", lastConflict)
-		}
-		return fmt.Errorf("duckdb realtime conflict without error context")
+			if lastConflict != nil {
+				return fmt.Errorf("duckdb realtime conflict after retries: %w", lastConflict)
+			}
+			return fmt.Errorf("duckdb realtime conflict without error context")
 
-	case "clickhouse":
-		exists, err := db.realtimeExistsClickHouse(m.DeviceID, m.MeasuredAt)
-		if err != nil {
-			return err
-		}
-		if exists {
-			return nil
-		}
-		if m.ID == 0 {
-			m.ID = <-db.idGenerator
-		}
-		_, err = db.DB.Exec(`
+		case "clickhouse":
+			exists, err := db.realtimeExistsClickHouse(m.DeviceID, m.MeasuredAt)
+			if err != nil {
+				return err
+			}
+			if exists {
+				return nil
+			}
+			if m.ID == 0 {
+				m.ID = <-db.idGenerator
+			}
+			_, err = conn.ExecContext(ctx, `
 INSERT INTO realtime_measurements
       (id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
-			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
-		return err
+				m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+				m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
+			return err
 
-	default:
-		if m.ID == 0 {
-			m.ID = <-db.idGenerator
-		}
-		_, err := db.DB.Exec(`
+		default:
+			if m.ID == 0 {
+				m.ID = <-db.idGenerator
+			}
+			_, err := conn.ExecContext(ctx, `
 INSERT INTO realtime_measurements
       (id,device_id,transport,device_name,tube,country,value,unit,lat,lon,measured_at,fetched_at,extra)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(device_id,measured_at) DO NOTHING`,
-			m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
-			m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
-		return err
-	}
+				m.ID, m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+				m.Value, m.Unit, m.Lat, m.Lon, m.MeasuredAt, m.FetchedAt, m.Extra)
+			return err
+		}
+	})
 }
 
 // GetLatestRealtimeByBounds returns the newest reading per device within bounds.
@@ -1875,86 +2162,90 @@ WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
 ORDER BY device_id,fetched_at DESC;`
 	}
 
-	rows, err := db.DB.Query(query, minLat, maxLat, minLon, maxLon)
-	if err != nil {
-		return nil, fmt.Errorf("query realtime: %w", err)
-	}
-	defer rows.Close()
-
-	now := time.Now().Unix()
-	const daySeconds = int64((24 * time.Hour) / time.Second)
-
-	seen := make(map[string]bool)
 	var out []Marker
-	for rows.Next() {
-		var (
-			rowID                                        int64
-			id, transport, name, tube, country, extraRaw string
-			val                                          float64
-			unit                                         string
-			lat, lon                                     float64
-			measured                                     int64
-		)
-		if err := rows.Scan(&rowID, &id, &transport, &name, &tube, &country, &val, &unit, &lat, &lon, &measured, &extraRaw); err != nil {
-			return nil, fmt.Errorf("scan realtime: %w", err)
+	err := db.withSerializedConnectionFor(context.Background(), WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(ctx, query, minLat, maxLat, minLon, maxLon)
+		if err != nil {
+			return fmt.Errorf("query realtime: %w", err)
 		}
-		if lat == 0 && lon == 0 {
-			continue // skip bogus locations at the equator
-		}
-		if val <= 0 {
-			continue // ignore non-positive readings
-		}
-		if now-measured > daySeconds {
-			continue // drop devices that have been silent for more than a day
-		}
-		if seen[id] {
-			continue // keep the newest reading only once per device
-		}
+		defer rows.Close()
 
-		// Convert raw CPM into µSv/h; unsupported units stay hidden to
-		// avoid misreporting dose rates on the map.
-		var (
-			doseRate float64
-			ok       bool
-		)
-		if realtimeConverter != nil {
-			doseRate, ok = realtimeConverter(val, unit)
-		}
-		if !ok {
-			continue
-		}
+		now := time.Now().Unix()
+		const daySeconds = int64((24 * time.Hour) / time.Second)
 
-		var extras map[string]float64
-		trimmed := strings.TrimSpace(extraRaw)
-		if trimmed != "" {
-			// Parsing happens lazily to avoid overhead for historical rows without metadata.
-			if err := json.Unmarshal([]byte(trimmed), &extras); err != nil {
-				log.Printf("parse realtime extra for %s: %v", id, err)
+		seen := make(map[string]bool)
+		for rows.Next() {
+			var (
+				rowID                                        int64
+				id, transport, name, tube, country, extraRaw string
+				val                                          float64
+				unit                                         string
+				lat, lon                                     float64
+				measured                                     int64
+			)
+			if err := rows.Scan(&rowID, &id, &transport, &name, &tube, &country, &val, &unit, &lat, &lon, &measured, &extraRaw); err != nil {
+				return fmt.Errorf("scan realtime: %w", err)
 			}
+			if lat == 0 && lon == 0 {
+				continue // skip bogus locations at the equator
+			}
+			if val <= 0 {
+				continue // ignore non-positive readings
+			}
+			if now-measured > daySeconds {
+				continue // drop devices that have been silent for more than a day
+			}
+			if seen[id] {
+				continue // keep the newest reading only once per device
+			}
+
+			var (
+				doseRate float64
+				ok       bool
+			)
+			if realtimeConverter != nil {
+				doseRate, ok = realtimeConverter(val, unit)
+			}
+			if !ok {
+				continue
+			}
+
+			var extras map[string]float64
+			trimmed := strings.TrimSpace(extraRaw)
+			if trimmed != "" {
+				if err := json.Unmarshal([]byte(trimmed), &extras); err != nil {
+					log.Printf("parse realtime extra for %s: %v", id, err)
+				}
+			}
+
+			seen[id] = true
+			marker := Marker{
+				ID:         rowID,
+				DoseRate:   doseRate,
+				Date:       measured,
+				Lon:        lon,
+				Lat:        lat,
+				CountRate:  0,
+				Zoom:       0,
+				Speed:      -1,
+				TrackID:    "live:" + id,
+				DeviceID:   id,
+				DeviceName: name,
+				Transport:  transport,
+				Tube:       tube,
+				Country:    country,
+				LiveExtra:  extras,
+			}
+			out = append(out, marker)
 		}
 
-		seen[id] = true
-		marker := Marker{
-			ID:         rowID, // Preserve primary key so map updates can track devices reliably.
-			DoseRate:   doseRate,
-			Date:       measured,
-			Lon:        lon,
-			Lat:        lat,
-			CountRate:  0,
-			Zoom:       0,
-			Speed:      -1,           // negative speed marks realtime in UI
-			TrackID:    "live:" + id, // prefix avoids clashing with stored tracks
-			DeviceID:   id,
-			DeviceName: name,
-			Transport:  transport,
-			Tube:       tube,
-			Country:    country,
-			LiveExtra:  extras,
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate realtime: %w", err)
 		}
-		out = append(out, marker)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate realtime: %w", err)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -1982,35 +2273,41 @@ WHERE device_id = ? AND measured_at >= ?
 ORDER BY measured_at ASC;`
 	}
 
-	rows, err := db.DB.Query(query, deviceID, since)
-	if err != nil {
-		return nil, fmt.Errorf("realtime history: %w", err)
-	}
-	defer rows.Close()
-
 	var out []RealtimeMeasurement
-	for rows.Next() {
-		var m RealtimeMeasurement
-		if err := rows.Scan(
-			&m.DeviceID,
-			&m.Transport,
-			&m.DeviceName,
-			&m.Tube,
-			&m.Country,
-			&m.Value,
-			&m.Unit,
-			&m.Lat,
-			&m.Lon,
-			&m.MeasuredAt,
-			&m.FetchedAt,
-			&m.Extra,
-		); err != nil {
-			return nil, fmt.Errorf("scan realtime history: %w", err)
+	err := db.withSerializedConnectionFor(context.Background(), WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(ctx, query, deviceID, since)
+		if err != nil {
+			return fmt.Errorf("realtime history: %w", err)
 		}
-		out = append(out, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate realtime history: %w", err)
+		defer rows.Close()
+
+		for rows.Next() {
+			var m RealtimeMeasurement
+			if err := rows.Scan(
+				&m.DeviceID,
+				&m.Transport,
+				&m.DeviceName,
+				&m.Tube,
+				&m.Country,
+				&m.Value,
+				&m.Unit,
+				&m.Lat,
+				&m.Lon,
+				&m.MeasuredAt,
+				&m.FetchedAt,
+				&m.Extra,
+			); err != nil {
+				return fmt.Errorf("scan realtime history: %w", err)
+			}
+			out = append(out, m)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate realtime history: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -2021,12 +2318,8 @@ ORDER BY measured_at ASC;`
 // leaving stationary sensors in place.  The cutoff value is a Unix timestamp
 // (seconds) – any device whose newest fetched_at is older is eligible.
 func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
-	// gather candidate device IDs over a channel to avoid blocking callers
-	ids := make(chan string)
-	errc := make(chan error, 1)
-
-	go func() {
-		defer close(ids)
+	var ids []string
+	gatherErr := db.withSerializedConnectionFor(context.Background(), WorkloadArchive, func(ctx context.Context, conn *sql.DB) error {
 		var q string
 		switch strings.ToLower(dbType) {
 		case "pgx", "duckdb":
@@ -2034,90 +2327,102 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 		default:
 			q = `SELECT device_id FROM realtime_measurements GROUP BY device_id HAVING max(fetched_at) <= ?`
 		}
-		rows, err := db.DB.Query(q, cutoff)
+
+		rows, err := conn.QueryContext(ctx, q, cutoff)
 		if err != nil {
-			errc <- fmt.Errorf("stale list: %w", err)
-			return
+			return fmt.Errorf("stale list: %w", err)
 		}
+		defer rows.Close()
+
 		for rows.Next() {
 			var id string
 			if err := rows.Scan(&id); err != nil {
-				errc <- fmt.Errorf("scan stale: %w", err)
-				rows.Close()
-				return
+				return fmt.Errorf("scan stale: %w", err)
 			}
-			ids <- id
+			ids = append(ids, id)
 		}
-		errc <- rows.Err()
-	}()
+		return rows.Err()
+	})
+	if gatherErr != nil {
+		return gatherErr
+	}
 
-	// process each device sequentially; no mutex is needed
 	ctx := context.Background()
-	for id := range ids {
+	for _, id := range ids {
 		ms, err := db.fetchRealtimeByDevice(id, dbType)
 		if err != nil {
 			return err
 		}
 		if !moved(ms) {
-			continue // stationary sensors stay in realtime table
+			continue
 		}
 
-		useTx := !strings.EqualFold(dbType, "clickhouse")
-		var (
-			tx   *sql.Tx
-			exec sqlExecutor
-		)
-		if useTx {
-			tx, err = db.DB.Begin()
-			if err != nil {
-				return err
+		if err := db.withSerializedConnectionFor(ctx, WorkloadArchive, func(ctx context.Context, conn *sql.DB) error {
+			var tx *sql.Tx
+			var exec sqlExecutor
+			switch db.Driver {
+			case "pgx":
+				var err error
+				tx, err = conn.BeginTx(ctx, nil)
+				if err != nil {
+					return fmt.Errorf("begin tx: %w", err)
+				}
+				exec = tx
+			default:
+				exec = conn
 			}
-			exec = tx
-		} else {
-			exec = db.DB
-		}
-		for _, m := range ms {
-			// Normalise CPM before storing in the historical markers table.
-			var (
-				doseRate float64
-				ok       bool
-			)
-			if realtimeConverter != nil {
-				doseRate, ok = realtimeConverter(m.Value, m.Unit)
+
+			for _, m := range ms {
+				var (
+					doseRate float64
+					ok       bool
+				)
+				if realtimeConverter != nil {
+					doseRate, ok = realtimeConverter(m.Value, m.Unit)
+				}
+				if !ok {
+					continue
+				}
+
+				markerID := <-db.idGenerator
+				trackID := "live:" + m.DeviceID
+				if _, err := exec.ExecContext(ctx, `
+INSERT INTO markers
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+					markerID, doseRate, m.MeasuredAt, m.Lon, m.Lat,
+					0, 0, -1, trackID,
+					nil, "", "", nil, nil,
+					m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
+				); err != nil {
+					if tx != nil {
+						_ = tx.Rollback()
+					}
+					return fmt.Errorf("insert stale marker: %w", err)
+				}
 			}
-			if !ok {
-				continue
-			}
-			marker := Marker{
-				DoseRate:  doseRate,
-				Date:      m.MeasuredAt,
-				Lon:       m.Lon,
-				Lat:       m.Lat,
-				CountRate: 0,
-				Zoom:      0,
-				Speed:     0,
-				TrackID:   id,
-			}
-			if err := db.SaveMarkerAtomic(ctx, exec, marker, dbType); err != nil {
+
+			if err := db.deleteRealtimeDevice(exec, id, dbType); err != nil {
 				if tx != nil {
-					tx.Rollback()
+					_ = tx.Rollback()
 				}
 				return err
 			}
-		}
-		if err := db.deleteRealtimeDevice(exec, id, dbType); err != nil {
+
 			if tx != nil {
-				tx.Rollback()
+				if err := tx.Commit(); err != nil {
+					_ = tx.Rollback()
+					return fmt.Errorf("commit promote: %w", err)
+				}
 			}
+
+			return nil
+		}); err != nil {
 			return err
 		}
-		if tx != nil {
-			if err := tx.Commit(); err != nil {
-				return err
-			}
-		}
 	}
-	return <-errc
+
+	return nil
 }
 
 // fetchRealtimeByDevice returns all realtime rows for a given device.
@@ -2129,20 +2434,27 @@ func (db *Database) fetchRealtimeByDevice(id, dbType string) ([]RealtimeMeasurem
 	default:
 		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=?`
 	}
-	rows, err := db.DB.Query(q, id)
-	if err != nil {
-		return nil, fmt.Errorf("fetch realtime: %w", err)
-	}
-	defer rows.Close()
 	var out []RealtimeMeasurement
-	for rows.Next() {
-		var m RealtimeMeasurement
-		if err := rows.Scan(&m.DeviceID, &m.Transport, &m.Value, &m.Unit, &m.Lat, &m.Lon, &m.MeasuredAt, &m.FetchedAt); err != nil {
-			return nil, fmt.Errorf("scan realtime row: %w", err)
+	err := db.withSerializedConnectionFor(context.Background(), WorkloadRealtime, func(ctx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(ctx, q, id)
+		if err != nil {
+			return fmt.Errorf("fetch realtime: %w", err)
 		}
-		out = append(out, m)
+		defer rows.Close()
+
+		for rows.Next() {
+			var m RealtimeMeasurement
+			if err := rows.Scan(&m.DeviceID, &m.Transport, &m.Value, &m.Unit, &m.Lat, &m.Lon, &m.MeasuredAt, &m.FetchedAt); err != nil {
+				return fmt.Errorf("scan realtime row: %w", err)
+			}
+			out = append(out, m)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // deleteRealtimeDevice removes all realtime rows for the given device.
@@ -2183,165 +2495,32 @@ type sqlExecutor interface {
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.
 func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
-	var query string
+	// The helper below keeps all marker lookups flowing through the serialized
+	// pipeline. This mirrors the Go proverb "Don't communicate by sharing
+	// memory; share memory by communicating" by letting the channel scheduler
+	// juggle imports and web reads without mutexes.
+	where := fmt.Sprintf("zoom = %s AND lat BETWEEN %s AND %s AND lon BETWEEN %s AND %s",
+		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5))
 
-	// Use appropriate placeholders depending on the database type
-	switch dbType {
-	case "pgx": // PostgreSQL
-		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
-		`
-	default: // SQLite or Chai
-		query = `
-		SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-		FROM markers
-		WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
-		`
-	}
-
-	// Execute the query with the appropriate placeholders
-	rows, err := db.DB.Query(query, zoom, minLat, maxLat, minLon, maxLon)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers: %v", err)
-	}
-	defer rows.Close()
-
-	var markers []Marker
-
-	// Iterate over the rows and scan each result into a Marker struct
-	for rows.Next() {
-		var marker Marker
-		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat, &marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID)
-		if err != nil {
-			return nil, fmt.Errorf("error scanning marker: %v", err)
-		}
-		markers = append(markers, marker)
-	}
-
-	// Check for any errors encountered during iteration
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over result set: %v", err)
-	}
-
-	return markers, nil
+	args := []interface{}{zoom, minLat, maxLat, minLon, maxLon}
+	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackID retrieves markers filtered by trackID.
 func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker, error) {
-	var query string
+	where := fmt.Sprintf("trackID = %s",
+		placeholder(dbType, 1))
 
-	// Use appropriate placeholders depending on the database type
-	switch dbType {
-	case "pgx":
-		query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-                       COALESCE(altitude, 0),
-                       COALESCE(detector, ''),
-                       COALESCE(radiation, ''),
-                       COALESCE(temperature, 0),
-                       COALESCE(humidity, 0)
-                FROM markers
-                WHERE trackID = $1;
-                `
-	default:
-		query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-                       COALESCE(altitude, 0),
-                       COALESCE(detector, ''),
-                       COALESCE(radiation, ''),
-                       COALESCE(temperature, 0),
-                       COALESCE(humidity, 0)
-                FROM markers
-                WHERE trackID = ?;
-                `
-	}
-
-	rows, err := db.DB.Query(query, trackID)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers by trackID: %v", err)
-	}
-	defer rows.Close()
-
-	var markers []Marker
-	for rows.Next() {
-		var marker Marker
-		if err := rows.Scan(
-			&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat,
-			&marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID,
-			&marker.Altitude, &marker.Detector, &marker.Radiation, &marker.Temperature, &marker.Humidity,
-		); err != nil {
-			return nil, fmt.Errorf("error scanning marker: %v", err)
-		}
-		markers = append(markers, marker)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over result set: %v", err)
-	}
-
-	return markers, nil
+	return db.queryMarkers(where, []interface{}{trackID}, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackIDAndBounds retrieves markers filtered by trackID and geographical bounds.
 func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
-	var query string
+	where := fmt.Sprintf("trackID = %s AND lat BETWEEN %s AND %s AND lon BETWEEN %s AND %s",
+		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5))
 
-	// Use appropriate placeholders depending on the database type
-	switch dbType {
-	case "pgx":
-		query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-                       COALESCE(altitude, 0),
-                       COALESCE(detector, ''),
-                       COALESCE(radiation, ''),
-                       COALESCE(temperature, 0),
-                       COALESCE(humidity, 0)
-                FROM markers
-                WHERE trackID = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
-                `
-	default:
-		query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-                       COALESCE(altitude, 0),
-                       COALESCE(detector, ''),
-                       COALESCE(radiation, ''),
-                       COALESCE(temperature, 0),
-                       COALESCE(humidity, 0)
-                FROM markers
-                WHERE trackID = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
-                `
-	}
-
-	// Execute the query
-	rows, err := db.DB.Query(query, trackID, minLat, maxLat, minLon, maxLon)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers by trackID and bounds: %v", err)
-	}
-	defer rows.Close()
-
-	var markers []Marker
-
-	// Iterate over the rows and scan each result into a Marker struct
-	for rows.Next() {
-		var marker Marker
-		err := rows.Scan(&marker.ID, &marker.DoseRate, &marker.Date, &marker.Lon, &marker.Lat,
-			&marker.CountRate, &marker.Zoom, &marker.Speed, &marker.TrackID,
-			&marker.Altitude, &marker.Detector, &marker.Radiation, &marker.Temperature, &marker.Humidity)
-		if err != nil {
-			return nil, fmt.Errorf("error scanning marker: %v", err)
-		}
-		markers = append(markers, marker)
-	}
-
-	// Check for any errors encountered during iteration
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over result set: %v", err)
-	}
-
-	log.Printf("Found %d markers for TrackID=%s", len(markers), trackID)
-	return markers, nil
+	args := []interface{}{trackID, minLat, maxLat, minLon, maxLon}
+	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackIDZoomAndBounds исправленный вариант
@@ -2352,54 +2531,11 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 	dbType string,
 ) ([]Marker, error) {
 
-	var query string
-	switch dbType {
-	case "pgx": // PostgreSQL
-		query = `
-        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-               COALESCE(altitude, 0),
-               COALESCE(detector, ''),
-               COALESCE(radiation, ''),
-               COALESCE(temperature, 0),
-               COALESCE(humidity, 0)
-        FROM   markers
-        WHERE  trackID = $1
-          AND  zoom     = $2
-          AND  lat BETWEEN $3 AND $4
-          AND  lon BETWEEN $5 AND $6;`
-	default: // SQLite / Chai
-		query = `
-        SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-               COALESCE(altitude, 0),
-               COALESCE(detector, ''),
-               COALESCE(radiation, ''),
-               COALESCE(temperature, 0),
-               COALESCE(humidity, 0)
-        FROM   markers
-        WHERE  trackID = ?
-          AND  zoom     = ?
-          AND  lat BETWEEN ? AND ?
-          AND  lon BETWEEN ? AND ?;`
-	}
+	where := fmt.Sprintf("trackID = %s AND zoom = %s AND lat BETWEEN %s AND %s AND lon BETWEEN %s AND %s",
+		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5), placeholder(dbType, 6))
 
-	rows, err := db.DB.Query(query,
-		trackID, zoom, minLat, maxLat, minLon, maxLon)
-	if err != nil {
-		return nil, fmt.Errorf("error querying markers: %w", err)
-	}
-	defer rows.Close()
-
-	var markers []Marker
-	for rows.Next() {
-		var m Marker
-		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date,
-			&m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
-			return nil, fmt.Errorf("error scanning marker: %w", err)
-		}
-		markers = append(markers, m)
-	}
-	return markers, rows.Err()
+	args := []interface{}{trackID, zoom, minLat, maxLat, minLon, maxLon}
+	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
 }
 
 // SpeedRange задаёт замкнутый диапазон [Min, Max] скорости.
@@ -2417,42 +2553,35 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 	dbType string,
 ) ([]Marker, error) {
 
-	ph := func(n int) string {
-		if dbType == "pgx" {
-			return fmt.Sprintf("$%d", n)
-		}
-		return "?"
-	}
-
 	var (
 		sb   strings.Builder
 		args []interface{}
 	)
 
 	// ---- обязательные условия -----------------------------------
-	sb.WriteString("zoom = " + ph(len(args)+1))
+	sb.WriteString("zoom = " + placeholder(dbType, len(args)+1))
 	args = append(args, zoom)
 
-	sb.WriteString(" AND lat BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	sb.WriteString(" AND lat BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 	args = append(args, minLat, maxLat)
 
-	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	sb.WriteString(" AND lon BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 	args = append(args, minLon, maxLon)
 
 	// ---- фильтр по времени (опционально) ------------------------
 	if dateFrom > 0 {
-		sb.WriteString(" AND date >= " + ph(len(args)+1))
+		sb.WriteString(" AND date >= " + placeholder(dbType, len(args)+1))
 		args = append(args, dateFrom)
 	}
 	if dateTo > 0 {
-		sb.WriteString(" AND date <= " + ph(len(args)+1))
+		sb.WriteString(" AND date <= " + placeholder(dbType, len(args)+1))
 		args = append(args, dateTo)
 	}
 
 	// ---- скорость: склейка смежных диапазонов в один BETWEEN ----
 	if len(speedRanges) > 0 {
 		if ok, lo, hi := mergeContinuousRanges(speedRanges); ok {
-			sb.WriteString(" AND speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+			sb.WriteString(" AND speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 			args = append(args, lo, hi)
 		} else {
 			// Непрерывной склейки нет → оставляем OR-цепочку (старое поведение).
@@ -2461,38 +2590,14 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 				if i > 0 {
 					sb.WriteString(" OR ")
 				}
-				sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+				sb.WriteString("speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 				args = append(args, r.Min, r.Max)
 			}
 			sb.WriteString(")")
 		}
 	}
 
-	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
-                                     COALESCE(altitude, 0) AS altitude,
-                                     COALESCE(detector, '') AS detector,
-                                     COALESCE(radiation, '') AS radiation,
-                                     COALESCE(temperature, 0) AS temperature,
-                                     COALESCE(humidity, 0) AS humidity
-                              FROM markers WHERE %s;`, sb.String())
-
-	rows, err := db.DB.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query: %w", err)
-	}
-	defer rows.Close()
-
-	var out []Marker
-	for rows.Next() {
-		var m Marker
-		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
-			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
-			return nil, fmt.Errorf("scan: %w", err)
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
+	return db.queryMarkers(sb.String(), args, dbType, WorkloadWebRead)
 }
 
 // ------------------------------------------------------------------
@@ -2527,42 +2632,35 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 	dbType string,
 ) ([]Marker, error) {
 
-	ph := func(n int) string {
-		if dbType == "pgx" {
-			return fmt.Sprintf("$%d", n)
-		}
-		return "?"
-	}
-
 	var (
 		sb   strings.Builder
 		args []interface{}
 	)
 
-	sb.WriteString("trackID = " + ph(len(args)+1))
+	sb.WriteString("trackID = " + placeholder(dbType, len(args)+1))
 	args = append(args, trackID)
 
-	sb.WriteString(" AND zoom = " + ph(len(args)+1))
+	sb.WriteString(" AND zoom = " + placeholder(dbType, len(args)+1))
 	args = append(args, zoom)
 
-	sb.WriteString(" AND lat BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	sb.WriteString(" AND lat BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 	args = append(args, minLat, maxLat)
 
-	sb.WriteString(" AND lon BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+	sb.WriteString(" AND lon BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 	args = append(args, minLon, maxLon)
 
 	if dateFrom > 0 {
-		sb.WriteString(" AND date >= " + ph(len(args)+1))
+		sb.WriteString(" AND date >= " + placeholder(dbType, len(args)+1))
 		args = append(args, dateFrom)
 	}
 	if dateTo > 0 {
-		sb.WriteString(" AND date <= " + ph(len(args)+1))
+		sb.WriteString(" AND date <= " + placeholder(dbType, len(args)+1))
 		args = append(args, dateTo)
 	}
 
 	if len(speedRanges) > 0 {
 		if ok, lo, hi := mergeContinuousRanges(speedRanges); ok {
-			sb.WriteString(" AND speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+			sb.WriteString(" AND speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 			args = append(args, lo, hi)
 		} else {
 			sb.WriteString(" AND (")
@@ -2570,38 +2668,65 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 				if i > 0 {
 					sb.WriteString(" OR ")
 				}
-				sb.WriteString("speed BETWEEN " + ph(len(args)+1) + " AND " + ph(len(args)+2))
+				sb.WriteString("speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
 				args = append(args, r.Min, r.Max)
 			}
 			sb.WriteString(")")
 		}
 	}
 
+	return db.queryMarkers(sb.String(), args, dbType, WorkloadWebRead)
+}
+
+// queryMarkers runs a SELECT against the markers table using the serialized pipeline so
+// that live writes and heavy imports cannot starve web readers. A shared scanner keeps
+// the call sites compact while still returning fully populated Marker structs.
+func (db *Database) queryMarkers(where string, args []interface{}, dbType string, lane WorkloadKind) ([]Marker, error) {
 	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
                                      COALESCE(altitude, 0) AS altitude,
                                      COALESCE(detector, '') AS detector,
                                      COALESCE(radiation, '') AS radiation,
                                      COALESCE(temperature, 0) AS temperature,
                                      COALESCE(humidity, 0) AS humidity
-                              FROM markers WHERE %s;`, sb.String())
-
-	rows, err := db.DB.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query: %w", err)
-	}
-	defer rows.Close()
+                              FROM markers WHERE %s;`, where)
 
 	var out []Marker
-	for rows.Next() {
-		var m Marker
-		if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
-			&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-			&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
-			return nil, fmt.Errorf("scan: %w", err)
+
+	err := db.withSerializedConnectionFor(context.Background(), lane, func(ctx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("query markers: %w", err)
 		}
-		out = append(out, m)
+		defer rows.Close()
+
+		for rows.Next() {
+			var m Marker
+			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
+				&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+				&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+				return fmt.Errorf("scan markers: %w", err)
+			}
+			out = append(out, m)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate markers: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	return out, nil
+}
+
+// placeholder keeps SQL assembly consistent across callers so PostgreSQL dollar
+// placeholders stay in sync with SQLite-style question marks. Keeping it near the
+// query helper reduces repeated switch statements.
+func placeholder(dbType string, n int) string {
+	if strings.ToLower(dbType) == "pgx" {
+		return fmt.Sprintf("$%d", n)
+	}
+	return "?"
 }
 
 // DetectExistingTrackID scans the first incoming markers and tries to

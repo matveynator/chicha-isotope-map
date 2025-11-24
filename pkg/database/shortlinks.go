@@ -138,7 +138,9 @@ func (db *Database) ResolveShortLink(ctx context.Context, code string) (string, 
 	}
 
 	var target string
-	err := db.DB.QueryRowContext(ctx, query, arg).Scan(&target)
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		return conn.QueryRowContext(ctx, query, arg).Scan(&target)
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -159,7 +161,9 @@ func (db *Database) lookupShortLinkByTarget(ctx context.Context, target string) 
 		query = "SELECT code FROM short_links WHERE target = ? ORDER BY id LIMIT 1"
 	}
 	var code string
-	err := db.DB.QueryRowContext(ctx, query, arg).Scan(&code)
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		return conn.QueryRowContext(ctx, query, arg).Scan(&code)
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -190,7 +194,9 @@ func (db *Database) shortCodeExists(ctx context.Context, code string) (bool, err
 	}
 
 	var dummy int
-	err := db.DB.QueryRowContext(ctx, query, arg).Scan(&dummy)
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		return conn.QueryRowContext(ctx, query, arg).Scan(&dummy)
+	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -273,23 +279,25 @@ func isBase62(code string) bool {
 
 // insertShortLink writes the mapping for code → target into the database.
 func (db *Database) insertShortLink(ctx context.Context, code, target string, now time.Time) error {
-	switch strings.ToLower(db.Driver) {
-	case "pgx":
-		_, err := db.DB.ExecContext(ctx,
-			"INSERT INTO short_links (code,target,created_at) VALUES ($1,$2,$3)",
-			code, target, now.UTC())
-		return err
-	case "duckdb":
-		_, err := db.DB.ExecContext(ctx,
-			"INSERT INTO short_links (code,target,created_at) VALUES ($1,$2,$3)",
-			code, target, now.UTC())
-		return err
-	default:
-		_, err := db.DB.ExecContext(ctx,
-			"INSERT INTO short_links (code,target,created_at) VALUES (?,?,?)",
-			code, target, now.Unix())
-		return err
-	}
+	return db.withSerializedConnectionFor(ctx, WorkloadUserUpload, func(ctx context.Context, conn *sql.DB) error {
+		switch strings.ToLower(db.Driver) {
+		case "pgx":
+			_, err := conn.ExecContext(ctx,
+				"INSERT INTO short_links (code,target,created_at) VALUES ($1,$2,$3)",
+				code, target, now.UTC())
+			return err
+		case "duckdb":
+			_, err := conn.ExecContext(ctx,
+				"INSERT INTO short_links (code,target,created_at) VALUES ($1,$2,$3)",
+				code, target, now.UTC())
+			return err
+		default:
+			_, err := conn.ExecContext(ctx,
+				"INSERT INTO short_links (code,target,created_at) VALUES (?,?,?)",
+				code, target, now.Unix())
+			return err
+		}
+	})
 }
 
 // isUniqueConstraintError normalizes driver-specific duplicate errors.
