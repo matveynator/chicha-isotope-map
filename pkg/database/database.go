@@ -883,6 +883,11 @@ CREATE TABLE IF NOT EXISTS markers (
   radiation   TEXT,
   temperature DOUBLE PRECISION,
   humidity    DOUBLE PRECISION,
+  device_id   TEXT,
+  transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
@@ -933,7 +938,12 @@ CREATE TABLE IF NOT EXISTS markers (
   detector    TEXT,
   radiation   TEXT,
   temperature REAL,
-  humidity    REAL
+  humidity    REAL,
+  device_id   TEXT,
+  transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
   ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
@@ -990,6 +1000,11 @@ CREATE TABLE IF NOT EXISTS markers (
   radiation   TEXT,
   temperature DOUBLE,
   humidity    DOUBLE,
+  device_id   TEXT,
+  transport   TEXT,
+  device_name TEXT,
+  tube        TEXT,
+  country     TEXT,
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
@@ -1040,7 +1055,12 @@ CREATE INDEX IF NOT EXISTS idx_short_links_created
   detector    String,
   radiation   String,
   temperature Float64,
-  humidity    Float64
+  humidity    Float64,
+  device_id   String,
+  transport   String,
+  device_name String,
+  tube        String,
+  country     String
 ) ENGINE = MergeTree()
 ORDER BY (trackID, date, id);`,
 			`CREATE TABLE IF NOT EXISTS realtime_measurements (
@@ -1112,8 +1132,8 @@ func execStatements(db *sql.DB, stmts []string) error {
 // ensureRealtimeMetadataColumns upgrades realtime_measurements with optional metadata columns.
 // Each column is added lazily so existing installations keep their history without manual SQL.
 // ensureMarkerMetadataColumns upgrades the markers table with optional telemetry columns.
-// We add altitude, detector type, radiation channel, temperature, and humidity lazily so
-// historical databases built before this format continue working without manual SQL.
+// We add altitude, detector type, radiation channel, temperature, humidity, and live metadata
+// lazily so historical databases built before this format continue working without manual SQL.
 func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 	type column struct {
 		name string
@@ -1125,6 +1145,11 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 		{name: "radiation", def: "radiation TEXT"},
 		{name: "temperature", def: "temperature DOUBLE PRECISION"},
 		{name: "humidity", def: "humidity DOUBLE PRECISION"},
+		{name: "device_id", def: "device_id TEXT"},
+		{name: "transport", def: "transport TEXT"},
+		{name: "device_name", def: "device_name TEXT"},
+		{name: "tube", def: "tube TEXT"},
+		{name: "country", def: "country TEXT"},
 	}
 
 	switch strings.ToLower(dbType) {
