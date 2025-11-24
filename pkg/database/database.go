@@ -19,10 +19,10 @@ import (
 
 // Database represents the interface for interacting with the database.
 type Database struct {
-	DB          *sql.DB            // The underlying SQL database connection
-	idGenerator chan int64         // Channel for generating unique IDs
-	Driver      string             // Normalized driver name so SQL builders can stay declarative
-	pipeline    chan serializedJob // Serialises reads and writes for single-writer engines
+	DB          *sql.DB             // The underlying SQL database connection
+	idGenerator chan int64          // Channel for generating unique IDs
+	Driver      string              // Normalized driver name so SQL builders can stay declarative
+	pipeline    *serializedPipeline // Serialises reads and writes for single-writer engines with workload-aware queues
 }
 
 // serializedJob represents a unit of work that must run in isolation for engines such as
@@ -34,6 +34,7 @@ type serializedJob struct {
 	ctx    context.Context
 	fn     func(context.Context, *sql.DB) (any, error)
 	result chan serializedResult
+	kind   workloadKind
 }
 
 // serializedResult holds the outcome of a serializedJob. Keeping it separate helps the
@@ -43,22 +44,85 @@ type serializedResult struct {
 	err   error
 }
 
+// workloadKind enumerates the separate queues we run through select/case so realtime feeds,
+// archive imports, user uploads, and web readers time-share the single connection without
+// letting one long backlog starve the others. Using an explicit type keeps the routing logic
+// readable and mirrors the Go Proverb "Make the zero value useful" by defaulting to the
+// general queue.
+type workloadKind int
+
+const (
+	workloadGeneral    workloadKind = iota // catch-all when callers do not care
+	workloadWebRead                        // API/UI fetches for map tiles and history
+	workloadUserUpload                     // single track uploads from the web form
+	workloadArchive                        // large TGZ imports and bulk archive loaders
+	workloadRealtime                       // live Safecast device updates
+)
+
+// serializedPipeline owns per-workload channels and orchestrates fair selection so one busy
+// feed cannot monopolize the single-writer engines. We avoid mutexes and keep the rotation
+// explicit so maintainers can reason about how different callers interleave.
+type serializedPipeline struct {
+	live     chan serializedJob
+	archive  chan serializedJob
+	uploads  chan serializedJob
+	webReads chan serializedJob
+	general  chan serializedJob
+	order    []chan serializedJob
+	turn     int
+}
+
 // startSerializedPipeline spins up a goroutine that owns the shared *sql.DB for single-user
-// engines. All callers enqueue requests through a channel, and the worker executes them one
-// by one using select/case so realtime uploads, archive imports, and UI reads take turns
-// without trampling unique constraints.
-func startSerializedPipeline(db *sql.DB) chan serializedJob {
-	jobs := make(chan serializedJob)
+// engines. The worker picks jobs in a round-robin order across workload queues so realtime
+// bursts or TGZ imports cannot starve web readers. We stay within channels/select and avoid
+// mutexes to keep the coordination simple and observable.
+func startSerializedPipeline(db *sql.DB) *serializedPipeline {
+	p := &serializedPipeline{
+		live:     make(chan serializedJob, 128),
+		archive:  make(chan serializedJob, 32),
+		uploads:  make(chan serializedJob, 32),
+		webReads: make(chan serializedJob, 128),
+		general:  make(chan serializedJob, 64),
+	}
+	p.order = []chan serializedJob{p.live, p.archive, p.uploads, p.webReads, p.general}
+
+	// getNextJob rotates over queues with a non-blocking pass before blocking so we keep
+	// latency low for lighter queues even while a heavy import continues to stream.
+	getNextJob := func() serializedJob {
+		// First attempt: non-blocking sweep in round-robin order.
+		for i := 0; i < len(p.order); i++ {
+			ch := p.order[p.turn%len(p.order)]
+			p.turn++
+			select {
+			case job := <-ch:
+				return job
+			default:
+			}
+		}
+
+		// Second attempt: block until any queue receives work to avoid busy waiting.
+		select {
+		case job := <-p.live:
+			return job
+		case job := <-p.archive:
+			return job
+		case job := <-p.uploads:
+			return job
+		case job := <-p.webReads:
+			return job
+		case job := <-p.general:
+			return job
+		}
+	}
 
 	go func() {
-		// The worker never closes jobs; callers own the lifecycle so the
-		// DB can outlive background tasks such as realtime polling. A
-		// defer here keeps the intention obvious for future maintainers.
 		defer func() {
-			// no-op placeholder to signal intentional fallthrough
+			// keep the pattern explicit: ownership stays with the creator, not the worker
 		}()
 
-		for job := range jobs {
+		for {
+			job := getNextJob()
+
 			select {
 			case <-job.ctx.Done():
 				job.result <- serializedResult{nil, job.ctx.Err()}
@@ -71,7 +135,7 @@ func startSerializedPipeline(db *sql.DB) chan serializedJob {
 		}
 	}()
 
-	return jobs
+	return p
 }
 
 // serializedEnabled reports whether the database should route operations through the
@@ -92,12 +156,45 @@ func (db *Database) serializedEnabled() bool {
 // tolerate concurrency) or through the pipeline (for single-writer engines). The select/case
 // keeps context cancellation responsive and guarantees that only one job runs at a time when
 // the pipeline is active.
+func (p *serializedPipeline) enqueue(ctx context.Context, job serializedJob) error {
+	var target chan serializedJob
+	switch job.kind {
+	case workloadRealtime:
+		target = p.live
+	case workloadArchive:
+		target = p.archive
+	case workloadUserUpload:
+		target = p.uploads
+	case workloadWebRead:
+		target = p.webReads
+	default:
+		target = p.general
+	}
+
+	select {
+	case target <- job:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// withSerializedConnection queues the given function onto the requested workload lane so
+// long imports or realtime spikes do not block web readers. The default workload keeps
+// backward compatibility while letting specific callers opt into their own lanes.
 func (db *Database) withSerializedConnection(ctx context.Context, fn func(context.Context, *sql.DB) error) error {
+	return db.withSerializedConnectionFor(ctx, workloadGeneral, fn)
+}
+
+// withSerializedConnectionFor routes work onto a specific workload queue. We stick to
+// channels/select instead of mutexes so the scheduling remains explicit and follows the
+// Go proverb "Don't communicate by sharing memory; share memory by communicating."
+func (db *Database) withSerializedConnectionFor(ctx context.Context, kind workloadKind, fn func(context.Context, *sql.DB) error) error {
 	if db == nil || db.DB == nil {
 		return fmt.Errorf("database unavailable")
 	}
 
-	if !db.serializedEnabled() {
+	if !db.serializedEnabled() || db.pipeline == nil {
 		return fn(ctx, db.DB)
 	}
 
@@ -105,12 +202,11 @@ func (db *Database) withSerializedConnection(ctx context.Context, fn func(contex
 		ctx:    ctx,
 		fn:     func(c context.Context, conn *sql.DB) (any, error) { return nil, fn(c, conn) },
 		result: make(chan serializedResult, 1),
+		kind:   kind,
 	}
 
-	select {
-	case db.pipeline <- job:
-	case <-ctx.Done():
-		return ctx.Err()
+	if err := db.pipeline.enqueue(ctx, job); err != nil {
+		return err
 	}
 
 	select {
@@ -337,7 +433,7 @@ func NewDatabase(config Config) (*Database, error) {
 	}
 	idChannel := startIDGenerator(initialID)
 
-	var pipeline chan serializedJob
+	var pipeline *serializedPipeline
 	if driverName == "duckdb" || driverName == "sqlite" || driverName == "chai" {
 		// Single-writer engines benefit from a serialized pipeline so realtime uploads,
 		// archive imports, and UI reads can time-share the connection without tripping
@@ -1869,7 +1965,7 @@ func duckDBIsConflict(err error) bool {
 // InsertRealtimeMeasurement stores live device data and skips duplicates.
 // A little copying is better than a little dependency, so we build SQL by hand.
 func (db *Database) InsertRealtimeMeasurement(m RealtimeMeasurement, dbType string) error {
-	return db.withSerializedConnection(context.Background(), func(ctx context.Context, conn *sql.DB) error {
+	return db.withSerializedConnectionFor(context.Background(), workloadRealtime, func(ctx context.Context, conn *sql.DB) error {
 		switch strings.ToLower(dbType) {
 		case "pgx":
 			_, err := conn.ExecContext(ctx, `
@@ -1985,7 +2081,7 @@ ORDER BY device_id,fetched_at DESC;`
 	}
 
 	var out []Marker
-	err := db.withSerializedConnection(context.Background(), func(ctx context.Context, conn *sql.DB) error {
+	err := db.withSerializedConnectionFor(context.Background(), workloadWebRead, func(ctx context.Context, conn *sql.DB) error {
 		rows, err := conn.QueryContext(ctx, query, minLat, maxLat, minLon, maxLon)
 		if err != nil {
 			return fmt.Errorf("query realtime: %w", err)
@@ -2096,7 +2192,7 @@ ORDER BY measured_at ASC;`
 	}
 
 	var out []RealtimeMeasurement
-	err := db.withSerializedConnection(context.Background(), func(ctx context.Context, conn *sql.DB) error {
+	err := db.withSerializedConnectionFor(context.Background(), workloadWebRead, func(ctx context.Context, conn *sql.DB) error {
 		rows, err := conn.QueryContext(ctx, query, deviceID, since)
 		if err != nil {
 			return fmt.Errorf("realtime history: %w", err)
@@ -2141,7 +2237,7 @@ ORDER BY measured_at ASC;`
 // (seconds) – any device whose newest fetched_at is older is eligible.
 func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 	var ids []string
-	gatherErr := db.withSerializedConnection(context.Background(), func(ctx context.Context, conn *sql.DB) error {
+	gatherErr := db.withSerializedConnectionFor(context.Background(), workloadArchive, func(ctx context.Context, conn *sql.DB) error {
 		var q string
 		switch strings.ToLower(dbType) {
 		case "pgx", "duckdb":
@@ -2179,7 +2275,7 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 			continue
 		}
 
-		if err := db.withSerializedConnection(ctx, func(ctx context.Context, conn *sql.DB) error {
+		if err := db.withSerializedConnectionFor(ctx, workloadArchive, func(ctx context.Context, conn *sql.DB) error {
 			var tx *sql.Tx
 			var exec sqlExecutor
 			switch db.Driver {
@@ -2257,7 +2353,7 @@ func (db *Database) fetchRealtimeByDevice(id, dbType string) ([]RealtimeMeasurem
 		q = `SELECT device_id,transport,value,unit,lat,lon,measured_at,fetched_at FROM realtime_measurements WHERE device_id=?`
 	}
 	var out []RealtimeMeasurement
-	err := db.withSerializedConnection(context.Background(), func(ctx context.Context, conn *sql.DB) error {
+	err := db.withSerializedConnectionFor(context.Background(), workloadRealtime, func(ctx context.Context, conn *sql.DB) error {
 		rows, err := conn.QueryContext(ctx, q, id)
 		if err != nil {
 			return fmt.Errorf("fetch realtime: %w", err)
