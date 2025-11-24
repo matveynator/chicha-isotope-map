@@ -147,76 +147,8 @@ jobs:
           name: bin-${{ matrix.target }}
           path: dist/
 
-  build_duckdb_linux:
-    if: contains(toJson(github.event.head_commit.message), 'stable release')
-    runs-on: ubuntu-24.04
-    container:
-      # Build DuckDB binaries on Debian 11 (glibc 2.31) so the released binary works on older hosts.
-      image: debian:11-slim
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install build dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            ca-certificates \
-            curl \
-            git \
-            build-essential \
-            cmake
-          update-ca-certificates
-
-      - name: Set up Go (Linux)
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.23"
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: go mod tidy (Linux)
-        shell: bash
-        run: |
-          set -euo pipefail
-          go get github.com/marcboeker/go-duckdb/v2@latest
-          go mod tidy
-
-      - name: Rebuild DuckDB static library for glibc 2.31
-        shell: bash
-        run: |
-          set -euo pipefail
-          module_dir=$(go list -f '{{.Dir}}' -m github.com/marcboeker/go-duckdb)
-          # Rebuild the bundled static lib against Debian 11's toolchain to avoid
-          # newer GLIBC/GLIBCXX requirements in released binaries.
-          make -C "$module_dir" deps.linux.amd64
-
-      - name: Build (Linux duckdb)
-        shell: bash
-        env:
-          GOOS: linux
-          GOARCH: amd64
-        run: |
-          set -euo pipefail
-          export CGO_ENABLED=1
-          VERSION=${{ github.run_number }}
-          mkdir -p dist
-          BIN="chicha-isotope-map_${GOOS}_${GOARCH}_duckdb"
-          GOFLAGS="-trimpath -buildvcs=false" \
-          go build -tags "netgo,osusergo,duckdb" \
-                   -ldflags "-s -w -X main.CompileVersion=$VERSION" \
-                   -o "dist/${BIN}"
-
-      - name: Upload duckdb artifact (Linux)
-        uses: actions/upload-artifact@v4
-        with:
-          name: bin-linux_amd64_duckdb
-          path: dist/
-
   release:
-    needs: [build_portable, build_duckdb, build_duckdb_linux]
+    needs: [build_portable, build_duckdb]
     runs-on: ubuntu-24.04
     steps:
       - name: Download all artifacts
