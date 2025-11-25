@@ -2145,7 +2145,7 @@ ON CONFLICT(device_id,measured_at) DO NOTHING`,
 
 // GetLatestRealtimeByBounds returns the newest reading per device within bounds.
 // We keep SQL portable and filter duplicates in Go, following "Clear is better than clever".
-func (db *Database) GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
+func (db *Database) GetLatestRealtimeByBounds(ctx context.Context, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
 	var query string
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
@@ -2163,8 +2163,14 @@ ORDER BY device_id,fetched_at DESC;`
 	}
 
 	var out []Marker
-	err := db.withSerializedConnectionFor(context.Background(), WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
-		rows, err := conn.QueryContext(ctx, query, minLat, maxLat, minLon, maxLon)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, serializedWaitFloor)
+	defer cancel()
+
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(jobCtx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(jobCtx, query, minLat, maxLat, minLon, maxLon)
 		if err != nil {
 			return fmt.Errorf("query realtime: %w", err)
 		}
@@ -2494,7 +2500,9 @@ type sqlExecutor interface {
 }
 
 // GetMarkersByZoomAndBounds retrieves markers filtered by zoom level and geographical bounds.
-func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
+// The caller supplies a context so web requests can cancel ongoing scans and free the serialized
+// DuckDB lane for imports while still bounding the maximum wait via WithTimeout.
+func (db *Database) GetMarkersByZoomAndBounds(ctx context.Context, zoom int, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
 	// The helper below keeps all marker lookups flowing through the serialized
 	// pipeline. This mirrors the Go proverb "Don't communicate by sharing
 	// memory; share memory by communicating" by letting the channel scheduler
@@ -2503,28 +2511,29 @@ func (db *Database) GetMarkersByZoomAndBounds(zoom int, minLat, minLon, maxLat, 
 		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5))
 
 	args := []interface{}{zoom, minLat, maxLat, minLon, maxLon}
-	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
+	return db.queryMarkers(ctx, where, args, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackID retrieves markers filtered by trackID.
-func (db *Database) GetMarkersByTrackID(trackID string, dbType string) ([]Marker, error) {
+func (db *Database) GetMarkersByTrackID(ctx context.Context, trackID string, dbType string) ([]Marker, error) {
 	where := fmt.Sprintf("trackID = %s",
 		placeholder(dbType, 1))
 
-	return db.queryMarkers(where, []interface{}{trackID}, dbType, WorkloadWebRead)
+	return db.queryMarkers(ctx, where, []interface{}{trackID}, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackIDAndBounds retrieves markers filtered by trackID and geographical bounds.
-func (db *Database) GetMarkersByTrackIDAndBounds(trackID string, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
+func (db *Database) GetMarkersByTrackIDAndBounds(ctx context.Context, trackID string, minLat, minLon, maxLat, maxLon float64, dbType string) ([]Marker, error) {
 	where := fmt.Sprintf("trackID = %s AND lat BETWEEN %s AND %s AND lon BETWEEN %s AND %s",
 		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5))
 
 	args := []interface{}{trackID, minLat, maxLat, minLon, maxLon}
-	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
+	return db.queryMarkers(ctx, where, args, dbType, WorkloadWebRead)
 }
 
 // GetMarkersByTrackIDZoomAndBounds исправленный вариант
 func (db *Database) GetMarkersByTrackIDZoomAndBounds(
+	ctx context.Context,
 	trackID string,
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
@@ -2535,7 +2544,7 @@ func (db *Database) GetMarkersByTrackIDZoomAndBounds(
 		placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4), placeholder(dbType, 5), placeholder(dbType, 6))
 
 	args := []interface{}{trackID, zoom, minLat, maxLat, minLon, maxLon}
-	return db.queryMarkers(where, args, dbType, WorkloadWebRead)
+	return db.queryMarkers(ctx, where, args, dbType, WorkloadWebRead)
 }
 
 // SpeedRange задаёт замкнутый диапазон [Min, Max] скорости.
@@ -2546,6 +2555,7 @@ type SpeedRange struct{ Min, Max float64 }
 // интервал, склеиваем их в ОДИН "speed BETWEEN lo AND hi", чтобы планировщик
 // использовал составной индекс (zoom,lat,lon,speed).
 func (db *Database) GetMarkersByZoomBoundsSpeed(
+	ctx context.Context,
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
 	dateFrom, dateTo int64,
@@ -2597,7 +2607,7 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 		}
 	}
 
-	return db.queryMarkers(sb.String(), args, dbType, WorkloadWebRead)
+	return db.queryMarkers(ctx, sb.String(), args, dbType, WorkloadWebRead)
 }
 
 // ------------------------------------------------------------------
@@ -2624,6 +2634,7 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 // Та же оптимизация: склейка непрерывных speedRanges в один BETWEEN.
 
 func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
+	ctx context.Context,
 	trackID string,
 	zoom int,
 	minLat, minLon, maxLat, maxLon float64,
@@ -2675,13 +2686,13 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 		}
 	}
 
-	return db.queryMarkers(sb.String(), args, dbType, WorkloadWebRead)
+	return db.queryMarkers(ctx, sb.String(), args, dbType, WorkloadWebRead)
 }
 
 // queryMarkers runs a SELECT against the markers table using the serialized pipeline so
 // that live writes and heavy imports cannot starve web readers. A shared scanner keeps
 // the call sites compact while still returning fully populated Marker structs.
-func (db *Database) queryMarkers(where string, args []interface{}, dbType string, lane WorkloadKind) ([]Marker, error) {
+func (db *Database) queryMarkers(ctx context.Context, where string, args []interface{}, dbType string, lane WorkloadKind) ([]Marker, error) {
 	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
                                      COALESCE(altitude, 0) AS altitude,
                                      COALESCE(detector, '') AS detector,
@@ -2692,8 +2703,17 @@ func (db *Database) queryMarkers(where string, args []interface{}, dbType string
 
 	var out []Marker
 
-	err := db.withSerializedConnectionFor(context.Background(), lane, func(ctx context.Context, conn *sql.DB) error {
-		rows, err := conn.QueryContext(ctx, query, args...)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Bound the time each read spends holding the single DuckDB connection so map refreshes
+	// cannot pause long-running imports indefinitely. We still reuse the request context so
+	// disconnects release the lane immediately.
+	ctx, cancel := context.WithTimeout(ctx, serializedWaitFloor)
+	defer cancel()
+
+	err := db.withSerializedConnectionFor(ctx, lane, func(jobCtx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(jobCtx, query, args...)
 		if err != nil {
 			return fmt.Errorf("query markers: %w", err)
 		}
