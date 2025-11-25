@@ -2925,6 +2925,8 @@ func logArchiveImportProgress(
 			logSnapshot(false)
 		}
 
+		// When both channels close we break out so the caller sees the done
+		// signal instead of blocking forever on a goroutine that cannot progress.
 		if byteCh == nil && entryCh == nil {
 			break
 		}
