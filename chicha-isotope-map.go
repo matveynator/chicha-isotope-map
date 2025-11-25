@@ -2925,6 +2925,8 @@ func logArchiveImportProgress(
 			logSnapshot(false)
 		}
 
+		// When both channels close we break out so the caller sees the done
+		// signal instead of blocking forever on a goroutine that cannot progress.
 		if byteCh == nil && entryCh == nil {
 			break
 		}
@@ -4229,6 +4231,10 @@ func qrPngHandler(w http.ResponseWriter, r *http.Request) {
 // getMarkersHandler — берёт маркеры в заданном окне и фильтрах
 // +НОВОЕ: dateFrom/dateTo (UNIX-seconds) диапазон времени.
 func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
+	// Use the request context so map tiles cancel promptly when the browser closes,
+	// freeing the serialized DuckDB lane for ongoing imports.
+	ctx := r.Context()
+
 	q := r.URL.Query()
 	zoom, _ := strconv.Atoi(q.Get("zoom"))
 	minLat, _ := strconv.ParseFloat(q.Get("minLat"), 64)
@@ -4271,10 +4277,12 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	if trackID != "" {
 		markers, err = db.GetMarkersByTrackIDZoomBoundsSpeed(
+			ctx,
 			trackID, zoom, minLat, minLon, maxLat, maxLon,
 			dateFrom, dateTo, sr, *dbType)
 	} else {
 		markers, err = db.GetMarkersByZoomBoundsSpeed(
+			ctx,
 			zoom, minLat, minLon, maxLat, maxLon,
 			dateFrom, dateTo, sr, *dbType)
 	}
@@ -4285,7 +4293,7 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 
 	if *safecastRealtimeEnabled {
 		// We only touch realtime tables when the operator explicitly enables the feature.
-		if rt, err := db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType); err == nil {
+		if rt, err := db.GetLatestRealtimeByBounds(ctx, minLat, minLon, maxLat, maxLon, *dbType); err == nil {
 			for i := range rt {
 				// Sanitise detector names on the fly so legacy rows without
 				// the new resolver still produce friendly popups.
@@ -4384,7 +4392,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	var rtMarks []database.Marker
 	if *safecastRealtimeEnabled {
 		var err error
-		rtMarks, err = db.GetLatestRealtimeByBounds(minLat, minLon, maxLat, maxLon, *dbType)
+		rtMarks, err = db.GetLatestRealtimeByBounds(ctx, minLat, minLon, maxLat, maxLon, *dbType)
 		if err != nil {
 			log.Printf("realtime query: %v", err)
 		}
