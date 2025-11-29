@@ -1481,6 +1481,20 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 
 		switch driver {
 		case "pgx":
+			if txn == nil && db.DB != nil && len(chunk) >= 128 {
+				if copyErr := db.insertMarkersPostgreSQLCopy(ctx, chunk); copyErr == nil {
+					mode = "copy"
+					done += len(chunk)
+					if progress != nil {
+						select {
+						case progress <- MarkerBatchProgress{Total: total, Done: done, Batch: len(chunk), Mode: mode, Duration: time.Since(chunkStart)}:
+						default:
+						}
+					}
+					i = end
+					continue
+				}
+			}
 			// PostgreSQL: BIGSERIAL fills id, so we only ship the payload columns.
 			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
 			argn := 0
