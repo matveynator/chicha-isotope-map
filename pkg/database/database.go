@@ -262,9 +262,23 @@ func SetRealtimeConverter(fn func(float64, string) (float64, bool)) {
 // normalizeDBType trims and lowercases driver names so downstream switch blocks
 // do not miss DuckDB-specific handling just because a caller passed mixed case
 // or incidental whitespace. Centralising the cleanup keeps the checks honest
-// without sprinkling strings.ToLower everywhere.
+// without sprinkling strings.ToLower everywhere. We also map common PostgreSQL
+// aliases onto the pgx driver so placeholder rendering stays consistent and
+// avoids syntax errors like the "?" placeholders seen in server logs.
 func normalizeDBType(dbType string) string {
-	return strings.ToLower(strings.TrimSpace(dbType))
+	cleaned := strings.ToLower(strings.TrimSpace(dbType))
+
+	switch cleaned {
+	case "postgres", "postgresql", "pq", "postgres+psql", "postgresql+psql":
+		// The project standardises on pgx for PostgreSQL connectivity.
+		// Translating community aliases here keeps SQL builders using
+		// the correct $1 style placeholders instead of "?", preventing
+		// syntax errors during bulk inserts while still honouring the
+		// caller's intent.
+		return "pgx"
+	default:
+		return cleaned
+	}
 }
 
 // startIDGenerator launches a goroutine for generating unique IDs.
