@@ -2677,7 +2677,10 @@ func processTrackExportArchiveReader(
 			continue
 		}
 
-		entryCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		// Avoid fixed per-entry timeouts so gigantic tracks can finish peacefully.
+		// A cancellation from the caller still flows through entryCtx, keeping the
+		// goroutine responsive without discarding legitimate long-running imports.
+		entryCtx, cancel := context.WithCancel(ctx)
 		results := make(chan archiveEntryResult, 1)
 		go func(data []byte) {
 			defer close(results)
@@ -2688,24 +2691,13 @@ func processTrackExportArchiveReader(
 		select {
 		case <-ctx.Done():
 			cancel()
-			if result, ok := <-results; ok && result.err != nil {
-				_ = result // already returning context error; discard partials
+			// Wait briefly so the worker can observe the cancellation before we move on.
+			select {
+			case <-results:
+			case <-time.After(15 * time.Second):
+				logT(trackID, "Export-TGZ", "waited for cancelled %s worker to exit", hdr.Name)
 			}
 			return combined, primaryTrack, importedAny, ctx.Err()
-		case <-entryCtx.Done():
-			cancel()
-			logT(trackID, "Export-TGZ", "skip %s: import stalled: %v", hdr.Name, entryCtx.Err())
-			select {
-			case result, ok := <-results:
-				if ok && result.inserted {
-					logT(trackID, "Export-TGZ", "ignored late completion for %s after timeout", hdr.Name)
-				}
-			case <-time.After(15 * time.Second):
-				logT(trackID, "Export-TGZ", "waited for stalled %s worker to exit", hdr.Name)
-			}
-			entryIndex++
-			sendProgress(hdr.Name)
-			continue
 		case result := <-results:
 			cancel()
 			if result.err != nil {
