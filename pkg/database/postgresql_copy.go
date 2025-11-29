@@ -37,6 +37,8 @@ func (db *Database) insertMarkersPostgreSQLCopy(ctx context.Context, chunk []Mar
 	// contention and mirrors "A little copying is better than a little
 	// dependency" by keeping the helper self-contained.
 	tempTable := fmt.Sprintf("temp_markers_%d", time.Now().UnixNano())
+	// Avoid ON COMMIT DROP so the temporary table survives PostgreSQL's
+	// autocommit mode long enough for COPY and the final INSERT to finish.
 	createTemp := fmt.Sprintf(`CREATE TEMP TABLE %s (
 doseRate DOUBLE PRECISION,
 date BIGINT,
@@ -51,7 +53,7 @@ detector TEXT,
 radiation TEXT,
 temperature DOUBLE PRECISION,
 humidity DOUBLE PRECISION
-) ON COMMIT DROP`, tempTable)
+)`, tempTable)
 	if _, err := conn.ExecContext(ctx, createTemp); err != nil {
 		return fmt.Errorf("create temp table: %w", err)
 	}
