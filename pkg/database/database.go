@@ -970,6 +970,12 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 	worker := func() {
 		logf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", cfg.DBType)
 
+		if err := db.backfillTracksTable(ctx, cfg.DBType); err != nil {
+			logf("❌ track registry backfill failed: %v", err)
+		} else {
+			logf("✅ track registry ready for fast pagination")
+		}
+
 		for _, it := range indexes {
 			start := time.Now()
 			logf("▶️  start index %s", it.name)
@@ -1067,6 +1073,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			{"idx_tracks_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_tracks_trackid ON tracks (trackID)`},
 			// Realtime history: keep per-device scans and bounds responsive.
 			{"idx_realtime_device_fetched",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
@@ -1109,6 +1117,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			{"idx_tracks_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_tracks_trackid ON tracks (trackID)`},
 			// Realtime history: keep per-device scans and bounds responsive.
 			{"idx_realtime_device_fetched",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
@@ -1151,6 +1161,8 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_date ON markers (zoom, date)`},
 			{"idx_markers_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_speed ON markers (speed)`},
+			{"idx_tracks_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_tracks_trackid ON tracks (trackID)`},
 			// Realtime history: keep per-device scans and bounds responsive.
 			{"idx_realtime_device_fetched",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
@@ -1286,6 +1298,10 @@ CREATE TABLE IF NOT EXISTS markers (
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
+CREATE TABLE IF NOT EXISTS tracks (
+  trackID     TEXT PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGSERIAL PRIMARY KEY,
   device_id   TEXT,
@@ -1342,6 +1358,10 @@ CREATE TABLE IF NOT EXISTS markers (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
   ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
+
+CREATE TABLE IF NOT EXISTS tracks (
+  trackID     TEXT PRIMARY KEY
+);
 
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          INTEGER PRIMARY KEY,
@@ -1403,6 +1423,10 @@ CREATE TABLE IF NOT EXISTS markers (
   CONSTRAINT markers_unique UNIQUE (doseRate,date,lon,lat,countRate,zoom,speed,trackID)
 );
 
+CREATE TABLE IF NOT EXISTS tracks (
+  trackID     TEXT PRIMARY KEY
+);
+
 CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
@@ -1458,6 +1482,10 @@ CREATE INDEX IF NOT EXISTS idx_short_links_created
   country     String
 ) ENGINE = MergeTree()
 ORDER BY (trackID, date, id);`,
+			`CREATE TABLE IF NOT EXISTS tracks (
+  trackID     String
+) ENGINE = ReplacingMergeTree()
+ORDER BY (trackID);`,
 			`CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          UInt64,
   device_id   String,

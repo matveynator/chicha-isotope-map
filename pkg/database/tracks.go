@@ -338,6 +338,55 @@ ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
 	return out, errs
 }
 
+// EnsureTrackPresence keeps the lightweight tracks registry in sync with
+// incoming marker inserts so pagination can avoid repeated DISTINCT scans.
+// We deliberately use INSERT…WHERE NOT EXISTS instead of ON CONFLICT to stay
+// portable across the supported engines while still preventing duplicate rows.
+func (db *Database) EnsureTrackPresence(ctx context.Context, trackID, dbType string) error {
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return nil
+	}
+
+	nextPlaceholder := newPlaceholderGenerator(dbType)
+	value := nextPlaceholder()
+	stmt := fmt.Sprintf(`INSERT INTO tracks (trackID)
+SELECT %s
+WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, value, value)
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	return db.withSerializedConnectionFor(ctx, WorkloadUserUpload, func(ctx context.Context, conn *sql.DB) error {
+		if _, err := conn.ExecContext(ctx, stmt, trackID); err != nil {
+			return fmt.Errorf("ensure track presence: %w", err)
+		}
+		return nil
+	})
+}
+
+// backfillTracksTable refreshes the tracks registry from existing markers so
+// older databases inherit the faster pagination path without manual scripts.
+// The operation is idempotent thanks to the NOT EXISTS guard above the SELECT
+// DISTINCT stage, keeping the work minimal for already-synced datasets.
+func (db *Database) backfillTracksTable(ctx context.Context, dbType string) error {
+	stmt := `INSERT INTO tracks (trackID)
+SELECT DISTINCT m.trackID
+FROM markers m
+WHERE m.trackID IS NOT NULL AND m.trackID <> ''
+  AND NOT EXISTS (SELECT 1 FROM tracks t WHERE t.trackID = m.trackID);`
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	return db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("backfill tracks: %w", err)
+		}
+		return nil
+	})
+}
+
 // CountTrackIDsUpTo returns how many distinct track IDs are lexicographically
 // less than or equal to the provided ID. We use it to translate string track
 // IDs into stable numeric indices for the API.
@@ -348,7 +397,7 @@ func (db *Database) CountTrackIDsUpTo(ctx context.Context, trackID, dbType strin
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
 	where := fmt.Sprintf("trackID <= %s", nextPlaceholder())
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT DISTINCT trackID FROM markers WHERE %s) AS sub;`, where)
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM tracks WHERE %s;`, where)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -380,7 +429,7 @@ func (db *Database) GetTrackIDByIndex(ctx context.Context, index int64, dbType s
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
 	offsetPlaceholder := nextPlaceholder()
-	query := fmt.Sprintf(`SELECT trackID FROM (SELECT DISTINCT trackID FROM markers ORDER BY trackID LIMIT 1 OFFSET %s) AS sub;`, offsetPlaceholder)
+	query := fmt.Sprintf(`SELECT trackID FROM tracks ORDER BY trackID LIMIT 1 OFFSET %s;`, offsetPlaceholder)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
