@@ -3526,6 +3526,11 @@ func processAndStoreMarkersWithContext(
 		return bbox, trackID, fmt.Errorf("all markers filtered out")
 	}
 
+	// Keep the track registry in sync so pagination queries avoid expensive DISTINCT scans.
+	if err := db.EnsureTrackPresence(ctx, trackID, dbType); err != nil {
+		return bbox, trackID, err
+	}
+
 	// ── step 4: speed calculation (pure Go) ─────────────────────────
 	markers = calculateSpeedForMarkers(markers)
 	if err := observeContext(ctx); err != nil {
