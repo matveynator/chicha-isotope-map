@@ -2404,17 +2404,19 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 	// correct placeholder syntax for the current driver once and reuse it for every
 	// realtime marker promotion. This keeps the insert statement portable without
 	// sprinkling switch statements through the loop.
-	var staleMarkerInsert string
-	{
-		ph := make([]string, 20)
-		for i := range ph {
-			ph[i] = placeholder(db.Driver, i+1)
-		}
-		staleMarkerInsert = fmt.Sprintf(`
+        var staleMarkerInsert string
+        {
+                // Keep the placeholder count aligned with the 19 insert columns so drivers
+                // never see mismatched argument errors when reusing the rendered statement.
+                ph := make([]string, 19)
+                for i := range ph {
+                        ph[i] = placeholder(db.Driver, i+1)
+                }
+                staleMarkerInsert = fmt.Sprintf(`
 INSERT INTO markers
       (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country)
 VALUES (%s)`, strings.Join(ph, ","))
-	}
+        }
 	for _, id := range ids {
 		ms, err := db.fetchRealtimeByDevice(id, dbType)
 		if err != nil {
