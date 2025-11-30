@@ -2399,6 +2399,22 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 	}
 
 	ctx := context.Background()
+
+	// PostgreSQL rejects "?" placeholders, so we pre-render the VALUES list with the
+	// correct placeholder syntax for the current driver once and reuse it for every
+	// realtime marker promotion. This keeps the insert statement portable without
+	// sprinkling switch statements through the loop.
+	var staleMarkerInsert string
+	{
+		ph := make([]string, 20)
+		for i := range ph {
+			ph[i] = placeholder(db.Driver, i+1)
+		}
+		staleMarkerInsert = fmt.Sprintf(`
+INSERT INTO markers
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country)
+VALUES (%s)`, strings.Join(ph, ","))
+	}
 	for _, id := range ids {
 		ms, err := db.fetchRealtimeByDevice(id, dbType)
 		if err != nil {
@@ -2437,10 +2453,7 @@ func (db *Database) PromoteStaleRealtime(cutoff int64, dbType string) error {
 
 				markerID := <-db.idGenerator
 				trackID := "live:" + m.DeviceID
-				if _, err := exec.ExecContext(ctx, `
-INSERT INTO markers
-      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				if _, err := exec.ExecContext(ctx, staleMarkerInsert,
 					markerID, doseRate, m.MeasuredAt, m.Lon, m.Lat,
 					0, 0, -1, trackID,
 					nil, "", "", nil, nil,
