@@ -2927,6 +2927,35 @@ func logArchiveImportProgress(
 	logSnapshot(true)
 }
 
+// queueDuckDBMaintenanceAfterImport schedules the maintenance pass that keeps DuckDB files
+// compact after large TGZ loads. We keep the coordination asynchronous so uploads and HTTP
+// handlers stay responsive, while the database package serialises the actual PRAGMA calls.
+func queueDuckDBMaintenanceAfterImport(driver string, db *database.Database, logf func(string, ...any), label string) {
+	if !strings.EqualFold(strings.TrimSpace(driver), "duckdb") || db == nil {
+		return
+	}
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	done := db.ScheduleDuckDBMaintenance(ctx, logf)
+	go func(ch <-chan error) {
+		if ch == nil {
+			return
+		}
+		if err, ok := <-ch; ok {
+			if err != nil {
+				logf("duckdb maintenance after %s failed: %v", label, err)
+				return
+			}
+			logf("duckdb maintenance after %s finished", label)
+		}
+	}(done)
+}
+
 // importArchiveFromFile streams a local tgz through the shared parser so offline
 // operators can preload bundles without relying on HTTP. The function mirrors
 // the remote helper by emitting byte and entry progress over channels, keeping
@@ -2969,6 +2998,9 @@ func importArchiveFromFile(
 	}
 
 	logf("local tgz import complete: imported=%v track=%s bounds=%v", imported, finalTrack, bounds)
+	if imported {
+		queueDuckDBMaintenanceAfterImport(dbType, db, logf, path)
+	}
 	return nil
 }
 
@@ -3019,6 +3051,9 @@ func importArchiveFromURL(
 	}
 
 	logf("remote tgz import complete: imported=%v track=%s bounds=%v", imported, finalTrack, bounds)
+	if imported {
+		queueDuckDBMaintenanceAfterImport(dbType, db, logf, sourceURL)
+	}
 	return nil
 }
 

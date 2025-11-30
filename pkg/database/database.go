@@ -26,6 +26,7 @@ type Database struct {
 	idGenerator chan int64          // Channel for generating unique IDs
 	Driver      string              // Normalized driver name so SQL builders can stay declarative
 	pipeline    *serializedPipeline // Serialises reads and writes for single-writer engines with workload-aware queues
+	upkeep      *duckDBMaintenance  // Coordinates background maintenance for DuckDB so imports end with a compact file
 }
 
 // serializedJob represents a unit of work that must run in isolation for engines such as
@@ -69,6 +70,24 @@ type serializedPipeline struct {
 	lanes []chan serializedJob // Indexed by workloadKind so selection happens without switches
 	order []int                // Round-robin order to rotate through lanes fairly
 	turn  int                  // Tracks the next lane index to probe first
+}
+
+// duckDBMaintenance serialises maintenance tasks like CHECKPOINT and VACUUM so the
+// main pipeline stays free for imports and readers. A tiny job queue and a single
+// worker goroutine keep the coordination straightforward while avoiding mutexes.
+// We scope this to DuckDB because other engines have their own housekeeping.
+type duckDBMaintenance struct {
+	db   *Database
+	jobs chan duckDBMaintenanceJob
+}
+
+// duckDBMaintenanceJob wraps a maintenance request with its logging and completion
+// channel. Keeping it explicit makes the worker loop easy to follow and lets the
+// caller await completion without blocking the queue.
+type duckDBMaintenanceJob struct {
+	ctx  context.Context
+	logf func(string, ...any)
+	done chan error
 }
 
 // serializedWaitFloor keeps serialized operations from failing fast when long-running archive jobs occupy the
@@ -146,6 +165,93 @@ func startSerializedPipeline(db *sql.DB) *serializedPipeline {
 	}()
 
 	return p
+}
+
+// startDuckDBMaintenance spins a goroutine that runs maintenance tasks one at a time so
+// they never overlap with each other. We keep the queue small to avoid unbounded memory
+// growth and rely on the serialized database pipeline to keep CHECKPOINT/VACUUM from
+// racing regular queries.
+func startDuckDBMaintenance(db *Database) *duckDBMaintenance {
+	m := &duckDBMaintenance{db: db, jobs: make(chan duckDBMaintenanceJob, 4)}
+
+	go func() {
+		for job := range m.jobs {
+			logf := job.logf
+			if logf == nil {
+				logf = log.Printf
+			}
+
+			if job.ctx == nil {
+				job.ctx = context.Background()
+			}
+
+			select {
+			case <-job.ctx.Done():
+				job.done <- job.ctx.Err()
+				close(job.done)
+				continue
+			default:
+			}
+
+			// Give the maintenance enough time to finish on large files while still respecting caller
+			// cancellations. We wrap it with queueFriendlyContext to keep the serialized worker from
+			// dropping jobs too aggressively under load.
+			maintenanceCtx, cancel := queueFriendlyContext(job.ctx, 90*time.Minute)
+			err := m.db.withSerializedConnectionFor(maintenanceCtx, WorkloadArchive, func(runCtx context.Context, conn *sql.DB) error {
+				return runDuckDBMaintenance(runCtx, conn, logf)
+			})
+			cancel()
+
+			select {
+			case job.done <- err:
+			default:
+			}
+			close(job.done)
+		}
+	}()
+
+	return m
+}
+
+// enqueue places a maintenance job onto the queue without blocking the caller. We rely on
+// select/case to keep the loop responsive to cancellation while still guaranteeing that the
+// job either enters the queue or reports the context error.
+func (m *duckDBMaintenance) enqueue(ctx context.Context, logf func(string, ...any)) <-chan error {
+	if m == nil {
+		done := make(chan error, 1)
+		close(done)
+		return done
+	}
+
+	job := duckDBMaintenanceJob{ctx: ctx, logf: logf, done: make(chan error, 1)}
+
+	for {
+		select {
+		case <-ctx.Done():
+			job.done <- ctx.Err()
+			close(job.done)
+			return job.done
+		case m.jobs <- job:
+			return job.done
+		default:
+			runtime.Gosched()
+		}
+	}
+}
+
+// scheduleDuckDBMaintenance exposes a channel-driven hook for callers that want to run a
+// checkpoint/optimize/vacuum cycle after heavy imports. We only wire it for the DuckDB
+// driver because other engines handle maintenance differently.
+func (db *Database) ScheduleDuckDBMaintenance(ctx context.Context, logf func(string, ...any)) <-chan error {
+	if db == nil || db.Driver != "duckdb" || db.upkeep == nil {
+		done := make(chan error, 1)
+		close(done)
+		return done
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return db.upkeep.enqueue(ctx, logf)
 }
 
 // serializedEnabled reports whether the database should route operations through the
@@ -528,12 +634,20 @@ func NewDatabase(config Config) (*Database, error) {
 		pipeline = startSerializedPipeline(db)
 	}
 
-	return &Database{
+	databaseInstance := &Database{
 		DB:          db,
 		idGenerator: idChannel,
 		Driver:      driverName,
 		pipeline:    pipeline,
-	}, nil
+	}
+
+	if driverName == "duckdb" {
+		// DuckDB benefits from an automatic post-import maintenance pass so startup stays fast even after
+		// multi-gigabyte TGZ loads. We keep the worker channel-local to avoid shared mutable state.
+		databaseInstance.upkeep = startDuckDBMaintenance(databaseInstance)
+	}
+
+	return databaseInstance, nil
 }
 
 // startDuckDBStartupProgress logs periodic startup telemetry while DuckDB opens a
@@ -800,6 +914,43 @@ func tuneDuckDBConnection(ctx context.Context, db *sql.DB, logf func(string, ...
 	if err := <-errs; err != nil {
 		return err
 	}
+	return nil
+}
+
+// runDuckDBMaintenance applies the same optimize/checkpoint/vacuum cycle we recommended in
+// docs so heavy imports leave the file compacted for the next startup. We keep it sequential
+// and routed through the serialized connection to avoid overlapping maintenance with reader
+// traffic.
+func runDuckDBMaintenance(ctx context.Context, db *sql.DB, logf func(string, ...any)) error {
+	if logf == nil {
+		logf = log.Printf
+	}
+
+	type step struct {
+		label string
+		query string
+	}
+
+	steps := []step{
+		{label: "optimize", query: "PRAGMA optimize;"},
+		{label: "checkpoint", query: "CHECKPOINT;"},
+		{label: "vacuum", query: "VACUUM;"},
+	}
+
+	for _, st := range steps {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		started := time.Now()
+		if _, err := db.ExecContext(ctx, st.query); err != nil {
+			return fmt.Errorf("duckdb %s: %w", st.label, err)
+		}
+		logf("DuckDB maintenance %s finished in %s", st.label, time.Since(started).Truncate(time.Second))
+	}
+
 	return nil
 }
 
