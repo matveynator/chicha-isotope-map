@@ -400,8 +400,29 @@ func NewDatabase(config Config) (*Database, error) {
 		return nil, fmt.Errorf("unsupported database type: %s", config.DBType)
 	}
 
+	// DuckDB can take noticeable time to open large files before PingContext even
+	// runs. We start progress logging before sql.Open so operators see immediate
+	// feedback instead of a blank terminal. A dedicated context keeps the
+	// goroutine cancelable without reaching for mutexes, sticking to the Go
+	// proverb "Don't communicate by sharing memory; share memory by communicating".
+	var (
+		progressStop   func()
+		progressCancel context.CancelFunc
+	)
+	if driverName == "duckdb" {
+		var progressCtx context.Context
+		progressCtx, progressCancel = context.WithCancel(context.Background())
+		progressStop = startDuckDBStartupProgress(progressCtx, dsn, log.Printf)
+	}
+
 	db, err := sql.Open(driverName, dsn)
 	if err != nil {
+		if progressCancel != nil {
+			progressCancel()
+		}
+		if progressStop != nil {
+			progressStop()
+		}
 		return nil, fmt.Errorf("error opening the database: %v", err)
 	}
 
@@ -453,26 +474,25 @@ func NewDatabase(config Config) (*Database, error) {
 	// so we extend the timeout and emit periodic progress derived from process
 	// read counters. The reporting goroutine stays channel-driven to avoid any
 	// locking while still giving operators visibility into startup momentum.
-	var (
-		progressStop func()
-		pingTimeout  = 2 * time.Second
-	)
+	var pingTimeout = 2 * time.Second
 	if driverName == "duckdb" {
 		pingTimeout = 45 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
 
-	if driverName == "duckdb" {
-		progressStop = startDuckDBStartupProgress(ctx, dsn, log.Printf)
-	}
-
 	if err := db.PingContext(ctx); err != nil {
+		if progressCancel != nil {
+			progressCancel()
+		}
 		if progressStop != nil {
 			progressStop()
 		}
 		_ = db.Close()
 		return nil, fmt.Errorf("error connecting to the database: %v", err)
+	}
+	if progressCancel != nil {
+		progressCancel()
 	}
 	if progressStop != nil {
 		progressStop()
