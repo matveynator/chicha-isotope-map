@@ -119,3 +119,141 @@ func (db *Database) insertMarkersPostgreSQLCopy(ctx context.Context, chunk []Mar
 
 	return nil
 }
+
+// insertMarkersPostgreSQLCopyBatched streams all markers through a single COPY session
+// so PostgreSQL avoids repeatedly creating temporary tables. Holding one transaction
+// for the duration keeps the catalog calm and maintains near-linear throughput even on
+// very large databases. Progress updates still flow via the provided channel so callers
+// keep consistent logging behaviour.
+func (db *Database) insertMarkersPostgreSQLCopyBatched(ctx context.Context, markers []Marker, batch int, progress chan<- MarkerBatchProgress) error {
+	if len(markers) == 0 {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	if batch <= 0 {
+		batch = 500
+	}
+
+	conn, err := db.DB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("open postgres connection: %w", err)
+	}
+	defer conn.Close()
+
+	total := len(markers)
+	copyErr := conn.Raw(func(driverConn any) error {
+		direct, ok := driverConn.(*stdlib.Conn)
+		if !ok {
+			return fmt.Errorf("unexpected postgres driver %T", driverConn)
+		}
+
+		pgConn := direct.Conn()
+		tx, err := pgConn.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("begin postgres transaction: %w", err)
+		}
+		committed := false
+		defer func() {
+			if !committed {
+				_ = tx.Rollback(ctx)
+			}
+		}()
+
+		tempTable := fmt.Sprintf("temp_markers_%d", time.Now().UnixNano())
+		createTemp := fmt.Sprintf(`CREATE TEMP TABLE %s (
+ doseRate DOUBLE PRECISION,
+ date BIGINT,
+ lon DOUBLE PRECISION,
+ lat DOUBLE PRECISION,
+ countRate DOUBLE PRECISION,
+ zoom INT,
+ speed DOUBLE PRECISION,
+ trackID TEXT,
+ altitude DOUBLE PRECISION,
+ detector TEXT,
+ radiation TEXT,
+ temperature DOUBLE PRECISION,
+ humidity DOUBLE PRECISION
+ ) ON COMMIT DROP`, tempTable)
+		if _, err := tx.Exec(ctx, createTemp); err != nil {
+			return fmt.Errorf("create temp table: %w", err)
+		}
+
+		insertFromTemp := fmt.Sprintf(`INSERT INTO markers
+ (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
+ SELECT doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity FROM %s
+ ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`, tempTable)
+		truncateTemp := fmt.Sprintf(`TRUNCATE %s`, tempTable)
+
+		done := 0
+		for start := 0; start < len(markers); start += batch {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			end := start + batch
+			if end > len(markers) {
+				end = len(markers)
+			}
+			chunk := markers[start:end]
+			rows := make([][]interface{}, 0, len(chunk))
+			for _, m := range chunk {
+				rows = append(rows, []interface{}{
+					m.DoseRate, m.Date, m.Lon, m.Lat,
+					m.CountRate, m.Zoom, m.Speed, m.TrackID,
+					nullableFloat64(m.AltitudeValid, m.Altitude),
+					m.Detector, m.Radiation,
+					nullableFloat64(m.TemperatureValid, m.Temperature),
+					nullableFloat64(m.HumidityValid, m.Humidity),
+				})
+			}
+			if len(rows) == 0 {
+				continue
+			}
+
+			chunkStart := time.Now()
+			if _, err := tx.CopyFrom(
+				ctx,
+				pgx.Identifier{tempTable},
+				[]string{"doseRate", "date", "lon", "lat", "countRate", "zoom", "speed", "trackID", "altitude", "detector", "radiation", "temperature", "humidity"},
+				pgx.CopyFromRows(rows),
+			); err != nil {
+				return fmt.Errorf("copy markers into temp table: %w", err)
+			}
+
+			if _, err := tx.Exec(ctx, insertFromTemp); err != nil {
+				return fmt.Errorf("merge temp markers: %w", err)
+			}
+
+			if _, err := tx.Exec(ctx, truncateTemp); err != nil {
+				return fmt.Errorf("reset temp table: %w", err)
+			}
+
+			done += len(chunk)
+			if progress != nil {
+				select {
+				case progress <- MarkerBatchProgress{Total: total, Done: done, Batch: len(chunk), Mode: "copy", Duration: time.Since(chunkStart)}:
+				default:
+				}
+			}
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit temp markers: %w", err)
+		}
+		committed = true
+		return nil
+	})
+	if copyErr != nil {
+		return copyErr
+	}
+
+	return nil
+}
