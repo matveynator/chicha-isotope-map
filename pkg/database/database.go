@@ -1395,10 +1395,16 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 	driver := normalizeDBType(dbType)
 	serialized := db.serializedEnabled() && db.pipeline != nil
 
-	if driver == "duckdb" || driver == "clickhouse" {
-		// Deduplicate early so track-wide inserts avoid redundant VALUES tuples. DuckDB and
-		// ClickHouse both get faster when we trim the input up front instead of letting the
-		// engine juggle collisions later on.
+	if driver == "duckdb" {
+		// DuckDB imports degrade when the UNIQUE index receives random inserts across a
+		// multi-hundred-gigabyte table. Sorting markers by the unique key before batching
+		// keeps B-Tree page splits predictable and lets the engine append through the index
+		// instead of thrashing it. We also collapse duplicates while the slice is ordered so
+		// ON CONFLICT rarely triggers and each chunk stays as small as possible.
+		markers = orderDuckDBMarkers(markers)
+	} else if driver == "clickhouse" {
+		// ClickHouse benefits from early duplicate trimming to keep the later existence
+		// probes small and deterministic even when archives contain overlapping segments.
 		markers = deduplicateMarkers(markers)
 	}
 
@@ -1710,6 +1716,73 @@ func deduplicateMarkers(markers []Marker) []Marker {
 	}
 
 	return unique
+}
+
+// orderDuckDBMarkers sorts markers by the UNIQUE index layout and removes duplicates in one pass.
+// DuckDB keeps large UNIQUE indexes balanced when new rows arrive in roughly ascending order; the
+// deterministic sort makes tgz imports behave like append-only workloads instead of random writes
+// across the 300+ GiB table. We avoid mutexes and lean on slices so the work remains CPU-bound and
+// predictable even on huge archives.
+func orderDuckDBMarkers(markers []Marker) []Marker {
+	if len(markers) < 2 {
+		return markers
+	}
+
+	ordered := append([]Marker(nil), markers...)
+	sort.Slice(ordered, func(i, j int) bool {
+		return lessMarkerByUniqueKey(ordered[i], ordered[j])
+	})
+
+	compact := ordered[:0]
+	var prev Marker
+	for i, m := range ordered {
+		if i > 0 && sameMarkerUniqueKey(m, prev) {
+			continue
+		}
+		compact = append(compact, m)
+		prev = m
+	}
+
+	return compact
+}
+
+// lessMarkerByUniqueKey orders markers according to the markers_unique constraint so B-Tree inserts
+// naturally walk forward through the index instead of scattering writes. Keeping the comparison
+// separate from the sort call documents the intended ordering and makes future schema tweaks easy to
+// propagate in one place.
+func lessMarkerByUniqueKey(a Marker, b Marker) bool {
+	switch {
+	case a.DoseRate != b.DoseRate:
+		return a.DoseRate < b.DoseRate
+	case a.Date != b.Date:
+		return a.Date < b.Date
+	case a.Lon != b.Lon:
+		return a.Lon < b.Lon
+	case a.Lat != b.Lat:
+		return a.Lat < b.Lat
+	case a.CountRate != b.CountRate:
+		return a.CountRate < b.CountRate
+	case a.Zoom != b.Zoom:
+		return a.Zoom < b.Zoom
+	case a.Speed != b.Speed:
+		return a.Speed < b.Speed
+	default:
+		return a.TrackID < b.TrackID
+	}
+}
+
+// sameMarkerUniqueKey checks whether two markers would collide on the UNIQUE constraint. A dedicated
+// helper keeps the equality logic in sync with lessMarkerByUniqueKey, so the deduplication step after
+// sorting remains correct even if the schema evolves.
+func sameMarkerUniqueKey(a Marker, b Marker) bool {
+	return a.DoseRate == b.DoseRate &&
+		a.Date == b.Date &&
+		a.Lon == b.Lon &&
+		a.Lat == b.Lat &&
+		a.CountRate == b.CountRate &&
+		a.Zoom == b.Zoom &&
+		a.Speed == b.Speed &&
+		a.TrackID == b.TrackID
 }
 
 // tuneDuckDBBatchSize keeps DuckDB batches compact so VALUES lists remain responsive even when tgz
