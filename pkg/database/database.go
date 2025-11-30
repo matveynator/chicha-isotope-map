@@ -730,6 +730,11 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Realtime history: keep per-device scans and bounds responsive.
 			{"idx_realtime_device_fetched",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
+			// Descending variant keeps ORDER BY device_id, fetched_at DESC plans from falling back to incremental sorts
+			// when lat/lon filters are broad. Most engines accept the SQL standard DESC clause, so we mirror it across
+			// drivers to keep performance predictable while staying portable.
+			{"idx_realtime_device_fetched_desc",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched_desc ON realtime_measurements (device_id, fetched_at DESC)`},
 			{"idx_realtime_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
@@ -767,6 +772,10 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Realtime history: keep per-device scans and bounds responsive.
 			{"idx_realtime_device_fetched",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
+			// Keep the descending helper for engines that support SQL-standard direction so ORDER BY fetched_at DESC can
+			// reuse the index instead of resorting. DuckDB accepts the syntax and benefits from it.
+			{"idx_realtime_device_fetched_desc",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched_desc ON realtime_measurements (device_id, fetched_at DESC)`},
 			{"idx_realtime_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
@@ -805,6 +814,10 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Realtime history: keep per-device scans and bounds responsive.
 			{"idx_realtime_device_fetched",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
+			// Directional helper keeps DESC ordering cheap for engines that honour the clause (SQLite/Chai accept it and
+			// benefit from predictable plans; other engines that ignore direction will still create a usable index).
+			{"idx_realtime_device_fetched_desc",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched_desc ON realtime_measurements (device_id, fetched_at DESC)`},
 			{"idx_realtime_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
@@ -847,6 +860,10 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Realtime history: keep per-device scans and bounds responsive.
 			{"idx_realtime_device_fetched",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched ON realtime_measurements (device_id, fetched_at)`},
+			// Directional helper keeps DESC ordering cheap for engines that honour the clause (SQLite/Chai accept it and
+			// benefit from predictable plans; other engines that ignore direction will still create a usable index).
+			{"idx_realtime_device_fetched_desc",
+				`CREATE INDEX IF NOT EXISTS idx_realtime_device_fetched_desc ON realtime_measurements (device_id, fetched_at DESC)`},
 			{"idx_realtime_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_realtime_bounds ON realtime_measurements (lat, lon, fetched_at)`},
 		}
