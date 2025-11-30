@@ -113,6 +113,7 @@ After it imports, rerun normally (or keep the same command in a systemd service)
 - Import: by URL or file; you can feed an archive directly.
 - Export: JSON archives, a single track, legacy `.cim` files supported.
 - Appearance: starting coordinates and layer (`-default-*`).
+- DuckDB startup slow? See the [performance notes](doc/DUCKDB_PERFORMANCE.md) for checkpoint/Parquet guidance.
 
 ---
 
