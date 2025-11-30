@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -10,6 +11,8 @@ import (
 	"math"
 	"net"
 	"net/url"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -446,13 +449,33 @@ func NewDatabase(config Config) (*Database, error) {
 	}
 
 	// Cheap liveness probe with timeout so we don't hang at startup
-	{
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if err := db.PingContext(ctx); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("error connecting to the database: %v", err)
+	// DuckDB can spend noticeable time replaying its log when the file is large,
+	// so we extend the timeout and emit periodic progress derived from process
+	// read counters. The reporting goroutine stays channel-driven to avoid any
+	// locking while still giving operators visibility into startup momentum.
+	var (
+		progressStop func()
+		pingTimeout  = 2 * time.Second
+	)
+	if driverName == "duckdb" {
+		pingTimeout = 45 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+	defer cancel()
+
+	if driverName == "duckdb" {
+		progressStop = startDuckDBStartupProgress(ctx, dsn, log.Printf)
+	}
+
+	if err := db.PingContext(ctx); err != nil {
+		if progressStop != nil {
+			progressStop()
 		}
+		_ = db.Close()
+		return nil, fmt.Errorf("error connecting to the database: %v", err)
+	}
+	if progressStop != nil {
+		progressStop()
 	}
 
 	log.Printf("Using database driver: %s with DSN: %s", driverName, dsn)
@@ -491,6 +514,152 @@ func NewDatabase(config Config) (*Database, error) {
 		Driver:      driverName,
 		pipeline:    pipeline,
 	}, nil
+}
+
+// startDuckDBStartupProgress logs periodic startup telemetry while DuckDB opens a
+// large file. We approximate progress using process read counters versus the file
+// size. The loop runs off a channel-friendly select so the goroutine stays easy to
+// reason about and can exit cleanly when the caller cancels the context or signals
+// completion via the returned stop function.
+func startDuckDBStartupProgress(ctx context.Context, dsn string, logf func(string, ...any)) func() {
+	if logf == nil {
+		logf = log.Printf
+	}
+
+	done := make(chan struct{})
+	go func() {
+		dbPath := duckDBFilePath(dsn)
+		totalSize := duckDBFileSize(dbPath)
+		startIO := processReadBytes()
+		start := time.Now()
+
+		// Emit an immediate line so operators know progress tracking is active.
+		logf("DuckDB startup: monitoring %s (%s)", dbPath, formatBytes(totalSize))
+
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				logf("DuckDB startup progress stopped after %s: %v", time.Since(start).Truncate(time.Millisecond), ctx.Err())
+				return
+			case <-ticker.C:
+				currentIO := processReadBytes()
+				consumed := currentIO - startIO
+				if consumed < 0 {
+					consumed = 0
+				}
+
+				percent := 0.0
+				if totalSize > 0 && consumed > 0 {
+					percent = math.Min(100, (float64(consumed)/float64(totalSize))*100)
+				}
+
+				etaText := ""
+				if percent > 0 {
+					remaining := time.Duration(float64(time.Since(start)) * (100 - percent) / percent)
+					etaText = fmt.Sprintf(", ETA ~%s", remaining.Truncate(time.Second))
+				}
+
+				logf("DuckDB startup: approx %.1f%% read (%s/%s), elapsed=%s%s", percent, formatBytes(consumed), formatBytes(totalSize), time.Since(start).Truncate(time.Second), etaText)
+			}
+		}
+	}()
+
+	return func() {
+		select {
+		case <-done:
+			// already closed
+		default:
+			close(done)
+		}
+	}
+}
+
+// duckDBFilePath derives a filesystem path from the DSN so we can report size
+// and progress. DuckDB DSNs are simple file names with optional query strings,
+// so trimming parameters keeps the log concise while resolving relative paths
+// for clarity.
+func duckDBFilePath(dsn string) string {
+	cleaned := strings.TrimSpace(dsn)
+	if cleaned == "" {
+		return ""
+	}
+
+	if idx := strings.Index(cleaned, "?"); idx >= 0 {
+		cleaned = cleaned[:idx]
+	}
+
+	if abs, err := filepath.Abs(cleaned); err == nil {
+		return abs
+	}
+	return cleaned
+}
+
+// duckDBFileSize returns the file size or zero when unavailable. Keeping this
+// small helper separate keeps the progress loop tidy and makes it easy to extend
+// with additional diagnostics later without touching the goroutine.
+func duckDBFileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+// processReadBytes inspects /proc/self/io to estimate how much data the process
+// has read so far. It falls back to zero on non-Linux systems or when the file is
+// missing so startup still proceeds without extra dependencies or locks.
+func processReadBytes() int64 {
+	f, err := os.Open("/proc/self/io")
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "read_bytes:") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			return 0
+		}
+
+		value, err := strconv.ParseInt(fields[1], 10, 64)
+		if err != nil {
+			return 0
+		}
+		return value
+	}
+
+	return 0
+}
+
+// formatBytes renders bytes into a human-friendly string without pulling in
+// external dependencies. This keeps log lines readable while following "A little
+// copying is better than a little dependency".
+func formatBytes(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%dB", n)
+	}
+
+	units := []string{"KB", "MB", "GB", "TB"}
+	value := float64(n)
+	for _, unit := range units {
+		value /= 1024
+		if value < 1024 {
+			return fmt.Sprintf("%.1f%s", value, unit)
+		}
+	}
+
+	return fmt.Sprintf("%.1fPB", value/1024)
 }
 
 // tuneSQLiteLikeConnection applies WAL/synchronous/busy pragmas for SQLite-like engines.
