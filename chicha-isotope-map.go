@@ -5106,9 +5106,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("DB init: %v", err)
 	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("DB close: %v", closeErr)
+		}
+	}()
 	if err = db.InitSchema(dbCfg); err != nil {
 		log.Fatalf("DB schema: %v", err)
 	}
+	queueDuckDBMaintenanceAfterImport(driverName, db, log.Printf, "startup")
 
 	remoteURL := strings.TrimSpace(*importTGZURLFlag)
 	localArchive := strings.TrimSpace(*importTGZFileFlag)
