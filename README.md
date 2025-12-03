@@ -101,6 +101,7 @@ After it imports, rerun normally (or keep the same command in a systemd service)
 ### 🛢️ Database options for import and regular use
 - **PostgreSQL (`pgx`)** — the fastest and most convenient with several users. Example: `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
 - **DuckDB / SQLite / Chai** — simple file databases for a single user. Concurrent writes can conflict, so keep them for personal maps. Example: `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
+  - When you pick DuckDB, install the DuckDB v1.4.x shared library on the host so the driver can link against the newer engine without bundled archives.
 
 ## 📤 Export
 - Single track: `/api/track/{trackID}.json` (legacy `.cim` also works).

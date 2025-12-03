@@ -11,6 +11,10 @@
 //   CGO_ENABLED=1 go build -tags duckdb
 //   # Windows (PowerShell)
 //   $env:CGO_ENABLED="1"; go build -tags duckdb -o chicha-isotope-map.exe
+// The bundled driver now links against a system DuckDB shared library so hosts
+// can upgrade to DuckDB v1.4.x without waiting for new static archives. Keeping
+// the dynamic dependency mirrors Go's advice to trust the standard toolbox and
+// makes cross-compiles leaner.
 
 package drivers
 
