@@ -203,7 +203,11 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 
 	env := append(os.Environ(), "GOOS="+job.osName, "GOARCH="+job.arch)
 	if job.duckdb {
-		env = append(env, "CGO_ENABLED=1")
+		// DuckDB bundles C++ bits, so we link libstdc++ and libgcc explicitly to keep the
+		// cross-compile predictable across platforms that have differing defaults and to
+		// avoid missing symbols like std::__throw_bad_array_new_length when CGO drives the
+		// linker via gcc instead of g++.
+		env = append(env, "CGO_ENABLED=1", "CGO_LDFLAGS=-lstdc++ -static-libstdc++ -static-libgcc")
 	} else {
 		env = append(env, "CGO_ENABLED=0")
 	}
@@ -224,15 +228,16 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 }
 
 // supportsDuckDB reports whether the given OS and architecture combination can build with DuckDB.
-// DuckDB driver is available on Linux/amd64, macOS/amd64, macOS/arm64, and Windows/amd64.
+// We enable DuckDB on Linux, macOS, and Windows for amd64/arm64 so developers on common
+// desktop environments can test the embedded database without widening the CGO surface too much.
 func supportsDuckDB(osName, arch string) bool {
+	if arch != "amd64" && arch != "arm64" {
+		return false
+	}
+
 	switch osName {
-	case "linux":
-		return arch == "amd64"
-	case "darwin":
-		return arch == "amd64" || arch == "arm64"
-	case "windows":
-		return arch == "amd64"
+	case "linux", "darwin", "windows":
+		return true
 	default:
 		return false
 	}

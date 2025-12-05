@@ -1,21 +1,36 @@
-//go:build cgo && duckdb && ((linux && amd64) || (darwin && (amd64 || arm64)) || (windows && amd64))
+//go:build cgo && duckdb && (linux || darwin || windows) && (amd64 || arm64)
 
-// DuckDB driver is enabled on:
-//   - Linux/amd64
-//   - macOS/amd64, macOS/arm64
-//   - Windows/amd64
-// Requires build tag: -tags duckdb and CGO enabled.
-// Linux/arm64 remains excluded.
+/*
+#cgo linux LDFLAGS: -lstdc++ -static-libstdc++ -static-libgcc
+*/
+
+// DuckDB driver is enabled for Linux, macOS, and Windows so developers on the main
+// desktop platforms can use the embedded engine while still keeping CGO explicit and
+// predictable. We keep the architecture list to amd64/arm64 to avoid platform-specific
+// surprises, following Go proverbs about clarity and explicitness.
+// The linux-specific cgo LDFLAGS above force in libstdc++ and libgcc statically to satisfy
+// DuckDB's C++ helpers that are not pulled in automatically when Go drives the linker.
+// This keeps the user-facing build steps minimal while preventing missing symbol errors
+// like std::__throw_bad_array_new_length when building DuckDB-enabled binaries.
+// Requires build tag: -tags duckdb and CGO enabled on supported platforms.
 // Build examples:
-//   # Linux/macOS
-//   CGO_ENABLED=1 go build -tags duckdb
-//   # Windows (PowerShell)
-//   $env:CGO_ENABLED="1"; go build -tags duckdb -o chicha-isotope-map.exe
-
+//
+//	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags duckdb
+//	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -tags duckdb
+//	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags duckdb
+//	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags duckdb
+//	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -tags duckdb
+//	CGO_ENABLED=1 GOOS=windows GOARCH=arm64 go build -tags duckdb
+//	go build -tags duckdb -o chicha-isotope-map
+//
+// Binaries that need DuckDB can import this package with the duckdb tag so the official
+// duckdb-go driver registers itself. We keep this file isolated to keep CGO optional
+// for builds that do not embed DuckDB at all.
 package drivers
 
 import (
-	// DuckDB stays behind an explicit build tag because it requires CGO.
-	// Binaries that need DuckDB can import this package with the duckdb tag.
-	_ "github.com/marcboeker/go-duckdb"
+	// We pull in the official duckdb-go driver through a replace directive so builds stay
+	// reproducible even when the network proxy blocks downloads. The underscore import
+	// ensures the driver registers with database/sql while keeping this file small.
+	_ "github.com/duckdb/duckdb-go/v4"
 )
