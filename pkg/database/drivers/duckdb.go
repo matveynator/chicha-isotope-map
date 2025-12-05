@@ -1,9 +1,17 @@
 //go:build cgo && duckdb && (linux || darwin || windows) && (amd64 || arm64)
 
+/*
+#cgo linux LDFLAGS: -lstdc++ -static-libstdc++ -static-libgcc
+*/
+
 // DuckDB driver is enabled for Linux, macOS, and Windows so developers on the main
 // desktop platforms can use the embedded engine while still keeping CGO explicit and
 // predictable. We keep the architecture list to amd64/arm64 to avoid platform-specific
 // surprises, following Go proverbs about clarity and explicitness.
+// The linux-specific cgo LDFLAGS above force in libstdc++ and libgcc statically to satisfy
+// DuckDB's C++ helpers that are not pulled in automatically when Go drives the linker.
+// This keeps the user-facing build steps minimal while preventing missing symbol errors
+// like std::__throw_bad_array_new_length when building DuckDB-enabled binaries.
 // Requires build tag: -tags duckdb and CGO enabled on supported platforms.
 // Build examples:
 //
