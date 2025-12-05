@@ -23,10 +23,14 @@
 //	CGO_ENABLED=1 GOOS=windows GOARCH=arm64 go build -tags duckdb
 //	go build -tags duckdb -o chicha-isotope-map
 //
-// Binaries that need DuckDB can import this package with the duckdb tag.
-// This file lives outside the main build to keep CGO isolated and optional.
+// Binaries that need DuckDB can import this package with the duckdb tag so the official
+// duckdb-go driver registers itself. We keep this file isolated to keep CGO optional
+// for builds that do not embed DuckDB at all.
 package drivers
 
 import (
-	_ "github.com/marcboeker/go-duckdb/v2"
+	// We pull in the official duckdb-go driver through a replace directive so builds stay
+	// reproducible even when the network proxy blocks downloads. The underscore import
+	// ensures the driver registers with database/sql while keeping this file small.
+	_ "github.com/duckdb/duckdb-go/v4"
 )
