@@ -349,19 +349,16 @@ func (db *Database) EnsureTrackPresence(ctx context.Context, trackID, dbType str
 	}
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
-	idPlaceholder := nextPlaceholder()
-	guardPlaceholder := nextPlaceholder()
-	// We keep placeholders distinct so positional drivers like Postgres still
-	// receive two arguments while preserving portable SQL across engines.
+	value := nextPlaceholder()
 	stmt := fmt.Sprintf(`INSERT INTO tracks (trackID)
 SELECT %s
-WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, idPlaceholder, guardPlaceholder)
+WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, value, value)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
 
 	return db.withSerializedConnectionFor(ctx, WorkloadUserUpload, func(ctx context.Context, conn *sql.DB) error {
-		if _, err := conn.ExecContext(ctx, stmt, trackID, trackID); err != nil {
+		if _, err := conn.ExecContext(ctx, stmt, trackID); err != nil {
 			return fmt.Errorf("ensure track presence: %w", err)
 		}
 		return nil

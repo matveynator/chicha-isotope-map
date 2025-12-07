@@ -27,32 +27,6 @@ type Database struct {
 	Driver      string              // Normalized driver name so SQL builders can stay declarative
 	pipeline    *serializedPipeline // Serialises reads and writes for single-writer engines with workload-aware queues
 	upkeep      *duckDBMaintenance  // Coordinates background maintenance for DuckDB so imports end with a compact file
-	duckTempDir string              // Per-database temp directory rooted beside the database file so spills stay colocated
-	duckCleanup func() error        // Cleanup hook that removes the temp directory when the process shuts down
-}
-
-// Close releases the shared connection and cleans up per-engine scratch space. We keep
-// the logic simple and sequential so shutdown paths remain predictable, matching the Go
-// Proverb "Clear is better than clever" while still returning the first encountered error.
-func (db *Database) Close() error {
-	if db == nil {
-		return nil
-	}
-
-	var firstErr error
-	if db.DB != nil {
-		if err := db.DB.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-
-	if db.duckCleanup != nil {
-		if err := db.duckCleanup(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-
-	return firstErr
 }
 
 // serializedJob represents a unit of work that must run in isolation for engines such as
@@ -495,9 +469,6 @@ func NewDatabase(config Config) (*Database, error) {
 	var (
 		dsn                string
 		applySQLitePragmas bool
-		duckMemoryLimit    string
-		duckTempDir        string
-		duckCleanup        func() error
 	)
 
 	switch driverName {
@@ -522,8 +493,6 @@ func NewDatabase(config Config) (*Database, error) {
 		if dsn == "" {
 			dsn = fmt.Sprintf("database-%d.duckdb", config.Port)
 		}
-		duckMemoryLimit = deriveDuckDBMemoryLimit(log.Printf)
-		duckTempDir, duckCleanup = prepareDuckDBTempDir(dsn, log.Printf)
 	case "pgx":
 		if strings.TrimSpace(config.DBConn) != "" {
 			dsn = config.DBConn
@@ -594,8 +563,7 @@ func NewDatabase(config Config) (*Database, error) {
 		db.SetMaxIdleConns(1)
 		db.SetConnMaxLifetime(0)
 		tuneCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		tuneCfg := duckDBTuneConfig{memoryLimit: duckMemoryLimit, tempDirectory: duckTempDir}
-		if err := tuneDuckDBConnection(tuneCtx, db, log.Printf, tuneCfg); err != nil {
+		if err := tuneDuckDBConnection(tuneCtx, db, log.Printf); err != nil {
 			log.Printf("duckdb tuning skipped: %v", err)
 		}
 		cancel()
@@ -671,8 +639,6 @@ func NewDatabase(config Config) (*Database, error) {
 		idGenerator: idChannel,
 		Driver:      driverName,
 		pipeline:    pipeline,
-		duckTempDir: duckTempDir,
-		duckCleanup: duckCleanup,
 	}
 
 	if driverName == "duckdb" {
@@ -830,118 +796,6 @@ func formatBytes(n int64) string {
 	return fmt.Sprintf("%.1fPB", value/1024)
 }
 
-// duckDBTuneConfig carries runtime knobs that must be applied early so DuckDB stays within
-// resource budgets. Using a struct keeps the call sites readable while letting us extend
-// settings without threading more parameters through the stack.
-type duckDBTuneConfig struct {
-	memoryLimit   string
-	tempDirectory string
-}
-
-// deriveDuckDBMemoryLimit clamps DuckDB to 20% of the host's memory so huge tables do not
-// evict the kernel page cache. We parse /proc/meminfo to avoid new dependencies and log the
-// decision to honour the proverb "Clear is better than clever" for operators watching
-// startup output.
-func deriveDuckDBMemoryLimit(logf func(string, ...any)) string {
-	if logf == nil {
-		logf = log.Printf
-	}
-
-	total := detectTotalMemoryBytes()
-	if total <= 0 {
-		logf("duckdb memory limit skipped: unable to detect system memory")
-		return ""
-	}
-
-	limit := total / 5
-	const floor = int64(256 * 1024 * 1024)
-	if limit < floor {
-		limit = floor
-	}
-
-	logf("duckdb memory limit set to %s (20%% of %s)", formatBytes(limit), formatBytes(total))
-	return formatDuckDBMemoryLimit(limit)
-}
-
-// detectTotalMemoryBytes reads the host's reported memory on Linux systems. We stick to a
-// tiny scanner instead of extra packages to keep the binary lean and easy to audit.
-func detectTotalMemoryBytes() int64 {
-	file, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return 0
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "MemTotal:") {
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			return 0
-		}
-
-		value, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil {
-			return 0
-		}
-
-		// MemTotal is reported in kB.
-		return value * 1024
-	}
-
-	return 0
-}
-
-// formatDuckDBMemoryLimit renders the byte value into the unit notation DuckDB expects.
-// Keeping the conversion tiny avoids importing extra formatters while staying explicit.
-func formatDuckDBMemoryLimit(bytes int64) string {
-	if bytes <= 0 {
-		return ""
-	}
-
-	mb := bytes / (1024 * 1024)
-	if mb < 1 {
-		mb = 1
-	}
-
-	return fmt.Sprintf("%dMB", mb)
-}
-
-// prepareDuckDBTempDir anchors DuckDB's temp directory beside the database file so large
-// sorts spill to the same filesystem. We create and clean the directory eagerly to honour
-// the proverb "A little copying is better than a little dependency" while keeping resource
-// ownership obvious.
-func prepareDuckDBTempDir(dsn string, logf func(string, ...any)) (string, func() error) {
-	if logf == nil {
-		logf = log.Printf
-	}
-
-	basePath := duckDBFilePath(dsn)
-	if strings.TrimSpace(basePath) == "" {
-		return "", nil
-	}
-
-	parent := filepath.Dir(basePath)
-	tmp := filepath.Join(parent, "tmp")
-	if err := os.RemoveAll(tmp); err != nil {
-		logf("duckdb temp directory pre-clean failed: %v", err)
-	}
-
-	if err := os.MkdirAll(tmp, 0o755); err != nil {
-		logf("duckdb temp directory creation failed: %v", err)
-		return "", nil
-	}
-
-	logf("duckdb temp spill directory ready: %s", tmp)
-	return tmp, func() error {
-		return os.RemoveAll(tmp)
-	}
-}
-
 // tuneSQLiteLikeConnection applies WAL/synchronous/busy pragmas for SQLite-like engines.
 // We keep the steps portable and run them through a small channel pipeline so the
 // work happens outside the caller goroutine, following "Don't communicate by sharing
@@ -1009,7 +863,7 @@ func tuneSQLiteLikeConnection(ctx context.Context, db *sql.DB, logf func(string,
 // tuneDuckDBConnection applies light-weight pragmas that keep imports CPU-bound rather than
 // pausing on checkpoints. We keep the steps portable by driving them through channels so the
 // caller remains responsive, and we only touch settings DuckDB documents as safe at runtime.
-func tuneDuckDBConnection(ctx context.Context, db *sql.DB, logf func(string, ...any), cfg duckDBTuneConfig) error {
+func tuneDuckDBConnection(ctx context.Context, db *sql.DB, logf func(string, ...any)) error {
 	// Use available CPUs for vectorised operations; defaults can be conservative inside containers.
 	threads := runtime.NumCPU()
 	if threads < 1 {
@@ -1026,14 +880,6 @@ func tuneDuckDBConnection(ctx context.Context, db *sql.DB, logf func(string, ...
 		// DuckDB checkpoints can stall long-running imports. Raising the threshold lets the bulk
 		// transaction flush once at commit time instead of pausing mid-stream.
 		{label: "checkpoint_threshold", query: "PRAGMA checkpoint_threshold='1GB';"},
-	}
-
-	if strings.TrimSpace(cfg.memoryLimit) != "" {
-		steps = append(steps, pragma{label: "memory_limit", query: fmt.Sprintf("PRAGMA memory_limit='%s';", cfg.memoryLimit)})
-	}
-
-	if strings.TrimSpace(cfg.tempDirectory) != "" {
-		steps = append(steps, pragma{label: "temp_directory", query: fmt.Sprintf("PRAGMA temp_directory='%s';", cfg.tempDirectory)})
 	}
 
 	jobs := make(chan pragma)
