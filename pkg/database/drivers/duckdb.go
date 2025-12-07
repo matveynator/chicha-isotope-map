@@ -2,6 +2,7 @@
 
 /*
 #cgo linux LDFLAGS: -lstdc++ -static-libstdc++ -static-libgcc
+#cgo darwin LDFLAGS: -lc++
 */
 
 // DuckDB driver is enabled for Linux and macOS because those platforms ship official
