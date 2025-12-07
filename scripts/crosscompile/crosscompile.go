@@ -228,19 +228,20 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 }
 
 // supportsDuckDB reports whether the given OS and architecture combination can build with DuckDB.
-// We enable DuckDB on Linux, macOS, and Windows for amd64/arm64 so developers on common
-// desktop environments can test the embedded database without widening the CGO surface too much.
+// We enable DuckDB on Linux and macOS for amd64/arm64 to align with the upstream driver support
+// matrix and avoid brittle BSD/Windows builds. Keeping the list short matches the Go proverbs
+// about simplicity and makes release automation predictable.
 func supportsDuckDB(osName, arch string) bool {
-	if arch != "amd64" && arch != "arm64" {
-		return false
-	}
+        if arch != "amd64" && arch != "arm64" {
+                return false
+        }
 
-	switch osName {
-	case "linux", "darwin", "windows":
-		return true
-	default:
-		return false
-	}
+        switch osName {
+        case "linux", "darwin":
+                return true
+        default:
+                return false
+        }
 }
 
 // ----- Git helpers -----
