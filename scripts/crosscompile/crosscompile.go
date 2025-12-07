@@ -203,11 +203,9 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 
 	env := append(os.Environ(), "GOOS="+job.osName, "GOARCH="+job.arch)
 	if job.duckdb {
-		// DuckDB bundles C++ bits, so we link libstdc++ and libgcc explicitly to keep the
-		// cross-compile predictable across platforms that have differing defaults and to
-		// avoid missing symbols like std::__throw_bad_array_new_length when CGO drives the
-		// linker via gcc instead of g++.
-		env = append(env, "CGO_ENABLED=1", "CGO_LDFLAGS=-lstdc++ -static-libstdc++ -static-libgcc")
+		// DuckDB bundles C++ bits, so we link libstdc++ explicitly to keep the
+		// cross-compile predictable across platforms that have differing defaults.
+		env = append(env, "CGO_ENABLED=1", "CGO_LDFLAGS=-lstdc++")
 	} else {
 		env = append(env, "CGO_ENABLED=0")
 	}
