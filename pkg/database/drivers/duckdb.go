@@ -1,18 +1,13 @@
-//go:build cgo && duckdb && (linux || darwin || windows) && (amd64 || arm64)
+//go:build cgo && duckdb && linux && (amd64 || arm64)
 
-// DuckDB driver is enabled for Linux, macOS, and Windows so developers on the main
-// desktop platforms can use the embedded engine while still keeping CGO explicit and
-// predictable. We keep the architecture list to amd64/arm64 to avoid platform-specific
-// surprises, following Go proverbs about clarity and explicitness.
-// Requires build tag: -tags duckdb and CGO enabled on supported platforms.
+// DuckDB driver is only enabled for Linux builds so cross compilation stays predictable
+// and we avoid chasing platform-specific binary packages. This respects Go proverbs by
+// keeping the surface small and explicit.
+// Requires build tag: -tags duckdb and CGO enabled on Linux.
 // Build examples:
 //
 //	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags duckdb
 //	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -tags duckdb
-//	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags duckdb
-//	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags duckdb
-//	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -tags duckdb
-//	CGO_ENABLED=1 GOOS=windows GOARCH=arm64 go build -tags duckdb
 //	go build -tags duckdb -o chicha-isotope-map
 //
 // Binaries that need DuckDB can import this package with the duckdb tag.
