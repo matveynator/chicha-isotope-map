@@ -1,4 +1,4 @@
-FROM postgres:16-bookworm
+FROM postgres:18-bookworm
 
 # ----- утилиты + бинарь приложения -------------------------------
 RUN apt-get update && \
