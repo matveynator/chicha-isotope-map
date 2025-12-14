@@ -93,6 +93,8 @@ On Linux only, run the short wizard. It starts by asking if HTTPS is needed (the
 
 After writing the unit it reloads systemd, starts the service, tails the log for you, and drops a tiny reminder into your `~/.profile` so SSH logins show how to restart, stop, edit, or tail logs. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist.
 
+The wizard also writes `/usr/local/bin/chicha-update`, a helper that stops the freshly provisioned service, downloads the latest GitHub release, restarts the service, and tails the log — one command to refresh the node.
+
 Quick refresher for later:
 - edit the unit: `sudo nano /etc/systemd/system/chicha-isotope-map-<port>.service` (drop `sudo` for user units)
 - apply changes: `systemctl daemon-reload && systemctl restart chicha-isotope-map-<port>.service`
