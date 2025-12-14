@@ -84,6 +84,33 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 ```
 3) Open [http://localhost:8765](http://localhost:8765) — that’s it.
 
+### Option 4. Guided Linux service setup
+On Linux only, run the short wizard. It starts by asking if HTTPS is needed (then uses 80/443 and asks for a domain); otherwise it asks for the HTTP port, database path/URI, support e-mail, Safecast realtime toggle, archive folder, and whether to fetch an initial `.tgz` before writing a port-specific systemd unit and enabling it right away:
+
+```bash
+./chicha-isotope-map -setup
+```
+
+After writing the unit it reloads systemd, starts the service, tails the log for you, and drops a tiny reminder into your `~/.profile` so SSH logins show how to restart, stop, edit, or tail logs. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist.
+
+Quick refresher for later:
+- edit the unit: `sudo nano /etc/systemd/system/chicha-isotope-map-<port>.service` (drop `sudo` for user units)
+- apply changes: `systemctl daemon-reload && systemctl restart chicha-isotope-map-<port>.service`
+- stop or start: `systemctl stop|start chicha-isotope-map-<port>.service`
+- watch logs: `journalctl -u chicha-isotope-map-<port>.service -f` (or `tail -f /var/log/chicha-isotope-map-<port>.log`)
+
+When it asks for a database:
+- `sqlite` / `chai` suggest `/var/lib/<db-type>-<port>/database.<ext>` and create directories automatically.
+- `pgx` is PostgreSQL with defaults `localhost:5432`, user `postgres`, empty password, and DB name `chicha` — the wizard builds the URI for you.
+- `duckdb` only appears if the binary was built with DuckDB enabled.
+
+Other prompts:
+- **Safecast realtime**: choose whether to load live Safecast devices on startup.
+- **Archive path**: suggests `/backup/chicha-json-<port>` and creates missing directories so scheduled exports never fail.
+- **Import**: opt-in; if enabled you can accept `https://pelora.org/api/json/weekly.tgz` or enter your own URL.
+
+At review press a number to tweak a field, `apply` to write, `restart` to redo with current defaults, or `quit` to exit without saving.
+
 ---
 
 ## 📥 Import data
