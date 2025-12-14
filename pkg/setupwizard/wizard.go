@@ -307,7 +307,7 @@ outer:
 		fmt.Fprintf(out, "%sExecStart:%s %s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), strings.Join(args, " "))
 		printNextSteps(out, theme, result)
 		appendProfilePrimer(result)
-		tailLogs(ctx, out, theme, logPath)
+		printUsageHint(out, theme, answers.Domain, answers.Port)
 
 		return result, nil
 	}
@@ -697,11 +697,15 @@ func resolveLogPath(userUnit bool, port int) (string, error) {
 }
 
 // buildExecArgs assembles the final ExecStart line. Returning a slice keeps the
-// order predictable and avoids clever string concatenation.
+// order predictable and avoids clever string concatenation. When a domain is
+// present we skip an explicit port because HTTPS mode already binds 80/443 via
+// the autocert server, keeping the unit file truthful to the CLI.
 func buildExecArgs(binary string, port int, domain, dbType, dbPath, dbConn, support string, safecast bool, archiveDir string, importEnabled bool, importURL string) []string {
-	args := []string{binary, "-port", strconv.Itoa(port), "-db-type", dbType}
+	args := []string{binary, "-db-type", dbType}
 	if strings.TrimSpace(domain) != "" {
 		args = append(args, "-domain", domain)
+	} else {
+		args = append(args, "-port", strconv.Itoa(port))
 	}
 	if dbType == "pgx" || dbType == "clickhouse" {
 		if strings.TrimSpace(dbConn) != "" {
@@ -839,13 +843,13 @@ func printNextSteps(out io.Writer, theme colorTheme, res Result) {
 	} else {
 		edit = fmt.Sprintf("sudo %s", edit)
 	}
-	reload := fmt.Sprintf("%s daemon-reload", prefix)
 	fmt.Fprintf(out, "\n%sNext:%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+	fmt.Fprintf(out, "  reload:  %s daemon-reload\n", prefix)
 	fmt.Fprintf(out, "  start:   %s start %s\n", prefix, res.ServiceName)
 	fmt.Fprintf(out, "  restart: %s restart %s\n", prefix, res.ServiceName)
 	fmt.Fprintf(out, "  stop:    %s stop %s\n", prefix, res.ServiceName)
 	fmt.Fprintf(out, "  edit:    %s\n", edit)
-	fmt.Fprintf(out, "           %s && %s restart %s\n", reload, prefix, res.ServiceName)
+	fmt.Fprintf(out, "           %s daemon-reload && %s restart %s\n", prefix, prefix, res.ServiceName)
 	fmt.Fprintf(out, "  logs:    %s %s -f (or tail %s)\n", journal, res.ServiceName, res.LogPath)
 	fmt.Fprintf(out, "  file:    %s\n", res.ServicePath)
 }
@@ -870,7 +874,7 @@ func appendProfilePrimer(res Result) {
 		edit = fmt.Sprintf("sudo %s", edit)
 	}
 
-	block := fmt.Sprintf("\n# chicha-isotope-map service hint\nif [ -t 1 ]; then\n  echo \"Chicha service: %s\"\n  echo \"restart: %s restart %s\"\n  echo \"stop:    %s stop %s\"\n  echo \"edit:    %s\"\n  echo \"logs:    %s %s -f (or tail -f %s)\"\nfi\n", res.ServiceName, prefix, res.ServiceName, prefix, res.ServiceName, edit, journal, res.ServiceName, res.LogPath)
+	block := fmt.Sprintf("\n# chicha-isotope-map service hint\nif [ -t 1 ]; then\n  echo \"Chicha service: %s\"\n  echo \"reload:  %s daemon-reload\"\n  echo \"restart: %s restart %s\"\n  echo \"stop:    %s stop %s\"\n  echo \"edit:    %s\"\n  echo \"logs:    %s %s -f (or tail -f %s)\"\nfi\n", res.ServiceName, prefix, prefix, res.ServiceName, prefix, res.ServiceName, edit, journal, res.ServiceName, res.LogPath)
 
 	existing, err := os.ReadFile(profilePath)
 	if err == nil && strings.Contains(string(existing), "# chicha-isotope-map service hint") {
@@ -883,6 +887,20 @@ func appendProfilePrimer(res Result) {
 	}
 	defer f.Close()
 	_, _ = f.WriteString(block)
+}
+
+// printUsageHint keeps the end-of-setup message short while still telling the
+// operator how to reach the service. Mentioning autocert ports when a domain is
+// present avoids confusion about why 80/443 must stay open even though we no
+// longer ask for an explicit port flag.
+func printUsageHint(out io.Writer, theme colorTheme, domain string, port int) {
+	target := fmt.Sprintf("http://localhost:%d", port)
+	note := "Keep the service running under systemd and reload+restart after edits."
+	if trimmed := strings.TrimSpace(domain); trimmed != "" {
+		target = fmt.Sprintf("https://%s", trimmed)
+		note = "TLS uses ports 80/443 automatically; leave them open for Let's Encrypt."
+	}
+	fmt.Fprintf(out, "\n%sUse:%s open %s in your browser. %s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), target, note)
 }
 
 // tailLogs follows the application log right after startup so operators can see the first lines without another command.
