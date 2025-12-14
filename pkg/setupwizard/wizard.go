@@ -101,26 +101,21 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 	theme := resolveTheme(out)
 	reader := bufio.NewReader(in)
 
-	fmt.Fprintf(out, "\n%s🛠  Interactive setup for chicha-isotope-map%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
-	fmt.Fprintf(out, "%sAnswer with Enter to accept defaults. The wizard writes a port-named systemd service, creates missing directories, and shows ready-to-use commands.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
-	fmt.Fprintf(out, "%sType restart at the review step to change anything without retyping. Type cancel to pause and rerun with the remembered choices as defaults.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+	fmt.Fprintf(out, "\n%s🛠  Quick setup (Linux)%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+	fmt.Fprintf(out, "%sEnter keeps the defaults. Services and logs are named after the chosen port. You can edit individual answers in the review.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 
 	answers := enrichDefaults(defaults)
+outer:
 	for {
-		portStr := promptWithDefault(ctx, reader, out, theme, "HTTP port (e.g. 8765)", strconv.Itoa(answers.Port))
-		port, err := strconv.Atoi(portStr)
-		if err != nil || port <= 0 {
-			return Result{}, fmt.Errorf("invalid port: %s", portStr)
-		}
-		answers.Port = port
+		answers.Port = promptPort(ctx, reader, out, theme, answers.Port)
 
-		fmt.Fprintf(out, "%sDomain notes:%s leave empty for HTTP only; set a hostname for HTTPS with Let's Encrypt (ports 80/443 must be reachable).\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+		fmt.Fprintf(out, "%sDomain:%s empty keeps HTTP; hostname enables HTTPS with Let's Encrypt (needs 80/443).\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 		answers.Domain = promptWithDefault(ctx, reader, out, theme, "Domain", answers.Domain)
 
 		options := availableDBTypes()
-		fmt.Fprintf(out, "%sDatabase engines:%s sqlite/chai are file-based and simple; pgx means PostgreSQL; clickhouse is columnar for analytics.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		fmt.Fprintf(out, "%sDatabase:%s sqlite/chai are file-based; pgx is PostgreSQL; clickhouse suits analytics.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
 		if duckDBBuilt {
-			fmt.Fprintf(out, "%sDuckDB appears only when compiled with the duckdb tag; it is great for local analytics and Parquet.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+			fmt.Fprintf(out, "%sDuckDB shows up only when compiled with -tags duckdb for local analytics.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 		}
 		answers.DBType = promptChoice(ctx, reader, out, theme, "Database engine", options, pickDefault(options, answers.DBType))
 
@@ -131,6 +126,7 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 		fmt.Fprintf(out, "%sSupport contact:%s shown in the legal notice so operators can be reached easily.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
 		answers.SupportEmail = promptWithDefault(ctx, reader, out, theme, "Support e-mail", answers.SupportEmail)
 
+		port := answers.Port
 		unitPath, userUnit, err := resolveServiceDestination(port)
 		if err != nil {
 			return Result{}, err
@@ -156,20 +152,68 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 			return Result{}, err
 		}
 
-		if err := prepareDBPath(answers.DBType, answers.DBPath); err != nil {
-			return Result{}, err
+		for {
+			fmt.Fprintf(out, "\n%sReview:%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+			fmt.Fprintf(out, "  [1] Port:    %d\n", port)
+			fmt.Fprintf(out, "  [2] Domain:  %s\n", displayValue(answers.Domain))
+			fmt.Fprintf(out, "  [3] DB:      %s\n", answers.DBType)
+			fmt.Fprintf(out, "  [4] Support: %s\n", displayValue(answers.SupportEmail))
+			fmt.Fprintf(out, "      Service: %s\n      Logs:    %s\n", unitPath, logPath)
+
+			action := promptWithDefault(ctx, reader, out, theme, "Enter = write, number = change, restart = redo all, cancel = exit", "")
+			action = strings.ToLower(strings.TrimSpace(action))
+
+			if action == "" {
+				break
+			}
+			if action == "restart" {
+				fmt.Fprintf(out, "%sRestarting with your current choices as defaults.%s\n\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
+				continue outer
+			}
+			if action == "cancel" {
+				return Result{}, errors.New("setup wizard cancelled by user")
+			}
+
+			changed := false
+			switch action {
+			case "1":
+				answers.Port = promptPort(ctx, reader, out, theme, answers.Port)
+				port = answers.Port
+				changed = true
+			case "2":
+				answers.Domain = promptWithDefault(ctx, reader, out, theme, "Domain", answers.Domain)
+				changed = true
+			case "3":
+				options = availableDBTypes()
+				answers.DBType = promptChoice(ctx, reader, out, theme, "Database engine", options, pickDefault(options, answers.DBType))
+				answers.DBPath, answers.DBConn = promptDatabaseConfig(ctx, reader, out, theme, &answers)
+				changed = true
+			case "4":
+				answers.SupportEmail = promptWithDefault(ctx, reader, out, theme, "Support e-mail", answers.SupportEmail)
+				changed = true
+			}
+			if changed {
+				unitPath, userUnit, err = resolveServiceDestination(answers.Port)
+				if err != nil {
+					return Result{}, err
+				}
+				logPath, err = resolveLogPath(userUnit, answers.Port)
+				if err != nil {
+					return Result{}, err
+				}
+				port = answers.Port
+				continue
+			}
 		}
 
-		fmt.Fprintf(out, "\n%sReview:%s port=%d, domain=%s, db=%s, support=%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), port, displayValue(answers.Domain), answers.DBType, displayValue(answers.SupportEmail))
-		fmt.Fprintf(out, "Logs will go to %s; service will live at %s.\n", logPath, unitPath)
-		action := promptWithDefault(ctx, reader, out, theme, "Press Enter to write the service, type restart to edit answers, or cancel to stop", "")
-		action = strings.ToLower(strings.TrimSpace(action))
-		if action == "restart" {
-			fmt.Fprintf(out, "%sRestarting with your current choices as defaults.%s\n\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
-			continue
+		port = answers.Port
+		args = buildExecArgs(execPath, port, answers.Domain, answers.DBType, answers.DBPath, answers.DBConn, answers.SupportEmail)
+		logPath, err = resolveLogPath(userUnit, port)
+		if err != nil {
+			return Result{}, err
 		}
-		if action == "cancel" {
-			return Result{}, errors.New("setup wizard cancelled by user")
+		if err := prepareDBPath(answers.DBType, answers.DBPath); err != nil {
+			return Result{}, err
 		}
 
 		if err := writeServiceFile(unitPath, answers.WorkingDir, logPath, args, userUnit); err != nil {
@@ -262,6 +306,20 @@ func pickDefault(options []string, def string) string {
 		}
 	}
 	return options[0]
+}
+
+// promptPort asks for the listening port and retries on invalid input so the
+// wizard never aborts due to a typo. The select-based reader keeps the flow
+// cancellable without locks.
+func promptPort(ctx context.Context, reader *bufio.Reader, out io.Writer, theme colorTheme, current int) int {
+	for {
+		portStr := promptWithDefault(ctx, reader, out, theme, "HTTP port (e.g. 8765)", strconv.Itoa(current))
+		port, err := strconv.Atoi(portStr)
+		if err == nil && port > 0 {
+			return port
+		}
+		fmt.Fprintf(out, "%sPlease enter a positive port number.%s\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
+	}
 }
 
 // promptDatabaseConfig prints detailed hints for the selected database and

@@ -85,7 +85,7 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 3) Open [http://localhost:8765](http://localhost:8765) — that’s it.
 
 ### Option 4. Guided Linux service setup
-Prefer a colourful guided install? Launch the wizard and it will ask for port, domain, database path/URI, and support e-mail, then write a port-specific systemd unit and try to enable it automatically:
+Prefer a colourful guided install? On Linux only, launch the wizard and it will ask for port, domain, database path/URI, and support e-mail, then write a port-specific systemd unit and try to enable it automatically:
 
 ```bash
 ./chicha-isotope-map -setup
@@ -98,7 +98,7 @@ When it asks for a database:
 - `pgx` is PostgreSQL with defaults `localhost:5432`, user `postgres`, empty password, and DB name `chicha` — the wizard builds the URI for you.
 - `duckdb` only appears if the binary was built with DuckDB enabled.
 
-You can type `restart` at the review step to redo answers with your previous choices prefilled, or `cancel` to pause and rerun later.
+At the review step press `1-4` to change a single field, hit `Enter` to write the service, type `restart` to redo everything with remembered defaults, or `cancel` to rerun later. More examples live in `docs/SETUP_WIZARD.md`.
 
 ---
 

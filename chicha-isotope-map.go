@@ -88,7 +88,11 @@ var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a 
 var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz of exported JSON files, log progress, and exit once finished.")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var debugIPsFlag = flag.String("debug", "", "Comma separated IP addresses allowed to view the debug overlay")
-var setupWizardEnabled = flag.Bool("setup", false, "Launch an interactive, coloured setup wizard to install the binary as a systemd service")
+
+// setupWizardEnabled is registered only on Linux so other platforms avoid unusable
+// flags. We keep the pointer nullable to preserve zero-value semantics without extra
+// globals, following the "Make the zero value useful" proverb.
+var setupWizardEnabled = registerSetupFlag()
 
 // debugIPAllowlist keeps a fast lookup of remote addresses that should see the
 // technical overlay. We keep it as a map so lookups stay O(1) without extra
@@ -109,6 +113,16 @@ var cliUsageSections = []usageSection{
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
+}
+
+// registerSetupFlag avoids showing the setup wizard flag on non-Linux systems so help
+// output stays truthful. Returning a pointer lets callers check for nil instead of
+// juggling booleans across platforms.
+func registerSetupFlag() *bool {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	return flag.Bool("setup", false, "Launch an interactive, coloured setup wizard to install the binary as a systemd service (Linux only)")
 }
 
 // cliColorTheme centralises ANSI escape sequences so we can keep colourful help output
@@ -5051,7 +5065,7 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	// 1. Флаги и версии
 	flag.Parse()
-	if *setupWizardEnabled {
+	if setupWizardEnabled != nil && *setupWizardEnabled {
 		// Running the setup wizard before other initialisation keeps the flow fast
 		// when operators only want to install the systemd unit. We avoid touching
 		// databases or HTTP handlers so the wizard stays lightweight.
