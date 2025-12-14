@@ -825,18 +825,26 @@ func runSystemctl(ctx context.Context, commands []string) <-chan commandResult {
 }
 
 // printNextSteps writes a concise how-to block so operators immediately know
-// how to manage the service and inspect logs.
+// how to manage the service and inspect logs. The goal is to keep post-setup
+// actions discoverable without forcing people to hunt for the right systemctl
+// incantations.
 func printNextSteps(out io.Writer, theme colorTheme, res Result) {
 	prefix := "systemctl"
 	journal := "journalctl -u"
+	edit := fmt.Sprintf("nano %s", res.ServicePath)
 	if res.UserUnit {
 		prefix = "systemctl --user"
 		journal = "journalctl --user -u"
+	} else {
+		edit = fmt.Sprintf("sudo %s", edit)
 	}
+	reload := fmt.Sprintf("%s daemon-reload", prefix)
 	fmt.Fprintf(out, "\n%sNext:%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 	fmt.Fprintf(out, "  start:   %s start %s\n", prefix, res.ServiceName)
 	fmt.Fprintf(out, "  restart: %s restart %s\n", prefix, res.ServiceName)
 	fmt.Fprintf(out, "  stop:    %s stop %s\n", prefix, res.ServiceName)
+	fmt.Fprintf(out, "  edit:    %s\n", edit)
+	fmt.Fprintf(out, "           %s && %s restart %s\n", reload, prefix, res.ServiceName)
 	fmt.Fprintf(out, "  logs:    %s %s -f (or tail %s)\n", journal, res.ServiceName, res.LogPath)
 	fmt.Fprintf(out, "  file:    %s\n", res.ServicePath)
 }

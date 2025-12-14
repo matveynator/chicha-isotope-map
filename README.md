@@ -93,6 +93,12 @@ On Linux only, run the short wizard. It starts by asking if HTTPS is needed (the
 
 After writing the unit it reloads systemd, starts the service, and tails the log for you. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist.
 
+Quick refresher for later:
+- edit the unit: `sudo nano /etc/systemd/system/chicha-isotope-map-<port>.service` (drop `sudo` for user units)
+- apply changes: `systemctl daemon-reload && systemctl restart chicha-isotope-map-<port>.service`
+- stop or start: `systemctl stop|start chicha-isotope-map-<port>.service`
+- watch logs: `journalctl -u chicha-isotope-map-<port>.service -f` (or `tail -f /var/log/chicha-isotope-map-<port>.log`)
+
 When it asks for a database:
 - `sqlite` / `chai` suggest `/var/lib/<db-type>-<port>/database.<ext>` and create directories automatically.
 - `pgx` is PostgreSQL with defaults `localhost:5432`, user `postgres`, empty password, and DB name `chicha` — the wizard builds the URI for you.
