@@ -107,48 +107,44 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 	reader := bufio.NewReader(in)
 
 	fmt.Fprintf(out, "\n%s🛠  Quick setup (Linux)%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
-	fmt.Fprintf(out, "%sEnter keeps the defaults. Services and logs are named after the chosen port. You can edit individual answers in the review.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+	fmt.Fprintf(out, "%sEnter keeps defaults. Port sits in the service name and log path. Edit later in the review.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 
 	answers := enrichDefaults(defaults)
 outer:
 	for {
-		answers.NeedCert = promptYesNo(ctx, reader, out, theme, "Need HTTPS certificate via Let's Encrypt", answers.NeedCert)
+		answers.NeedCert = promptYesNo(ctx, reader, out, theme, "Issue HTTPS certificate", answers.NeedCert)
 		if answers.NeedCert {
-			fmt.Fprintf(out, "%sDomain:%s used for the certificate; keep ports 80/443 reachable for issuance.\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+			fmt.Fprintf(out, "%sUses 80 for ACME, listens on 443 by default.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 			answers.Domain = promptWithDefault(ctx, reader, out, theme, "Domain", defaultOr(answers.Domain, "maps.example.org"))
+			answers.Port = 443
 		} else {
 			answers.Domain = ""
+			answers.Port = promptPort(ctx, reader, out, theme, "HTTP port", suggestPort(false, answers.Port))
 		}
-
-		portLabel := "HTTP port (e.g. 8765)"
-		if answers.NeedCert {
-			portLabel = "HTTPS port (443 recommended)"
-		}
-		answers.Port = promptPort(ctx, reader, out, theme, portLabel, suggestPort(answers.NeedCert, answers.Port))
 
 		options := availableDBTypes()
-		fmt.Fprintf(out, "%sDatabase:%s sqlite/chai are file-based; pgx is PostgreSQL; clickhouse suits analytics.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		fmt.Fprintf(out, "%sDatabase:%s sqlite/chai store files; pgx is PostgreSQL; clickhouse fits analytics.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
 		if duckDBBuilt {
-			fmt.Fprintf(out, "%sDuckDB shows up only when compiled with -tags duckdb for local analytics.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+			fmt.Fprintf(out, "%sDuckDB appears only when built with duckdb tag.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 		}
-		answers.DBType = promptChoice(ctx, reader, out, theme, "Database engine", options, pickDefault(options, answers.DBType))
+		answers.DBType = promptChoice(ctx, reader, out, theme, "Database", options, pickDefault(options, answers.DBType))
 
 		dbPath, dbConn := promptDatabaseConfig(ctx, reader, out, theme, &answers)
 		answers.DBPath = dbPath
 		answers.DBConn = dbConn
 
-		fmt.Fprintf(out, "%sSupport contact:%s shown in the legal notice so operators can be reached easily.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		fmt.Fprintf(out, "%sSupport contact:%s short note for users who need help.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
 		answers.SupportEmail = promptWithDefault(ctx, reader, out, theme, "Support e-mail", answers.SupportEmail)
 
-		fmt.Fprintf(out, "%sRealtime:%s enable Safecast live data polling when you want realtime devices on the map.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		fmt.Fprintf(out, "%sRealtime:%s toggle Safecast live devices.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
 		answers.SafecastLive = promptYesNo(ctx, reader, out, theme, "Enable Safecast realtime", answers.SafecastLive)
 
 		suggestedArchive := suggestArchivePath(answers.ArchivePath, answers.Port)
-		fmt.Fprintf(out, "%sArchives:%s store exported JSON bundles under a port-specific directory so multiple services stay tidy.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
-		answers.ArchivePath = promptWithDefault(ctx, reader, out, theme, "JSON archive directory", suggestedArchive)
+		fmt.Fprintf(out, "%sArchives:%s JSON dumps live under a port-specific folder.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		answers.ArchivePath = promptWithDefault(ctx, reader, out, theme, "Archive dir", suggestedArchive)
 
-		fmt.Fprintf(out, "%sImport data:%s optionally fetch an initial .tgz export before starting the service.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
-		answers.ImportEnable = promptYesNo(ctx, reader, out, theme, "Fetch initial import .tgz", answers.ImportEnable)
+		fmt.Fprintf(out, "%sImport data:%s optional first sync before the service starts.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		answers.ImportEnable = promptYesNo(ctx, reader, out, theme, "Fetch initial .tgz", answers.ImportEnable)
 		if answers.ImportEnable {
 			answers.ImportTGZURL = promptWithDefault(ctx, reader, out, theme, "Import .tgz URL", defaultOr(answers.ImportTGZURL, "https://pelora.org/api/json/weekly.tgz"))
 		} else {
@@ -209,17 +205,24 @@ outer:
 			changed := false
 			switch action {
 			case "1":
-				answers.NeedCert = promptYesNo(ctx, reader, out, theme, "Need HTTPS certificate via Let's Encrypt", answers.NeedCert)
+				answers.NeedCert = promptYesNo(ctx, reader, out, theme, "Issue HTTPS certificate", answers.NeedCert)
 				if answers.NeedCert {
+					fmt.Fprintf(out, "%sKeeps 80/443 reserved for TLS challenge.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 					answers.Domain = promptWithDefault(ctx, reader, out, theme, "Domain", defaultOr(answers.Domain, "maps.example.org"))
+					answers.Port = 443
 				} else {
 					answers.Domain = ""
+					answers.Port = promptPort(ctx, reader, out, theme, choosePortLabel(false), suggestPort(false, answers.Port))
 				}
-				answers.Port = promptPort(ctx, reader, out, theme, choosePortLabel(answers.NeedCert), suggestPort(answers.NeedCert, answers.Port))
 				port = answers.Port
 				changed = true
 			case "2":
-				answers.Port = promptPort(ctx, reader, out, theme, choosePortLabel(answers.NeedCert), answers.Port)
+				if answers.NeedCert {
+					fmt.Fprintf(out, "%sHTTPS keeps port at 443 for clarity.%s\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
+					answers.Port = 443
+				} else {
+					answers.Port = promptPort(ctx, reader, out, theme, choosePortLabel(false), answers.Port)
+				}
 				port = answers.Port
 				changed = true
 			case "3":
@@ -303,6 +306,7 @@ outer:
 		fmt.Fprintf(out, "\n%s✔ Service written to %s%s\n", theme.SuccessIfEnabled(), unitPath, theme.ResetIfEnabled())
 		fmt.Fprintf(out, "%sExecStart:%s %s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), strings.Join(args, " "))
 		printNextSteps(out, theme, result)
+		tailLogs(ctx, out, theme, logPath)
 
 		return result, nil
 	}
@@ -418,6 +422,22 @@ func promptPort(ctx context.Context, reader *bufio.Reader, out io.Writer, theme 
 	}
 }
 
+// promptDigits keeps numeric string fields (like PostgreSQL port) constrained to digits only.
+// Using a loop instead of panicking mirrors the Go proverb about solid, direct code.
+func promptDigits(ctx context.Context, reader *bufio.Reader, out io.Writer, theme colorTheme, label, current string) string {
+	cleaned := strings.TrimSpace(current)
+	if cleaned == "" {
+		cleaned = "0"
+	}
+	for {
+		answer := promptWithDefault(ctx, reader, out, theme, label, cleaned)
+		if _, err := strconv.Atoi(answer); err == nil {
+			return answer
+		}
+		fmt.Fprintf(out, "%sDigits only, please.%s\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
+	}
+}
+
 // promptDatabaseConfig prints detailed hints for the selected database and
 // returns the appropriate path or connection string. File databases get a
 // suggested /var/lib directory that includes the port for clarity, while
@@ -427,7 +447,7 @@ func promptDatabaseConfig(ctx context.Context, reader *bufio.Reader, out io.Writ
 	if answers.DBType == "pgx" {
 		fmt.Fprintf(out, "%sPostgreSQL (pgx driver):%s defaults assume a local server with an empty password. Adjust to match your cluster.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
 		host := promptWithDefault(ctx, reader, out, theme, "Host", defaultOr(answers.PGHost, "localhost"))
-		port := promptWithDefault(ctx, reader, out, theme, "Port", defaultOr(answers.PGPort, "5432"))
+		port := promptDigits(ctx, reader, out, theme, "Port", defaultOr(answers.PGPort, "5432"))
 		user := promptWithDefault(ctx, reader, out, theme, "User", defaultOr(answers.PGUser, "postgres"))
 		password := promptWithDefault(ctx, reader, out, theme, "Password (leave empty for trust/local auth)", answers.PGPassword)
 		dbname := promptWithDefault(ctx, reader, out, theme, "Database name", defaultOr(answers.PGDatabase, "chicha"))
@@ -772,8 +792,7 @@ func systemctlCommands(userUnit bool, unitName string) []string {
 	}
 	return []string{
 		fmt.Sprintf("%s daemon-reload", prefix),
-		fmt.Sprintf("%s enable %s", prefix, unitName),
-		fmt.Sprintf("%s start %s", prefix, unitName),
+		fmt.Sprintf("%s enable --now %s", prefix, unitName),
 	}
 }
 
@@ -814,14 +833,22 @@ func printNextSteps(out io.Writer, theme colorTheme, res Result) {
 		prefix = "systemctl --user"
 		journal = "journalctl --user -u"
 	}
-	fmt.Fprintf(out, "\n%sNext steps:%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
-	fmt.Fprintf(out, "  • Start:    %s start %s\n", prefix, res.ServiceName)
-	fmt.Fprintf(out, "  • Restart:  %s restart %s\n", prefix, res.ServiceName)
-	fmt.Fprintf(out, "  • Stop:     %s stop %s\n", prefix, res.ServiceName)
-	fmt.Fprintf(out, "  • Status:   %s status %s\n", prefix, res.ServiceName)
-	fmt.Fprintf(out, "  • Logs:     %s %s -f (or tail %s)\n", journal, res.ServiceName, res.LogPath)
-	fmt.Fprintf(out, "  • Binary:   %s\n", res.ExecStart[0])
-	fmt.Fprintf(out, "  • Service:  %s\n", res.ServicePath)
+	fmt.Fprintf(out, "\n%sNext:%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+	fmt.Fprintf(out, "  start:   %s start %s\n", prefix, res.ServiceName)
+	fmt.Fprintf(out, "  restart: %s restart %s\n", prefix, res.ServiceName)
+	fmt.Fprintf(out, "  stop:    %s stop %s\n", prefix, res.ServiceName)
+	fmt.Fprintf(out, "  logs:    %s %s -f (or tail %s)\n", journal, res.ServiceName, res.LogPath)
+	fmt.Fprintf(out, "  file:    %s\n", res.ServicePath)
+}
+
+// tailLogs follows the application log right after startup so operators can see the first lines without another command.
+// Using tail keeps the terminal familiar while ctx lets the caller interrupt cleanly.
+func tailLogs(ctx context.Context, out io.Writer, theme colorTheme, logPath string) {
+	fmt.Fprintf(out, "\n%sLive log (Ctrl+C to exit)%s\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
+	cmd := exec.CommandContext(ctx, "tail", "-n", "40", "-F", logPath)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	_ = cmd.Run()
 }
 
 // AccentIfEnabled wraps the text in the accent colour when ANSI is available.
