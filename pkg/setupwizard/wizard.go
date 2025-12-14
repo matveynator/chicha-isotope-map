@@ -38,6 +38,7 @@ type Defaults struct {
 type Result struct {
 	ServiceName string
 	ServicePath string
+	LogPath     string
 	UserUnit    bool
 	ExecStart   []string
 	Commands    []string
@@ -116,7 +117,7 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 
 	support := promptWithDefault(ctx, reader, out, theme, "Support e-mail shown in legal notice", defaults.SupportEmail)
 
-	unitPath, userUnit, err := resolveServiceDestination()
+	unitPath, userUnit, err := resolveServiceDestination(port)
 	if err != nil {
 		return Result{}, err
 	}
@@ -135,13 +136,19 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 		defaults.WorkingDir = filepath.Dir(execPath)
 	}
 
-	if err := writeServiceFile(unitPath, defaults.WorkingDir, args, userUnit); err != nil {
+	logPath, err := resolveLogPath(userUnit, port)
+	if err != nil {
+		return Result{}, err
+	}
+
+	if err := writeServiceFile(unitPath, defaults.WorkingDir, logPath, args, userUnit); err != nil {
 		return Result{}, err
 	}
 
 	result := Result{
 		ServiceName: filepath.Base(unitPath),
 		ServicePath: unitPath,
+		LogPath:     logPath,
 		UserUnit:    userUnit,
 		ExecStart:   args,
 		Commands:    systemctlCommands(userUnit, filepath.Base(unitPath)),
@@ -245,20 +252,43 @@ func readLine(ctx context.Context, reader *bufio.Reader) (string, error) {
 }
 
 // resolveServiceDestination decides whether to write a system-wide or user
-// unit. We avoid mutexes by returning the full decision as values rather than
-// mutating shared state.
-func resolveServiceDestination() (string, bool, error) {
+// unit and incorporates the chosen port into the filename so multiple
+// instances can coexist. We avoid mutexes by returning the full decision as
+// values rather than mutating shared state.
+func resolveServiceDestination(port int) (string, bool, error) {
 	if runtime.GOOS != "linux" {
 		return "", false, errors.New("systemd services are only supported on Linux")
 	}
+	suffix := fmt.Sprintf("chicha-isotope-map-%d.service", port)
 	if os.Geteuid() == 0 {
-		return "/etc/systemd/system/chicha-isotope-map.service", false, nil
+		return filepath.Join("/etc/systemd/system", suffix), false, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", false, fmt.Errorf("resolve home dir: %w", err)
 	}
-	return filepath.Join(home, ".config", "systemd", "user", "chicha-isotope-map.service"), true, nil
+	return filepath.Join(home, ".config", "systemd", "user", suffix), true, nil
+}
+
+// resolveLogPath selects a writable log destination and bakes the port into
+// the filename so parallel services never clash. We stick to standard
+// locations: /var/log for system units, XDG_STATE_HOME (or ~/.local/state) for
+// user sessions.
+func resolveLogPath(userUnit bool, port int) (string, error) {
+	fileName := fmt.Sprintf("chicha-isotope-map-%d.log", port)
+	if !userUnit {
+		return filepath.Join("/var/log", fileName), nil
+	}
+
+	stateHome := os.Getenv("XDG_STATE_HOME")
+	if strings.TrimSpace(stateHome) == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home dir for log: %w", err)
+		}
+		stateHome = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(stateHome, fileName), nil
 }
 
 // buildExecArgs assembles the final ExecStart line. Returning a slice keeps the
@@ -284,9 +314,18 @@ func buildExecArgs(binary string, port int, domain, dbType, dbPath, dbConn, supp
 // writeServiceFile writes the unit file with a concise restart policy so
 // failures recover automatically. The directories are created on demand to keep
 // the happy path smooth for new operators.
-func writeServiceFile(path, workdir string, args []string, userUnit bool) error {
+func writeServiceFile(path, workdir, logPath string, args []string, userUnit bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("mkdir service dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir log dir: %w", err)
+	}
+	// Touch the log file so systemd append targets exist even before the first
+	// start. We still rely on journald, but the file keeps a stable place for
+	// administrators who prefer tailing plain text.
+	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND, 0o644); err == nil {
+		_ = f.Close()
 	}
 
 	wantedBy := "multi-user.target"
@@ -295,7 +334,7 @@ func writeServiceFile(path, workdir string, args []string, userUnit bool) error 
 	}
 
 	content := fmt.Sprintf(`[Unit]
-Description=Chicha Isotope Map
+Description=Chicha Isotope Map (port %d)
 After=network-online.target
 Wants=network-online.target
 
@@ -305,15 +344,30 @@ WorkingDirectory=%s
 ExecStart=%s
 Restart=on-failure
 RestartSec=5
+StandardOutput=append:%s
+StandardError=append:%s
 
 [Install]
 WantedBy=%s
-`, workdir, strings.Join(args, " "), wantedBy)
+`, extractPort(args), workdir, strings.Join(args, " "), logPath, logPath, wantedBy)
 
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write service file: %w", err)
 	}
 	return nil
+}
+
+// extractPort peeks at the ExecStart slice to keep the rendered Description in
+// sync with the chosen port without storing extra global state.
+func extractPort(args []string) int {
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "-port" {
+			if p, err := strconv.Atoi(args[i+1]); err == nil {
+				return p
+			}
+		}
+	}
+	return 0
 }
 
 // systemctlCommands builds the basic lifecycle commands so both automation and
@@ -372,7 +426,7 @@ func printNextSteps(out io.Writer, theme colorTheme, res Result) {
 	fmt.Fprintf(out, "  • Restart:  %s restart %s\n", prefix, res.ServiceName)
 	fmt.Fprintf(out, "  • Stop:     %s stop %s\n", prefix, res.ServiceName)
 	fmt.Fprintf(out, "  • Status:   %s status %s\n", prefix, res.ServiceName)
-	fmt.Fprintf(out, "  • Logs:     %s %s -f\n", journal, res.ServiceName)
+	fmt.Fprintf(out, "  • Logs:     %s %s -f (or tail %s)\n", journal, res.ServiceName, res.LogPath)
 	fmt.Fprintf(out, "  • Binary:   %s\n", res.ExecStart[0])
 	fmt.Fprintf(out, "  • Service:  %s\n", res.ServicePath)
 }
