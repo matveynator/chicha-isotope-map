@@ -84,6 +84,15 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 ```
 3) Open [http://localhost:8765](http://localhost:8765) — that’s it.
 
+### Option 4. Guided Linux service setup
+Prefer a colourful guided install? Launch the wizard and it will ask for port, domain, database path/URI, and support e-mail, then write a systemd unit and try to enable it automatically:
+
+```bash
+./chicha-isotope-map -setup
+```
+
+The wizard prints follow-up commands so you immediately know how to start, restart, stop, and tail logs via `systemctl` / `journalctl`. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`.
+
 ---
 
 ## 📥 Import data

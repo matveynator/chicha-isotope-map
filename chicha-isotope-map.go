@@ -57,6 +57,7 @@ import (
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
 	"chicha-isotope-map/pkg/selfupgrade"
+	"chicha-isotope-map/pkg/setupwizard"
 )
 
 // content bundles the UI and the license texts so single-file binaries still
@@ -87,6 +88,7 @@ var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a 
 var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz of exported JSON files, log progress, and exit once finished.")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var debugIPsFlag = flag.String("debug", "", "Comma separated IP addresses allowed to view the debug overlay")
+var setupWizardEnabled = flag.Bool("setup", false, "Launch an interactive, coloured setup wizard to install the binary as a systemd service")
 
 // debugIPAllowlist keeps a fast lookup of remote addresses that should see the
 // technical overlay. We keep it as a map so lookups stay O(1) without extra
@@ -102,7 +104,7 @@ type usageSection struct {
 }
 
 var cliUsageSections = []usageSection{
-	{Title: "General", Flags: []string{"version", "domain", "port", "support-email"}},
+	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
@@ -5049,6 +5051,29 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	// 1. Флаги и версии
 	flag.Parse()
+	if *setupWizardEnabled {
+		// Running the setup wizard before other initialisation keeps the flow fast
+		// when operators only want to install the systemd unit. We avoid touching
+		// databases or HTTP handlers so the wizard stays lightweight.
+		defaults := setupwizard.Defaults{
+			Port:         *port,
+			Domain:       *domain,
+			DBType:       *dbType,
+			DBPath:       *dbPath,
+			DBConn:       *dbConn,
+			SupportEmail: *supportEmail,
+		}
+		if exe, err := os.Executable(); err == nil {
+			defaults.BinaryPath = exe
+		}
+		if wd, err := os.Getwd(); err == nil {
+			defaults.WorkingDir = wd
+		}
+		if _, err := setupwizard.Run(context.Background(), os.Stdin, os.Stdout, defaults); err != nil {
+			log.Fatalf("setup wizard: %v", err)
+		}
+		return
+	}
 	debugIPAllowlist = parseDebugAllowlist(*debugIPsFlag)
 	loadTranslations(content, "public_html/translations.json")
 	selfupgradeStartupDelay(log.Printf)
