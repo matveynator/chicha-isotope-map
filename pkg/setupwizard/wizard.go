@@ -308,6 +308,12 @@ outer:
 		appendProfilePrimer(result)
 		printUsageHint(out, theme, answers.Domain, answers.Port)
 
+		if err := createUpdateScript(result); err != nil {
+			fmt.Fprintf(out, "\n%sUpdater:%s could not write /usr/local/bin/chicha-update (%v).\n", theme.PromptIfEnabled(), theme.ResetIfEnabled(), err)
+		} else {
+			fmt.Fprintf(out, "\n%sUpdater:%s wrote /usr/local/bin/chicha-update for one-command upgrades.\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+		}
+
 		return result, nil
 	}
 }
@@ -900,6 +906,30 @@ func printUsageHint(out io.Writer, theme colorTheme, domain string, port int) {
 		note = "TLS uses ports 80/443 automatically; leave them open for Let's Encrypt."
 	}
 	fmt.Fprintf(out, "\n%sUse:%s open %s in your browser. %s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), target, note)
+}
+
+// createUpdateScript writes a tiny helper under /usr/local/bin so operators can stop,
+// refresh, and restart the service in one go. Keeping the logic here guarantees the
+// script matches the freshly written unit, which avoids mistakes when juggling
+// multiple ports. The function intentionally skips mutexes and relies on simple file
+// writes to stay in line with Go's preference for straightforward code.
+func createUpdateScript(res Result) error {
+	if len(res.ExecStart) == 0 {
+		return errors.New("missing ExecStart for update script")
+	}
+
+	binaryPath := res.ExecStart[0]
+	systemctl := "systemctl"
+	if res.UserUnit {
+		systemctl = "systemctl --user"
+	}
+
+	script := fmt.Sprintf("#!/bin/bash\nset -euo pipefail\nSVC=%q\nLOG=%q\nBIN=%q\nCTL=%q\n$CTL stop $SVC\ncurl -L https://github.com/matveynator/chicha-isotope-map/releases/download/latest/chicha-isotope-map_linux_amd64 > $BIN\nchmod +x $BIN\n$BIN --version\n$CTL start $SVC\ntail -f $LOG\n", res.ServiceName, res.LogPath, binaryPath, systemctl)
+
+	if err := os.WriteFile("/usr/local/bin/chicha-update", []byte(script), 0o755); err != nil {
+		return fmt.Errorf("write updater: %w", err)
+	}
+	return nil
 }
 
 // tailLogs follows the application log right after startup so operators can see the first lines without another command.
