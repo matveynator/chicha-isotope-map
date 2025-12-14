@@ -107,7 +107,6 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 	reader := bufio.NewReader(in)
 
 	fmt.Fprintf(out, "\n%s🛠  Quick setup (Linux)%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
-	fmt.Fprintf(out, "%sEnter keeps defaults. Service name mirrors the port. Change details in review.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 
 	answers := enrichDefaults(defaults)
 outer:
@@ -850,7 +849,7 @@ func printNextSteps(out io.Writer, theme colorTheme, res Result) {
 	fmt.Fprintf(out, "  stop:    %s stop %s\n", prefix, res.ServiceName)
 	fmt.Fprintf(out, "  edit:    %s\n", edit)
 	fmt.Fprintf(out, "           %s daemon-reload && %s restart %s\n", prefix, prefix, res.ServiceName)
-	fmt.Fprintf(out, "  logs:    %s %s -f (or tail %s)\n", journal, res.ServiceName, res.LogPath)
+	fmt.Fprintf(out, "  logs:    %s %s -f (or tail -f %s)\n", journal, res.ServiceName, res.LogPath)
 	fmt.Fprintf(out, "  file:    %s\n", res.ServicePath)
 }
 
