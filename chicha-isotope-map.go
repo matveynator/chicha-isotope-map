@@ -57,6 +57,7 @@ import (
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
 	"chicha-isotope-map/pkg/selfupgrade"
+	"chicha-isotope-map/pkg/setupwizard"
 )
 
 // content bundles the UI and the license texts so single-file binaries still
@@ -88,6 +89,11 @@ var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz 
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var debugIPsFlag = flag.String("debug", "", "Comma separated IP addresses allowed to view the debug overlay")
 
+// setupWizardEnabled is registered only on Linux so other platforms avoid unusable
+// flags. We keep the pointer nullable to preserve zero-value semantics without extra
+// globals, following the "Make the zero value useful" proverb.
+var setupWizardEnabled = registerSetupFlag()
+
 // debugIPAllowlist keeps a fast lookup of remote addresses that should see the
 // technical overlay. We keep it as a map so lookups stay O(1) without extra
 // synchronization, following "Clear is better than clever" by leaning on Go's
@@ -102,11 +108,21 @@ type usageSection struct {
 }
 
 var cliUsageSections = []usageSection{
-	{Title: "General", Flags: []string{"version", "domain", "port", "support-email"}},
+	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
+}
+
+// registerSetupFlag avoids showing the setup wizard flag on non-Linux systems so help
+// output stays truthful. Returning a pointer lets callers check for nil instead of
+// juggling booleans across platforms.
+func registerSetupFlag() *bool {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	return flag.Bool("setup", false, "Launch an interactive, coloured setup wizard to install the binary as a systemd service (Linux only)")
 }
 
 // cliColorTheme centralises ANSI escape sequences so we can keep colourful help output
@@ -5049,6 +5065,33 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	// 1. Флаги и версии
 	flag.Parse()
+	if setupWizardEnabled != nil && *setupWizardEnabled {
+		// Running the setup wizard before other initialisation keeps the flow fast
+		// when operators only want to install the systemd unit. We avoid touching
+		// databases or HTTP handlers so the wizard stays lightweight.
+		defaults := setupwizard.Defaults{
+			Port:         *port,
+			Domain:       *domain,
+			NeedCert:     strings.TrimSpace(*domain) != "",
+			DBType:       *dbType,
+			DBPath:       *dbPath,
+			DBConn:       *dbConn,
+			SafecastLive: *safecastRealtimeEnabled,
+			ArchivePath:  *jsonArchivePathFlag,
+			ImportTGZURL: *importTGZURLFlag,
+			SupportEmail: *supportEmail,
+		}
+		if exe, err := os.Executable(); err == nil {
+			defaults.BinaryPath = exe
+		}
+		if wd, err := os.Getwd(); err == nil {
+			defaults.WorkingDir = wd
+		}
+		if _, err := setupwizard.Run(context.Background(), os.Stdin, os.Stdout, defaults); err != nil {
+			log.Fatalf("setup wizard: %v", err)
+		}
+		return
+	}
 	debugIPAllowlist = parseDebugAllowlist(*debugIPsFlag)
 	loadTranslations(content, "public_html/translations.json")
 	selfupgradeStartupDelay(log.Printf)

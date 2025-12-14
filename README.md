@@ -84,6 +84,27 @@ docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-
 ```
 3) Open [http://localhost:8765](http://localhost:8765) — that’s it.
 
+### Option 4. Guided Linux service setup
+Prefer a colourful guided install? On Linux only, launch the wizard and it will ask first whether you need HTTPS (and a domain if so) or just HTTP ports, then prompt for database path/URI, support e-mail, Safecast realtime toggle, archive folder, and whether to fetch an initial `.tgz` of data before writing a port-specific systemd unit and trying to enable it automatically:
+
+```bash
+./chicha-isotope-map -setup
+```
+
+The wizard prints follow-up commands so you immediately know how to start, restart, stop, and tail logs via `systemctl` / `journalctl` or the generated `chicha-isotope-map-<port>.log` file. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist.
+
+When it asks for a database:
+- `sqlite` / `chai` suggest `/var/lib/<db-type>-<port>/database.<ext>` and create directories automatically.
+- `pgx` is PostgreSQL with defaults `localhost:5432`, user `postgres`, empty password, and DB name `chicha` — the wizard builds the URI for you.
+- `duckdb` only appears if the binary was built with DuckDB enabled.
+
+Other prompts:
+- **Safecast realtime**: choose whether to load live Safecast devices on startup.
+- **Archive path**: suggests `/backup/chicha-json-<port>` and creates missing directories so scheduled exports never fail.
+- **Import**: default `https://pelora.org/api/json/weekly.tgz` (leave blank to skip) to preload real data before the service starts.
+
+At the review step press `1-7` to change a single field, hit `Enter` to write the service, type `restart` to redo everything with remembered defaults, or `cancel` to rerun later.
+
 ---
 
 ## 📥 Import data
