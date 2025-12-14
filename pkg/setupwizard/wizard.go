@@ -35,6 +35,7 @@ type Defaults struct {
 	PGDatabase   string
 	SafecastLive bool
 	ArchivePath  string
+	ImportEnable bool
 	ImportTGZURL string
 	SupportEmail string
 	BinaryPath   string
@@ -147,7 +148,12 @@ outer:
 		answers.ArchivePath = promptWithDefault(ctx, reader, out, theme, "JSON archive directory", suggestedArchive)
 
 		fmt.Fprintf(out, "%sImport data:%s optionally fetch an initial .tgz export before starting the service.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
-		answers.ImportTGZURL = promptWithDefault(ctx, reader, out, theme, "Import .tgz URL (blank to skip)", defaultOr(answers.ImportTGZURL, "https://pelora.org/api/json/weekly.tgz"))
+		answers.ImportEnable = promptYesNo(ctx, reader, out, theme, "Fetch initial import .tgz", answers.ImportEnable)
+		if answers.ImportEnable {
+			answers.ImportTGZURL = promptWithDefault(ctx, reader, out, theme, "Import .tgz URL", defaultOr(answers.ImportTGZURL, "https://pelora.org/api/json/weekly.tgz"))
+		} else {
+			answers.ImportTGZURL = ""
+		}
 
 		port := answers.Port
 		unitPath, userUnit, err := resolveServiceDestination(port)
@@ -168,7 +174,7 @@ outer:
 			answers.WorkingDir, _ = filepath.Abs(filepath.Dir(execPath))
 		}
 
-		args := buildExecArgs(execPath, port, answers.Domain, answers.DBType, answers.DBPath, answers.DBConn, answers.SupportEmail, answers.SafecastLive, answers.ArchivePath, answers.ImportTGZURL)
+		args := buildExecArgs(execPath, port, answers.Domain, answers.DBType, answers.DBPath, answers.DBConn, answers.SupportEmail, answers.SafecastLive, answers.ArchivePath, answers.ImportEnable, answers.ImportTGZURL)
 
 		logPath, err := resolveLogPath(userUnit, port)
 		if err != nil {
@@ -183,7 +189,7 @@ outer:
 			fmt.Fprintf(out, "  [4] Support: %s\n", displayValue(answers.SupportEmail))
 			fmt.Fprintf(out, "  [5] Live:    %t\n", answers.SafecastLive)
 			fmt.Fprintf(out, "  [6] Archive: %s\n", displayValue(answers.ArchivePath))
-			fmt.Fprintf(out, "  [7] Import:  %s\n", displayValue(answers.ImportTGZURL))
+			fmt.Fprintf(out, "  [7] Import:  %s\n", formatImportChoice(answers.ImportEnable, answers.ImportTGZURL))
 			fmt.Fprintf(out, "      Service: %s\n      Logs:    %s\n", unitPath, logPath)
 
 			action := promptWithDefault(ctx, reader, out, theme, "Enter = write, number = change, restart = redo all, cancel = exit", "")
@@ -232,7 +238,12 @@ outer:
 				answers.ArchivePath = promptWithDefault(ctx, reader, out, theme, "JSON archive directory", suggestedArchive)
 				changed = true
 			case "7":
-				answers.ImportTGZURL = promptWithDefault(ctx, reader, out, theme, "Import .tgz URL (blank to skip)", defaultOr(answers.ImportTGZURL, "https://pelora.org/api/json/weekly.tgz"))
+				answers.ImportEnable = promptYesNo(ctx, reader, out, theme, "Fetch initial import .tgz", answers.ImportEnable)
+				if answers.ImportEnable {
+					answers.ImportTGZURL = promptWithDefault(ctx, reader, out, theme, "Import .tgz URL", defaultOr(answers.ImportTGZURL, "https://pelora.org/api/json/weekly.tgz"))
+				} else {
+					answers.ImportTGZURL = ""
+				}
 				changed = true
 			}
 			if changed {
@@ -250,7 +261,7 @@ outer:
 		}
 
 		port = answers.Port
-		args = buildExecArgs(execPath, port, answers.Domain, answers.DBType, answers.DBPath, answers.DBConn, answers.SupportEmail, answers.SafecastLive, answers.ArchivePath, answers.ImportTGZURL)
+		args = buildExecArgs(execPath, port, answers.Domain, answers.DBType, answers.DBPath, answers.DBConn, answers.SupportEmail, answers.SafecastLive, answers.ArchivePath, answers.ImportEnable, answers.ImportTGZURL)
 		logPath, err = resolveLogPath(userUnit, port)
 		if err != nil {
 			return Result{}, err
@@ -325,6 +336,9 @@ func enrichDefaults(defaults Defaults) Defaults {
 		if wd, err := os.Getwd(); err == nil {
 			defaults.WorkingDir = wd
 		}
+	}
+	if strings.TrimSpace(defaults.ImportTGZURL) != "" {
+		defaults.ImportEnable = true
 	}
 	if defaults.DBType != "pgx" || strings.TrimSpace(defaults.DBConn) == "" {
 		return defaults
@@ -514,6 +528,15 @@ func formatHTTPSChoice(needCert bool, domain string) string {
 	return fmt.Sprintf("yes (%s)", displayValue(domain))
 }
 
+// formatImportChoice keeps the review summary compact and explicit about
+// whether the operator asked for an initial import and from where.
+func formatImportChoice(enabled bool, url string) string {
+	if !enabled {
+		return "skip"
+	}
+	return displayValue(url)
+}
+
 // defaultOr falls back when the candidate string is empty. This keeps prompt
 // defaults meaningful even when previous values were blank.
 func defaultOr(candidate, fallback string) string {
@@ -654,7 +677,7 @@ func resolveLogPath(userUnit bool, port int) (string, error) {
 
 // buildExecArgs assembles the final ExecStart line. Returning a slice keeps the
 // order predictable and avoids clever string concatenation.
-func buildExecArgs(binary string, port int, domain, dbType, dbPath, dbConn, support string, safecast bool, archiveDir, importURL string) []string {
+func buildExecArgs(binary string, port int, domain, dbType, dbPath, dbConn, support string, safecast bool, archiveDir string, importEnabled bool, importURL string) []string {
 	args := []string{binary, "-port", strconv.Itoa(port), "-db-type", dbType}
 	if strings.TrimSpace(domain) != "" {
 		args = append(args, "-domain", domain)
@@ -675,7 +698,7 @@ func buildExecArgs(binary string, port int, domain, dbType, dbPath, dbConn, supp
 	if strings.TrimSpace(archiveDir) != "" {
 		args = append(args, "-json-archive-path", archiveDir)
 	}
-	if strings.TrimSpace(importURL) != "" {
+	if importEnabled && strings.TrimSpace(importURL) != "" {
 		args = append(args, "-import-tgz-url", importURL)
 	}
 	return args
