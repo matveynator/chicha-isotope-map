@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,11 @@ type Defaults struct {
 	DBType       string
 	DBPath       string
 	DBConn       string
+	PGHost       string
+	PGPort       string
+	PGUser       string
+	PGPassword   string
+	PGDatabase   string
 	SupportEmail string
 	BinaryPath   string
 	WorkingDir   string
@@ -96,83 +102,253 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 	reader := bufio.NewReader(in)
 
 	fmt.Fprintf(out, "\n%s🛠  Interactive setup for chicha-isotope-map%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
-	fmt.Fprintf(out, "%sAnswer with Enter to accept defaults. Values are written into a systemd service so the map restarts automatically.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+	fmt.Fprintf(out, "%sAnswer with Enter to accept defaults. The wizard writes a port-named systemd service, creates missing directories, and shows ready-to-use commands.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+	fmt.Fprintf(out, "%sType restart at the review step to change anything without retyping. Type cancel to pause and rerun with the remembered choices as defaults.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 
-	portStr := promptWithDefault(ctx, reader, out, theme, "HTTP port", strconv.Itoa(defaults.Port))
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 {
-		return Result{}, fmt.Errorf("invalid port: %s", portStr)
-	}
-
-	domain := promptWithDefault(ctx, reader, out, theme, "Domain (leave empty for HTTP only)", defaults.Domain)
-	dbType := promptChoice(ctx, reader, out, theme, "Database engine", []string{"sqlite", "duckdb", "chai", "pgx", "clickhouse"}, defaults.DBType)
-
-	dbPath := defaults.DBPath
-	dbConn := defaults.DBConn
-	if dbType == "pgx" || dbType == "clickhouse" {
-		dbConn = promptWithDefault(ctx, reader, out, theme, "Connection URI", defaults.DBConn)
-	} else {
-		dbPath = promptWithDefault(ctx, reader, out, theme, "Database file path", defaults.DBPath)
-	}
-
-	support := promptWithDefault(ctx, reader, out, theme, "Support e-mail shown in legal notice", defaults.SupportEmail)
-
-	unitPath, userUnit, err := resolveServiceDestination(port)
-	if err != nil {
-		return Result{}, err
-	}
-
-	execPath := defaults.BinaryPath
-	if execPath == "" {
-		execPath, err = os.Executable()
-		if err != nil {
-			return Result{}, fmt.Errorf("resolve binary path: %w", err)
+	answers := enrichDefaults(defaults)
+	for {
+		portStr := promptWithDefault(ctx, reader, out, theme, "HTTP port (e.g. 8765)", strconv.Itoa(answers.Port))
+		port, err := strconv.Atoi(portStr)
+		if err != nil || port <= 0 {
+			return Result{}, fmt.Errorf("invalid port: %s", portStr)
 		}
-	}
-	execPath, _ = filepath.Abs(execPath)
+		answers.Port = port
 
-	args := buildExecArgs(execPath, port, domain, dbType, dbPath, dbConn, support)
-	if defaults.WorkingDir == "" {
-		defaults.WorkingDir = filepath.Dir(execPath)
-	}
+		fmt.Fprintf(out, "%sDomain notes:%s leave empty for HTTP only; set a hostname for HTTPS with Let's Encrypt (ports 80/443 must be reachable).\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+		answers.Domain = promptWithDefault(ctx, reader, out, theme, "Domain", answers.Domain)
 
-	logPath, err := resolveLogPath(userUnit, port)
-	if err != nil {
-		return Result{}, err
-	}
+		options := availableDBTypes()
+		fmt.Fprintf(out, "%sDatabase engines:%s sqlite/chai are file-based and simple; pgx means PostgreSQL; clickhouse is columnar for analytics.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		if duckDBBuilt {
+			fmt.Fprintf(out, "%sDuckDB appears only when compiled with the duckdb tag; it is great for local analytics and Parquet.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+		}
+		answers.DBType = promptChoice(ctx, reader, out, theme, "Database engine", options, pickDefault(options, answers.DBType))
 
-	if err := writeServiceFile(unitPath, defaults.WorkingDir, logPath, args, userUnit); err != nil {
-		return Result{}, err
-	}
+		dbPath, dbConn := promptDatabaseConfig(ctx, reader, out, theme, &answers)
+		answers.DBPath = dbPath
+		answers.DBConn = dbConn
 
-	result := Result{
-		ServiceName: filepath.Base(unitPath),
-		ServicePath: unitPath,
-		LogPath:     logPath,
-		UserUnit:    userUnit,
-		ExecStart:   args,
-		Commands:    systemctlCommands(userUnit, filepath.Base(unitPath)),
-	}
+		fmt.Fprintf(out, "%sSupport contact:%s shown in the legal notice so operators can be reached easily.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		answers.SupportEmail = promptWithDefault(ctx, reader, out, theme, "Support e-mail", answers.SupportEmail)
 
-	enableCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	enableResults := runSystemctl(enableCtx, result.Commands)
+		unitPath, userUnit, err := resolveServiceDestination(port)
+		if err != nil {
+			return Result{}, err
+		}
 
-	for res := range enableResults {
-		if res.Err != nil {
-			result.EnableNotes = append(result.EnableNotes, fmt.Sprintf("%s (%s)", res.Message, res.Err))
+		execPath := answers.BinaryPath
+		if execPath == "" {
+			execPath, err = os.Executable()
+			if err != nil {
+				return Result{}, fmt.Errorf("resolve binary path: %w", err)
+			}
+		}
+		execPath, _ = filepath.Abs(execPath)
+
+		if answers.WorkingDir == "" {
+			answers.WorkingDir, _ = filepath.Abs(filepath.Dir(execPath))
+		}
+
+		args := buildExecArgs(execPath, port, answers.Domain, answers.DBType, answers.DBPath, answers.DBConn, answers.SupportEmail)
+
+		logPath, err := resolveLogPath(userUnit, port)
+		if err != nil {
+			return Result{}, err
+		}
+
+		if err := prepareDBPath(answers.DBType, answers.DBPath); err != nil {
+			return Result{}, err
+		}
+
+		fmt.Fprintf(out, "\n%sReview:%s port=%d, domain=%s, db=%s, support=%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), port, displayValue(answers.Domain), answers.DBType, displayValue(answers.SupportEmail))
+		fmt.Fprintf(out, "Logs will go to %s; service will live at %s.\n", logPath, unitPath)
+		action := promptWithDefault(ctx, reader, out, theme, "Press Enter to write the service, type restart to edit answers, or cancel to stop", "")
+		action = strings.ToLower(strings.TrimSpace(action))
+		if action == "restart" {
+			fmt.Fprintf(out, "%sRestarting with your current choices as defaults.%s\n\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
 			continue
 		}
-		if strings.TrimSpace(res.Output) != "" {
-			result.EnableNotes = append(result.EnableNotes, res.Output)
+		if action == "cancel" {
+			return Result{}, errors.New("setup wizard cancelled by user")
+		}
+
+		if err := writeServiceFile(unitPath, answers.WorkingDir, logPath, args, userUnit); err != nil {
+			return Result{}, err
+		}
+
+		result := Result{
+			ServiceName: filepath.Base(unitPath),
+			ServicePath: unitPath,
+			LogPath:     logPath,
+			UserUnit:    userUnit,
+			ExecStart:   args,
+			Commands:    systemctlCommands(userUnit, filepath.Base(unitPath)),
+		}
+
+		enableCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		enableResults := runSystemctl(enableCtx, result.Commands)
+
+		for res := range enableResults {
+			if res.Err != nil {
+				result.EnableNotes = append(result.EnableNotes, fmt.Sprintf("%s (%s)", res.Message, res.Err))
+				continue
+			}
+			if strings.TrimSpace(res.Output) != "" {
+				result.EnableNotes = append(result.EnableNotes, res.Output)
+			}
+		}
+
+		fmt.Fprintf(out, "\n%s✔ Service written to %s%s\n", theme.SuccessIfEnabled(), unitPath, theme.ResetIfEnabled())
+		fmt.Fprintf(out, "%sExecStart:%s %s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), strings.Join(args, " "))
+		printNextSteps(out, theme, result)
+
+		return result, nil
+	}
+}
+
+// availableDBTypes lists engines compiled into the binary. DuckDB is opt-in via
+// the duckdb build tag, so the wizard hides it when absent while keeping the
+// order predictable for muscle memory.
+func availableDBTypes() []string {
+	types := []string{"sqlite", "chai", "pgx", "clickhouse"}
+	if duckDBBuilt {
+		types = append([]string{"duckdb"}, types...)
+	}
+	return types
+}
+
+// enrichDefaults derives per-field defaults so restarts can reuse the latest
+// answers. When a PostgreSQL connection string is present, we parse it into the
+// individual prompts to keep the experience consistent with Go's preference for
+// explicit state.
+func enrichDefaults(defaults Defaults) Defaults {
+	if defaults.DBType != "pgx" || strings.TrimSpace(defaults.DBConn) == "" {
+		return defaults
+	}
+	parsed, err := url.Parse(defaults.DBConn)
+	if err != nil {
+		return defaults
+	}
+	if defaults.PGHost == "" {
+		defaults.PGHost = parsed.Hostname()
+	}
+	if defaults.PGPort == "" {
+		defaults.PGPort = parsed.Port()
+	}
+	if parsed.User != nil {
+		if defaults.PGUser == "" {
+			defaults.PGUser = parsed.User.Username()
+		}
+		if defaults.PGPassword == "" {
+			if pw, ok := parsed.User.Password(); ok {
+				defaults.PGPassword = pw
+			}
 		}
 	}
+	if defaults.PGDatabase == "" {
+		defaults.PGDatabase = strings.TrimPrefix(parsed.Path, "/")
+	}
+	return defaults
+}
 
-	fmt.Fprintf(out, "\n%s✔ Service written to %s%s\n", theme.SuccessIfEnabled(), unitPath, theme.ResetIfEnabled())
-	fmt.Fprintf(out, "%sExecStart:%s %s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), strings.Join(args, " "))
-	printNextSteps(out, theme, result)
+// pickDefault ensures the chosen default is visible in the options list. If an
+// old value no longer applies, the wizard falls back to the first item so the
+// prompt remains consistent.
+func pickDefault(options []string, def string) string {
+	for _, opt := range options {
+		if strings.EqualFold(opt, def) {
+			return opt
+		}
+	}
+	return options[0]
+}
 
-	return result, nil
+// promptDatabaseConfig prints detailed hints for the selected database and
+// returns the appropriate path or connection string. File databases get a
+// suggested /var/lib directory that includes the port for clarity, while
+// network databases receive structured prompts. Channel-based prompts keep the
+// flow cancellable.
+func promptDatabaseConfig(ctx context.Context, reader *bufio.Reader, out io.Writer, theme colorTheme, answers *Defaults) (string, string) {
+	if answers.DBType == "pgx" {
+		fmt.Fprintf(out, "%sPostgreSQL (pgx driver):%s defaults assume a local server with an empty password. Adjust to match your cluster.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		host := promptWithDefault(ctx, reader, out, theme, "Host", defaultOr(answers.PGHost, "localhost"))
+		port := promptWithDefault(ctx, reader, out, theme, "Port", defaultOr(answers.PGPort, "5432"))
+		user := promptWithDefault(ctx, reader, out, theme, "User", defaultOr(answers.PGUser, "postgres"))
+		password := promptWithDefault(ctx, reader, out, theme, "Password (leave empty for trust/local auth)", answers.PGPassword)
+		dbname := promptWithDefault(ctx, reader, out, theme, "Database name", defaultOr(answers.PGDatabase, "chicha"))
+		answers.PGHost, answers.PGPort, answers.PGUser, answers.PGPassword, answers.PGDatabase = host, port, user, password, dbname
+		return "", buildPostgresURI(host, port, user, password, dbname)
+	}
+
+	if answers.DBType == "clickhouse" {
+		fmt.Fprintf(out, "%sClickHouse:%s provide a native or HTTP URI; defaults stay empty so your existing config remains untouched.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+		return "", promptWithDefault(ctx, reader, out, theme, "Connection URI", answers.DBConn)
+	}
+
+	defaultPath := suggestFileDBPath(answers.DBType, answers.Port, answers.DBPath)
+	fmt.Fprintf(out, "%sFile database:%s the wizard will create directories if missing. Suggested path keeps port in the folder for clarity.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), theme.ResetIfEnabled())
+	return promptWithDefault(ctx, reader, out, theme, "Database file path", defaultPath), ""
+}
+
+// buildPostgresURI assembles a connection string while omitting the colon when
+// the password is empty. Keeping the string builder here avoids surprises in
+// the calling flow.
+func buildPostgresURI(host, port, user, password, dbname string) string {
+	cred := user
+	if password != "" {
+		cred = fmt.Sprintf("%s:%s", user, password)
+	}
+	return fmt.Sprintf("postgres://%s@%s:%s/%s", cred, host, port, dbname)
+}
+
+// suggestFileDBPath proposes a stable location under /var/lib that carries the
+// driver name and port number. Extensions are kept simple to match each engine.
+func suggestFileDBPath(dbType string, port int, existing string) string {
+	if strings.TrimSpace(existing) != "" {
+		return existing
+	}
+	baseDir := fmt.Sprintf("/var/lib/%s-%d", dbType, port)
+	name := map[string]string{
+		"sqlite":     "database.sqlite",
+		"duckdb":     "database.duckdb",
+		"chai":       "database.chai",
+		"clickhouse": "data.clickhouse",
+	}[dbType]
+	if name == "" {
+		name = "database.db"
+	}
+	return filepath.Join(baseDir, name)
+}
+
+// prepareDBPath creates the directory tree for file databases so systemd never
+// fails on startup due to missing folders. Network databases skip this step.
+func prepareDBPath(dbType, dbPath string) error {
+	if dbType == "pgx" || dbType == "clickhouse" || strings.TrimSpace(dbPath) == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return fmt.Errorf("create db directory: %w", err)
+	}
+	return nil
+}
+
+// displayValue converts empty strings into a human-friendly placeholder for the
+// review line, keeping the summary readable even when defaults are blank.
+func displayValue(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "(empty)"
+	}
+	return v
+}
+
+// defaultOr falls back when the candidate string is empty. This keeps prompt
+// defaults meaningful even when previous values were blank.
+func defaultOr(candidate, fallback string) string {
+	if strings.TrimSpace(candidate) != "" {
+		return candidate
+	}
+	return fallback
 }
 
 // promptWithDefault renders a coloured prompt and waits for input without

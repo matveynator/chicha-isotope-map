@@ -91,7 +91,14 @@ Prefer a colourful guided install? Launch the wizard and it will ask for port, d
 ./chicha-isotope-map -setup
 ```
 
-The wizard prints follow-up commands so you immediately know how to start, restart, stop, and tail logs via `systemctl` / `journalctl` or the generated `chicha-isotope-map-<port>.log` file. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist. See the wiki page in `docs/SETUP_WIZARD.md` for the full walkthrough.
+The wizard prints follow-up commands so you immediately know how to start, restart, stop, and tail logs via `systemctl` / `journalctl` or the generated `chicha-isotope-map-<port>.log` file. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist.
+
+When it asks for a database:
+- `sqlite` / `chai` suggest `/var/lib/<db-type>-<port>/database.<ext>` and create directories automatically.
+- `pgx` is PostgreSQL with defaults `localhost:5432`, user `postgres`, empty password, and DB name `chicha` — the wizard builds the URI for you.
+- `duckdb` only appears if the binary was built with DuckDB enabled.
+
+You can type `restart` at the review step to redo answers with your previous choices prefilled, or `cancel` to pause and rerun later.
 
 ---
 
