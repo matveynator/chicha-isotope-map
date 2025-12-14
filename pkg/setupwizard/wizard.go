@@ -107,14 +107,14 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, defaults Defaults) (R
 	reader := bufio.NewReader(in)
 
 	fmt.Fprintf(out, "\n%s🛠  Quick setup (Linux)%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
-	fmt.Fprintf(out, "%sEnter keeps defaults. Port sits in the service name and log path. Edit later in the review.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+	fmt.Fprintf(out, "%sEnter keeps defaults. Service name mirrors the port. Change details in review.%s\n\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 
 	answers := enrichDefaults(defaults)
 outer:
 	for {
 		answers.NeedCert = promptYesNo(ctx, reader, out, theme, "Issue HTTPS certificate", answers.NeedCert)
 		if answers.NeedCert {
-			fmt.Fprintf(out, "%sUses 80 for ACME, listens on 443 by default.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+			fmt.Fprintf(out, "%sKeeps 80 and 443 reserved for TLS challenges and traffic.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 			answers.Domain = promptWithDefault(ctx, reader, out, theme, "Domain", defaultOr(answers.Domain, "maps.example.org"))
 			answers.Port = 443
 		} else {
@@ -188,17 +188,17 @@ outer:
 			fmt.Fprintf(out, "  [7] Import:  %s\n", formatImportChoice(answers.ImportEnable, answers.ImportTGZURL))
 			fmt.Fprintf(out, "      Service: %s\n      Logs:    %s\n", unitPath, logPath)
 
-			action := promptWithDefault(ctx, reader, out, theme, "Enter = write, number = change, restart = redo all, cancel = exit", "")
+			action := promptWithDefault(ctx, reader, out, theme, "apply / edit number / restart / quit", "apply")
 			action = strings.ToLower(strings.TrimSpace(action))
 
-			if action == "" {
+			if action == "apply" || action == "" {
 				break
 			}
 			if action == "restart" {
-				fmt.Fprintf(out, "%sRestarting with your current choices as defaults.%s\n\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
+				fmt.Fprintf(out, "%sRestarting with current answers as defaults.%s\n\n", theme.PromptIfEnabled(), theme.ResetIfEnabled())
 				continue outer
 			}
-			if action == "cancel" {
+			if action == "quit" {
 				return Result{}, errors.New("setup wizard cancelled by user")
 			}
 
@@ -207,7 +207,7 @@ outer:
 			case "1":
 				answers.NeedCert = promptYesNo(ctx, reader, out, theme, "Issue HTTPS certificate", answers.NeedCert)
 				if answers.NeedCert {
-					fmt.Fprintf(out, "%sKeeps 80/443 reserved for TLS challenge.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
+					fmt.Fprintf(out, "%s80 and 443 stay reserved for HTTPS.%s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled())
 					answers.Domain = promptWithDefault(ctx, reader, out, theme, "Domain", defaultOr(answers.Domain, "maps.example.org"))
 					answers.Port = 443
 				} else {
@@ -306,6 +306,7 @@ outer:
 		fmt.Fprintf(out, "\n%s✔ Service written to %s%s\n", theme.SuccessIfEnabled(), unitPath, theme.ResetIfEnabled())
 		fmt.Fprintf(out, "%sExecStart:%s %s\n", theme.AccentIfEnabled(), theme.ResetIfEnabled(), strings.Join(args, " "))
 		printNextSteps(out, theme, result)
+		appendProfilePrimer(result)
 		tailLogs(ctx, out, theme, logPath)
 
 		return result, nil
@@ -545,7 +546,7 @@ func formatHTTPSChoice(needCert bool, domain string) string {
 	if !needCert {
 		return "no (HTTP only)"
 	}
-	return fmt.Sprintf("yes (%s)", displayValue(domain))
+	return fmt.Sprintf("yes (%s, ports 80+443)", displayValue(domain))
 }
 
 // formatImportChoice keeps the review summary compact and explicit about
@@ -847,6 +848,41 @@ func printNextSteps(out io.Writer, theme colorTheme, res Result) {
 	fmt.Fprintf(out, "           %s && %s restart %s\n", reload, prefix, res.ServiceName)
 	fmt.Fprintf(out, "  logs:    %s %s -f (or tail %s)\n", journal, res.ServiceName, res.LogPath)
 	fmt.Fprintf(out, "  file:    %s\n", res.ServicePath)
+}
+
+// appendProfilePrimer appends a short service cheat sheet to ~/.profile so SSH sessions
+// remind operators how to manage the unit. Keeping it terse ensures the login remains
+// readable while still surfacing start/stop/log hints without extra commands.
+func appendProfilePrimer(res Result) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	profilePath := filepath.Join(home, ".profile")
+
+	prefix := "systemctl"
+	journal := "journalctl -u"
+	edit := fmt.Sprintf("nano %s", res.ServicePath)
+	if res.UserUnit {
+		prefix = "systemctl --user"
+		journal = "journalctl --user -u"
+	} else {
+		edit = fmt.Sprintf("sudo %s", edit)
+	}
+
+	block := fmt.Sprintf("\n# chicha-isotope-map service hint\nif [ -t 1 ]; then\n  echo \"Chicha service: %s\"\n  echo \"restart: %s restart %s\"\n  echo \"stop:    %s stop %s\"\n  echo \"edit:    %s\"\n  echo \"logs:    %s %s -f (or tail -f %s)\"\nfi\n", res.ServiceName, prefix, res.ServiceName, prefix, res.ServiceName, edit, journal, res.ServiceName, res.LogPath)
+
+	existing, err := os.ReadFile(profilePath)
+	if err == nil && strings.Contains(string(existing), "# chicha-isotope-map service hint") {
+		return
+	}
+
+	f, err := os.OpenFile(profilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(block)
 }
 
 // tailLogs follows the application log right after startup so operators can see the first lines without another command.

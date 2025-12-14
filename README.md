@@ -91,7 +91,7 @@ On Linux only, run the short wizard. It starts by asking if HTTPS is needed (the
 ./chicha-isotope-map -setup
 ```
 
-After writing the unit it reloads systemd, starts the service, and tails the log for you. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist.
+After writing the unit it reloads systemd, starts the service, tails the log for you, and drops a tiny reminder into your `~/.profile` so SSH logins show how to restart, stop, edit, or tail logs. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist.
 
 Quick refresher for later:
 - edit the unit: `sudo nano /etc/systemd/system/chicha-isotope-map-<port>.service` (drop `sudo` for user units)
@@ -107,9 +107,9 @@ When it asks for a database:
 Other prompts:
 - **Safecast realtime**: choose whether to load live Safecast devices on startup.
 - **Archive path**: suggests `/backup/chicha-json-<port>` and creates missing directories so scheduled exports never fail.
-- **Import**: default `https://pelora.org/api/json/weekly.tgz` (leave blank to skip) to preload real data before the service starts.
+- **Import**: opt-in; if enabled you can accept `https://pelora.org/api/json/weekly.tgz` or enter your own URL.
 
-At review press `1-7` to tweak a field, `Enter` to write, `restart` to redo with current defaults, or `cancel` to quit.
+At review press a number to tweak a field, `apply` to write, `restart` to redo with current defaults, or `quit` to exit without saving.
 
 ---
 
