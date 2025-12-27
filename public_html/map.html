@@ -2756,8 +2756,8 @@ function createDateRangeSlider(){
   };
 
   const playbackConfig = {
-    pointDelayMs: 45,
-    trackDelayMs: 300,
+    pointDelayMs: 25,
+    trackDelayMs: 200,
   };
   let playbackAbortController = null;
 
@@ -2873,7 +2873,6 @@ function createDateRangeSlider(){
       if (!trackPlaybackActive) {
         return;
       }
-      clearPlaybackMarkers();
       const points = tracks[t].points;
       for (let i = 0; i < points.length; i++) {
         if (!trackPlaybackActive) {
