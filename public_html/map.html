@@ -3605,9 +3605,9 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
       };
     });
 
-    // Build a spectrum gradient using the legend thresholds for Grafana-like styling.
+    // Build a spectrum gradient that follows the Safecast legend formula for the chart styling.
     const radiationStroke = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 1, 1);
-    const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.38, 0.06);
+    const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.6, 0.6);
 
     // Treat the latest datapoint as "now" for the dimming mask and marker.
     const currentIndex = radiationCoords.length - 1;
@@ -3767,14 +3767,18 @@ function buildSmoothPath(ctx, points) {
   ctx.lineTo(last.x, last.y);
 }
 
-// buildRadiationGradient maps legend thresholds to a multi-stop gradient.
+// buildRadiationGradient maps Safecast legend thresholds to a multi-stop gradient.
 function buildRadiationGradient(ctx, left, top, bottom, minValue, maxValue, topAlpha, bottomAlpha) {
   const span = (maxValue - minValue) || 1;
   const stops = [
     { value: minValue, alpha: bottomAlpha },
+    // µR/h thresholds derived from the dose-rate formula used in getGradientColor.
+    { value: 4, alpha: topAlpha },
+    { value: 8, alpha: topAlpha },
     { value: 11, alpha: topAlpha },
+    { value: 20, alpha: topAlpha },
     { value: 30, alpha: topAlpha },
-    { value: 100, alpha: topAlpha },
+    { value: 99, alpha: topAlpha },
     { value: maxValue, alpha: bottomAlpha }
   ];
   const gradient = ctx.createLinearGradient(left, top, left, bottom);
