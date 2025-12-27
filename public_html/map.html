@@ -2990,14 +2990,18 @@ function createDateRangeSlider(){
     if (!desktopShortcutQuery.matches) {
       return false;
     }
-    if (!sliderBox || sliderBox.style.display === 'none') {
+    if (!sliderBox || sliderBox.style.display === 'none' || sliderBox.offsetParent === null) {
       return false;
     }
     return true;
   }
 
+  function isSpaceKey(event) {
+    return event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar' || event.keyCode === 32;
+  }
+
   function handlePlaybackShortcut(event) {
-    if (event.code !== 'Space') {
+    if (!isSpaceKey(event)) {
       return;
     }
     if (!isPlaybackShortcutAllowed(event)) {
