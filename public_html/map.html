@@ -2977,6 +2977,56 @@ function createDateRangeSlider(){
     }
   }
 
+  // Keyboard shortcuts for playback are desktop-only to avoid hijacking touch users.
+  const desktopShortcutQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
+
+  function isPlaybackShortcutAllowed(event) {
+    const target = event.target;
+    const tagName = target && target.tagName ? target.tagName.toLowerCase() : '';
+    const isEditable = target && target.isContentEditable;
+    if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || isEditable) {
+      return false;
+    }
+    if (!desktopShortcutQuery.matches) {
+      return false;
+    }
+    if (!sliderBox || sliderBox.style.display === 'none' || sliderBox.offsetParent === null) {
+      return false;
+    }
+    return true;
+  }
+
+  function isSpaceKey(event) {
+    return event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar' || event.keyCode === 32;
+  }
+
+  function handlePlaybackShortcut(event) {
+    if (!isSpaceKey(event)) {
+      return;
+    }
+    if (!isPlaybackShortcutAllowed(event)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    togglePlayback();
+  }
+
+  function suppressPlaybackShortcutKeyup(event) {
+    if (!isSpaceKey(event)) {
+      return;
+    }
+    if (!isPlaybackShortcutAllowed(event)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  // Listen once for the map session, keeping the interaction predictable.
+  document.addEventListener('keydown', handlePlaybackShortcut, true);
+  document.addEventListener('keyup', suppressPlaybackShortcutKeyup, true);
+
   // One-time creation of both sliders using initial bounds
   window.__initSliderOnce = (minTs,maxTs)=>{
     if (initY && initM) return;
