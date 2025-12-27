@@ -1073,11 +1073,46 @@ body, html {
           gap: 16px;
         }
 
+        .live-chart-controls {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .live-range-button {
+          padding: 6px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.06);
+          color: var(--modal-text);
+          font-size: var(--font-size-sm);
+          font-family: inherit;
+          cursor: pointer;
+          transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+        }
+
+        .live-range-button.is-active {
+          background: rgba(250, 204, 21, 0.2);
+          border-color: rgba(250, 204, 21, 0.7);
+          color: var(--modal-text);
+          transform: translateY(-1px);
+        }
+
+        .live-range-button:focus-visible {
+          outline: 2px solid rgba(250, 204, 21, 0.6);
+          outline-offset: 2px;
+        }
+
         .live-chart-block {
           background: var(--control-bg);
           border: var(--legend-border);
           border-radius: 10px;
           padding: 12px;
+          display: none;
+        }
+
+        .live-chart-block.is-active {
+          display: block;
         }
 
         .live-chart-title {
@@ -1129,6 +1164,27 @@ body, html {
           cursor: pointer;
           font-family: inherit;
           color: var(--modal-text);
+        }
+
+        .live-chart-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.08);
+          color: var(--modal-text);
+          font-size: var(--font-size-sm);
+          font-family: inherit;
+          cursor: pointer;
+          text-decoration: none;
+          transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+        }
+
+        .live-chart-button:hover {
+          background: rgba(255, 255, 255, 0.14);
+          transform: translateY(-1px);
         }
 
     </style>
@@ -1464,6 +1520,12 @@ body, html {
     </div>
     <div id="liveModalMeta" class="live-modal-meta"></div>
     <div id="liveModalExtra" class="live-modal-meta"></div>
+    <div class="live-chart-controls" id="liveChartControls">
+      <button type="button" class="live-range-button" data-range="day"></button>
+      <button type="button" class="live-range-button" data-range="week"></button>
+      <button type="button" class="live-range-button" data-range="month"></button>
+      <button type="button" class="live-range-button" data-range="all"></button>
+    </div>
     <div class="live-chart-stack">
       <div class="live-chart-block" data-range="day">
         <h4 class="live-chart-title">
@@ -1473,6 +1535,15 @@ body, html {
         </h4>
         <canvas class="live-chart-canvas" data-range="day"></canvas>
         <p class="live-chart-empty" data-range="day"></p>
+      </div>
+      <div class="live-chart-block" data-range="week">
+        <h4 class="live-chart-title">
+          <span class="live-chart-label" id="liveChartTitleWeek"></span>
+          <span class="live-chart-unit">µR/h</span>
+          <span class="live-chart-window" data-range="week"></span>
+        </h4>
+        <canvas class="live-chart-canvas" data-range="week"></canvas>
+        <p class="live-chart-empty" data-range="week"></p>
       </div>
       <div class="live-chart-block" data-range="month">
         <h4 class="live-chart-title">
@@ -1797,8 +1868,9 @@ function formatExtraAxisValue(key, value) {
 }
 
 function colorForExtraKey(key) {
-  if (key === 'temperature_c' || key === 'temperature_f') return '#ff7043';
-  if (key === 'humidity_percent') return '#26a69a';
+  // Keep temperature purple and humidity blue to match the requested styling.
+  if (key === 'temperature_c' || key === 'temperature_f') return '#8b5cf6';
+  if (key === 'humidity_percent') return '#38bdf8';
   if (key === 'pressure_hpa') {
     // Pressure gets a calming blue to distinguish it from humidity's green.
     return '#5c6bc0';
@@ -2880,7 +2952,7 @@ function createDateRangeSlider(){
     if (marker.country) attrs.push(`data-country="${escapeHtml(marker.country)}"`);
     if (typeof marker.lat === 'number') attrs.push(`data-lat="${marker.lat}"`);
     if (typeof marker.lon === 'number') attrs.push(`data-lon="${marker.lon}"`);
-    const chartLink = deviceID ? `<div><a href="#" class="live-chart-link live-popup-small-link" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</a></div>` : '';
+    const chartLink = deviceID ? `<div><button type="button" class="live-chart-link live-chart-button" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</button></div>` : '';
 
     const metaBits = [];
     metaBits.push(`<div><strong>${translate('live_marker_last_seen')}:</strong> ${escapeHtml(lastSeen)}</div>`);
@@ -3075,9 +3147,21 @@ function chartColors() {
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const dark = theme === 'dark' || (!theme && prefersDark);
   if (dark) {
-    return { grid: 'rgba(255,255,255,0.2)', line: '#90caf9', text: '#e0e0e0', background: 'rgba(255,255,255,0.08)' };
+    return {
+      grid: 'rgba(255,255,255,0.18)',
+      line: '#90caf9',
+      text: '#e2e8f0',
+      panel: '#1f252d',
+      plot: '#11161c'
+    };
   }
-  return { grid: 'rgba(0,0,0,0.2)', line: '#1e88e5', text: '#333333', background: 'rgba(0,0,0,0.05)' };
+  return {
+    grid: 'rgba(17,24,39,0.15)',
+    line: '#1e88e5',
+    text: '#1f2937',
+    panel: '#f4f5f7',
+    plot: '#ffffff'
+  };
 }
 
 function radiationLineColor(valueMicroRoentgen) {
@@ -3222,9 +3306,6 @@ function formatTimeTickLabel(ts, spanSeconds, lang) {
   if (spanSeconds <= 48 * 3600) {
     return date.toLocaleString(lang, { hour: '2-digit', minute: '2-digit' });
   }
-  if (spanSeconds <= 90 * 86400) {
-    return date.toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit' });
-  }
   if (spanSeconds <= 400 * 86400) {
     return date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
   }
@@ -3297,7 +3378,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   ctx.clearRect(0, 0, width, height);
 
   const colors = chartColors();
-  canvas.style.background = colors.background;
+  canvas.style.background = colors.panel;
 
   const fontTokens = resolveFontTokens(); // Use CSS-driven sizes so canvas labels match the rest of the UI.
   const fonts = {
@@ -3327,8 +3408,8 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     return;
   }
 
-  const opts = options || {};
-  let minX = baseSeries[0].timestamp;
+      const opts = options || {};
+      let minX = baseSeries[0].timestamp;
   let maxX = baseSeries[baseSeries.length - 1].timestamp || (minX + 1);
   if (typeof opts.start === 'number' && typeof opts.end === 'number' && opts.end > opts.start) {
     minX = opts.start;
@@ -3390,8 +3471,12 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   const plotRight = width - rightPad;
   const plotTop = topPad;
   const plotBottom = height - bottomPad;
-  const plotW = Math.max(plotRight - plotLeft, 10);
-  const plotH = Math.max(plotBottom - plotTop, 10);
+      const plotW = Math.max(plotRight - plotLeft, 10);
+      const plotH = Math.max(plotBottom - plotTop, 10);
+
+  // Paint a dedicated plot background so the grid and fills feel Grafana-like.
+  ctx.fillStyle = colors.plot;
+  ctx.fillRect(plotLeft, plotTop, plotW, plotH);
 
   const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
   const spanSeconds = maxX - minX;
@@ -3441,6 +3526,9 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   ctx.textBaseline = 'top';
   ctx.font = fonts.axisX;
   ctx.strokeStyle = colorWithAlpha(colors.grid, 0.35);
+  let lastLabelRight = -Infinity;
+  let firstLabelLeft = Infinity;
+  const labelSpacing = spanSeconds > 365 * 86400 ? 28 : 12;
   ticksX.forEach(function(ts) {
     if (!isFinite(ts)) return;
     const x = plotLeft + ((ts - minX) / rangeX) * plotW;
@@ -3450,8 +3538,18 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.stroke();
     const label = formatTimeTickLabel(ts, spanSeconds, lang);
     if (!label) return;
+    const labelWidth = ctx.measureText(label).width;
+    const labelLeft = x - labelWidth / 2;
+    const labelRight = x + labelWidth / 2;
+    if (labelLeft < lastLabelRight + labelSpacing) {
+      return;
+    }
     ctx.fillStyle = colors.text;
     ctx.fillText(label, x, axisLabelY);
+    lastLabelRight = labelRight;
+    if (labelLeft < firstLabelLeft) {
+      firstLabelLeft = labelLeft;
+    }
   });
 
   const tolerance = Math.max(60, approxStep || 0);
@@ -3460,46 +3558,96 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   ctx.fillStyle = colors.text;
   const startLabel = formatTimeTickLabel(minX, spanSeconds, lang);
   if (showStart && startLabel) {
-    ctx.fillText(startLabel, plotLeft, axisLabelY);
+    const startWidth = ctx.measureText(startLabel).width;
+    const startRight = plotLeft + startWidth;
+    if (startRight < firstLabelLeft - labelSpacing) {
+      ctx.textAlign = 'left';
+      ctx.fillText(startLabel, plotLeft, axisLabelY);
+    }
   }
   ctx.textAlign = 'right';
   const endLabel = formatTimeTickLabel(maxX, spanSeconds, lang);
   if (showEnd && endLabel) {
-    ctx.fillText(endLabel, plotRight, axisLabelY);
+    const endWidth = ctx.measureText(endLabel).width;
+    const endLeft = plotRight - endWidth;
+    if (endLeft > lastLabelRight + labelSpacing) {
+      ctx.fillText(endLabel, plotRight, axisLabelY);
+    }
   }
 
   if (hasRadiation) {
-    ctx.lineWidth = 2;
+    const radiationCoords = radiationPoints.map(function(point) {
+      return {
+        x: plotLeft + ((point.timestamp - minX) / rangeX) * plotW,
+        y: plotBottom - ((point.value - minY) / rangeY) * plotH,
+        value: point.value
+      };
+    });
+
+    // Build a spectrum gradient using the legend thresholds for Grafana-like styling.
+    const radiationStroke = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 1, 1);
+    const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.38, 0.06);
+
+    // Treat the latest datapoint as "now" for the dimming mask and marker.
+    const currentIndex = radiationCoords.length - 1;
+    const currentCoord = radiationCoords[currentIndex];
+    const maskPadding = 6;
+
+    // Paint the dimming layer, clipped to the area under the curve up to "now".
+    ctx.save();
+    ctx.beginPath();
+    buildSmoothPath(ctx, radiationCoords.slice(0, currentIndex + 1));
+    ctx.lineTo(currentCoord.x, plotBottom);
+    ctx.lineTo(plotLeft, plotBottom);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = colorWithAlpha(colors.plot === '#ffffff' ? '#0f172a' : '#0b1120', 0.25);
+    ctx.fillRect(plotLeft - maskPadding, plotTop - maskPadding, plotW + maskPadding * 2, plotH + maskPadding * 2);
+    ctx.restore();
+
+    // Fill the area under the line with the multicolor radiation gradient.
+    ctx.beginPath();
+    buildSmoothPath(ctx, radiationCoords);
+    ctx.lineTo(plotRight, plotBottom);
+    ctx.lineTo(plotLeft, plotBottom);
+    ctx.closePath();
+    ctx.fillStyle = radiationFill;
+    ctx.fill();
+
+    // Draw a bright outline first so the line pops like the reference styling.
+    ctx.lineWidth = 4;
     ctx.lineCap = 'round';
-    for (let i = 1; i < radiationPoints.length; i++) {
-      const prev = radiationPoints[i - 1];
-      const curr = radiationPoints[i];
-      const x1 = plotLeft + ((prev.timestamp - minX) / rangeX) * plotW;
-      const y1 = plotBottom - ((prev.value - minY) / rangeY) * plotH;
-      const x2 = plotLeft + ((curr.timestamp - minX) / rangeX) * plotW;
-      const y2 = plotBottom - ((curr.value - minY) / rangeY) * plotH;
-      // Applying a per-segment gradient keeps falling values flowing back to green
-      // and rising values blending toward the warmer colors.
-      const startColor = radiationLineColor(prev.value);
-      const endColor = radiationLineColor(curr.value);
-      const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
-      gradient.addColorStop(0, startColor);
-      gradient.addColorStop(1, endColor);
-      ctx.strokeStyle = gradient;
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    }
-    if (radiationPoints.length === 1) {
-      const lone = radiationPoints[0];
-      const x = plotLeft + ((lone.timestamp - minX) / rangeX) * plotW;
-      const y = plotBottom - ((lone.value - minY) / rangeY) * plotH;
-      ctx.fillStyle = radiationLineColor(lone.value);
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = colorWithAlpha('#ffffff', 0.35);
+    ctx.beginPath();
+    buildSmoothPath(ctx, radiationCoords);
+    ctx.stroke();
+
+    // Draw the smoothed line using the same legend-driven gradient.
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = radiationStroke;
+    ctx.beginPath();
+    buildSmoothPath(ctx, radiationCoords);
+    ctx.stroke();
+
+    // Draw the vertical "now" line and bubble marker on the curve.
+    ctx.strokeStyle = colorWithAlpha(colors.text, 0.4);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(currentCoord.x, plotTop);
+    ctx.lineTo(currentCoord.x, plotBottom);
+    ctx.stroke();
+
+    ctx.fillStyle = colorWithAlpha('#ffffff', 0.9);
+    ctx.beginPath();
+    ctx.arc(currentCoord.x, currentCoord.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = radiationLineColor(currentCoord.value);
+    ctx.beginPath();
+    ctx.arc(currentCoord.x, currentCoord.y, 3.2, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   extraKeys.forEach(function(key, idx) {
@@ -3507,16 +3655,25 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     const range = extraRanges[key];
     const denom = (range.max - range.min) || 1;
     const color = colorForExtraKey(key);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([5, 3]);
-    ctx.beginPath();
-    series.forEach(function(point, i) {
-      const x = plotLeft + ((point.timestamp - minX) / rangeX) * plotW;
-      const y = plotBottom - ((point.value - range.min) / denom) * plotH;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    const extraCoords = series.map(function(point) {
+      return {
+        x: plotLeft + ((point.timestamp - minX) / rangeX) * plotW,
+        y: plotBottom - ((point.value - range.min) / denom) * plotH
+      };
     });
+    ctx.beginPath();
+    buildSmoothPath(ctx, extraCoords);
+    ctx.lineTo(plotRight, plotBottom);
+    ctx.lineTo(plotLeft, plotBottom);
+    ctx.closePath();
+    ctx.fillStyle = colorWithAlpha(color, 0.12);
+    ctx.fill();
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    buildSmoothPath(ctx, extraCoords);
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -3569,6 +3726,49 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   });
 }
 
+// buildSmoothPath draws a quadratic-curve path through the provided points so
+// chart lines feel closer to Grafana's smoothing without extra dependencies.
+function buildSmoothPath(ctx, points) {
+  if (!points || points.length === 0) return;
+  if (points.length === 1) {
+    ctx.moveTo(points[0].x, points[0].y);
+    return;
+  }
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const midX = (prev.x + curr.x) / 2;
+    const midY = (prev.y + curr.y) / 2;
+    ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+  }
+  const last = points[points.length - 1];
+  ctx.lineTo(last.x, last.y);
+}
+
+// buildRadiationGradient maps legend thresholds to a multi-stop gradient.
+function buildRadiationGradient(ctx, left, top, bottom, minValue, maxValue, topAlpha, bottomAlpha) {
+  const span = (maxValue - minValue) || 1;
+  const stops = [
+    { value: minValue, alpha: bottomAlpha },
+    { value: 11, alpha: topAlpha },
+    { value: 30, alpha: topAlpha },
+    { value: 100, alpha: topAlpha },
+    { value: maxValue, alpha: bottomAlpha }
+  ];
+  const gradient = ctx.createLinearGradient(left, top, left, bottom);
+  const used = new Set();
+  stops.forEach(function(stop) {
+    const value = Math.min(Math.max(stop.value, minValue), maxValue);
+    const t = Math.min(Math.max((value - minValue) / span, 0), 1);
+    const key = t.toFixed(3);
+    if (used.has(key)) return;
+    used.add(key);
+    gradient.addColorStop(t, colorWithAlpha(radiationLineColor(value), stop.alpha));
+  });
+  return gradient;
+}
+
 
 function updateChartHeading(element, key, ranges) {
   if (!element) return;
@@ -3600,6 +3800,54 @@ function hideLiveModal() {
   if (modal) modal.style.display = 'none';
 }
 
+// liveChartState caches range data so we can redraw charts when hidden panels become visible.
+const liveChartState = {
+  ranges: {},
+  series: {},
+  extras: {},
+  options: {}
+};
+
+function renderLiveRange(rangeKey) {
+  const canvas = document.querySelector(`.live-chart-canvas[data-range="${rangeKey}"]`);
+  const empty = document.querySelector(`.live-chart-empty[data-range="${rangeKey}"]`);
+  const series = liveChartState.series[rangeKey] || [];
+  const extras = liveChartState.extras[rangeKey] || null;
+  const options = liveChartState.options[rangeKey] || {};
+  const hasSeries = (series && series.length) || hasExtraSeries(extras);
+  if (canvas && hasSeries) {
+    if (empty) empty.style.display = 'none';
+    drawLiveChart(canvas, series, extras, options);
+  } else if (empty) {
+    empty.textContent = translate('live_marker_no_data');
+    empty.style.display = 'block';
+  }
+}
+
+function setActiveLiveRange(rangeKey) {
+  const blocks = document.querySelectorAll('.live-chart-block');
+  const buttons = document.querySelectorAll('.live-range-button');
+  blocks.forEach(function(block) {
+    const matches = block.dataset && block.dataset.range === rangeKey;
+    block.classList.toggle('is-active', matches);
+  });
+  buttons.forEach(function(button) {
+    const matches = button.dataset && button.dataset.range === rangeKey;
+    button.classList.toggle('is-active', matches);
+  });
+  renderLiveRange(rangeKey);
+}
+
+function updateLiveRangeButtons() {
+  const buttons = document.querySelectorAll('.live-range-button');
+  buttons.forEach(function(button) {
+    const rangeKey = button.dataset ? button.dataset.range : '';
+    if (!rangeKey) return;
+    const label = translate('live_chart_' + rangeKey);
+    button.textContent = label || rangeKey;
+  });
+}
+
 async function openLiveModal(deviceID, fallback) {
   const modal = document.getElementById('liveModal');
   if (!modal) return;
@@ -3611,11 +3859,15 @@ async function openLiveModal(deviceID, fallback) {
   const extraEl = document.getElementById('liveModalExtra');
 
   const dayTitle = document.getElementById('liveChartTitleDay');
+  const weekTitle = document.getElementById('liveChartTitleWeek');
   const monthTitle = document.getElementById('liveChartTitleMonth');
   const allTitle = document.getElementById('liveChartTitleAll');
   updateChartHeading(dayTitle, 'day');
+  updateChartHeading(weekTitle, 'week');
   updateChartHeading(monthTitle, 'month');
   updateChartHeading(allTitle, 'all');
+  updateLiveRangeButtons();
+  setActiveLiveRange('day');
 
   const closeBtn = document.getElementById('liveModalClose');
   if (closeBtn) closeBtn.textContent = translate('live_chart_close');
@@ -3641,7 +3893,7 @@ async function openLiveModal(deviceID, fallback) {
     extraEl.innerHTML = '';
   }
 
-  ['day','month','all'].forEach(function(range){
+  ['day','week','month','all'].forEach(function(range){
     const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
     if (empty) { empty.textContent = ''; empty.style.display = 'none'; }
     const canvas = document.querySelector(`.live-chart-canvas[data-range="${range}"]`);
@@ -3651,6 +3903,10 @@ async function openLiveModal(deviceID, fallback) {
     }
     updateChartWindowLabel(range);
   });
+  liveChartState.ranges = {};
+  liveChartState.series = {};
+  liveChartState.extras = {};
+  liveChartState.options = {};
 
   try {
     const data = await fetchLiveHistory(deviceID);
@@ -3685,22 +3941,21 @@ async function openLiveModal(deviceID, fallback) {
       extraEl.innerHTML = renderLiveExtras(merged.liveExtra);
     }
 
-    const ranges = (data && data.ranges && typeof data.ranges === 'object') ? data.ranges : {};
-    // Range metadata keeps headings and averaging labels aligned with backend aggregation.
+  const ranges = (data && data.ranges && typeof data.ranges === 'object') ? data.ranges : {};
+  // Range metadata keeps headings and averaging labels aligned with backend aggregation.
 
-    updateChartHeading(dayTitle, 'day', ranges);
-    updateChartHeading(monthTitle, 'month', ranges);
-    updateChartHeading(allTitle, 'all', ranges);
+  updateChartHeading(dayTitle, 'day', ranges);
+  updateChartHeading(weekTitle, 'week', ranges);
+  updateChartHeading(monthTitle, 'month', ranges);
+  updateChartHeading(allTitle, 'all', ranges);
     updateChartWindowLabel('day', ranges);
+    updateChartWindowLabel('week', ranges);
     updateChartWindowLabel('month', ranges);
     updateChartWindowLabel('all', ranges);
 
-    ['day','month','all'].forEach(function(range){
-      const canvas = document.querySelector(`.live-chart-canvas[data-range="${range}"]`);
-      const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
+    ['day','week','month','all'].forEach(function(range){
       const series = data.series && data.series[range] ? data.series[range] : [];
       const extras = data.extraSeries && data.extraSeries[range] ? data.extraSeries[range] : null;
-      const hasSeries = (series && series.length) || hasExtraSeries(extras);
       const rangeInfo = ranges && ranges[range] ? ranges[range] : null;
       const options = {};
       // Passing explicit bounds avoids axes jumping when resampled data omits raw endpoints.
@@ -3714,26 +3969,31 @@ async function openLiveModal(deviceID, fallback) {
       if (range === 'day') {
         options.tickUnit = 'hour';
         options.tickSegments = 24;
+      } else if (range === 'week') {
+        options.tickUnit = 'day';
+        options.tickSegments = 7;
       } else if (range === 'month') {
         options.tickUnit = 'day';
         options.tickSegments = 24;
       } else if (range === 'all') {
         options.tickUnit = 'month';
-        options.tickSegments = 24;
+        options.tickSegments = 12;
       }
-      if (canvas && hasSeries) {
-        if (empty) empty.style.display = 'none';
-        drawLiveChart(canvas, series, extras, options);
-      } else if (empty) {
-        empty.textContent = translate('live_marker_no_data');
-        empty.style.display = 'block';
-      }
+      liveChartState.ranges[range] = rangeInfo || null;
+      liveChartState.series[range] = series;
+      liveChartState.extras[range] = extras;
+      liveChartState.options[range] = options;
     });
+    renderLiveRange('day');
   } catch (err) {
     if (descEl) {
       descEl.textContent = translate('live_marker_history_error');
     }
-    ['day','month','all'].forEach(function(range){
+    liveChartState.ranges = {};
+    liveChartState.series = {};
+    liveChartState.extras = {};
+    liveChartState.options = {};
+    ['day','week','month','all'].forEach(function(range){
       const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
       if (empty) {
         empty.textContent = translate('live_marker_no_data');
@@ -4812,6 +5072,16 @@ function centerMapToLocation() {
     var liveClose = document.getElementById('liveModalClose');
     if (liveClose) {
       liveClose.addEventListener('click', function(){ hideLiveModal(); });
+    }
+    var liveRangeButtons = document.querySelectorAll('.live-range-button');
+    if (liveRangeButtons && liveRangeButtons.length) {
+      liveRangeButtons.forEach(function(button) {
+        button.addEventListener('click', function() {
+          const rangeKey = button.dataset ? button.dataset.range : '';
+          if (!rangeKey) return;
+          setActiveLiveRange(rangeKey);
+        });
+      });
     }
   })();
 </script>

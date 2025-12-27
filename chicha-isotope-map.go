@@ -4801,7 +4801,7 @@ func prepareRealtimeSeries(points []realtimePoint, limit int, defaultBucket int6
 }
 
 // summariseRealtimeHistory processes DB rows on a background goroutine and
-// returns aggregated series for day, month, and all-time windows.
+// returns aggregated series for day, week, month, and all-time windows.
 func summariseRealtimeHistory(rows []database.RealtimeMeasurement, now time.Time) historyAggregate {
 	input := make(chan realtimeMeasurementPayload)
 	go func() {
@@ -4833,15 +4833,17 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 	agg := historyAggregate{
 		Series: map[string][]realtimePoint{
 			"day":   {},
+			"week":  {},
 			"month": {},
 			"all":   {},
 		},
 		ExtraSeries: map[string]map[string][]realtimePoint{
 			"day":   {},
+			"week":  {},
 			"month": {},
 			"all":   {},
 		},
-		Ranges: make(map[string]rangeSummary, 3),
+		Ranges: make(map[string]rangeSummary, 4),
 	}
 
 	extrasAll := make(map[string][]realtimePoint)
@@ -4889,6 +4891,7 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 
 	const (
 		hourlySegments  = 24
+		weeklySegments  = 24 * 7
 		dailySegments   = 24
 		monthlySegments = 24
 	)
@@ -4896,17 +4899,21 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 
 	dayEnd := alignToCeil(reference, time.Hour)
 	dayStart := dayEnd.Add(-time.Duration(hourlySegments) * time.Hour)
+	weekEnd := dayEnd
+	weekStart := weekEnd.Add(-time.Duration(weeklySegments) * time.Hour)
 	monthEnd := alignToCeil(reference, dayDuration)
 	monthStart := monthEnd.Add(-time.Duration(dailySegments) * dayDuration)
 	allEnd := alignMonthCeil(reference)
 	allStart := allEnd.AddDate(0, -monthlySegments, 0)
 
 	dayCutoff := dayStart.Unix()
+	weekCutoff := weekStart.Unix()
 	monthCutoff := monthStart.Unix()
 	allCutoff := allStart.Unix()
 
 	hourBucket := int64(time.Hour / time.Second)
 	daySeries := lastNRealtimePoints(resampleRealtimePoints(filterPointsSince(allPoints, dayCutoff), hourBucket), hourlySegments)
+	weekSeries := lastNRealtimePoints(resampleRealtimePoints(filterPointsSince(allPoints, weekCutoff), hourBucket), weeklySegments)
 
 	dayBucketSeconds := int64(dayDuration / time.Second)
 	monthSeries := lastNRealtimePoints(resampleRealtimePoints(filterPointsSince(allPoints, monthCutoff), dayBucketSeconds), dailySegments)
@@ -4919,9 +4926,11 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 	}
 
 	agg.Series["day"] = daySeries
+	agg.Series["week"] = weekSeries
 	agg.Series["month"] = monthSeries
 	agg.Series["all"] = allSeries
 	agg.Ranges["day"] = rangeSummary{Start: dayCutoff, End: dayEnd.Unix(), BucketSeconds: hourBucket}
+	agg.Ranges["week"] = rangeSummary{Start: weekCutoff, End: weekEnd.Unix(), BucketSeconds: hourBucket}
 	agg.Ranges["month"] = rangeSummary{Start: monthCutoff, End: monthEnd.Unix(), BucketSeconds: dayBucketSeconds}
 	agg.Ranges["all"] = rangeSummary{Start: allCutoff, End: allEnd.Unix(), BucketSeconds: allBucketSeconds}
 
@@ -4964,11 +4973,15 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 	}
 
 	buildExtras("day", dayCutoff, hourBucket)
+	buildExtras("week", weekCutoff, hourBucket)
 	buildExtras("month", monthCutoff, dayBucketSeconds)
 	buildMonthlyExtras("all", allStart, monthlySegments)
 
 	if agg.Series["day"] == nil {
 		agg.Series["day"] = []realtimePoint{}
+	}
+	if agg.Series["week"] == nil {
+		agg.Series["week"] = []realtimePoint{}
 	}
 	if agg.Series["month"] == nil {
 		agg.Series["month"] = []realtimePoint{}
