@@ -3592,7 +3592,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
 
     // Build a spectrum gradient using the legend thresholds for Grafana-like styling.
     const radiationStroke = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 1, 1);
-    const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.38, 0.06);
+    const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.32, 0.03);
 
     // Treat the latest datapoint as "now" for the dimming mask and marker.
     const currentIndex = radiationCoords.length - 1;
@@ -3619,6 +3619,11 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.closePath();
     ctx.fillStyle = radiationFill;
     ctx.fill();
+
+    // Add a subtle time band so cross-series alignment is visible at the "now" point.
+    const timeBandWidth = Math.max(6, plotW * 0.012);
+    ctx.fillStyle = colorWithAlpha(colors.text, 0.08);
+    ctx.fillRect(currentCoord.x - timeBandWidth / 2, plotTop, timeBandWidth, plotH);
 
     // Draw a bright outline first so the line pops like the reference styling.
     ctx.lineWidth = 4;
