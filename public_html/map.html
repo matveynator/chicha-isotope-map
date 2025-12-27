@@ -1166,6 +1166,27 @@ body, html {
           color: var(--modal-text);
         }
 
+        .live-chart-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.08);
+          color: var(--modal-text);
+          font-size: var(--font-size-sm);
+          font-family: inherit;
+          cursor: pointer;
+          text-decoration: none;
+          transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+        }
+
+        .live-chart-button:hover {
+          background: rgba(255, 255, 255, 0.14);
+          transform: translateY(-1px);
+        }
+
     </style>
 
     <!-- Translation script -->
@@ -2930,7 +2951,7 @@ function createDateRangeSlider(){
     if (marker.country) attrs.push(`data-country="${escapeHtml(marker.country)}"`);
     if (typeof marker.lat === 'number') attrs.push(`data-lat="${marker.lat}"`);
     if (typeof marker.lon === 'number') attrs.push(`data-lon="${marker.lon}"`);
-    const chartLink = deviceID ? `<div><a href="#" class="live-chart-link live-popup-small-link" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</a></div>` : '';
+    const chartLink = deviceID ? `<div><button type="button" class="live-chart-link live-chart-button" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</button></div>` : '';
 
     const metaBits = [];
     metaBits.push(`<div><strong>${translate('live_marker_last_seen')}:</strong> ${escapeHtml(lastSeen)}</div>`);
@@ -3284,9 +3305,6 @@ function formatTimeTickLabel(ts, spanSeconds, lang) {
   if (spanSeconds <= 48 * 3600) {
     return date.toLocaleString(lang, { hour: '2-digit', minute: '2-digit' });
   }
-  if (spanSeconds <= 90 * 86400) {
-    return date.toLocaleString(lang, { month: 'short', day: 'numeric', hour: '2-digit' });
-  }
   if (spanSeconds <= 400 * 86400) {
     return date.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
   }
@@ -3509,7 +3527,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
   ctx.strokeStyle = colorWithAlpha(colors.grid, 0.35);
   let lastLabelRight = -Infinity;
   let firstLabelLeft = Infinity;
-  const labelSpacing = 10;
+  const labelSpacing = spanSeconds > 365 * 86400 ? 28 : 12;
   ticksX.forEach(function(ts) {
     if (!isFinite(ts)) return;
     const x = plotLeft + ((ts - minX) / rangeX) * plotW;
@@ -3591,6 +3609,15 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.fillStyle = radiationFill;
     ctx.fill();
 
+    // Draw a bright outline first so the line pops like the reference styling.
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = colorWithAlpha('#ffffff', 0.35);
+    ctx.beginPath();
+    buildSmoothPath(ctx, radiationCoords);
+    ctx.stroke();
+
     // Draw the smoothed line using the same legend-driven gradient.
     ctx.lineWidth = 2.2;
     ctx.lineCap = 'round';
@@ -3626,7 +3653,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.lineTo(plotRight, plotBottom);
     ctx.lineTo(plotLeft, plotBottom);
     ctx.closePath();
-    ctx.fillStyle = buildAreaGradient(ctx, plotLeft, plotTop, plotBottom, color, color, 0.2, 0.04);
+    ctx.fillStyle = colorWithAlpha(color, 0.12);
     ctx.fill();
 
     ctx.strokeStyle = color;
@@ -3704,14 +3731,6 @@ function buildSmoothPath(ctx, points) {
   }
   const last = points[points.length - 1];
   ctx.lineTo(last.x, last.y);
-}
-
-// buildAreaGradient creates a vertical gradient that stays in sync with the legend colors.
-function buildAreaGradient(ctx, left, top, bottom, topColor, bottomColor, topAlpha, bottomAlpha) {
-  const gradient = ctx.createLinearGradient(left, top, left, bottom);
-  gradient.addColorStop(0, colorWithAlpha(topColor, topAlpha));
-  gradient.addColorStop(1, colorWithAlpha(bottomColor, bottomAlpha));
-  return gradient;
 }
 
 // buildRadiationGradient maps legend thresholds to a multi-stop gradient.
@@ -3945,7 +3964,7 @@ async function openLiveModal(deviceID, fallback) {
         options.tickSegments = 24;
       } else if (range === 'all') {
         options.tickUnit = 'month';
-        options.tickSegments = 24;
+        options.tickSegments = 12;
       }
       liveChartState.ranges[range] = rangeInfo || null;
       liveChartState.series[range] = series;
