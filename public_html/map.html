@@ -2973,7 +2973,8 @@ function createDateRangeSlider(){
         return;
       }
     } finally {
-      stopPlayback(true);
+      // Avoid reloading the map after playback ends because markers are already visible.
+      stopPlayback(false);
     }
   }
 
