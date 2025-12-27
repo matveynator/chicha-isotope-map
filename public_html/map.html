@@ -3588,17 +3588,21 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     const radiationStroke = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 1, 1);
     const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.38, 0.06);
 
-    // Paint the dimming layer first, then carve out the area under the line.
+    // Treat the latest datapoint as "now" for the dimming mask and marker.
+    const currentIndex = radiationCoords.length - 1;
+    const currentCoord = radiationCoords[currentIndex];
+    const maskPadding = 6;
+
+    // Paint the dimming layer, clipped to the area under the curve up to "now".
     ctx.save();
-    ctx.fillStyle = colorWithAlpha(colors.plot === '#ffffff' ? '#0f172a' : '#0b1120', 0.2);
-    ctx.fillRect(plotLeft, plotTop, plotW, plotH);
-    ctx.globalCompositeOperation = 'destination-out';
     ctx.beginPath();
-    buildSmoothPath(ctx, radiationCoords);
-    ctx.lineTo(plotRight, plotBottom);
+    buildSmoothPath(ctx, radiationCoords.slice(0, currentIndex + 1));
+    ctx.lineTo(currentCoord.x, plotBottom);
     ctx.lineTo(plotLeft, plotBottom);
     ctx.closePath();
-    ctx.fill();
+    ctx.clip();
+    ctx.fillStyle = colorWithAlpha(colors.plot === '#ffffff' ? '#0f172a' : '#0b1120', 0.25);
+    ctx.fillRect(plotLeft - maskPadding, plotTop - maskPadding, plotW + maskPadding * 2, plotH + maskPadding * 2);
     ctx.restore();
 
     // Fill the area under the line with the multicolor radiation gradient.
@@ -3627,15 +3631,23 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.beginPath();
     buildSmoothPath(ctx, radiationCoords);
     ctx.stroke();
-    if (radiationPoints.length === 1) {
-      const lone = radiationPoints[0];
-      const x = plotLeft + ((lone.timestamp - minX) / rangeX) * plotW;
-      const y = plotBottom - ((lone.value - minY) / rangeY) * plotH;
-      ctx.fillStyle = radiationLineColor(lone.value);
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
+
+    // Draw the vertical "now" line and bubble marker on the curve.
+    ctx.strokeStyle = colorWithAlpha(colors.text, 0.4);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(currentCoord.x, plotTop);
+    ctx.lineTo(currentCoord.x, plotBottom);
+    ctx.stroke();
+
+    ctx.fillStyle = colorWithAlpha('#ffffff', 0.9);
+    ctx.beginPath();
+    ctx.arc(currentCoord.x, currentCoord.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = radiationLineColor(currentCoord.value);
+    ctx.beginPath();
+    ctx.arc(currentCoord.x, currentCoord.y, 3.2, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   extraKeys.forEach(function(key, idx) {
