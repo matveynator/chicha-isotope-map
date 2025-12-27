@@ -820,6 +820,11 @@ func normaliseArchiveDestination(path, fallbackName string) (string, error) {
 			dir := filepath.Clean(path)
 			return filepath.Join(dir, fallback), nil
 		}
+		if filepath.Ext(cleaned) == "" {
+			// Treat missing paths without extensions as directories so operators can
+			// provide archive folders without a trailing separator.
+			return filepath.Join(cleaned, fallback), nil
+		}
 		return cleaned, nil
 	default:
 		return cleaned, err
