@@ -3564,10 +3564,25 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
         value: point.value
       };
     });
-    const radiationTop = radiationLineColor(maxY);
-    const radiationBottom = radiationLineColor(minY);
-    const radiationGradient = buildAreaGradient(ctx, plotLeft, plotTop, plotRight, plotBottom, radiationTop, radiationBottom, 1, 1);
-    const radiationFill = buildAreaGradient(ctx, plotLeft, plotTop, plotRight, plotBottom, radiationTop, radiationBottom, 0.32, 0.05);
+
+    // Build a spectrum gradient using the legend thresholds for Grafana-like styling.
+    const radiationStroke = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 1, 1);
+    const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.38, 0.06);
+
+    // Paint the dimming layer first, then carve out the area under the line.
+    ctx.save();
+    ctx.fillStyle = colorWithAlpha(colors.plot === '#ffffff' ? '#0f172a' : '#0b1120', 0.2);
+    ctx.fillRect(plotLeft, plotTop, plotW, plotH);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    buildSmoothPath(ctx, radiationCoords);
+    ctx.lineTo(plotRight, plotBottom);
+    ctx.lineTo(plotLeft, plotBottom);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Fill the area under the line with the multicolor radiation gradient.
     ctx.beginPath();
     buildSmoothPath(ctx, radiationCoords);
     ctx.lineTo(plotRight, plotBottom);
@@ -3576,10 +3591,11 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.fillStyle = radiationFill;
     ctx.fill();
 
+    // Draw the smoothed line using the same legend-driven gradient.
     ctx.lineWidth = 2.2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = radiationGradient;
+    ctx.strokeStyle = radiationStroke;
     ctx.beginPath();
     buildSmoothPath(ctx, radiationCoords);
     ctx.stroke();
@@ -3610,7 +3626,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.lineTo(plotRight, plotBottom);
     ctx.lineTo(plotLeft, plotBottom);
     ctx.closePath();
-    ctx.fillStyle = buildAreaGradient(ctx, plotLeft, plotTop, plotRight, plotBottom, color, color, 0.2, 0.04);
+    ctx.fillStyle = buildAreaGradient(ctx, plotLeft, plotTop, plotBottom, color, color, 0.2, 0.04);
     ctx.fill();
 
     ctx.strokeStyle = color;
@@ -3691,10 +3707,33 @@ function buildSmoothPath(ctx, points) {
 }
 
 // buildAreaGradient creates a vertical gradient that stays in sync with the legend colors.
-function buildAreaGradient(ctx, left, top, right, bottom, topColor, bottomColor, topAlpha, bottomAlpha) {
+function buildAreaGradient(ctx, left, top, bottom, topColor, bottomColor, topAlpha, bottomAlpha) {
   const gradient = ctx.createLinearGradient(left, top, left, bottom);
   gradient.addColorStop(0, colorWithAlpha(topColor, topAlpha));
   gradient.addColorStop(1, colorWithAlpha(bottomColor, bottomAlpha));
+  return gradient;
+}
+
+// buildRadiationGradient maps legend thresholds to a multi-stop gradient.
+function buildRadiationGradient(ctx, left, top, bottom, minValue, maxValue, topAlpha, bottomAlpha) {
+  const span = (maxValue - minValue) || 1;
+  const stops = [
+    { value: minValue, alpha: bottomAlpha },
+    { value: 11, alpha: topAlpha },
+    { value: 30, alpha: topAlpha },
+    { value: 100, alpha: topAlpha },
+    { value: maxValue, alpha: bottomAlpha }
+  ];
+  const gradient = ctx.createLinearGradient(left, top, left, bottom);
+  const used = new Set();
+  stops.forEach(function(stop) {
+    const value = Math.min(Math.max(stop.value, minValue), maxValue);
+    const t = Math.min(Math.max((value - minValue) / span, 0), 1);
+    const key = t.toFixed(3);
+    if (used.has(key)) return;
+    used.add(key);
+    gradient.addColorStop(t, colorWithAlpha(radiationLineColor(value), stop.alpha));
+  });
   return gradient;
 }
 
