@@ -2765,7 +2765,8 @@ function createDateRangeSlider(){
           lblMin().textContent = r.min;
           lblMax().textContent = r.max;
         } else {
-          lblMin().textContent = y;
+          const r = yearSlider.noUiSlider.options.range;
+          lblMin().textContent = r.min;
           lblMax().textContent = y;
         }
       });
@@ -2888,7 +2889,7 @@ function createDateRangeSlider(){
         lblMax().textContent = r.max;
       } else {
         const y = +yearSlider.noUiSlider.get();
-        lblMin().textContent = y;
+        lblMin().textContent = r.min;
         lblMax().textContent = y;
       }
     } else {
@@ -2911,9 +2912,12 @@ function createDateRangeSlider(){
     // YEAR mode → make a full [year..year] month span
     if (mode==='year'){
       const y = +yearSlider.noUiSlider.get();
-      const from = Date.UTC(y,0,1)/1000;
-      const to   = Date.UTC(y+1,0,1)/1000 - 1;
-      saveDateRangeState([from,to]);
+      // We include all prior years so the year slider acts cumulatively.
+      const rangeMin = monthSlider?.noUiSlider?.options?.range?.min ?? (fullRange ? fullRange[0] : Date.UTC(y, 0, 1) / 1000);
+      const yearEnd = Date.UTC(y + 1, 0, 1) / 1000 - 1;
+      const rangeMax = fullRange ? fullRange[1] : yearEnd;
+      const to = Math.min(yearEnd, rangeMax);
+      saveDateRangeState([rangeMin, to]);
     } else {
       saveDateRangeState(monthSlider.noUiSlider.get().map(Number));
     }
