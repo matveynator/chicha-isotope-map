@@ -1172,19 +1172,33 @@ body, html {
           gap: 6px;
           padding: 6px 12px;
           border-radius: 8px;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          background: rgba(255, 255, 255, 0.08);
-          color: var(--modal-text);
+          border: 1px solid var(--live-chart-border, rgba(255, 255, 255, 0.15));
+          background: var(--live-chart-bg, rgba(255, 255, 255, 0.08));
+          color: var(--live-chart-text, var(--modal-text));
           font-size: var(--font-size-sm);
+          font-weight: 600;
           font-family: inherit;
           cursor: pointer;
           text-decoration: none;
-          transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), 0 0 0 2px var(--live-chart-glow, transparent);
+          transition: background 0.2s ease, border 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
         .live-chart-button:hover {
-          background: rgba(255, 255, 255, 0.14);
+          background: var(--live-chart-hover, rgba(255, 255, 255, 0.14));
+          border-color: var(--live-chart-border, rgba(255, 255, 255, 0.3));
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 0 0 3px var(--live-chart-glow, transparent);
           transform: translateY(-1px);
+        }
+
+        .live-chart-button:focus-visible {
+          outline: 2px solid var(--live-chart-focus, rgba(250, 204, 21, 0.6));
+          outline-offset: 2px;
+        }
+
+        .live-chart-icon {
+          font-size: 14px;
+          line-height: 1;
         }
 
     </style>
@@ -2942,6 +2956,13 @@ function createDateRangeSlider(){
     }
 
     const climateHtml = climateParts.length ? `<div class="live-popup-climate">${climateParts.join(' · ')}</div>` : '';
+    // Tie the chart button styling to the current radiation color so it is
+    // obvious that tapping it opens the dose history for this sensor.
+    const chartBg = colorWithAlpha(doseColor, 0.18);
+    const chartHover = colorWithAlpha(doseColor, 0.28);
+    const chartBorder = colorWithAlpha(doseColor, 0.75);
+    const chartGlow = colorWithAlpha(doseColor, 0.35);
+    const chartFocus = colorWithAlpha(doseColor, 0.7);
     const extrasBlock = renderLiveExtras(extrasCopy);
     const deviceID = marker.deviceID || (marker.trackID ? marker.trackID.replace(/^live:/, '') : '');
     const attrs = [];
@@ -2952,7 +2973,7 @@ function createDateRangeSlider(){
     if (marker.country) attrs.push(`data-country="${escapeHtml(marker.country)}"`);
     if (typeof marker.lat === 'number') attrs.push(`data-lat="${marker.lat}"`);
     if (typeof marker.lon === 'number') attrs.push(`data-lon="${marker.lon}"`);
-    const chartLink = deviceID ? `<div><button type="button" class="live-chart-link live-chart-button" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</button></div>` : '';
+    const chartLink = deviceID ? `<div><button type="button" class="live-chart-link live-chart-button" style="--live-chart-bg:${chartBg};--live-chart-hover:${chartHover};--live-chart-border:${chartBorder};--live-chart-glow:${chartGlow};--live-chart-text:${statusTextColor};--live-chart-focus:${chartFocus};" ${attrs.join(' ')}><span class="live-chart-icon" aria-hidden="true">📈</span><span>${translate('live_marker_chart_link')}</span></button></div>` : '';
 
     const metaBits = [];
     metaBits.push(`<div><strong>${translate('live_marker_last_seen')}:</strong> ${escapeHtml(lastSeen)}</div>`);
@@ -4990,9 +5011,11 @@ function centerMapToLocation() {
       ev.preventDefault();
       openLegendModal();
     }
-    if (ev.target.classList.contains('live-chart-link')) {
+    // Use closest so clicks on inner elements still open the chart.
+    const chartButton = ev.target.closest('.live-chart-link');
+    if (chartButton) {
       ev.preventDefault();
-      const dataset = ev.target.dataset;
+      const dataset = chartButton.dataset;
       if (!dataset.device) return;
       const fallback = {
         device: dataset.device,
