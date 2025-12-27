@@ -752,11 +752,17 @@ body, html {
         #yearSlider .noUi-connect   {background:#bfbfbf;}
 
 
-        /* Reset button styled with theme variables */
-        .slider-reset-btn{
+        .slider-actions{
+          display:flex;
+          gap:4px;
+          margin-top:4px;
+        }
+
+        /* Reset/Play buttons styled with theme variables */
+        .slider-reset-btn,
+        .slider-play-btn{
           display:block;
           width:100%;
-          margin-top:4px;
           padding:2px 4px;
           font-size: var(--font-size-xl);
           border: var(--legend-border);
@@ -765,7 +771,14 @@ body, html {
           cursor:pointer;
           color: var(--modal-text);
         }
-        .slider-reset-btn:hover{ background: var(--control-bg-hover); }
+        .slider-reset-btn:hover,
+        .slider-play-btn:hover{ background: var(--control-bg-hover); }
+
+        .slider-play-btn.is-playing{
+          background:#1e88e5;
+          color:#fff;
+          border-color:#1e88e5;
+        }
 
         .loading-overlay{
           position:absolute;
@@ -2135,6 +2148,7 @@ function refreshDownloadLink() {
 
 // New controller to cancel previous request
 var markerStreamSource = null;
+var trackPlaybackActive = false;
 
 var liveHistoryCache = new Map();
 
@@ -2698,7 +2712,10 @@ function createDateRangeSlider(){
         <div id="yearSlider"></div>
         <div id="dateSlider"></div>
         <div id="lblMin" class="slider-label"></div>
-        <button id="btnReset" class="slider-reset-btn" title="Reset"> ⟲ </button>
+        <div class="slider-actions">
+          <button id="btnPlay" class="slider-play-btn" title="${translate('date_slider_play')}" aria-label="${translate('date_slider_play')}">▶</button>
+          <button id="btnReset" class="slider-reset-btn" title="Reset"> ⟲ </button>
+        </div>
       `;
       sliderBox.setAttribute('role', 'group');
       sliderBox.setAttribute('tabindex', '0');
@@ -2715,12 +2732,16 @@ function createDateRangeSlider(){
 
   const btnY = sliderBox.querySelector('#btnYear');
   const btnM = sliderBox.querySelector('#btnMonth');
+  const btnPlay = sliderBox.querySelector('#btnPlay');
   const btnReset = sliderBox.querySelector('#btnReset');
   const lblMin = () => sliderBox.querySelector('#lblMin');
   const lblMax = () => sliderBox.querySelector('#lblMax');
 
   btnY.onclick = () => switchMode('year');
   btnM.onclick = () => switchMode('month');
+  btnPlay.onclick = () => togglePlayback();
+  setPlayButtonState('stopped');
+  btnPlay.disabled = mode !== 'year';
 
   // Show/hide the whole control (called from updateMarkers())
   window.__setDateSliderVisibility = (show)=>{
@@ -2729,7 +2750,232 @@ function createDateRangeSlider(){
     if (!show && sliderTooltipHandle) {
       sliderTooltipHandle.hide();
     }
+    if (!show) {
+      stopPlayback(true);
+    }
   };
+
+  const playbackConfig = {
+    pointDelayMs: 18,
+    trackDelayMs: 150,
+  };
+  let playbackAbortController = null;
+  let playbackPaused = false;
+  let playbackResume = null;
+  let playbackState = null;
+
+  // Playback toggles stream markers off and paints one track at a time so movement is readable.
+  function setPlayButtonState(state) {
+    const isPlaying = state === 'playing';
+    const labelKey = isPlaying ? 'date_slider_stop' : 'date_slider_play';
+    btnPlay.classList.toggle('is-playing', isPlaying);
+    btnPlay.textContent = isPlaying ? '⏸' : '▶';
+    btnPlay.title = translate(labelKey);
+    btnPlay.setAttribute('aria-label', translate(labelKey));
+  }
+
+  function clearPlaybackMarkers() {
+    Object.keys(circleMarkers).forEach(function(key) {
+      map.removeLayer(circleMarkers[key]);
+      delete circleMarkers[key];
+    });
+  }
+
+  function resolvePlaybackRange() {
+    const saved = loadDateRangeState();
+    if (Array.isArray(saved) && saved.length === 2) {
+      return saved;
+    }
+    if (fullRange && fullRange.length === 2) {
+      return fullRange;
+    }
+    const y = +yearSlider.noUiSlider.get();
+    const yearStart = Date.UTC(y, 0, 1) / 1000;
+    const yearEnd = Date.UTC(y + 1, 0, 1) / 1000 - 1;
+    return [yearStart, yearEnd];
+  }
+
+  async function fetchPlaybackMarkers(signal) {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const range = resolvePlaybackRange();
+    const params = new URLSearchParams({
+      zoom: zoom,
+      minLat: bounds.getSouthWest().lat,
+      minLon: bounds.getSouthWest().lng,
+      maxLat: bounds.getNorthEast().lat,
+      maxLon: bounds.getNorthEast().lng,
+      dateFrom: Math.floor(range[0]),
+      dateTo: Math.floor(range[1]),
+    });
+    const resp = await fetch('/get_markers?' + params.toString(), { signal: signal });
+    if (!resp.ok) {
+      throw new Error('playback_fetch_failed');
+    }
+    const data = await resp.json();
+    if (!Array.isArray(data)) {
+      return [];
+    }
+    return data.filter(function(marker) {
+      return marker && marker.trackID && marker.speed >= 0 && shouldDisplayBySpeed(marker.speed);
+    });
+  }
+
+  function groupTracksByStart(markers) {
+    const tracks = new Map();
+    markers.forEach(function(marker) {
+      const trackID = marker.trackID;
+      if (!trackID) {
+        return;
+      }
+      if (!tracks.has(trackID)) {
+        tracks.set(trackID, []);
+      }
+      tracks.get(trackID).push(marker);
+    });
+    const ordered = [];
+    tracks.forEach(function(points, trackID) {
+      points.sort(function(a, b) {
+        return a.date - b.date;
+      });
+      ordered.push({ trackID: trackID, points: points, start: points[0].date });
+    });
+    ordered.sort(function(a, b) {
+      return a.start - b.start;
+    });
+    return ordered;
+  }
+
+  function addPlaybackMarker(marker, zoomLevel, index) {
+    const circle = L.circleMarker([marker.lat, marker.lon], {
+      radius: getRadius(marker.doseRate, zoomLevel),
+      fillColor: getGradientColor(marker.doseRate),
+      color: getGradientColor(marker.doseRate),
+      weight: 1,
+      opacity: getFillOpacity(marker.speed) + 0.1,
+      fillOpacity: getFillOpacity(marker.speed)
+    })
+    .addTo(map)
+    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+    .bindPopup(getPopupContent(marker));
+
+    circle.doseRate = marker.doseRate;
+    circle.date = marker.date;
+    circle.isRealtime = false;
+    circleMarkers[marker.id || marker.trackID + ':' + marker.date + ':' + index] = circle;
+  }
+
+  function delay(ms) {
+    return new Promise(function(resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  function waitWhilePaused() {
+    if (!playbackPaused) {
+      return Promise.resolve();
+    }
+    return new Promise(function(resolve) {
+      playbackResume = resolve;
+    });
+  }
+
+  async function playTracksSequentially(state) {
+    const zoom = map.getZoom();
+    for (let t = state.trackIndex; t < state.tracks.length; t++) {
+      if (!trackPlaybackActive) {
+        return;
+      }
+      const points = state.tracks[t].points;
+      for (let i = state.pointIndex; i < points.length; i++) {
+        if (!trackPlaybackActive) {
+          return;
+        }
+        if (playbackPaused) {
+          await waitWhilePaused();
+          if (!trackPlaybackActive) {
+            return;
+          }
+        }
+        addPlaybackMarker(points[i], zoom, i);
+        state.trackIndex = t;
+        state.pointIndex = i + 1;
+        await delay(playbackConfig.pointDelayMs);
+      }
+      state.trackIndex = t + 1;
+      state.pointIndex = 0;
+      if (t < state.tracks.length - 1) {
+        await delay(playbackConfig.trackDelayMs);
+      }
+    }
+  }
+
+  function stopPlayback(refreshMarkers) {
+    if (!trackPlaybackActive) {
+      return;
+    }
+    trackPlaybackActive = false;
+    playbackPaused = false;
+    if (playbackResume) {
+      playbackResume();
+      playbackResume = null;
+    }
+    playbackState = null;
+    if (btnPlay) {
+      setPlayButtonState('stopped');
+    }
+    if (playbackAbortController) {
+      playbackAbortController.abort();
+      playbackAbortController = null;
+    }
+    if (refreshMarkers) {
+      debounceUpdateMarkers();
+    }
+  }
+
+  async function togglePlayback() {
+    if (mode !== 'year') {
+      return;
+    }
+    if (trackPlaybackActive && !playbackPaused) {
+      playbackPaused = true;
+      setPlayButtonState('paused');
+      return;
+    }
+    if (trackPlaybackActive && playbackPaused) {
+      playbackPaused = false;
+      setPlayButtonState('playing');
+      if (playbackResume) {
+        playbackResume();
+        playbackResume = null;
+      }
+      return;
+    }
+    trackPlaybackActive = true;
+    playbackPaused = false;
+    setPlayButtonState('playing');
+    if (markerStreamSource) {
+      markerStreamSource.close();
+    }
+    clearPlaybackMarkers();
+    const controller = new AbortController();
+    playbackAbortController = controller;
+    try {
+      const markers = await fetchPlaybackMarkers(controller.signal);
+      playbackState = {
+        tracks: groupTracksByStart(markers),
+        trackIndex: 0,
+        pointIndex: 0,
+      };
+      await playTracksSequentially(playbackState);
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        return;
+      }
+    } finally {
+      stopPlayback(true);
+    }
+  }
 
   // One-time creation of both sliders using initial bounds
   window.__initSliderOnce = (minTs,maxTs)=>{
@@ -2852,6 +3098,7 @@ function createDateRangeSlider(){
 
   // Reset button → drop custom filter and show full bounds of the *current* viewport
   btnReset.onclick = ()=>{
+    stopPlayback(false);
     sessionStorage.removeItem('dateRangeState');
     if (initY && initM){
       const rY = yearSlider.noUiSlider.options.range;
@@ -2876,6 +3123,10 @@ function createDateRangeSlider(){
     btnM.classList.toggle('active', next==='month');
     yearSlider.style.display  = next==='year'  ? 'block' : 'none';
     monthSlider.style.display = next==='month' ? 'block' : 'none';
+    btnPlay.disabled = next !== 'year';
+    if (next !== 'year') {
+      stopPlayback(true);
+    }
 
     // Refresh labels on mode switch respecting full/custom state
     const saved = loadDateRangeState();
@@ -2909,6 +3160,7 @@ function createDateRangeSlider(){
   }
 
   function updateDateFilter(){
+    stopPlayback(false);
     // YEAR mode → make a full [year..year] month span
     if (mode==='year'){
       const y = +yearSlider.noUiSlider.get();
@@ -3058,6 +3310,10 @@ function getTooltipContent(marker) {
  */
 function updateMarkers(){
   const loadingEl = document.getElementById('loadingOverlay');
+  if (trackPlaybackActive) {
+    if (loadingEl) loadingEl.style.display='none';
+    return;
+  }
   if (loadingEl) loadingEl.style.display='block';
 
   if (markerStreamSource) markerStreamSource.close();

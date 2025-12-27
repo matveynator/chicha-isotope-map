@@ -689,6 +689,8 @@
     "back_to_all_tracks": "Back to the combined track map.",
     "count_rate": "Count Rate",
     "date_slider_tooltip": "Filter measurements by date or year range.",
+    "date_slider_play": "Play tracks by year",
+    "date_slider_stop": "Stop track playback",
     "date_time": "Date and Time",
     "description": "Chicha’s Radiation Map",
     "download_track_cim": "Download track (.json)",
