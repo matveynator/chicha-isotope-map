@@ -1172,18 +1172,21 @@ body, html {
           gap: 6px;
           padding: 6px 12px;
           border-radius: 8px;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          background: rgba(255, 255, 255, 0.08);
-          color: var(--modal-text);
+          border: 1px solid var(--live-chart-button-border, rgba(255, 255, 255, 0.15));
+          background: var(--live-chart-button-bg, rgba(255, 255, 255, 0.08));
+          color: var(--live-chart-button-text, var(--modal-text));
           font-size: var(--font-size-sm);
           font-family: inherit;
           cursor: pointer;
           text-decoration: none;
-          transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+          box-shadow: 0 0 0 1px var(--live-chart-button-glow, transparent) inset;
+          transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
         }
 
         .live-chart-button:hover {
-          background: rgba(255, 255, 255, 0.14);
+          background: var(--live-chart-button-bg-hover, rgba(255, 255, 255, 0.14));
+          border-color: var(--live-chart-button-border-hover, rgba(255, 255, 255, 0.25));
+          box-shadow: 0 0 0 1px var(--live-chart-button-glow-hover, transparent) inset;
           transform: translateY(-1px);
         }
 
@@ -1521,21 +1524,11 @@ body, html {
     <div id="liveModalMeta" class="live-modal-meta"></div>
     <div id="liveModalExtra" class="live-modal-meta"></div>
     <div class="live-chart-controls" id="liveChartControls">
-      <button type="button" class="live-range-button" data-range="day"></button>
       <button type="button" class="live-range-button" data-range="week"></button>
       <button type="button" class="live-range-button" data-range="month"></button>
       <button type="button" class="live-range-button" data-range="all"></button>
     </div>
     <div class="live-chart-stack">
-      <div class="live-chart-block" data-range="day">
-        <h4 class="live-chart-title">
-          <span class="live-chart-label" id="liveChartTitleDay"></span>
-          <span class="live-chart-unit">µR/h</span>
-          <span class="live-chart-window" data-range="day"></span>
-        </h4>
-        <canvas class="live-chart-canvas" data-range="day"></canvas>
-        <p class="live-chart-empty" data-range="day"></p>
-      </div>
       <div class="live-chart-block" data-range="week">
         <h4 class="live-chart-title">
           <span class="live-chart-label" id="liveChartTitleWeek"></span>
@@ -2952,7 +2945,20 @@ function createDateRangeSlider(){
     if (marker.country) attrs.push(`data-country="${escapeHtml(marker.country)}"`);
     if (typeof marker.lat === 'number') attrs.push(`data-lat="${marker.lat}"`);
     if (typeof marker.lon === 'number') attrs.push(`data-lon="${marker.lon}"`);
-    const chartLink = deviceID ? `<div><button type="button" class="live-chart-link live-chart-button" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</button></div>` : '';
+    // Inline CSS variables let the chart button match the current radiation color
+    // without coupling the popup HTML to a fixed palette.
+    const buttonStyle = [
+      `--live-chart-button-bg:${colorWithAlpha(doseColor, 0.18)}`,
+      `--live-chart-button-bg-hover:${colorWithAlpha(doseColor, 0.26)}`,
+      `--live-chart-button-border:${colorWithAlpha(doseColor, 0.7)}`,
+      `--live-chart-button-border-hover:${colorWithAlpha(doseColor, 0.85)}`,
+      `--live-chart-button-text:${statusTextColor}`,
+      `--live-chart-button-glow:${colorWithAlpha(doseColor, 0.4)}`,
+      `--live-chart-button-glow-hover:${colorWithAlpha(doseColor, 0.55)}`
+    ].join(';');
+    const chartLink = deviceID
+      ? `<div><button type="button" class="live-chart-link live-chart-button" style="${buttonStyle}" ${attrs.join(' ')}>${translate('live_marker_chart_link')}</button></div>`
+      : '';
 
     const metaBits = [];
     metaBits.push(`<div><strong>${translate('live_marker_last_seen')}:</strong> ${escapeHtml(lastSeen)}</div>`);
@@ -3756,7 +3762,8 @@ function buildRadiationGradient(ctx, left, top, bottom, minValue, maxValue, topA
     { value: 100, alpha: topAlpha },
     { value: maxValue, alpha: bottomAlpha }
   ];
-  const gradient = ctx.createLinearGradient(left, top, left, bottom);
+  // Draw low (green) values toward the bottom so the risk gradient rises upward.
+  const gradient = ctx.createLinearGradient(left, bottom, left, top);
   const used = new Set();
   stops.forEach(function(stop) {
     const value = Math.min(Math.max(stop.value, minValue), maxValue);
@@ -3808,6 +3815,9 @@ const liveChartState = {
   options: {}
 };
 
+// Live charts focus on weekly data, with month/all as secondary ranges.
+const LIVE_CHART_RANGES = ['week', 'month', 'all'];
+
 function renderLiveRange(rangeKey) {
   const canvas = document.querySelector(`.live-chart-canvas[data-range="${rangeKey}"]`);
   const empty = document.querySelector(`.live-chart-empty[data-range="${rangeKey}"]`);
@@ -3858,16 +3868,14 @@ async function openLiveModal(deviceID, fallback) {
   const metaEl = document.getElementById('liveModalMeta');
   const extraEl = document.getElementById('liveModalExtra');
 
-  const dayTitle = document.getElementById('liveChartTitleDay');
   const weekTitle = document.getElementById('liveChartTitleWeek');
   const monthTitle = document.getElementById('liveChartTitleMonth');
   const allTitle = document.getElementById('liveChartTitleAll');
-  updateChartHeading(dayTitle, 'day');
   updateChartHeading(weekTitle, 'week');
   updateChartHeading(monthTitle, 'month');
   updateChartHeading(allTitle, 'all');
   updateLiveRangeButtons();
-  setActiveLiveRange('day');
+  setActiveLiveRange('week');
 
   const closeBtn = document.getElementById('liveModalClose');
   if (closeBtn) closeBtn.textContent = translate('live_chart_close');
@@ -3893,7 +3901,7 @@ async function openLiveModal(deviceID, fallback) {
     extraEl.innerHTML = '';
   }
 
-  ['day','week','month','all'].forEach(function(range){
+  LIVE_CHART_RANGES.forEach(function(range){
     const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
     if (empty) { empty.textContent = ''; empty.style.display = 'none'; }
     const canvas = document.querySelector(`.live-chart-canvas[data-range="${range}"]`);
@@ -3944,16 +3952,14 @@ async function openLiveModal(deviceID, fallback) {
   const ranges = (data && data.ranges && typeof data.ranges === 'object') ? data.ranges : {};
   // Range metadata keeps headings and averaging labels aligned with backend aggregation.
 
-  updateChartHeading(dayTitle, 'day', ranges);
   updateChartHeading(weekTitle, 'week', ranges);
   updateChartHeading(monthTitle, 'month', ranges);
   updateChartHeading(allTitle, 'all', ranges);
-    updateChartWindowLabel('day', ranges);
     updateChartWindowLabel('week', ranges);
     updateChartWindowLabel('month', ranges);
     updateChartWindowLabel('all', ranges);
 
-    ['day','week','month','all'].forEach(function(range){
+    LIVE_CHART_RANGES.forEach(function(range){
       const series = data.series && data.series[range] ? data.series[range] : [];
       const extras = data.extraSeries && data.extraSeries[range] ? data.extraSeries[range] : null;
       const rangeInfo = ranges && ranges[range] ? ranges[range] : null;
@@ -3966,10 +3972,7 @@ async function openLiveModal(deviceID, fallback) {
       if (rangeInfo && typeof rangeInfo.bucketSeconds === 'number') {
         options.bucketSeconds = rangeInfo.bucketSeconds;
       }
-      if (range === 'day') {
-        options.tickUnit = 'hour';
-        options.tickSegments = 24;
-      } else if (range === 'week') {
+      if (range === 'week') {
         options.tickUnit = 'day';
         options.tickSegments = 7;
       } else if (range === 'month') {
@@ -3984,7 +3987,7 @@ async function openLiveModal(deviceID, fallback) {
       liveChartState.extras[range] = extras;
       liveChartState.options[range] = options;
     });
-    renderLiveRange('day');
+    renderLiveRange('week');
   } catch (err) {
     if (descEl) {
       descEl.textContent = translate('live_marker_history_error');
@@ -3993,7 +3996,7 @@ async function openLiveModal(deviceID, fallback) {
     liveChartState.series = {};
     liveChartState.extras = {};
     liveChartState.options = {};
-    ['day','week','month','all'].forEach(function(range){
+    LIVE_CHART_RANGES.forEach(function(range){
       const empty = document.querySelector(`.live-chart-empty[data-range="${range}"]`);
       if (empty) {
         empty.textContent = translate('live_marker_no_data');
