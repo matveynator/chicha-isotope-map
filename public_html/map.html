@@ -2740,7 +2740,7 @@ function createDateRangeSlider(){
   btnY.onclick = () => switchMode('year');
   btnM.onclick = () => switchMode('month');
   btnPlay.onclick = () => togglePlayback();
-  setPlayButtonState(false);
+  setPlayButtonState('stopped');
   btnPlay.disabled = mode !== 'year';
 
   // Show/hide the whole control (called from updateMarkers())
@@ -2756,13 +2756,17 @@ function createDateRangeSlider(){
   };
 
   const playbackConfig = {
-    pointDelayMs: 25,
-    trackDelayMs: 200,
+    pointDelayMs: 18,
+    trackDelayMs: 150,
   };
   let playbackAbortController = null;
+  let playbackPaused = false;
+  let playbackResume = null;
+  let playbackState = null;
 
   // Playback toggles stream markers off and paints one track at a time so movement is readable.
-  function setPlayButtonState(isPlaying) {
+  function setPlayButtonState(state) {
+    const isPlaying = state === 'playing';
     const labelKey = isPlaying ? 'date_slider_stop' : 'date_slider_play';
     btnPlay.classList.toggle('is-playing', isPlaying);
     btnPlay.textContent = isPlaying ? '⏸' : '▶';
@@ -2867,21 +2871,40 @@ function createDateRangeSlider(){
     });
   }
 
-  async function playTracksSequentially(tracks) {
+  function waitWhilePaused() {
+    if (!playbackPaused) {
+      return Promise.resolve();
+    }
+    return new Promise(function(resolve) {
+      playbackResume = resolve;
+    });
+  }
+
+  async function playTracksSequentially(state) {
     const zoom = map.getZoom();
-    for (let t = 0; t < tracks.length; t++) {
+    for (let t = state.trackIndex; t < state.tracks.length; t++) {
       if (!trackPlaybackActive) {
         return;
       }
-      const points = tracks[t].points;
-      for (let i = 0; i < points.length; i++) {
+      const points = state.tracks[t].points;
+      for (let i = state.pointIndex; i < points.length; i++) {
         if (!trackPlaybackActive) {
           return;
         }
+        if (playbackPaused) {
+          await waitWhilePaused();
+          if (!trackPlaybackActive) {
+            return;
+          }
+        }
         addPlaybackMarker(points[i], zoom, i);
+        state.trackIndex = t;
+        state.pointIndex = i + 1;
         await delay(playbackConfig.pointDelayMs);
       }
-      if (t < tracks.length - 1) {
+      state.trackIndex = t + 1;
+      state.pointIndex = 0;
+      if (t < state.tracks.length - 1) {
         await delay(playbackConfig.trackDelayMs);
       }
     }
@@ -2892,8 +2915,14 @@ function createDateRangeSlider(){
       return;
     }
     trackPlaybackActive = false;
+    playbackPaused = false;
+    if (playbackResume) {
+      playbackResume();
+      playbackResume = null;
+    }
+    playbackState = null;
     if (btnPlay) {
-      setPlayButtonState(false);
+      setPlayButtonState('stopped');
     }
     if (playbackAbortController) {
       playbackAbortController.abort();
@@ -2908,12 +2937,23 @@ function createDateRangeSlider(){
     if (mode !== 'year') {
       return;
     }
-    if (trackPlaybackActive) {
-      stopPlayback(true);
+    if (trackPlaybackActive && !playbackPaused) {
+      playbackPaused = true;
+      setPlayButtonState('paused');
+      return;
+    }
+    if (trackPlaybackActive && playbackPaused) {
+      playbackPaused = false;
+      setPlayButtonState('playing');
+      if (playbackResume) {
+        playbackResume();
+        playbackResume = null;
+      }
       return;
     }
     trackPlaybackActive = true;
-    setPlayButtonState(true);
+    playbackPaused = false;
+    setPlayButtonState('playing');
     if (markerStreamSource) {
       markerStreamSource.close();
     }
@@ -2922,8 +2962,12 @@ function createDateRangeSlider(){
     playbackAbortController = controller;
     try {
       const markers = await fetchPlaybackMarkers(controller.signal);
-      const tracks = groupTracksByStart(markers);
-      await playTracksSequentially(tracks);
+      playbackState = {
+        tracks: groupTracksByStart(markers),
+        trackIndex: 0,
+        pointIndex: 0,
+      };
+      await playTracksSequentially(playbackState);
     } catch (err) {
       if (err && err.name === 'AbortError') {
         return;
