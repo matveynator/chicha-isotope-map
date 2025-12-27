@@ -5011,9 +5011,11 @@ function centerMapToLocation() {
       ev.preventDefault();
       openLegendModal();
     }
-    if (ev.target.classList.contains('live-chart-link')) {
+    // Use closest so clicks on inner elements still open the chart.
+    const chartButton = ev.target.closest('.live-chart-link');
+    if (chartButton) {
       ev.preventDefault();
-      const dataset = ev.target.dataset;
+      const dataset = chartButton.dataset;
       if (!dataset.device) return;
       const fallback = {
         device: dataset.device,
