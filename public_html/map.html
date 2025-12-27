@@ -1601,13 +1601,40 @@ body, html {
 
       // Compute marker color from radiation level
       function getGradientColor(doseRate) {
-        if (doseRate <= 0.04) return '#006400'; // Dark green
-        else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
-        else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
-        else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
-        else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
-        else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
-        else return '#000000'; // Black for very high values
+        // Keep the radiation palette anchored to legend thresholds, with extra
+        // midpoints for the smooth green → yellow → orange → red → black ramp.
+        const stops = [
+          { value: 0.00, color: '#064d1f' }, // Deep green base
+          { value: 0.05, color: '#0f7a2a' }, // Rich green
+          { value: 0.11, color: '#6bff6b' }, // Light green (≈11 µR/h)
+          { value: 0.20, color: '#adff2f' }, // Yellow-green
+          { value: 0.30, color: '#ffd700' }, // Yellow (≈30 µR/h)
+          { value: 0.50, color: '#ffb347' }, // Yellow-orange
+          { value: 1.00, color: '#ff4500' }, // Red (≈100 µR/h)
+          { value: 2.00, color: '#8b0000' }, // Deep red
+          { value: 4.00, color: '#000000' }  // Black for extreme values
+        ];
+
+        function hexToRgb(hex) {
+          const value = hex.replace('#', '');
+          return [
+            parseInt(value.slice(0, 2), 16),
+            parseInt(value.slice(2, 4), 16),
+            parseInt(value.slice(4, 6), 16)
+          ];
+        }
+
+        const safeValue = Math.max(0, doseRate || 0);
+        for (let i = 0; i < stops.length - 1; i++) {
+          const current = stops[i];
+          const next = stops[i + 1];
+          if (safeValue <= next.value) {
+            const span = next.value - current.value || 1;
+            const factor = (safeValue - current.value) / span;
+            return interpolateColor(hexToRgb(current.color), hexToRgb(next.color), factor);
+          }
+        }
+        return stops[stops.length - 1].color;
       }
 
 // Interpolate between two colors
@@ -3592,7 +3619,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
 
     // Build a spectrum gradient using the legend thresholds for Grafana-like styling.
     const radiationStroke = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 1, 1);
-    const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.32, 0.03);
+    const radiationFill = buildRadiationGradient(ctx, plotLeft, plotTop, plotBottom, minY, maxY, 0.26, 0.02);
 
     // Treat the latest datapoint as "now" for the dimming mask and marker.
     const currentIndex = radiationCoords.length - 1;
@@ -3635,7 +3662,7 @@ function drawLiveChart(canvas, radiationPoints, extrasByKey, options) {
     ctx.stroke();
 
     // Draw the smoothed line using the same legend-driven gradient.
-    ctx.lineWidth = 2.2;
+    ctx.lineWidth = 1.8;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = radiationStroke;
