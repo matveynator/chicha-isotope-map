@@ -1868,8 +1868,9 @@ function formatExtraAxisValue(key, value) {
 }
 
 function colorForExtraKey(key) {
-  if (key === 'temperature_c' || key === 'temperature_f') return '#ff7043';
-  if (key === 'humidity_percent') return '#26a69a';
+  // Keep temperature purple and humidity blue to match the requested styling.
+  if (key === 'temperature_c' || key === 'temperature_f') return '#8b5cf6';
+  if (key === 'humidity_percent') return '#38bdf8';
   if (key === 'pressure_hpa') {
     // Pressure gets a calming blue to distinguish it from humidity's green.
     return '#5c6bc0';
