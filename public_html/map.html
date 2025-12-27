@@ -3012,8 +3012,20 @@ function createDateRangeSlider(){
     togglePlayback();
   }
 
+  function suppressPlaybackShortcutKeyup(event) {
+    if (!isSpaceKey(event)) {
+      return;
+    }
+    if (!isPlaybackShortcutAllowed(event)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   // Listen once for the map session, keeping the interaction predictable.
   document.addEventListener('keydown', handlePlaybackShortcut, true);
+  document.addEventListener('keyup', suppressPlaybackShortcutKeyup, true);
 
   // One-time creation of both sliders using initial bounds
   window.__initSliderOnce = (minTs,maxTs)=>{
