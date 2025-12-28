@@ -3512,9 +3512,10 @@ function getTooltipContent(marker) {
 
 // ---- Live marker clustering offsets ----
 // Safecast realtime markers can share the same GPS coordinate or be too close on screen.
-// We group nearby points in screen space and fan them out so overlap stays under ~30%.
+// We group nearby points in screen space and fan them out so overlap stays under ~20%.
 function liveMarkerMinSeparation(sizePx) {
-  return sizePx * 0.7;
+  // Keep centers separated by at least 80% of diameter so overlap stays under ~20%.
+  return sizePx * 0.8;
 }
 
 function liveMarkerOffsetPoint(index, sizePx) {
@@ -3551,7 +3552,7 @@ function liveMarkerClusterForPoint(clusters, basePoint, sizePx) {
       return cluster;
     }
   }
-  const cluster = { basePoint: basePoint, maxSize: sizePx, count: 0 };
+  const cluster = { basePoint: basePoint, maxSize: sizePx, members: [] };
   clusters.push(cluster);
   return cluster;
 }
@@ -3561,6 +3562,26 @@ function offsetLiveMarkerFromPoint(basePoint, index, sizePx) {
   const offsetPoint = liveMarkerOffsetPoint(index, sizePx);
   const shifted = basePoint.add(offsetPoint);
   return map.layerPointToLatLng(shifted);
+}
+
+function applyLiveMarkerOffsets(markers, zoomLevel) {
+  if (!map) return;
+  const liveMarkers = markers.filter(marker => marker && marker.isRealtime && marker.baseLatLng);
+  if (liveMarkers.length <= 1) return;
+  liveMarkers.sort((a, b) => (a.liveKey || '').localeCompare(b.liveKey || ''));
+  const clusters = [];
+  liveMarkers.forEach(marker => {
+    const sizePx = marker.currentIconSize || getRadius(marker.doseRate, zoomLevel) * 3;
+    const basePoint = map.latLngToLayerPoint(marker.baseLatLng);
+    const cluster = liveMarkerClusterForPoint(clusters, basePoint, sizePx);
+    cluster.members.push(marker);
+  });
+  clusters.forEach(cluster => {
+    cluster.members.forEach((marker, index) => {
+      const shifted = offsetLiveMarkerFromPoint(cluster.basePoint, index, cluster.maxSize);
+      marker.setLatLng([shifted.lat, shifted.lng]);
+    });
+  });
 }
 
 
@@ -3595,7 +3616,6 @@ function updateMarkers(){
   circleMarkers = {};
 
   const tracks = new Set();
-  const liveClusters = [];
   let minTs = Infinity, maxTs = -Infinity;
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
@@ -3615,12 +3635,7 @@ function updateMarkers(){
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
       if (!icon) return; // device is older than 24 hours
-      const basePoint = map.latLngToLayerPoint([m.lat, m.lon]);
-      const cluster = liveMarkerClusterForPoint(liveClusters, basePoint, icon.size);
-      const liveIndex = cluster.count;
-      cluster.count += 1;
-      const shifted = offsetLiveMarkerFromPoint(cluster.basePoint, liveIndex, icon.size);
-      marker = L.marker([shifted.lat, shifted.lng], {
+      marker = L.marker([m.lat, m.lon], {
         icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
       })
       .addTo(map)
@@ -3644,7 +3659,15 @@ function updateMarkers(){
     marker.doseRate  = m.doseRate;
     marker.date      = m.date;
     marker.isRealtime = isLive;
+    if (isLive) {
+      marker.baseLatLng = L.latLng(m.lat, m.lon);
+      marker.currentIconSize = icon.size;
+      marker.liveKey = m.deviceID || m.trackID || String(m.date || '');
+    }
     circleMarkers[m.id || m.trackID] = marker;
+    if (isLive) {
+      applyLiveMarkerOffsets(Object.values(circleMarkers), zoom);
+    }
   };
 
   es.addEventListener('done', () => {
@@ -4568,6 +4591,7 @@ function debounceUpdateMarkers() {
 function adjustMarkerRadius() {
   var zoomLevel = map.getZoom();
   const nowSec = Date.now() / 1000;
+  const liveMarkers = [];
   for (let key in circleMarkers) {
     let marker = circleMarkers[key];
     if (marker.isRealtime) {
@@ -4579,11 +4603,16 @@ function adjustMarkerRadius() {
         continue;
       }
       marker.setIcon(L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]}));
+      marker.currentIconSize = icon.size;
+      liveMarkers.push(marker);
     } else if (typeof marker.setRadius === 'function') {
       // Circle markers scale by adjusting radius directly
       let newRadius = getRadius(marker.doseRate, zoomLevel);
       marker.setRadius(newRadius);
     }
+  }
+  if (liveMarkers.length > 1) {
+    applyLiveMarkerOffsets(liveMarkers, zoomLevel);
   }
 }
 
