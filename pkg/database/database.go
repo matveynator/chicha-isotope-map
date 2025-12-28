@@ -1046,6 +1046,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// 1) Composite first — biggest wins for rendering/bounds
 			{"idx_markers_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
+			// /get_markers with date filters + wide bounds benefits from keeping date in the same scan prefix.
+			{"idx_markers_zoom_bounds_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_date ON markers (zoom, lat, lon, date)`},
 			{"idx_markers_trackid_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
 			// Include speed for one-pass range plans
@@ -1093,6 +1096,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 		return []struct{ name, sql string }{
 			{"idx_markers_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
+			// /get_markers with date filters + wide bounds benefits from keeping date in the same scan prefix.
+			{"idx_markers_zoom_bounds_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_date ON markers (zoom, lat, lon, date)`},
 			{"idx_markers_trackid_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
 			{"idx_markers_zoom_bounds_speed",
@@ -1137,6 +1143,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique ON markers (doseRate, date, lon, lat, countRate, zoom, speed, trackID)`},
 			{"idx_markers_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds ON markers (zoom, lat, lon)`},
+			// /get_markers with date filters + wide bounds benefits from keeping date in the same scan prefix.
+			{"idx_markers_zoom_bounds_date",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_date ON markers (zoom, lat, lon, date)`},
 			{"idx_markers_trackid_zoom_bounds",
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
 			{"idx_markers_zoom_bounds_speed",
