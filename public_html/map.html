@@ -1706,6 +1706,95 @@ function getRadius(doseRate, zoomLevel) {
   return Math.max(r, 2);                       // prevent tiny circles
 }
 
+// Live markers need decluttering at low zoom so they never stack and look like
+// a single dot. We enforce a spacing that caps overlap at ~20% between equal
+// circles (≈1.374 * radius in screen space).
+const LIVE_MAX_OVERLAP_RATIO = 0.2;
+const LIVE_MIN_SPACING_FACTOR = 1.374; // derived from equal-circle overlap math
+
+// liveMinSpacingPx returns the minimum center-to-center distance that keeps
+// two circles from overlapping more than LIVE_MAX_OVERLAP_RATIO.
+function liveMinSpacingPx(radiusPx) {
+  return Math.max(1, radiusPx * LIVE_MIN_SPACING_FACTOR);
+}
+
+// createLivePlacementGrid keeps realtime markers separated in pixel space.
+// We use a lightweight grid + spiral search to stay deterministic and fast
+// across browsers without external libraries.
+function createLivePlacementGrid(mapRef, zoomLevel) {
+  const baseRadius = getRadius(0, zoomLevel) * 3;
+  const baseSpacing = liveMinSpacingPx(baseRadius);
+  const cellSize = Math.max(baseSpacing, 1);
+  const grid = new Map();
+
+  function cellKey(point) {
+    const cx = Math.floor(point.x / cellSize);
+    const cy = Math.floor(point.y / cellSize);
+    return `${cx}:${cy}`;
+  }
+
+  function nearbyPoints(point) {
+    const cx = Math.floor(point.x / cellSize);
+    const cy = Math.floor(point.y / cellSize);
+    const out = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const key = `${cx + dx}:${cy + dy}`;
+        const bucket = grid.get(key);
+        if (bucket) {
+          out.push.apply(out, bucket);
+        }
+      }
+    }
+    return out;
+  }
+
+  function canPlace(point, spacing) {
+    const peers = nearbyPoints(point);
+    for (let i = 0; i < peers.length; i++) {
+      const dx = point.x - peers[i].x;
+      const dy = point.y - peers[i].y;
+      if (Math.hypot(dx, dy) < spacing) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function remember(point) {
+    const key = cellKey(point);
+    const bucket = grid.get(key) || [];
+    bucket.push(point);
+    grid.set(key, bucket);
+  }
+
+  function spiralCandidate(origin, index, spacing) {
+    if (index === 0) return origin;
+    const ring = Math.ceil(index / 6);
+    const angle = index * 2.399963229728653; // golden angle in radians
+    const radius = ring * spacing;
+    return L.point(origin.x + Math.cos(angle) * radius, origin.y + Math.sin(angle) * radius);
+  }
+
+  return {
+    place: function(latlng, radiusPx) {
+      const spacing = Math.max(baseSpacing, liveMinSpacingPx(radiusPx));
+      const origin = mapRef.latLngToLayerPoint(latlng);
+      const maxAttempts = 48; // enough for dense clusters without heavy loops
+      for (let i = 0; i < maxAttempts; i++) {
+        const candidate = spiralCandidate(origin, i, spacing);
+        if (canPlace(candidate, spacing)) {
+          remember(candidate);
+          return mapRef.layerPointToLatLng(candidate);
+        }
+      }
+      // Fall back to the original point if we ran out of slots.
+      remember(origin);
+      return latlng;
+    }
+  };
+}
+
 // Thresholds for realtime freshness expressed in seconds so both the
 // rendering loop and periodic refresh share the same rules.
 const LIVE_ACTIVE_WINDOW = 5 * 60;         // 5 minutes keeps "working" sensors bright
@@ -3542,6 +3631,7 @@ function updateMarkers(){
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
+  const livePlacement = createLivePlacementGrid(map, zoom);
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
   markerStreamSource = es;
@@ -3560,7 +3650,8 @@ function updateMarkers(){
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
       if (!icon) return; // device is older than 24 hours
-      marker = L.marker([m.lat, m.lon], {
+      const placedLatLng = livePlacement.place(L.latLng(m.lat, m.lon), icon.radius);
+      marker = L.marker([placedLatLng.lat, placedLatLng.lng], {
         icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
       })
       .addTo(map)
