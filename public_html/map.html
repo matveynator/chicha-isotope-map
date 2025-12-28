@@ -3519,14 +3519,28 @@ function liveMarkerMinSeparation(sizePx) {
 
 function liveMarkerOffsetPoint(index, sizePx) {
   if (index === 0) return L.point(0, 0);
-  const slots = 6;
-  const ring = Math.floor(index / slots);
-  const slot = index % slots;
-  const angle = (Math.PI * 2 * slot) / slots + ring * 0.35;
-  const baseDistance = liveMarkerMinSeparation(sizePx);
-  const ringStep = sizePx * 0.15;
-  const distance = baseDistance + ring * ringStep;
-  return L.point(Math.cos(angle) * distance, Math.sin(angle) * distance);
+  // Use a square spiral grid so every neighbor stays at least min separation away.
+  const step = liveMarkerMinSeparation(sizePx);
+  const k = Math.ceil((Math.sqrt(index) - 1) / 2);
+  const t = 2 * k + 1;
+  const m = t * t;
+  const edge = t - 1;
+  let x = 0;
+  let y = 0;
+  if (index >= m - edge) {
+    x = k - (m - index);
+    y = -k;
+  } else if (index >= m - 2 * edge) {
+    x = -k;
+    y = -k + (m - edge - index);
+  } else if (index >= m - 3 * edge) {
+    x = -k + (m - 2 * edge - index);
+    y = k;
+  } else {
+    x = k;
+    y = k - (m - 3 * edge - index);
+  }
+  return L.point(x * step, y * step);
 }
 
 function liveMarkerClusterForPoint(clusters, basePoint, sizePx) {
