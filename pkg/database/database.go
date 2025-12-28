@@ -1367,6 +1367,17 @@ LIMIT 1`
 		}
 		return err == nil, err
 
+	case "duckdb":
+		// DuckDB exposes an index catalog function; keep the query small so
+		// the check is fast and avoids long locks.
+		const q = `SELECT 1 FROM duckdb_indexes() WHERE index_name = ? LIMIT 1`
+		var one int
+		err := db.DB.QueryRowContext(ctx, q, indexName).Scan(&one)
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return err == nil, err
+
 	case "sqlite", "chai":
 		// Standard SQLite catalog
 		const q = `SELECT name FROM sqlite_master WHERE type='index' AND name=? LIMIT 1`
