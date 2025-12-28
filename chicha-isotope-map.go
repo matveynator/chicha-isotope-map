@@ -39,6 +39,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -5362,17 +5363,22 @@ func main() {
 	rootHandler = withServerHeader(rootHandler)
 
 	// 5. HTTP/HTTPS-серверы
+	// We track server errors via a channel so shutdown can react without polling.
+	serverErr := make(chan error, 1)
+	var server *http.Server
 	if *domain != "" {
 		// Двойной сервер :80 + :443 с Let’s Encrypt
 		go serveWithDomain(*domain, rootHandler)
 	} else {
 		// Обычный HTTP на порт из -port
 		addr := fmt.Sprintf(":%d", *port)
+		server = &http.Server{
+			Addr:    addr,
+			Handler: rootHandler,
+		}
 		go func() {
 			log.Printf("HTTP server ➜ http://localhost:%d", *port)
-			if err := http.ListenAndServe(addr, rootHandler); err != nil {
-				selfupgradeHandleServerError(err, log.Printf)
-			}
+			serverErr <- server.ListenAndServe()
 		}()
 	}
 
@@ -5388,5 +5394,28 @@ func main() {
 	// асинхронные индексы в бд без блокирования основного процесса конец
 
 	// 6. Держим main-goroutine живой
-	select {}
+	// Capture OS signals so we can cancel background work and close DB cleanly.
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case sig := <-signalCh:
+		log.Printf("shutdown requested: %s", sig.String())
+	case err := <-serverErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			selfupgradeHandleServerError(err, log.Printf)
+		}
+	}
+
+	if server != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("http shutdown: %v", err)
+		}
+		cancel()
+	}
+
+	if err := db.Close(); err != nil {
+		log.Printf("db close: %v", err)
+	}
 }

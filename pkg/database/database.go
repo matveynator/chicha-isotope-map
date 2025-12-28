@@ -650,6 +650,16 @@ func NewDatabase(config Config) (*Database, error) {
 	return databaseInstance, nil
 }
 
+// Close releases the underlying sql.DB so shutdowns free connections promptly.
+// Keeping it here keeps callers from reaching into db.DB directly and aligns
+// with "Clear is better than clever".
+func (db *Database) Close() error {
+	if db == nil || db.DB == nil {
+		return nil
+	}
+	return db.DB.Close()
+}
+
 // startDuckDBStartupProgress logs periodic startup telemetry while DuckDB opens a
 // large file. We approximate progress using process read counters versus the file
 // size. The loop runs off a channel-friendly select so the goroutine stays easy to
@@ -970,6 +980,12 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 	worker := func() {
 		logf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", cfg.DBType)
 
+		state, err := db.loadIndexBuildState(ctx, cfg.DBType)
+		if err != nil {
+			logf("⚠️  index state load failed: %v", err)
+			state = map[string]struct{}{}
+		}
+
 		if err := db.backfillTracksTable(ctx, cfg.DBType); err != nil {
 			logf("❌ track registry backfill failed: %v", err)
 		} else {
@@ -977,6 +993,25 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 		}
 
 		for _, it := range indexes {
+			if _, ok := state[it.name]; ok {
+				logf("⏭️  index %s already marked as ready; skip.", it.name)
+				continue
+			}
+
+			exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
+			if err != nil {
+				logf("⚠️  index check failed for %s: %v", it.name, err)
+			}
+			if exists {
+				if markErr := db.markIndexBuilt(ctx, cfg.DBType, it.name); markErr != nil {
+					logf("⚠️  index %s exists but could not be marked: %v", it.name, markErr)
+				} else {
+					state[it.name] = struct{}{}
+				}
+				logf("⏭️  index %s already exists; skip.", it.name)
+				continue
+			}
+
 			start := time.Now()
 			logf("▶️  start index %s", it.name)
 
@@ -994,6 +1029,11 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 				_, err := db.DB.ExecContext(ctx, it.sql)
 				if err == nil {
 					logf("✅ index %s ready in %s", it.name, time.Since(start).Truncate(time.Millisecond))
+					if markErr := db.markIndexBuilt(ctx, cfg.DBType, it.name); markErr != nil {
+						logf("⚠️  index %s built but not recorded: %v", it.name, markErr)
+					} else {
+						state[it.name] = struct{}{}
+					}
 					break
 				}
 
@@ -1031,6 +1071,79 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 
 	// run in background
 	go worker()
+}
+
+// loadIndexBuildState loads the index registry table so we avoid re-running work.
+// We store the names in a map owned by the worker goroutine to keep it lock-free.
+func (db *Database) loadIndexBuildState(ctx context.Context, dbType string) (map[string]struct{}, error) {
+	if err := db.ensureIndexBuildStateTable(ctx, dbType); err != nil {
+		return nil, err
+	}
+
+	rows, err := db.DB.QueryContext(ctx, `SELECT name FROM index_build_state`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	state := make(map[string]struct{})
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		state[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return state, nil
+}
+
+// ensureIndexBuildStateTable bootstraps the registry table in a portable way.
+// This avoids repeating index work across restarts without locking any Go state.
+func (db *Database) ensureIndexBuildStateTable(ctx context.Context, dbType string) error {
+	var stmt string
+	switch strings.ToLower(dbType) {
+	case "clickhouse":
+		stmt = `
+CREATE TABLE IF NOT EXISTS index_build_state (
+  name       String,
+  created_at Int64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (name)`
+	default:
+		stmt = `
+CREATE TABLE IF NOT EXISTS index_build_state (
+  name       TEXT PRIMARY KEY,
+  created_at BIGINT
+)`
+	}
+
+	_, err := db.DB.ExecContext(ctx, stmt)
+	return err
+}
+
+// markIndexBuilt stores a successful index creation to short-circuit future runs.
+// We always attempt the insert, even if the index existed, to keep metadata in sync.
+func (db *Database) markIndexBuilt(ctx context.Context, dbType, name string) error {
+	stmt := fmt.Sprintf("INSERT INTO index_build_state (name, created_at) VALUES (%s, %s)",
+		placeholder(dbType, 1), placeholder(dbType, 2))
+	_, err := db.DB.ExecContext(ctx, stmt, name, time.Now().Unix())
+	if err == nil {
+		return nil
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "duplicate key value") ||
+		strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "sqlstate 23505") {
+		return nil
+	}
+
+	return err
 }
 
 // desiredIndexesPortable declares the set of indexes we want to have for each engine.
@@ -1339,6 +1452,11 @@ CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
   ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
+
+CREATE TABLE IF NOT EXISTS index_build_state (
+  name       TEXT PRIMARY KEY,
+  created_at BIGINT
+);
 `
 
 	case "sqlite", "chai":
@@ -1400,6 +1518,11 @@ CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
   ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
+
+CREATE TABLE IF NOT EXISTS index_build_state (
+  name       TEXT PRIMARY KEY,
+  created_at BIGINT
+);
 `
 
 	case "duckdb":
@@ -1465,6 +1588,11 @@ CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
   ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
+
+CREATE TABLE IF NOT EXISTS index_build_state (
+  name       TEXT PRIMARY KEY,
+  created_at BIGINT
+);
 `
 
 	case "clickhouse":
@@ -1518,6 +1646,11 @@ ORDER BY (device_id, measured_at);`,
   created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY (code);`,
+			`CREATE TABLE IF NOT EXISTS index_build_state (
+  name       String,
+  created_at Int64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (name);`,
 		}
 
 	default:
