@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{translate "title"}}</title>
+    <!-- Use localized SEO text so search engines understand the map in every language. -->
+    <meta name="description" content="{{translate "seo_description"}}">
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="/static/leaflet.css">
@@ -203,10 +205,35 @@ body, html {
           color: var(--modal-text);
         }
 
-        /* Small centered pill that surfaces the shareable short link */
-        #shortLinkDisplay {
+        /* World radiation logo keeps the map identity visible for SEO and users. */
+        #mapLogo {
           position: absolute;
           top: 12px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: var(--overlay-bg);
+          border: var(--legend-border);
+          border-radius: 999px;
+          padding: 6px 12px;
+          z-index: 1200;
+          font-size: var(--font-size-sm);
+          color: var(--modal-text);
+          margin: 0;
+          text-transform: none;
+        }
+
+        #mapLogo .map-logo-icon {
+          font-size: var(--font-size-lg);
+          line-height: 1;
+        }
+
+        /* Small centered pill that surfaces the shareable short link under the logo */
+        #shortLinkDisplay {
+          position: absolute;
+          top: 56px;
           left: 50%;
           transform: translateX(-50%);
           background: var(--overlay-bg);
@@ -1336,6 +1363,12 @@ body, html {
     <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{translate "github_link_tooltip_desc"}}">
       <img src="/static/images/chicha-isotope-map-round-logo.png" alt="{{translate "description"}} (version: {{ .Version }})" class="github-icon">
     </a>
+
+    <!-- World radiation logo announces the map identity for every language. -->
+    <h1 id="mapLogo" aria-label="{{translate "logo_title"}}">
+      <span class="map-logo-icon" aria-hidden="true">☢️</span>
+      <span class="map-logo-text">{{translate "logo_title"}}</span>
+    </h1>
 
     <!-- Short link pill shows the shareable URL and copies it on click -->
     <div
