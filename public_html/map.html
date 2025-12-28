@@ -3523,8 +3523,9 @@ function liveMarkerOffsetPoint(index, sizePx) {
   const ring = Math.floor(index / slots);
   const slot = index % slots;
   const angle = (Math.PI * 2 * slot) / slots + ring * 0.35;
-  const baseDistance = sizePx * 0.6;
-  const ringStep = sizePx * 0.25;
+  // Keep centers separated by at least 70% of the diameter so overlap stays below ~30%.
+  const baseDistance = sizePx * 0.7;
+  const ringStep = sizePx * 0.15;
   const distance = baseDistance + ring * ringStep;
   return L.point(Math.cos(angle) * distance, Math.sin(angle) * distance);
 }
