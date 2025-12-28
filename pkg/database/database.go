@@ -1054,6 +1054,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 			// Include speed for one-pass range plans
 			{"idx_markers_zoom_bounds_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
+			// Playback uses filtered per-track ordering; keep date+trackID close to bounds/speed for faster scans.
+			{"idx_markers_zoom_bounds_speed_date_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed_date_trackid ON markers (zoom, lat, lon, speed, date, trackID)`},
 			// Probe for duplicates detection/identity by lat/lon/date/doseRate
 			{"idx_markers_identity_probe",
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
@@ -1103,6 +1106,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
 			{"idx_markers_zoom_bounds_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
+			// Playback uses filtered per-track ordering; keep date+trackID close to bounds/speed for faster scans.
+			{"idx_markers_zoom_bounds_speed_date_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed_date_trackid ON markers (zoom, lat, lon, speed, date, trackID)`},
 			{"idx_markers_identity_probe",
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
@@ -1150,6 +1156,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
 			{"idx_markers_zoom_bounds_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
+			// Playback uses filtered per-track ordering; keep date+trackID close to bounds/speed for faster scans.
+			{"idx_markers_zoom_bounds_speed_date_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed_date_trackid ON markers (zoom, lat, lon, speed, date, trackID)`},
 			{"idx_markers_identity_probe",
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
@@ -1198,6 +1207,9 @@ func desiredIndexesPortable(dbType string) []struct{ name, sql string } {
 				`CREATE INDEX IF NOT EXISTS idx_markers_trackid_zoom_bounds ON markers (trackID, zoom, lat, lon)`},
 			{"idx_markers_zoom_bounds_speed",
 				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed ON markers (zoom, lat, lon, speed)`},
+			// Playback uses filtered per-track ordering; keep date+trackID close to bounds/speed for faster scans.
+			{"idx_markers_zoom_bounds_speed_date_trackid",
+				`CREATE INDEX IF NOT EXISTS idx_markers_zoom_bounds_speed_date_trackid ON markers (zoom, lat, lon, speed, date, trackID)`},
 			{"idx_markers_identity_probe",
 				`CREATE INDEX IF NOT EXISTS idx_markers_identity_probe ON markers (lat, lon, date, doseRate)`},
 			{"idx_markers_trackid",
