@@ -1706,6 +1706,37 @@ func precomputeMarkersForAllZoomLevels(src []database.Marker) []database.Marker 
 // =====================
 var translations map[string]map[string]string
 
+// supportedLanguages keeps language matching fast and predictable for SEO links.
+var supportedLanguages = map[string]struct{}{
+	"en": {}, "zh": {}, "es": {}, "hi": {}, "ar": {}, "fr": {}, "ru": {}, "pt": {}, "de": {}, "ja": {}, "tr": {}, "it": {},
+	"ko": {}, "pl": {}, "uk": {}, "mn": {}, "no": {}, "fi": {}, "ka": {}, "sv": {}, "he": {}, "nl": {}, "el": {}, "hu": {},
+	"cs": {}, "ro": {}, "th": {}, "vi": {}, "id": {}, "ms": {}, "bg": {}, "lt": {}, "et": {}, "lv": {}, "sl": {},
+	"da": {}, "fa": {},
+}
+
+// languageAliases normalizes regional or legacy tags into supported base codes.
+var languageAliases = map[string]string{
+	// Legacy codes
+	"iw": "he", // he (Hebrew)
+	"in": "id", // id (Indonesian)
+
+	// Norwegian variants
+	"nb": "no",
+	"nn": "no",
+
+	// Chinese variants → zh
+	"zh-cn":   "zh",
+	"zh-sg":   "zh",
+	"zh-hans": "zh",
+	"zh-tw":   "zh",
+	"zh-hk":   "zh",
+	"zh-hant": "zh",
+
+	// Portuguese variants → pt
+	"pt-br": "pt",
+	"pt-pt": "pt",
+}
+
 func loadTranslations(fs embed.FS, filename string) {
 	file, err := fs.Open(filename)
 	if err != nil {
@@ -1725,67 +1756,60 @@ func loadTranslations(fs embed.FS, filename string) {
 }
 
 func getPreferredLanguage(r *http.Request) string {
+	if queryLang := strings.TrimSpace(r.URL.Query().Get("lang")); queryLang != "" {
+		if normalized, ok := normalizeLanguage(queryLang); ok {
+			return normalized
+		}
+	}
+
 	langHeader := r.Header.Get("Accept-Language")
 	if langHeader == "" {
 		return "en"
 	}
 
-	// Поддерживаемые языки (добавлены: da, fa)
-	supported := map[string]struct{}{
-		"en": {}, "zh": {}, "es": {}, "hi": {}, "ar": {}, "fr": {}, "ru": {}, "pt": {}, "de": {}, "ja": {}, "tr": {}, "it": {},
-		"ko": {}, "pl": {}, "uk": {}, "mn": {}, "no": {}, "fi": {}, "ka": {}, "sv": {}, "he": {}, "nl": {}, "el": {}, "hu": {},
-		"cs": {}, "ro": {}, "th": {}, "vi": {}, "id": {}, "ms": {}, "bg": {}, "lt": {}, "et": {}, "lv": {}, "sl": {},
-		"da": {}, "fa": {},
-	}
-
-	// Нормализация/синонимы: приводим варианты к поддерживаемым базовым кодам
-	aliases := map[string]string{
-		// Устаревшие коды
-		"iw": "he", // he (Hebrew)
-		"in": "id", // id (Indonesian)
-
-		// Норвежский: часто приходит nb-NO/nn-NO
-		"nb": "no",
-		"nn": "no",
-
-		// Китайский: сводим к "zh"
-		"zh-cn":   "zh",
-		"zh-sg":   "zh",
-		"zh-hans": "zh",
-		"zh-tw":   "zh",
-		"zh-hk":   "zh",
-		"zh-hant": "zh",
-
-		// Португальский варианты → "pt"
-		"pt-br": "pt",
-		"pt-pt": "pt",
-	}
-
 	langs := strings.Split(langHeader, ",")
 	for _, raw := range langs {
 		code := strings.TrimSpace(strings.SplitN(raw, ";", 2)[0])
-		code = strings.ToLower(strings.ReplaceAll(code, "_", "-"))
-
-		// Берём базовую часть до дефиса (например, "de" из "de-DE")
-		base := code
-		if i := strings.Index(code, "-"); i != -1 {
-			base = code[:i]
-		}
-
-		// Применяем алиасы (и к полному коду, и к базе)
-		if a, ok := aliases[code]; ok {
-			base = a
-		} else if a, ok := aliases[base]; ok {
-			base = a
-		}
-
-		// Проверяем поддержку
-		if _, ok := supported[base]; ok {
-			return base
+		if normalized, ok := normalizeLanguage(code); ok {
+			return normalized
 		}
 	}
 
 	return "en"
+}
+
+func normalizeLanguage(code string) (string, bool) {
+	if strings.TrimSpace(code) == "" {
+		return "", false
+	}
+
+	normalized := strings.ToLower(strings.ReplaceAll(code, "_", "-"))
+	base := normalized
+	if i := strings.Index(normalized, "-"); i != -1 {
+		base = normalized[:i]
+	}
+
+	if alias, ok := languageAliases[normalized]; ok {
+		base = alias
+	} else if alias, ok := languageAliases[base]; ok {
+		base = alias
+	}
+
+	if _, ok := supportedLanguages[base]; ok {
+		return base, true
+	}
+
+	return "", false
+}
+
+// supportedLanguageList returns a stable list for SEO-friendly hreflang links.
+func supportedLanguageList() []string {
+	langs := make([]string, 0, len(translations))
+	for lang := range translations {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+	return langs
 }
 
 // =====================
@@ -3985,6 +4009,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		Version           string
 		Translations      map[string]map[string]string
 		Lang              string
+		SupportedLangs    []string
 		DefaultLat        float64
 		DefaultLon        float64
 		DefaultZoom       int
@@ -3999,6 +4024,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		Version:           CompileVersion,
 		Translations:      translations,
 		Lang:              lang,
+		SupportedLangs:    supportedLanguageList(),
 		DefaultLat:        *defaultLat,
 		DefaultLon:        *defaultLon,
 		DefaultZoom:       *defaultZoom,

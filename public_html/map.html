@@ -1,10 +1,50 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ .Lang }}">
   <head>
     <!-- Set metadata and link CSS -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{translate "title"}}</title>
+    <!-- Metadata clarifies that this is a world radiation map for SEO and previews. -->
+    <meta name="description" content="{{translate "description"}}">
+    <meta name="keywords" content="world radiation map, radiation map, global radiation map, радиоактивная карта, карта радиации, мировой уровень радиации">
+    <meta property="og:title" content="{{translate "title"}}">
+    <meta property="og:description" content="{{translate "description"}}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://pelora.org/">
+    <meta property="og:image" content="https://pelora.org/static/images/chicha-isotope-map-round-logo.png">
+    <meta property="og:locale" content="{{ .Lang }}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{translate "title"}}">
+    <meta name="twitter:description" content="{{translate "description"}}">
+    <meta name="twitter:image" content="https://pelora.org/static/images/chicha-isotope-map-round-logo.png">
+    <link rel="canonical" href="https://pelora.org/">
+    <!-- Alternate language URLs help search engines index every localization. -->
+    {{- range .SupportedLangs }}
+    <link rel="alternate" hreflang="{{ . }}" href="https://pelora.org/?lang={{ . }}">
+    {{- end }}
+    <!-- Structured data helps search engines and AI tools understand the map URL format. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "{{translate "title"}}",
+        "description": "{{translate "description"}}",
+        "url": "https://pelora.org/",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://pelora.org/?minLat={minLat}&minLon={minLon}&maxLat={maxLat}&maxLon={maxLon}&zoom={zoom}&layer={layer}",
+          "query-input": [
+            "required name=minLat",
+            "required name=minLon",
+            "required name=maxLat",
+            "required name=maxLon",
+            "required name=zoom",
+            "required name=layer"
+          ]
+        }
+      }
+    </script>
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="/static/leaflet.css">
@@ -592,6 +632,30 @@ body, html {
 
         .github-icon:hover {
           opacity: 1;
+        }
+
+        /* World map identity sits under the legend to reinforce the map purpose. */
+        .map-identity {
+          position: absolute;
+          bottom: 20px;
+          right: 20px;
+          z-index: 1000;
+          background: var(--control-bg);
+          border: var(--legend-border);
+          border-radius: 4px;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+          padding: 8px 10px;
+          font-size: var(--font-size-sm);
+          color: var(--modal-text);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          max-width: 220px;
+        }
+
+        .map-identity-icon {
+          font-size: var(--font-size-lg);
+          line-height: 1;
         }
 
         /* Program info uses theme text and link colors */
@@ -1365,7 +1429,7 @@ body, html {
 <!-- Compact Legend (clickable) -->
 <div id="legend" role="button" tabindex="0" aria-label="{{translate "legend_button_tooltip"}}" style="
   position: absolute;
-  bottom: 20px;
+  bottom: 95px;
   right: 20px;
   background: var(--control-bg);
   border: var(--legend-border);
@@ -1390,6 +1454,11 @@ body, html {
   <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
    <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
   </div>
+</div>
+<!-- World radiation map identifier lives under the legend for immediate context. -->
+<div class="map-identity" aria-label="{{translate "world_radiation_map_label"}}">
+  <span class="map-identity-icon" aria-hidden="true">☢️</span>
+  <span>{{translate "world_radiation_map_label"}}</span>
 </div>
 <!--
   Compact 4-bin legend (µR/h) with vertical gradient bar (green→yellow→orange→red→black).
