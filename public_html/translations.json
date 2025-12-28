@@ -133,7 +133,10 @@
     "seo_description": "خريطة إشعاع عالمية تفاعلية مع رمز الإشعاع تعرض مستويات الإشعاع الخلفية حول العالم.",
     "meta_description": "خريطة عالمية بيئية للإشعاع — بيانات قياس الجرعات منذ عام 2011. تحقّق من أمان أي نقطة على الأرض.",
     "og_title": "Pelora — خريطة الإشعاع العالمية",
-    "og_description": "خريطة عالمية بيئية للإشعاع — بيانات قياس الجرعات منذ عام 2011. تحقّق من أمان أي نقطة على الأرض."
+    "og_description": "خريطة عالمية بيئية للإشعاع — بيانات قياس الجرعات منذ عام 2011. تحقّق من أمان أي نقطة على الأرض.",
+    "intro_tagline_word_1": "العالم",
+    "intro_tagline_word_2": "الإشعاع",
+    "intro_tagline_word_3": "الخريطة"
   },
   "cs": {
     "api_example_archive_desc": "Stáhne archiv tgz se všemi zveřejněnými soubory .json, pokud je JSON archiv zapnutý.",
@@ -269,7 +272,10 @@
     "seo_description": "Interaktivní světová mapa radiace se symbolem radiace zobrazující úrovně pozadí po celém světě.",
     "meta_description": "Světová ekologická mapa radiace — reálná dozimetrická data od roku 2011. Zjistěte bezpečnost jakéhokoli místa na Zemi.",
     "og_title": "Pelora — Světová mapa radiace",
-    "og_description": "Světová ekologická mapa radiace — reálná dozimetrická data od roku 2011. Zjistěte bezpečnost jakéhokoli místa na Zemi."
+    "og_description": "Světová ekologická mapa radiace — reálná dozimetrická data od roku 2011. Zjistěte bezpečnost jakéhokoli místa na Zemi.",
+    "intro_tagline_word_1": "světová",
+    "intro_tagline_word_2": "radiace",
+    "intro_tagline_word_3": "mapa"
   },
   "da": {
     "api_example_archive_desc": "Downloader en tgz-pakke med alle offentliggjorte .json-filer når JSON-arkivet er aktiveret.",
@@ -405,7 +411,10 @@
     "seo_description": "Interaktivt verdenskort over stråling med strålingssymbol, der viser baggrundsniveauer globalt.",
     "meta_description": "Verdens miljøkort over stråling — reelle dosimetridata siden 2011. Tjek sikkerheden for ethvert sted på Jorden.",
     "og_title": "Pelora — Verdenskort over stråling",
-    "og_description": "Verdens miljøkort over stråling — reelle dosimetridata siden 2011. Tjek sikkerheden for ethvert sted på Jorden."
+    "og_description": "Verdens miljøkort over stråling — reelle dosimetridata siden 2011. Tjek sikkerheden for ethvert sted på Jorden.",
+    "intro_tagline_word_1": "verden",
+    "intro_tagline_word_2": "stråling",
+    "intro_tagline_word_3": "kort"
   },
   "de": {
     "api_example_archive_desc": "Lädt ein tgz-Paket mit allen veröffentlichten .json-Dateien, sofern das JSON-Archiv aktiv ist.",
@@ -541,7 +550,10 @@
     "seo_description": "Interaktive weltweite Strahlenkarte mit Strahlensymbol, die die Hintergrundstrahlung weltweit zeigt.",
     "meta_description": "Weltweite Umwelt-Strahlenkarte — reale Dosimetrie-Daten seit 2011. Prüfen Sie die Sicherheit jedes Ortes auf der Erde.",
     "og_title": "Pelora — Weltweite Strahlenkarte",
-    "og_description": "Weltweite Umwelt-Strahlenkarte — reale Dosimetrie-Daten seit 2011. Prüfen Sie die Sicherheit jedes Ortes auf der Erde."
+    "og_description": "Weltweite Umwelt-Strahlenkarte — reale Dosimetrie-Daten seit 2011. Prüfen Sie die Sicherheit jedes Ortes auf der Erde.",
+    "intro_tagline_word_1": "Welt",
+    "intro_tagline_word_2": "Strahlung",
+    "intro_tagline_word_3": "Karte"
   },
   "el": {
     "api_example_archive_desc": "Κατεβάζει ένα αρχείο tgz με όλα τα δημοσιευμένα αρχεία .json όταν είναι ενεργό το JSON αρχείο.",
@@ -677,7 +689,10 @@
     "seo_description": "Διαδραστικός παγκόσμιος χάρτης ακτινοβολίας με σύμβολο ακτινοβολίας που δείχνει τα επίπεδα υποβάθρου παγκοσμίως.",
     "meta_description": "Παγκόσμιος οικολογικός χάρτης ακτινοβολίας — πραγματικά δεδομένα δοσιμετρίας από το 2011. Ελέγξτε την ασφάλεια οποιουδήποτε σημείου στη Γη.",
     "og_title": "Pelora — Παγκόσμιος χάρτης ακτινοβολίας",
-    "og_description": "Παγκόσμιος οικολογικός χάρτης ακτινοβολίας — πραγματικά δεδομένα δοσιμετρίας από το 2011. Ελέγξτε την ασφάλεια οποιουδήποτε σημείου στη Γη."
+    "og_description": "Παγκόσμιος οικολογικός χάρτης ακτινοβολίας — πραγματικά δεδομένα δοσιμετρίας από το 2011. Ελέγξτε την ασφάλεια οποιουδήποτε σημείου στη Γη.",
+    "intro_tagline_word_1": "παγκόσμιος",
+    "intro_tagline_word_2": "ακτινοβολία",
+    "intro_tagline_word_3": "χάρτης"
   },
   "en": {
     "api_example_archive_desc": "Downloads a tgz bundle with every published .json file when the server enables the JSON archive.",
@@ -814,7 +829,10 @@
     "seo_description": "Interactive world radiation map with a radiation symbol showing background radiation levels worldwide.",
     "meta_description": "World environmental radiation map — real dosimetry data since 2011. Check the safety of any point on Earth.",
     "og_title": "Pelora — World Radiation Map",
-    "og_description": "World environmental radiation map — real dosimetry data since 2011. Check the safety of any point on Earth."
+    "og_description": "World environmental radiation map — real dosimetry data since 2011. Check the safety of any point on Earth.",
+    "intro_tagline_word_1": "world",
+    "intro_tagline_word_2": "radiation",
+    "intro_tagline_word_3": "map"
   },
   "es": {
     "api_example_archive_desc": "Descarga un paquete tgz con todos los archivos .json publicados cuando el archivo JSON está activado.",
@@ -950,7 +968,10 @@
     "seo_description": "Mapa mundial de radiación interactivo con símbolo de radiación que muestra niveles de radiación de fondo en todo el mundo.",
     "meta_description": "Mapa mundial ambiental de radiación — datos reales de dosimetría desde 2011. Comprueba la seguridad de cualquier punto de la Tierra.",
     "og_title": "Pelora — Mapa mundial de radiación",
-    "og_description": "Mapa mundial ambiental de radiación — datos reales de dosimetría desde 2011. Comprueba la seguridad de cualquier punto de la Tierra."
+    "og_description": "Mapa mundial ambiental de radiación — datos reales de dosimetría desde 2011. Comprueba la seguridad de cualquier punto de la Tierra.",
+    "intro_tagline_word_1": "mundo",
+    "intro_tagline_word_2": "radiación",
+    "intro_tagline_word_3": "mapa"
   },
   "fa": {
     "api_example_archive_desc": "وقتی آرشیو JSON فعال باشد یک بسته tgz شامل تمام فایل‌های .json منتشرشده را دانلود می‌کند.",
@@ -1086,7 +1107,10 @@
     "seo_description": "نقشه جهانی تعاملی تشعشع با نماد تشعشع که سطح پس زمینه را در سراسر جهان نشان می‌دهد.",
     "meta_description": "نقشه جهانی محیط‌زیستی تشعشع — داده‌های واقعی دوزیمتری از سال ۲۰۱۱. ایمنی هر نقطه‌ای از زمین را بررسی کنید.",
     "og_title": "Pelora — نقشه جهانی تشعشع",
-    "og_description": "نقشه جهانی محیط‌زیستی تشعشع — داده‌های واقعی دوزیمتری از سال ۲۰۱۱. ایمنی هر نقطه‌ای از زمین را بررسی کنید."
+    "og_description": "نقشه جهانی محیط‌زیستی تشعشع — داده‌های واقعی دوزیمتری از سال ۲۰۱۱. ایمنی هر نقطه‌ای از زمین را بررسی کنید.",
+    "intro_tagline_word_1": "جهانی",
+    "intro_tagline_word_2": "تابش",
+    "intro_tagline_word_3": "نقشه"
   },
   "fi": {
     "api_example_archive_desc": "Lataa tgz-paketin, jossa on kaikki julkaistut .json-tiedostot, kun JSON-arkisto on käytössä.",
@@ -1222,7 +1246,10 @@
     "seo_description": "Vuorovaikutteinen maailmanlaajuinen säteilykartta säteilysymbolilla, joka näyttää taustasäteilytasot maailmanlaajuisesti.",
     "meta_description": "Maailmanlaajuinen ympäristön säteilykartta — todellista dosimetriadataa vuodesta 2011. Tarkista minkä tahansa paikan turvallisuus maapallolla.",
     "og_title": "Pelora — Maailmanlaajuinen säteilykartta",
-    "og_description": "Maailmanlaajuinen ympäristön säteilykartta — todellista dosimetriadataa vuodesta 2011. Tarkista minkä tahansa paikan turvallisuus maapallolla."
+    "og_description": "Maailmanlaajuinen ympäristön säteilykartta — todellista dosimetriadataa vuodesta 2011. Tarkista minkä tahansa paikan turvallisuus maapallolla.",
+    "intro_tagline_word_1": "maailman",
+    "intro_tagline_word_2": "säteily",
+    "intro_tagline_word_3": "kartta"
   },
   "fr": {
     "api_example_archive_desc": "Télécharge une archive tgz avec tous les fichiers .json publiés lorsque l’archive JSON est activée.",
@@ -1358,7 +1385,10 @@
     "seo_description": "Carte mondiale interactive des radiations avec symbole de radiation montrant les niveaux de fond dans le monde entier.",
     "meta_description": "Carte mondiale environnementale des radiations — données de dosimétrie réelles depuis 2011. Vérifiez la sécurité de n’importe quel point de la Terre.",
     "og_title": "Pelora — Carte mondiale des radiations",
-    "og_description": "Carte mondiale environnementale des radiations — données de dosimétrie réelles depuis 2011. Vérifiez la sécurité de n’importe quel point de la Terre."
+    "og_description": "Carte mondiale environnementale des radiations — données de dosimétrie réelles depuis 2011. Vérifiez la sécurité de n’importe quel point de la Terre.",
+    "intro_tagline_word_1": "monde",
+    "intro_tagline_word_2": "radiation",
+    "intro_tagline_word_3": "carte"
   },
   "he": {
     "api_example_archive_desc": "מורידה חבילת tgz עם כל קבצי .json שפורסמו כאשר ארכיון ה-JSON מופעל.",
@@ -1494,7 +1524,10 @@
     "seo_description": "מפת קרינה עולמית אינטראקטיבית עם סמל קרינה שמציגה רמות קרינת רקע ברחבי העולם.",
     "meta_description": "מפת קרינה סביבתית עולמית — נתוני דוזימטריה אמיתיים מאז 2011. בדקו את הבטיחות של כל נקודה על פני כדור הארץ.",
     "og_title": "Pelora — מפת קרינה עולמית",
-    "og_description": "מפת קרינה סביבתית עולמית — נתוני דוזימטריה אמיתיים מאז 2011. בדקו את הבטיחות של כל נקודה על פני כדור הארץ."
+    "og_description": "מפת קרינה סביבתית עולמית — נתוני דוזימטריה אמיתיים מאז 2011. בדקו את הבטיחות של כל נקודה על פני כדור הארץ.",
+    "intro_tagline_word_1": "עולם",
+    "intro_tagline_word_2": "קרינה",
+    "intro_tagline_word_3": "מפה"
   },
   "hi": {
     "api_example_archive_desc": "JSON संग्रह सक्षम होने पर सभी प्रकाशित .json फ़ाइलों वाला tgz पैकेज डाउनलोड करता है।",
@@ -1630,7 +1663,10 @@
     "seo_description": "रेडिएशन चिन्ह के साथ इंटरैक्टिव विश्व विकिरण मानचित्र जो दुनिया भर में पृष्ठभूमि विकिरण स्तर दिखाता है।",
     "meta_description": "वैश्विक पर्यावरणीय विकिरण मानचित्र — 2011 से वास्तविक डोसीमेट्री डेटा। पृथ्वी के किसी भी बिंदु की सुरक्षा जांचें।",
     "og_title": "Pelora — विश्व विकिरण मानचित्र",
-    "og_description": "वैश्विक पर्यावरणीय विकिरण मानचित्र — 2011 से वास्तविक डोसीमेट्री डेटा। पृथ्वी के किसी भी बिंदु की सुरक्षा जांचें।"
+    "og_description": "वैश्विक पर्यावरणीय विकिरण मानचित्र — 2011 से वास्तविक डोसीमेट्री डेटा। पृथ्वी के किसी भी बिंदु की सुरक्षा जांचें।",
+    "intro_tagline_word_1": "विश्व",
+    "intro_tagline_word_2": "विकिरण",
+    "intro_tagline_word_3": "मानचित्र"
   },
   "hu": {
     "api_example_archive_desc": "Letölt egy tgz csomagot az összes közzétett .json fájllal, ha a JSON archívum engedélyezett.",
@@ -1766,7 +1802,10 @@
     "seo_description": "Interaktív világszintű sugárzástérkép sugárzásjelzéssel, amely a háttérszinteket mutatja világszerte.",
     "meta_description": "Világszintű környezeti sugárzástérkép — valós dózimetriai adatok 2011 óta. Ellenőrizze a Föld bármely pontjának biztonságát.",
     "og_title": "Pelora — Világszintű sugárzástérkép",
-    "og_description": "Világszintű környezeti sugárzástérkép — valós dózimetriai adatok 2011 óta. Ellenőrizze a Föld bármely pontjának biztonságát."
+    "og_description": "Világszintű környezeti sugárzástérkép — valós dózimetriai adatok 2011 óta. Ellenőrizze a Föld bármely pontjának biztonságát.",
+    "intro_tagline_word_1": "világ",
+    "intro_tagline_word_2": "sugárzás",
+    "intro_tagline_word_3": "térkép"
   },
   "id": {
     "api_example_archive_desc": "Mengunduh paket tgz dengan semua berkas .json yang dipublikasikan saat arsip JSON diaktifkan.",
@@ -1902,7 +1941,10 @@
     "seo_description": "Peta radiasi dunia interaktif dengan simbol radiasi yang menampilkan tingkat radiasi latar di seluruh dunia.",
     "meta_description": "Peta radiasi lingkungan dunia — data dosimetri nyata sejak 2011. Periksa keamanan titik mana pun di Bumi.",
     "og_title": "Pelora — Peta radiasi dunia",
-    "og_description": "Peta radiasi lingkungan dunia — data dosimetri nyata sejak 2011. Periksa keamanan titik mana pun di Bumi."
+    "og_description": "Peta radiasi lingkungan dunia — data dosimetri nyata sejak 2011. Periksa keamanan titik mana pun di Bumi.",
+    "intro_tagline_word_1": "dunia",
+    "intro_tagline_word_2": "radiasi",
+    "intro_tagline_word_3": "peta"
   },
   "it": {
     "api_example_archive_desc": "Scarica un archivio tgz con tutti i file .json pubblicati quando l’archivio JSON è attivo.",
@@ -2038,7 +2080,10 @@
     "seo_description": "Mappa mondiale interattiva delle radiazioni con simbolo di radiazione che mostra i livelli di fondo nel mondo.",
     "meta_description": "Mappa mondiale ambientale delle radiazioni — dati dosimetrici reali dal 2011. Verifica la sicurezza di qualsiasi punto della Terra.",
     "og_title": "Pelora — Mappa mondiale delle radiazioni",
-    "og_description": "Mappa mondiale ambientale delle radiazioni — dati dosimetrici reali dal 2011. Verifica la sicurezza di qualsiasi punto della Terra."
+    "og_description": "Mappa mondiale ambientale delle radiazioni — dati dosimetrici reali dal 2011. Verifica la sicurezza di qualsiasi punto della Terra.",
+    "intro_tagline_word_1": "mondo",
+    "intro_tagline_word_2": "radiazione",
+    "intro_tagline_word_3": "mappa"
   },
   "ja": {
     "api_example_archive_desc": "JSON アーカイブが有効な場合、公開済みの .json ファイルをすべて含む tgz バンドルをダウンロードします。",
@@ -2174,7 +2219,10 @@
     "seo_description": "放射線マーク付きのインタラクティブな世界放射線マップで、世界のバックグラウンド放射線レベルを表示します。",
     "meta_description": "世界環境放射線マップ — 2011年以降の実測線量データ。地球上の任意の地点の安全性を確認できます。",
     "og_title": "Pelora — 世界放射線マップ",
-    "og_description": "世界環境放射線マップ — 2011年以降の実測線量データ。地球上の任意の地点の安全性を確認できます。"
+    "og_description": "世界環境放射線マップ — 2011年以降の実測線量データ。地球上の任意の地点の安全性を確認できます。",
+    "intro_tagline_word_1": "世界",
+    "intro_tagline_word_2": "放射線",
+    "intro_tagline_word_3": "地図"
   },
   "ko": {
     "api_example_archive_desc": "JSON 아카이브가 활성화된 경우 게시된 모든 .json 파일이 포함된 tgz 번들을 다운로드합니다.",
@@ -2310,7 +2358,10 @@
     "seo_description": "방사선 표식이 있는 인터랙티브 세계 방사선 지도이며 전 세계 배경 방사선 수준을 보여줍니다.",
     "meta_description": "세계 환경 방사선 지도 — 2011년부터의 실제 선량계 데이터. 지구상의 어느 지점이든 안전성을 확인하세요.",
     "og_title": "Pelora — 세계 방사선 지도",
-    "og_description": "세계 환경 방사선 지도 — 2011년부터의 실제 선량계 데이터. 지구상의 어느 지점이든 안전성을 확인하세요."
+    "og_description": "세계 환경 방사선 지도 — 2011년부터의 실제 선량계 데이터. 지구상의 어느 지점이든 안전성을 확인하세요.",
+    "intro_tagline_word_1": "세계",
+    "intro_tagline_word_2": "방사선",
+    "intro_tagline_word_3": "지도"
   },
   "ms": {
     "api_example_archive_desc": "Memuat turun pakej tgz dengan semua fail .json yang diterbitkan apabila arkib JSON diaktifkan.",
@@ -2446,7 +2497,10 @@
     "seo_description": "Peta radiasi dunia interaktif dengan simbol radiasi yang menunjukkan tahap radiasi latar di seluruh dunia.",
     "meta_description": "Peta radiasi alam sekitar dunia — data dosimetri sebenar sejak 2011. Semak keselamatan mana-mana titik di Bumi.",
     "og_title": "Pelora — Peta radiasi dunia",
-    "og_description": "Peta radiasi alam sekitar dunia — data dosimetri sebenar sejak 2011. Semak keselamatan mana-mana titik di Bumi."
+    "og_description": "Peta radiasi alam sekitar dunia — data dosimetri sebenar sejak 2011. Semak keselamatan mana-mana titik di Bumi.",
+    "intro_tagline_word_1": "dunia",
+    "intro_tagline_word_2": "radiasi",
+    "intro_tagline_word_3": "peta"
   },
   "nl": {
     "api_example_archive_desc": "Downloadt een tgz-pakket met alle gepubliceerde .json-bestanden wanneer het JSON-archief is ingeschakeld.",
@@ -2582,7 +2636,10 @@
     "seo_description": "Interactieve wereldkaart van straling met stralingssymbool die de achtergrondniveaus wereldwijd toont.",
     "meta_description": "Wereldwijde milieukaart van straling — echte dosimetriegegevens sinds 2011. Controleer de veiligheid van elk punt op aarde.",
     "og_title": "Pelora — Wereldkaart van straling",
-    "og_description": "Wereldwijde milieukaart van straling — echte dosimetriegegevens sinds 2011. Controleer de veiligheid van elk punt op aarde."
+    "og_description": "Wereldwijde milieukaart van straling — echte dosimetriegegevens sinds 2011. Controleer de veiligheid van elk punt op aarde.",
+    "intro_tagline_word_1": "wereld",
+    "intro_tagline_word_2": "straling",
+    "intro_tagline_word_3": "kaart"
   },
   "no": {
     "api_example_archive_desc": "Laster ned en tgz-pakke med alle publiserte .json-filer når JSON-arkivet er aktivert.",
@@ -2718,7 +2775,10 @@
     "seo_description": "Interaktivt verdenskart over stråling med strålingssymbol som viser bakgrunnsnivåer globalt.",
     "meta_description": "Verdens miljøkart over stråling — reelle dosimetridata siden 2011. Sjekk sikkerheten for ethvert punkt på jorden.",
     "og_title": "Pelora — Verdenskart over stråling",
-    "og_description": "Verdens miljøkart over stråling — reelle dosimetridata siden 2011. Sjekk sikkerheten for ethvert punkt på jorden."
+    "og_description": "Verdens miljøkart over stråling — reelle dosimetridata siden 2011. Sjekk sikkerheten for ethvert punkt på jorden.",
+    "intro_tagline_word_1": "verden",
+    "intro_tagline_word_2": "stråling",
+    "intro_tagline_word_3": "kart"
   },
   "pl": {
     "api_example_archive_desc": "Pobiera paczkę tgz ze wszystkimi opublikowanymi plikami .json, gdy archiwum JSON jest włączone.",
@@ -2854,7 +2914,10 @@
     "seo_description": "Interaktywna światowa mapa promieniowania ze znakiem promieniowania, pokazująca poziomy tła na całym świecie.",
     "meta_description": "Światowa środowiskowa mapa promieniowania — rzeczywiste dane dozymetryczne od 2011 roku. Sprawdź bezpieczeństwo dowolnego punktu na Ziemi.",
     "og_title": "Pelora — Światowa mapa promieniowania",
-    "og_description": "Światowa środowiskowa mapa promieniowania — rzeczywiste dane dozymetryczne od 2011 roku. Sprawdź bezpieczeństwo dowolnego punktu na Ziemi."
+    "og_description": "Światowa środowiskowa mapa promieniowania — rzeczywiste dane dozymetryczne od 2011 roku. Sprawdź bezpieczeństwo dowolnego punktu na Ziemi.",
+    "intro_tagline_word_1": "światowa",
+    "intro_tagline_word_2": "radiacji",
+    "intro_tagline_word_3": "mapa"
   },
   "pt": {
     "api_example_archive_desc": "Baixa um pacote tgz com todos os arquivos .json publicados quando o arquivo JSON está ativado.",
@@ -2990,7 +3053,10 @@
     "seo_description": "Mapa mundial de radiação interativo com símbolo de radiação que mostra níveis de fundo no mundo todo.",
     "meta_description": "Mapa mundial ambiental de radiação — dados reais de dosimetria desde 2011. Verifique a segurança de qualquer ponto da Terra.",
     "og_title": "Pelora — Mapa mundial de radiação",
-    "og_description": "Mapa mundial ambiental de radiação — dados reais de dosimetria desde 2011. Verifique a segurança de qualquer ponto da Terra."
+    "og_description": "Mapa mundial ambiental de radiação — dados reais de dosimetria desde 2011. Verifique a segurança de qualquer ponto da Terra.",
+    "intro_tagline_word_1": "mundo",
+    "intro_tagline_word_2": "radiação",
+    "intro_tagline_word_3": "mapa"
   },
   "ru": {
     "api_example_archive_desc": "Скачивает архив tgz со всеми опубликованными файлами .json, если включён JSON‑архив.",
@@ -3126,7 +3192,10 @@
     "seo_description": "Интерактивная мировая карта радиации со значком радиации, показывающая уровни фоновой радиации по всему миру.",
     "meta_description": "Мировая экологическая карта радиации — реальные данные дозиметрии с 2011 года. Узнай безопасность любой точки Земли.",
     "og_title": "Pelora — Мировая карта радиации",
-    "og_description": "Мировая экологическая карта радиации — реальные данные дозиметрии с 2011 года. Узнай безопасность любой точки Земли."
+    "og_description": "Мировая экологическая карта радиации — реальные данные дозиметрии с 2011 года. Узнай безопасность любой точки Земли.",
+    "intro_tagline_word_1": "мировая",
+    "intro_tagline_word_2": "радиации",
+    "intro_tagline_word_3": "карта"
   },
   "sv": {
     "api_example_archive_desc": "Hämtar ett tgz-paket med alla publicerade .json-filer när JSON-arkivet är aktiverat.",
@@ -3262,7 +3331,10 @@
     "seo_description": "Interaktiv världskarta över strålning med strålningssymbol som visar bakgrundsnivåer världen över.",
     "meta_description": "Världsomfattande miljökarta över strålning — verkliga dosimetriadata sedan 2011. Kontrollera säkerheten för valfri plats på jorden.",
     "og_title": "Pelora — Världskarta över strålning",
-    "og_description": "Världsomfattande miljökarta över strålning — verkliga dosimetriadata sedan 2011. Kontrollera säkerheten för valfri plats på jorden."
+    "og_description": "Världsomfattande miljökarta över strålning — verkliga dosimetriadata sedan 2011. Kontrollera säkerheten för valfri plats på jorden.",
+    "intro_tagline_word_1": "värld",
+    "intro_tagline_word_2": "strålning",
+    "intro_tagline_word_3": "karta"
   },
   "th": {
     "api_example_archive_desc": "ดาวน์โหลดแพ็กเกจ tgz ที่มีไฟล์ .json ทั้งหมดเมื่อเปิดใช้งานคลัง JSON",
@@ -3398,7 +3470,10 @@
     "seo_description": "แผนที่รังสีทั่วโลกแบบโต้ตอบพร้อมสัญลักษณ์รังสี แสดงระดับรังสีพื้นหลังทั่วโลก",
     "meta_description": "แผนที่รังสีสิ่งแวดล้อมทั่วโลก — ข้อมูลโดซิเมทรีจริงตั้งแต่ปี 2011 ตรวจสอบความปลอดภัยของจุดใดก็ได้บนโลก",
     "og_title": "Pelora — แผนที่รังสีทั่วโลก",
-    "og_description": "แผนที่รังสีสิ่งแวดล้อมทั่วโลก — ข้อมูลโดซิเมทรีจริงตั้งแต่ปี 2011 ตรวจสอบความปลอดภัยของจุดใดก็ได้บนโลก"
+    "og_description": "แผนที่รังสีสิ่งแวดล้อมทั่วโลก — ข้อมูลโดซิเมทรีจริงตั้งแต่ปี 2011 ตรวจสอบความปลอดภัยของจุดใดก็ได้บนโลก",
+    "intro_tagline_word_1": "โลก",
+    "intro_tagline_word_2": "รังสี",
+    "intro_tagline_word_3": "แผนที่"
   },
   "tr": {
     "api_example_archive_desc": "JSON arşivi etkinse yayımlanmış tüm .json dosyalarıyla bir tgz paketi indirir.",
@@ -3534,7 +3609,10 @@
     "seo_description": "Radyasyon sembollü etkileşimli dünya radyasyon haritası, dünya genelindeki arka plan seviyelerini gösterir.",
     "meta_description": "Dünya çevresel radyasyon haritası — 2011'den beri gerçek dozimetri verileri. Dünyadaki herhangi bir noktanın güvenliğini kontrol edin.",
     "og_title": "Pelora — Dünya radyasyon haritası",
-    "og_description": "Dünya çevresel radyasyon haritası — 2011'den beri gerçek dozimetri verileri. Dünyadaki herhangi bir noktanın güvenliğini kontrol edin."
+    "og_description": "Dünya çevresel radyasyon haritası — 2011'den beri gerçek dozimetri verileri. Dünyadaki herhangi bir noktanın güvenliğini kontrol edin.",
+    "intro_tagline_word_1": "dünya",
+    "intro_tagline_word_2": "radyasyon",
+    "intro_tagline_word_3": "harita"
   },
   "uk": {
     "api_example_archive_desc": "Завантажує tgz-пакет з усіма опублікованими файлами .json, коли JSON-архів увімкнено.",
@@ -3670,7 +3748,10 @@
     "seo_description": "Інтерактивна світова карта радіації зі значком радіації, що показує рівні фонового випромінювання у світі.",
     "meta_description": "Світова екологічна карта радіації — реальні дані дозиметрії з 2011 року. Дізнайтесь безпеку будь-якої точки Землі.",
     "og_title": "Pelora — Світова карта радіації",
-    "og_description": "Світова екологічна карта радіації — реальні дані дозиметрії з 2011 року. Дізнайтесь безпеку будь-якої точки Землі."
+    "og_description": "Світова екологічна карта радіації — реальні дані дозиметрії з 2011 року. Дізнайтесь безпеку будь-якої точки Землі.",
+    "intro_tagline_word_1": "світова",
+    "intro_tagline_word_2": "радіації",
+    "intro_tagline_word_3": "карта"
   },
   "vi": {
     "api_example_archive_desc": "Tải gói tgz chứa mọi tệp .json đã công bố khi bật lưu trữ JSON.",
@@ -3806,7 +3887,10 @@
     "seo_description": "Bản đồ bức xạ thế giới tương tác với biểu tượng bức xạ, hiển thị mức bức xạ nền trên toàn cầu.",
     "meta_description": "Bản đồ bức xạ môi trường toàn cầu — dữ liệu đo liều thực tế từ năm 2011. Kiểm tra độ an toàn của bất kỳ điểm nào trên Trái Đất.",
     "og_title": "Pelora — Bản đồ bức xạ thế giới",
-    "og_description": "Bản đồ bức xạ môi trường toàn cầu — dữ liệu đo liều thực tế từ năm 2011. Kiểm tra độ an toàn của bất kỳ điểm nào trên Trái Đất."
+    "og_description": "Bản đồ bức xạ môi trường toàn cầu — dữ liệu đo liều thực tế từ năm 2011. Kiểm tra độ an toàn của bất kỳ điểm nào trên Trái Đất.",
+    "intro_tagline_word_1": "thế giới",
+    "intro_tagline_word_2": "bức xạ",
+    "intro_tagline_word_3": "bản đồ"
   },
   "zh": {
     "api_example_archive_desc": "在启用 JSON 归档时，下载包含所有已发布 .json 文件的 tgz 包。",
@@ -3942,6 +4026,9 @@
     "seo_description": "带有辐射标志的交互式全球辐射地图，展示全球背景辐射水平。",
     "meta_description": "全球环境辐射地图——2011年以来的真实剂量计数据。查看地球上任何地点的安全性。",
     "og_title": "Pelora — 全球辐射地图",
-    "og_description": "全球环境辐射地图——2011年以来的真实剂量计数据。查看地球上任何地点的安全性。"
+    "og_description": "全球环境辐射地图——2011年以来的真实剂量计数据。查看地球上任何地点的安全性。",
+    "intro_tagline_word_1": "世界",
+    "intro_tagline_word_2": "辐射",
+    "intro_tagline_word_3": "地图"
   }
 }

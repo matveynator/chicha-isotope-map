@@ -832,6 +832,86 @@ body, html {
         }
         @keyframes spin{ to{ transform:rotate(360deg); } }
 
+        /* Intro overlay blurs only the map so the identity card stays readable on first load. */
+        .map-intro-active #map {
+          filter: blur(6px) saturate(0.95);
+          transform: scale(1.02);
+          transition: filter 0.25s ease, transform 0.25s ease;
+        }
+
+        .intro-overlay {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 3200;
+          background: rgba(0, 0, 0, 0.15);
+          pointer-events: none;
+          padding: 24px;
+        }
+
+        @supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
+          .intro-overlay {
+            background: rgba(0, 0, 0, 0.2);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+          }
+        }
+
+        .intro-logo {
+          --intro-bg-yellow: #ffe24a;
+          --intro-border: #555555;
+          --intro-text-color: #555555;
+          --intro-radius: 18px;
+          display: inline-flex;
+          align-items: stretch;
+          border-radius: var(--intro-radius);
+          border: 2px solid var(--intro-border);
+          overflow: hidden;
+          background: #ffffff;
+          color: var(--intro-text-color);
+          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.2);
+          max-width: min(92vw, 460px);
+        }
+
+        .intro-logo-icon {
+          background: var(--intro-bg-yellow) url("/static/images/radiation.svg") center/60% no-repeat;
+          padding: clamp(14px, 4vw, 18px) clamp(18px, 5vw, 26px);
+          width: clamp(80px, 22vw, 110px);
+          border-right: 2px solid var(--intro-border);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .intro-logo-text {
+          display: flex;
+          flex-direction: column;
+          padding: clamp(12px, 3.5vw, 16px) clamp(16px, 4vw, 26px);
+          justify-content: center;
+          gap: clamp(6px, 2vw, 10px);
+          min-width: clamp(170px, 44vw, 240px);
+        }
+
+        .intro-logo-title {
+          font-weight: 700;
+          font-size: clamp(18px, 5vw, 26px);
+          line-height: 1;
+          border-bottom: 2px solid var(--intro-border);
+          padding-bottom: clamp(6px, 1.5vw, 8px);
+        }
+
+        .intro-logo-subtitle {
+          font-weight: 500;
+          font-size: clamp(14px, 4.6vw, 22px);
+          line-height: 1.2;
+        }
+
+        .intro-logo-subtitle span {
+          display: block;
+        }
+
 
         /* Compact QR button follows theme */
         .qr-btn {
@@ -1389,6 +1469,21 @@ body, html {
 
     <!-- Map container -->
     <div id="map"></div>
+
+    <!-- Intro overlay shows once so first-time visitors immediately understand the map's purpose. -->
+    <div id="introOverlay" class="intro-overlay" style="display:none;" role="status" aria-live="polite">
+      <div class="intro-logo">
+        <div class="intro-logo-icon" aria-hidden="true"></div>
+        <div class="intro-logo-text">
+          <div class="intro-logo-title">pelora.org</div>
+          <div class="intro-logo-subtitle">
+            <span>{{translate "intro_tagline_word_1"}}</span>
+            <span>{{translate "intro_tagline_word_2"}}</span>
+            <span>{{translate "intro_tagline_word_3"}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div id="loadingOverlay" class="loading-overlay" style="display:none;">
       <div class="spinner"></div>
@@ -2424,6 +2519,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (backBox) backBox.style.display = 'block';
   }
   refreshDownloadLink();
+  initIntroOverlay();
 
   // Theme-aware hover hints keep visitors oriented without repeating markup titles.
   var uploadLabel = document.querySelector('.upload-btn');
@@ -3510,6 +3606,87 @@ function getTooltipContent(marker) {
   return buildMarkerContent(marker);
 }
 
+// Intro overlay state keeps the first-load banner lightweight and easy to disable after it's seen.
+const introOverlayState = {
+  element: null,
+  active: false,
+  seen: false,
+  startedAt: 0,
+  hideTimer: null,
+  forceTimer: null,
+  minDurationMs: 1200,
+  maxDurationMs: 3000,
+  storageKey: 'pelora-intro-overlay-shown',
+};
+
+function showIntroOverlay() {
+  if (introOverlayState.seen || introOverlayState.active || !introOverlayState.element) {
+    return;
+  }
+  introOverlayState.active = true;
+  introOverlayState.startedAt = Date.now();
+  introOverlayState.element.style.display = 'flex';
+  document.body.classList.add('map-intro-active');
+
+  // Ensure the overlay never blocks the map longer than the requested window.
+  introOverlayState.forceTimer = window.setTimeout(() => {
+    hideIntroOverlay();
+  }, introOverlayState.maxDurationMs);
+}
+
+function scheduleIntroOverlayHide() {
+  if (!introOverlayState.active) {
+    return;
+  }
+  const elapsed = Date.now() - introOverlayState.startedAt;
+  const remaining = Math.max(introOverlayState.minDurationMs - elapsed, 0);
+  if (introOverlayState.hideTimer) {
+    window.clearTimeout(introOverlayState.hideTimer);
+  }
+  introOverlayState.hideTimer = window.setTimeout(() => {
+    hideIntroOverlay();
+  }, remaining);
+}
+
+function hideIntroOverlay() {
+  if (!introOverlayState.active) {
+    return;
+  }
+  introOverlayState.active = false;
+  introOverlayState.seen = true;
+  if (introOverlayState.hideTimer) {
+    window.clearTimeout(introOverlayState.hideTimer);
+    introOverlayState.hideTimer = null;
+  }
+  if (introOverlayState.forceTimer) {
+    window.clearTimeout(introOverlayState.forceTimer);
+    introOverlayState.forceTimer = null;
+  }
+  if (introOverlayState.element) {
+    introOverlayState.element.style.display = 'none';
+  }
+  document.body.classList.remove('map-intro-active');
+  try {
+    window.localStorage.setItem(introOverlayState.storageKey, 'true');
+  } catch (err) {
+    console.warn('Unable to persist intro overlay state', err);
+  }
+}
+
+function initIntroOverlay() {
+  introOverlayState.element = document.getElementById('introOverlay');
+  if (!introOverlayState.element) {
+    return;
+  }
+  try {
+    introOverlayState.seen = window.localStorage.getItem(introOverlayState.storageKey) === 'true';
+  } catch (err) {
+    introOverlayState.seen = false;
+  }
+  if (!introOverlayState.seen) {
+    showIntroOverlay();
+  }
+}
 
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
@@ -3520,7 +3697,7 @@ function updateMarkers(){
     if (loadingEl) loadingEl.style.display='none';
     return;
   }
-  if (loadingEl) loadingEl.style.display='block';
+  if (loadingEl && !introOverlayState.active) loadingEl.style.display='block';
 
   if (markerStreamSource) markerStreamSource.close();
 
@@ -3606,11 +3783,13 @@ function updateMarkers(){
       reframeAroundUser();
     }
     if (loadingEl) loadingEl.style.display='none';
+    scheduleIntroOverlayHide();
     es.close();
   });
 
   es.onerror = () => {
     if (loadingEl) loadingEl.style.display='none';
+    scheduleIntroOverlayHide();
     es.close();
   };
 }
