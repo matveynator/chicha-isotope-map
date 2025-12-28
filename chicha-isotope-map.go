@@ -5257,6 +5257,11 @@ func main() {
 	}
 
 	var importDone <-chan struct{}
+	var (
+		realtimeCancel func()
+		archiveCancel  func()
+		indexCancel    func()
+	)
 
 	if localArchive != "" {
 		fallback := GenerateSerialNumber()
@@ -5277,7 +5282,7 @@ func main() {
 		// feature stays opt-in.
 		database.SetRealtimeConverter(safecastrealtime.FromRealtime)
 		ctxRT, cancelRT := context.WithCancel(context.Background())
-		defer cancelRT()
+		realtimeCancel = cancelRT
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
@@ -5287,7 +5292,6 @@ func main() {
 	// bundle should be.
 	var (
 		archiveGen     *jsonarchive.Generator
-		archiveCancel  context.CancelFunc
 		archivePath    string
 		archiveEnabled = strings.TrimSpace(*jsonArchivePathFlag) != ""
 	)
@@ -5302,9 +5306,6 @@ func main() {
 		archiveGen = jsonarchive.Start(ctxArchive, db, *dbType, archivePath, archiveFileName, archiveFrequency.Interval(), log.Printf)
 	} else {
 		log.Printf("json archive disabled: set -json-archive-path to enable tarball generation")
-	}
-	if archiveCancel != nil {
-		defer archiveCancel()
 	}
 
 	apiDocsArchiveEnabled = archiveEnabled
@@ -5349,9 +5350,6 @@ func main() {
 	// near main() so filesystem paths, database settings, and HTTP handlers stay
 	// consistent with the rest of the binary.
 	selfUpgradeCancel := startSelfUpgrade(context.Background(), dbCfg)
-	if selfUpgradeCancel != nil {
-		defer selfUpgradeCancel()
-	}
 
 	var rootHandler http.Handler = http.DefaultServeMux
 	if shield := importShield(importDone, driverName, log.Printf); shield != nil {
@@ -5384,7 +5382,7 @@ func main() {
 
 	// асинхронные индексы в бд без блокирования основного процесса начало
 	ctxIdx, cancelIdx := context.WithCancel(context.Background())
-	defer cancelIdx()
+	indexCancel = cancelIdx
 	// Пояснение в лог: что делаем и почему это не блокирует сервер
 	log.Printf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", dbCfg.DBType)
 	// Запуск асинхронной индексации с прогрессом
@@ -5407,6 +5405,23 @@ func main() {
 		}
 	}
 
+	// Shut down DB tasks explicitly so they stop before we close the pool.
+	// This keeps background SQL work from lingering after a termination signal.
+	stopDatabaseWork := func() {
+		if indexCancel != nil {
+			indexCancel()
+		}
+		if archiveCancel != nil {
+			archiveCancel()
+		}
+		if realtimeCancel != nil {
+			realtimeCancel()
+		}
+		if selfUpgradeCancel != nil {
+			selfUpgradeCancel()
+		}
+	}
+
 	if server != nil {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := server.Shutdown(shutdownCtx); err != nil {
@@ -5415,6 +5430,7 @@ func main() {
 		cancel()
 	}
 
+	stopDatabaseWork()
 	if err := db.Close(); err != nil {
 		log.Printf("db close: %v", err)
 	}
