@@ -2755,27 +2755,27 @@ function createDateRangeSlider(){
     }
   };
 
-  // Playback speed adapts to zoom: detail views keep a steady, readable pace,
-  // while world/continent views accelerate so large track counts don't feel sluggish.
+  // Playback speed adapts to zoom: global views run very fast to show change over time,
+  // while detailed views stay at the current pace so individual track motion is readable.
   function getPlaybackConfig() {
     const zoom = map.getZoom();
-    const detailedZoomThreshold = 7;
-    const detailedPointDelayMs = 18;
-    const detailedTrackDelayMs = 150;
+    const minZoom = 1;
+    const maxZoom = 18;
+    const maxPointDelayMs = 18;
+    const maxTrackDelayMs = 150;
+    const minPointDelayMs = 4;
+    const minTrackDelayMs = 30;
 
-    if (zoom >= detailedZoomThreshold) {
-      // High zooms already show fewer points, so keep a small constant delay for clarity.
-      return {
-        pointDelayMs: detailedPointDelayMs,
-        trackDelayMs: detailedTrackDelayMs,
-      };
-    }
+    // Clamp zoom so the mapping stays predictable if Leaflet returns out-of-range values.
+    const clampedZoom = Math.min(maxZoom, Math.max(minZoom, zoom));
+    // A lower zoom means a larger visible area, so we speed up playback to emphasize global trends.
+    const zoomRatio = (clampedZoom - minZoom) / (maxZoom - minZoom);
+    const pointDelayMs = Math.round(minPointDelayMs + (maxPointDelayMs - minPointDelayMs) * zoomRatio);
+    const trackDelayMs = Math.round(minTrackDelayMs + (maxTrackDelayMs - minTrackDelayMs) * zoomRatio);
 
-    // Lower zooms show many more points; shrink delays progressively so playback stays snappy.
-    const zoomScale = Math.max(0.3, zoom / detailedZoomThreshold);
     return {
-      pointDelayMs: Math.max(6, Math.round(detailedPointDelayMs * zoomScale)),
-      trackDelayMs: Math.max(40, Math.round(detailedTrackDelayMs * zoomScale)),
+      pointDelayMs: pointDelayMs,
+      trackDelayMs: trackDelayMs,
     };
   }
   let playbackAbortController = null;
