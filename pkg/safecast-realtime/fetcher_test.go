@@ -197,3 +197,19 @@ func TestDevicePayloadMetrics(t *testing.T) {
 		t.Fatalf("pressure_hpa=%v ok=%v", v, ok)
 	}
 }
+
+// TestDevicePayloadUnixMillis ensures millisecond Unix timestamps are normalised
+// to seconds so history charts render in the expected time range.
+func TestDevicePayloadUnixMillis(t *testing.T) {
+	t.Parallel()
+
+	js := `{"device_urn":"device:9001","timestamp":1717200000000,"lnd_7318c_cpm":120}`
+	var d devicePayload
+	if err := json.Unmarshal([]byte(js), &d); err != nil {
+		t.Fatalf("unmarshal millis: %v", err)
+	}
+	want := int64(1717200000)
+	if d.Time != want {
+		t.Fatalf("Time=%d want %d", d.Time, want)
+	}
+}

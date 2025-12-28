@@ -299,9 +299,9 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 			d.Time = t.Unix()
 		}
 	} else if v, ok := m["timestamp"].(float64); ok {
-		d.Time = int64(v)
+		d.Time = normalizeUnixTimestamp(v)
 	} else if v, ok := m["time"].(float64); ok {
-		d.Time = int64(v)
+		d.Time = normalizeUnixTimestamp(v)
 	}
 
 	// Optional country hint if provided.
@@ -321,6 +321,21 @@ func (d *devicePayload) UnmarshalJSON(b []byte) error {
 		d.addMetric(key, val)
 	}
 	return nil
+}
+
+// normalizeUnixTimestamp fixes Unix timestamps that arrive in milliseconds or
+// microseconds by scaling them down to seconds. Safecast devices have been
+// observed emitting millisecond epochs, so normalizing here keeps charts in
+// sane time ranges without pushing the responsibility elsewhere.
+func normalizeUnixTimestamp(raw float64) int64 {
+	if raw <= 0 {
+		return 0
+	}
+	value := int64(raw)
+	for value > 1e11 {
+		value /= 1000
+	}
+	return value
 }
 
 // fetch pulls device data once.
