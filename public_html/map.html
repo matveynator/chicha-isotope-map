@@ -2741,7 +2741,8 @@ function createDateRangeSlider(){
   btnM.onclick = () => switchMode('month');
   btnPlay.onclick = () => togglePlayback();
   setPlayButtonState('stopped');
-  btnPlay.disabled = mode !== 'year';
+  // Allow playback in both year and month modes so the button reflects the active range filter.
+  btnPlay.disabled = false;
 
   // Show/hide the whole control (called from updateMarkers())
   window.__setDateSliderVisibility = (show)=>{
@@ -2782,6 +2783,10 @@ function createDateRangeSlider(){
   }
 
   function resolvePlaybackRange() {
+    // Month mode should respect the visible month slider even before session storage syncs.
+    if (mode === 'month' && monthSlider && monthSlider.noUiSlider) {
+      return monthSlider.noUiSlider.get().map(Number);
+    }
     const saved = loadDateRangeState();
     if (Array.isArray(saved) && saved.length === 2) {
       return saved;
@@ -3036,9 +3041,6 @@ function createDateRangeSlider(){
   }
 
   async function togglePlayback() {
-    if (mode !== 'year') {
-      return;
-    }
     if (trackPlaybackActive && !playbackPaused) {
       playbackPaused = true;
       setPlayButtonState('paused');
@@ -3283,7 +3285,8 @@ function createDateRangeSlider(){
     btnM.classList.toggle('active', next==='month');
     yearSlider.style.display  = next==='year'  ? 'block' : 'none';
     monthSlider.style.display = next==='month' ? 'block' : 'none';
-    btnPlay.disabled = next !== 'year';
+    // Keep playback available for both modes so users can animate any chosen range.
+    btnPlay.disabled = false;
     if (next !== 'year') {
       stopPlayback(true);
     }
