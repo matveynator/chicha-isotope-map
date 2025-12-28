@@ -584,10 +584,12 @@ func NewDatabase(config Config) (*Database, error) {
 	if driverName == "duckdb" {
 		pingTimeout = 45 * time.Second
 	}
+	pingStop := startDBPingProgress(driverName, pingTimeout, log.Printf)
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
+		pingStop()
 		if progressCancel != nil {
 			progressCancel()
 		}
@@ -597,6 +599,7 @@ func NewDatabase(config Config) (*Database, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("error connecting to the database: %v", err)
 	}
+	pingStop()
 	if progressCancel != nil {
 		progressCancel()
 	}
@@ -658,6 +661,46 @@ func (db *Database) Close() error {
 		return nil
 	}
 	return db.DB.Close()
+}
+
+// startDBPingProgress logs startup wait time so operators know why the HTTP
+// server isn't ready yet. We compute remaining time from the timeout instead
+// of guessing, keeping the output honest and predictable.
+func startDBPingProgress(driver string, timeout time.Duration, logf func(string, ...any)) func() {
+	if logf == nil {
+		logf = log.Printf
+	}
+
+	done := make(chan struct{})
+	started := time.Now()
+	logf("DB startup: waiting for %s ping (timeout=%s)", driver, timeout)
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				elapsed := time.Since(started)
+				remaining := timeout - elapsed
+				if remaining < 0 {
+					remaining = 0
+				}
+				logf("DB startup: still waiting (engine=%s, elapsed=%s, remaining=%s)", driver, elapsed.Truncate(time.Second), remaining.Truncate(time.Second))
+			}
+		}
+	}()
+
+	return func() {
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+	}
 }
 
 // startDuckDBStartupProgress logs periodic startup telemetry while DuckDB opens a
