@@ -2795,7 +2795,19 @@ function createDateRangeSlider(){
     return [yearStart, yearEnd];
   }
 
-  async function fetchPlaybackMarkers(signal) {
+  // Build the speed filter tags once so playback aligns with the UI toggles.
+  function buildPlaybackSpeedTags() {
+    const state = loadSpeedFilterState();
+    const tags = [];
+    if (state.ped) tags.push('ped');
+    if (state.car) tags.push('car');
+    if (state.plane) tags.push('plane');
+    return tags;
+  }
+
+  // Stream playback markers as NDJSON so tracks can start rendering before
+  // the full dataset arrives, avoiding a long wait on large result sets.
+  async function streamPlaybackMarkers(signal, speedTags, onTrackReady, onDone) {
     const bounds = map.getBounds();
     const zoom = map.getZoom();
     const range = resolvePlaybackRange();
@@ -2808,42 +2820,88 @@ function createDateRangeSlider(){
       dateFrom: Math.floor(range[0]),
       dateTo: Math.floor(range[1]),
     });
-    const resp = await fetch('/get_markers?' + params.toString(), { signal: signal });
+    if (speedTags && speedTags.length) {
+      params.set('speeds', speedTags.join(','));
+    }
+
+    const resp = await fetch('/stream_playback?' + params.toString(), { signal: signal });
     if (!resp.ok) {
       throw new Error('playback_fetch_failed');
     }
-    const data = await resp.json();
-    if (!Array.isArray(data)) {
-      return [];
+    if (!resp.body) {
+      throw new Error('playback_stream_unsupported');
     }
-    return data.filter(function(marker) {
-      return marker && marker.trackID && marker.speed >= 0 && shouldDisplayBySpeed(marker.speed);
-    });
-  }
 
-  function groupTracksByStart(markers) {
-    const tracks = new Map();
-    markers.forEach(function(marker) {
-      const trackID = marker.trackID;
-      if (!trackID) {
-        return;
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentTrack = null;
+    let doneCalled = false;
+
+    function flushTrack() {
+      if (currentTrack && currentTrack.points.length) {
+        onTrackReady(currentTrack);
       }
-      if (!tracks.has(trackID)) {
-        tracks.set(trackID, []);
+      currentTrack = null;
+    }
+
+    function finishOnce() {
+      if (doneCalled) return;
+      doneCalled = true;
+      flushTrack();
+      onDone();
+    }
+
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          break;
+        }
+        buffer += decoder.decode(chunk.value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach(function(line) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            return;
+          }
+          let marker;
+          try {
+            marker = JSON.parse(trimmed);
+          } catch (e) {
+            return;
+          }
+          if (!marker || !marker.trackID || marker.speed < 0) {
+            return;
+          }
+          if (!shouldDisplayBySpeed(marker.speed)) {
+            return;
+          }
+          if (!currentTrack || currentTrack.trackID !== marker.trackID) {
+            flushTrack();
+            currentTrack = { trackID: marker.trackID, points: [] };
+          }
+          currentTrack.points.push(marker);
+        });
       }
-      tracks.get(trackID).push(marker);
-    });
-    const ordered = [];
-    tracks.forEach(function(points, trackID) {
-      points.sort(function(a, b) {
-        return a.date - b.date;
-      });
-      ordered.push({ trackID: trackID, points: points, start: points[0].date });
-    });
-    ordered.sort(function(a, b) {
-      return a.start - b.start;
-    });
-    return ordered;
+      if (buffer.trim() !== '') {
+        try {
+          const marker = JSON.parse(buffer);
+          if (marker && marker.trackID && marker.speed >= 0 && shouldDisplayBySpeed(marker.speed)) {
+            if (!currentTrack || currentTrack.trackID !== marker.trackID) {
+              flushTrack();
+              currentTrack = { trackID: marker.trackID, points: [] };
+            }
+            currentTrack.points.push(marker);
+          }
+        } catch (e) {
+          // Ignore trailing partial JSON chunks so playback can complete cleanly.
+        }
+      }
+    } finally {
+      finishOnce();
+    }
   }
 
   function addPlaybackMarker(marker, zoomLevel, index) {
@@ -2880,13 +2938,58 @@ function createDateRangeSlider(){
     });
   }
 
+  // Playback state keeps the queue and pause progress separate from stream IO
+  // so playback can start with the first buffered track instead of waiting.
+  function createPlaybackState() {
+    return {
+      queue: [],
+      currentTrack: null,
+      pointIndex: 0,
+      streamDone: false,
+      waiter: null,
+    };
+  }
+
+  function queuePlaybackTrack(state, track) {
+    state.queue.push(track);
+    if (state.waiter) {
+      state.waiter();
+      state.waiter = null;
+    }
+  }
+
+  function markPlaybackStreamDone(state) {
+    state.streamDone = true;
+    if (state.waiter) {
+      state.waiter();
+      state.waiter = null;
+    }
+  }
+
+  function waitForNextTrack(state) {
+    if (state.queue.length || state.streamDone) {
+      return Promise.resolve();
+    }
+    return new Promise(function(resolve) {
+      state.waiter = resolve;
+    });
+  }
+
   async function playTracksSequentially(state) {
     const zoom = map.getZoom();
-    for (let t = state.trackIndex; t < state.tracks.length; t++) {
-      if (!trackPlaybackActive) {
-        return;
+    while (trackPlaybackActive) {
+      if (!state.currentTrack) {
+        if (!state.queue.length) {
+          if (state.streamDone) {
+            return;
+          }
+          await waitForNextTrack(state);
+          continue;
+        }
+        state.currentTrack = state.queue.shift();
+        state.pointIndex = 0;
       }
-      const points = state.tracks[t].points;
+      const points = state.currentTrack.points;
       for (let i = state.pointIndex; i < points.length; i++) {
         if (!trackPlaybackActive) {
           return;
@@ -2898,13 +3001,12 @@ function createDateRangeSlider(){
           }
         }
         addPlaybackMarker(points[i], zoom, i);
-        state.trackIndex = t;
         state.pointIndex = i + 1;
         await delay(playbackConfig.pointDelayMs);
       }
-      state.trackIndex = t + 1;
+      state.currentTrack = null;
       state.pointIndex = 0;
-      if (t < state.tracks.length - 1) {
+      if (!state.streamDone || state.queue.length) {
         await delay(playbackConfig.trackDelayMs);
       }
     }
@@ -2961,13 +3063,20 @@ function createDateRangeSlider(){
     const controller = new AbortController();
     playbackAbortController = controller;
     try {
-      const markers = await fetchPlaybackMarkers(controller.signal);
-      playbackState = {
-        tracks: groupTracksByStart(markers),
-        trackIndex: 0,
-        pointIndex: 0,
-      };
-      await playTracksSequentially(playbackState);
+      const speedTags = buildPlaybackSpeedTags();
+      if (!speedTags.length) {
+        stopPlayback(false);
+        return;
+      }
+      playbackState = createPlaybackState();
+      const streamPromise = streamPlaybackMarkers(
+        controller.signal,
+        speedTags,
+        function(track) { queuePlaybackTrack(playbackState, track); },
+        function() { markPlaybackStreamDone(playbackState); }
+      );
+      const playbackPromise = playTracksSequentially(playbackState);
+      await Promise.all([streamPromise, playbackPromise]);
     } catch (err) {
       if (err && err.name === 'AbortError') {
         return;

@@ -4358,6 +4358,89 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ========
+// Streaming playback markers via NDJSON
+// ========
+
+// streamPlaybackHandler streams ordered markers so playback can start once the
+// first track buffer is ready, avoiding a full-buffer wait in the browser.
+func streamPlaybackHandler(w http.ResponseWriter, r *http.Request) {
+	// Use the request context so cancelled playback stops the query promptly.
+	ctx := r.Context()
+
+	q := r.URL.Query()
+	zoom, _ := strconv.Atoi(q.Get("zoom"))
+	minLat, _ := strconv.ParseFloat(q.Get("minLat"), 64)
+	minLon, _ := strconv.ParseFloat(q.Get("minLon"), 64)
+	maxLat, _ := strconv.ParseFloat(q.Get("maxLat"), 64)
+	maxLon, _ := strconv.ParseFloat(q.Get("maxLon"), 64)
+
+	// ----- speed filter ----------------------------------------------------
+	var sr []database.SpeedRange
+	if s := q.Get("speeds"); s != "" {
+		for _, tag := range strings.Split(s, ",") {
+			if r, ok := speedCatalog[tag]; ok {
+				sr = append(sr, database.SpeedRange(r))
+			}
+		}
+	}
+	if len(sr) == 0 && q.Get("speeds") != "" {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		return
+	}
+
+	// ----- date filter -----------------------------------------------------
+	var (
+		dateFrom int64
+		dateTo   int64
+	)
+	if s := q.Get("dateFrom"); s != "" {
+		dateFrom, _ = strconv.ParseInt(s, 10, 64)
+	}
+	if s := q.Get("dateTo"); s != "" {
+		dateTo, _ = strconv.ParseInt(s, 10, 64)
+	}
+
+	stream, errCh := db.StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
+		ctx,
+		zoom, minLat, minLon, maxLat, maxLon,
+		dateFrom, dateTo, sr, *dbType)
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	enc := json.NewEncoder(w)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case err, ok := <-errCh:
+			if !ok {
+				errCh = nil
+				continue
+			}
+			if err != nil {
+				log.Printf("stream playback markers: %v", err)
+				return
+			}
+			errCh = nil
+		case m, ok := <-stream:
+			if !ok {
+				return
+			}
+			if err := enc.Encode(m); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+// ========
 // Streaming markers via SSE
 // ========
 
@@ -5245,6 +5328,7 @@ func main() {
 	http.HandleFunc("/licenses/", licenseHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
+	http.HandleFunc("/stream_playback", streamPlaybackHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)
 	http.HandleFunc("/realtime_history", realtimeHistoryHandler)
 	http.HandleFunc("/trackid/", trackHandler)

@@ -3114,6 +3114,118 @@ func (db *Database) GetMarkersByZoomBoundsSpeed(
 }
 
 // ------------------------------------------------------------------
+// StreamMarkersByZoomBoundsSpeedOrderedByTrackDate
+// ------------------------------------------------------------------
+// Streams markers in track/date order so playback can render each track as
+// soon as its buffer arrives, without waiting for the full dataset in memory.
+// We keep the SQL portable by building the WHERE clause with placeholders and
+// only add the ORDER BY clause for deterministic ordering.
+func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
+	ctx context.Context,
+	zoom int,
+	minLat, minLon, maxLat, maxLon float64,
+	dateFrom, dateTo int64,
+	speedRanges []SpeedRange,
+	dbType string,
+) (<-chan Marker, <-chan error) {
+	out := make(chan Marker)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer close(out)
+		defer close(errCh)
+
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		jobCtx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+		defer cancel()
+
+		var (
+			sb   strings.Builder
+			args []interface{}
+		)
+
+		// ---- required filters ------------------------------------------------
+		sb.WriteString("zoom = " + placeholder(dbType, len(args)+1))
+		args = append(args, zoom)
+
+		sb.WriteString(" AND lat BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
+		args = append(args, minLat, maxLat)
+
+		sb.WriteString(" AND lon BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
+		args = append(args, minLon, maxLon)
+
+		// ---- optional date filters ------------------------------------------
+		if dateFrom > 0 {
+			sb.WriteString(" AND date >= " + placeholder(dbType, len(args)+1))
+			args = append(args, dateFrom)
+		}
+		if dateTo > 0 {
+			sb.WriteString(" AND date <= " + placeholder(dbType, len(args)+1))
+			args = append(args, dateTo)
+		}
+
+		// ---- speed filters ---------------------------------------------------
+		if len(speedRanges) > 0 {
+			if ok, lo, hi := mergeContinuousRanges(speedRanges); ok {
+				sb.WriteString(" AND speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
+				args = append(args, lo, hi)
+			} else {
+				sb.WriteString(" AND (")
+				for i, r := range speedRanges {
+					if i > 0 {
+						sb.WriteString(" OR ")
+					}
+					sb.WriteString("speed BETWEEN " + placeholder(dbType, len(args)+1) + " AND " + placeholder(dbType, len(args)+2))
+					args = append(args, r.Min, r.Max)
+				}
+				sb.WriteString(")")
+			}
+		}
+
+		query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
+                                     COALESCE(altitude, 0) AS altitude,
+                                     COALESCE(detector, '') AS detector,
+                                     COALESCE(radiation, '') AS radiation,
+                                     COALESCE(temperature, 0) AS temperature,
+                                     COALESCE(humidity, 0) AS humidity
+                              FROM markers WHERE %s ORDER BY trackID, date;`, sb.String())
+
+		err := db.withSerializedConnectionFor(jobCtx, WorkloadWebRead, func(runCtx context.Context, conn *sql.DB) error {
+			rows, err := conn.QueryContext(runCtx, query, args...)
+			if err != nil {
+				return fmt.Errorf("query markers: %w", err)
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var m Marker
+				if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
+					&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+					&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+					return fmt.Errorf("scan markers: %w", err)
+				}
+				select {
+				case out <- m:
+				case <-runCtx.Done():
+					return runCtx.Err()
+				}
+			}
+			if err := rows.Err(); err != nil {
+				return fmt.Errorf("iterate markers: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			errCh <- err
+		}
+	}()
+
+	return out, errCh
+}
+
+// ------------------------------------------------------------------
 // GetMarkersByTrackIDZoomBoundsSpeed
 // ------------------------------------------------------------------
 // Selects markers that belong to a single track, lie inside the given
