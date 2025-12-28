@@ -3193,36 +3193,68 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 			}
 		}
 
-		query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
+		err := db.withSerializedConnectionFor(jobCtx, WorkloadWebRead, func(runCtx context.Context, conn *sql.DB) error {
+			// Query track order first, then stream each track in date order to keep SQL flat and fast.
+			whereClause := sb.String()
+			baseArgs := args
+			trackOrderQuery := fmt.Sprintf(`SELECT trackID, MIN(date) AS start_date
+                              FROM markers WHERE %s
+                              GROUP BY trackID
+                              ORDER BY start_date, trackID;`, whereClause)
+			orderRows, err := conn.QueryContext(runCtx, trackOrderQuery, baseArgs...)
+			if err != nil {
+				return fmt.Errorf("query track order: %w", err)
+			}
+			defer orderRows.Close()
+
+			for orderRows.Next() {
+				var (
+					trackID   string
+					startDate int64
+				)
+				if err := orderRows.Scan(&trackID, &startDate); err != nil {
+					return fmt.Errorf("scan track order: %w", err)
+				}
+				_ = startDate
+
+				query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
                                      COALESCE(altitude, 0) AS altitude,
                                      COALESCE(detector, '') AS detector,
                                      COALESCE(radiation, '') AS radiation,
                                      COALESCE(temperature, 0) AS temperature,
                                      COALESCE(humidity, 0) AS humidity
-                              FROM markers WHERE %s ORDER BY trackID, date;`, sb.String())
-
-		err := db.withSerializedConnectionFor(jobCtx, WorkloadWebRead, func(runCtx context.Context, conn *sql.DB) error {
-			rows, err := conn.QueryContext(runCtx, query, args...)
-			if err != nil {
-				return fmt.Errorf("query markers: %w", err)
-			}
-			defer rows.Close()
-
-			for rows.Next() {
-				var m Marker
-				if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
-					&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-					&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
-					return fmt.Errorf("scan markers: %w", err)
+                              FROM markers WHERE %s AND trackID = %s
+                              ORDER BY date;`, whereClause, placeholder(dbType, len(baseArgs)+1))
+				perTrackArgs := append(append([]interface{}{}, baseArgs...), trackID)
+				rows, err := conn.QueryContext(runCtx, query, perTrackArgs...)
+				if err != nil {
+					return fmt.Errorf("query markers: %w", err)
 				}
-				select {
-				case out <- m:
-				case <-runCtx.Done():
-					return runCtx.Err()
+				for rows.Next() {
+					var m Marker
+					if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
+						&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+						&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+						rows.Close()
+						return fmt.Errorf("scan markers: %w", err)
+					}
+					select {
+					case out <- m:
+					case <-runCtx.Done():
+						rows.Close()
+						return runCtx.Err()
+					}
+				}
+				if err := rows.Err(); err != nil {
+					rows.Close()
+					return fmt.Errorf("iterate markers: %w", err)
+				}
+				if err := rows.Close(); err != nil {
+					return fmt.Errorf("close markers: %w", err)
 				}
 			}
-			if err := rows.Err(); err != nil {
-				return fmt.Errorf("iterate markers: %w", err)
+			if err := orderRows.Err(); err != nil {
+				return fmt.Errorf("iterate track order: %w", err)
 			}
 			return nil
 		})
