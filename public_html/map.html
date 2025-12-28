@@ -3510,6 +3510,34 @@ function getTooltipContent(marker) {
   return buildMarkerContent(marker);
 }
 
+// ---- Live marker clustering offsets ----
+// Safecast realtime markers can share the same GPS coordinate (e.g. devices in one building).
+// We offset each subsequent marker slightly so users can see each one without hiding data.
+function liveMarkerKey(lat, lon) {
+  return lat.toFixed(6) + ',' + lon.toFixed(6);
+}
+
+function liveMarkerOffsetPoint(index, sizePx) {
+  if (index === 0) return L.point(0, 0);
+  const slots = 6;
+  const ring = Math.floor(index / slots);
+  const slot = index % slots;
+  const angle = (Math.PI * 2 * slot) / slots + ring * 0.35;
+  const baseDistance = sizePx * 0.6;
+  const ringStep = sizePx * 0.25;
+  const distance = baseDistance + ring * ringStep;
+  return L.point(Math.cos(angle) * distance, Math.sin(angle) * distance);
+}
+
+function offsetLiveMarkerPosition(lat, lon, index, sizePx) {
+  if (!map || index === 0) return [lat, lon];
+  const basePoint = map.latLngToLayerPoint([lat, lon]);
+  const offsetPoint = liveMarkerOffsetPoint(index, sizePx);
+  const shifted = basePoint.add(offsetPoint);
+  const shiftedLatLng = map.layerPointToLatLng(shifted);
+  return [shiftedLatLng.lat, shiftedLatLng.lng];
+}
+
 
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
@@ -3542,6 +3570,7 @@ function updateMarkers(){
   circleMarkers = {};
 
   const tracks = new Set();
+  const liveCoordinateCounts = new Map();
   let minTs = Infinity, maxTs = -Infinity;
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
@@ -3561,7 +3590,11 @@ function updateMarkers(){
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
       if (!icon) return; // device is older than 24 hours
-      marker = L.marker([m.lat, m.lon], {
+      const liveKey = liveMarkerKey(m.lat, m.lon);
+      const liveIndex = liveCoordinateCounts.get(liveKey) || 0;
+      liveCoordinateCounts.set(liveKey, liveIndex + 1);
+      const [liveLat, liveLon] = offsetLiveMarkerPosition(m.lat, m.lon, liveIndex, icon.size);
+      marker = L.marker([liveLat, liveLon], {
         icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
       })
       .addTo(map)
