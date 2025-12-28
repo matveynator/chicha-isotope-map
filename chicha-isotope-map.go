@@ -3981,20 +3981,25 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Данные для шаблона
+	// Default social preview stays stable so crawlers have a reliable fallback.
+	const defaultSocialImage = "/static/images/chicha-isotope-map-round-logo.png"
+
 	data := struct {
-		Version           string
-		Translations      map[string]map[string]string
-		Lang              string
-		DefaultLat        float64
-		DefaultLon        float64
-		DefaultZoom       int
-		DefaultLayer      string
-		AutoLocateDefault bool
-		RealtimeAvailable bool
-		SupportEmail      string
-		TranslationsJSON  template.JS
-		MarkersJSON       template.JS
-		DebugEnabled      bool
+		Version            string
+		Translations       map[string]map[string]string
+		Lang               string
+		DefaultLat         float64
+		DefaultLon         float64
+		DefaultZoom        int
+		DefaultLayer       string
+		AutoLocateDefault  bool
+		RealtimeAvailable  bool
+		SupportEmail       string
+		TranslationsJSON   template.JS
+		MarkersJSON        template.JS
+		DebugEnabled       bool
+		CurrentURL         string
+		DefaultSocialImage string
 	}{
 		Version:           CompileVersion,
 		Translations:      translations,
@@ -4008,7 +4013,9 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		SupportEmail:      strings.TrimSpace(*supportEmail),
 		TranslationsJSON:  translationsJSON,
 		MarkersJSON:       markersJSON,
-		DebugEnabled:      debugEnabledForRequest(r),
+		DebugEnabled:       debugEnabledForRequest(r),
+		CurrentURL:         resolveCurrentURL(r),
+		DefaultSocialImage: defaultSocialImage,
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader
@@ -4027,6 +4034,33 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error writing response: %v", err)
 		}
 	}
+}
+
+// resolveCurrentURL rebuilds the full request URL so OpenGraph tags match the active page.
+// We honor X-Forwarded-Proto to avoid leaking internal schemes behind proxies.
+func resolveCurrentURL(r *http.Request) string {
+	scheme := "http"
+	if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+		scheme = strings.ToLower(proto)
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		if strings.TrimSpace(*domain) != "" {
+			host = strings.TrimSpace(*domain)
+		} else {
+			host = fmt.Sprintf("localhost:%d", *port)
+		}
+	}
+
+	path := r.URL.RequestURI()
+	if path == "" {
+		path = "/"
+	}
+
+	return fmt.Sprintf("%s://%s%s", scheme, host, path)
 }
 
 // geoIPHandler returns a lightweight latitude/longitude pair derived from the
@@ -4182,35 +4216,42 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Default social preview stays stable so crawlers have a reliable fallback.
+	const defaultSocialImage = "/static/images/chicha-isotope-map-round-logo.png"
+
 	// отдаём пустой срез маркеров
 	data := struct {
-		Version           string
-		Translations      map[string]map[string]string
-		Lang              string
-		DefaultLat        float64
-		DefaultLon        float64
-		DefaultZoom       int
-		DefaultLayer      string
-		AutoLocateDefault bool
-		RealtimeAvailable bool
-		SupportEmail      string
-		TranslationsJSON  template.JS
-		MarkersJSON       template.JS
-		DebugEnabled      bool
+		Version            string
+		Translations       map[string]map[string]string
+		Lang               string
+		DefaultLat         float64
+		DefaultLon         float64
+		DefaultZoom        int
+		DefaultLayer       string
+		AutoLocateDefault  bool
+		RealtimeAvailable  bool
+		SupportEmail       string
+		TranslationsJSON   template.JS
+		MarkersJSON        template.JS
+		DebugEnabled       bool
+		CurrentURL         string
+		DefaultSocialImage string
 	}{
-		Version:           CompileVersion,
-		Translations:      translations,
-		Lang:              lang,
-		DefaultLat:        *defaultLat,
-		DefaultLon:        *defaultLon,
-		DefaultZoom:       *defaultZoom,
-		DefaultLayer:      *defaultLayer,
-		AutoLocateDefault: *autoLocateDefault,
-		RealtimeAvailable: *safecastRealtimeEnabled,
-		SupportEmail:      strings.TrimSpace(*supportEmail),
-		TranslationsJSON:  translationsJSON,
-		MarkersJSON:       markersJSON,
-		DebugEnabled:      debugEnabledForRequest(r),
+		Version:            CompileVersion,
+		Translations:       translations,
+		Lang:               lang,
+		DefaultLat:         *defaultLat,
+		DefaultLon:         *defaultLon,
+		DefaultZoom:        *defaultZoom,
+		DefaultLayer:       *defaultLayer,
+		AutoLocateDefault:  *autoLocateDefault,
+		RealtimeAvailable:  *safecastRealtimeEnabled,
+		SupportEmail:       strings.TrimSpace(*supportEmail),
+		TranslationsJSON:   translationsJSON,
+		MarkersJSON:        markersJSON,
+		DebugEnabled:       debugEnabledForRequest(r),
+		CurrentURL:         resolveCurrentURL(r),
+		DefaultSocialImage: defaultSocialImage,
 	}
 
 	var buf bytes.Buffer
