@@ -2366,6 +2366,7 @@ function attachControlTooltip(target, options) {
     placement: 'top',
     html: false,
     maxWidth: 280,
+    shouldShow: null,
   }, options || {});
 
   let tooltipEl = null;
@@ -2419,6 +2420,10 @@ function attachControlTooltip(target, options) {
     }
     const rects = target.getClientRects();
     if (!rects || rects.length === 0) {
+      return;
+    }
+    // Allow callers to suppress tooltips during modal states like playback.
+    if (typeof opts.shouldShow === 'function' && !opts.shouldShow()) {
       return;
     }
     const content = resolveContent();
@@ -2854,6 +2859,8 @@ function createDateRangeSlider(){
       sliderTooltipHandle = attachControlTooltip(sliderBox, {
         placement: 'right',
         content: function () { return translate('date_slider_tooltip'); },
+        // Hide the slider hint while playback runs so it never obscures the map view.
+        shouldShow: function () { return !trackPlaybackActive; },
         maxWidth: 300,
       });
       return sliderBox;
@@ -3189,6 +3196,13 @@ function createDateRangeSlider(){
     trackPlaybackActive = true;
     playbackPaused = false;
     setPlayButtonState('playing');
+    if (sliderTooltipHandle) {
+      // Ensure the date slider hint never stays visible once playback begins.
+      sliderTooltipHandle.hide();
+    }
+    if (sliderBox && document.activeElement === sliderBox) {
+      sliderBox.blur();
+    }
     if (markerStreamSource) {
       markerStreamSource.close();
     }
