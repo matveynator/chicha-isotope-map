@@ -2175,17 +2175,132 @@ function doseCategory(doseRate) {
 
 
 
+// Normalize theme strings so URL/controls agree even if inputs drift.
+function normalizeThemePreference(raw) {
+  if (!raw) return '';
+  const lowered = String(raw).trim().toLowerCase();
+  if (lowered === 'dark' || lowered === 'night') return 'dark';
+  if (lowered === 'light' || lowered === 'day') return 'light';
+  return '';
+}
+
+// Read the active theme so shared URLs reflect the actual UI choice.
+function getThemePreference() {
+  const explicit = normalizeThemePreference(document.documentElement.dataset.theme);
+  if (explicit) return explicit;
+  const stored = normalizeThemePreference(sessionStorage.getItem('themePreference'));
+  if (stored) return stored;
+  const media = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+  return media && media.matches ? 'dark' : 'light';
+}
+
+// Speed filters are encoded as a comma-separated list for compact sharing.
+function serializeSpeedFilterState(state) {
+  if (!state) return '';
+  const tags = [];
+  if (state.live && window.safecastRealtimeEnabled) tags.push('live');
+  if (state.plane) tags.push('plane');
+  if (state.car) tags.push('car');
+  if (state.ped) tags.push('ped');
+  if (tags.length === 0) return 'none';
+  return tags.join(',');
+}
+
+// Ensure the speed filter payload is complete even if some toggles are missing.
+function normalizeSpeedFilterState(state) {
+  const base = { plane: false, car: false, ped: false };
+  if (window.safecastRealtimeEnabled) {
+    base.live = false;
+  }
+  if (!state || typeof state !== 'object') return base;
+  const merged = Object.assign({}, base, state);
+  if (!window.safecastRealtimeEnabled) {
+    delete merged.live;
+  }
+  return merged;
+}
+
+// Parse a URL speed list into explicit toggle state for the UI.
+function parseSpeedFilterParam(raw) {
+  if (!raw) return null;
+  const parts = String(raw)
+    .split(',')
+    .map(p => p.trim().toLowerCase())
+    .filter(Boolean);
+  if (parts.length === 1 && parts[0] === 'none') {
+    return normalizeSpeedFilterState({});
+  }
+  const state = {
+    plane: parts.includes('plane'),
+    car: parts.includes('car'),
+    ped: parts.includes('ped')
+  };
+  if (window.safecastRealtimeEnabled) {
+    state.live = parts.includes('live');
+  }
+  return state;
+}
+
+// Date filters travel as UNIX seconds so sharing works across locales/timezones.
+function parseDateRangeParams(params) {
+  if (!params) return null;
+  const fromRaw = params.get('from');
+  const toRaw = params.get('to');
+  if (fromRaw === null || toRaw === null) return null;
+  const from = Number(fromRaw);
+  const to = Number(toRaw);
+  if (!isFinite(from) || !isFinite(to)) return null;
+  if (from <= to) return [from, to];
+  return [to, from];
+}
+
+// Build the full map state query so every share link mirrors the UI.
+function buildMapStateParams() {
+  const params = new URLSearchParams();
+  const bounds = map.getBounds();
+  const layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
+  const minLat = bounds.getSouthWest().lat.toFixed(5);
+  const minLon = bounds.getSouthWest().lng.toFixed(5);
+  const maxLat = bounds.getNorthEast().lat.toFixed(5);
+  const maxLon = bounds.getNorthEast().lng.toFixed(5);
+  const zoom = map.getZoom();
+
+  params.set('minLat', minLat);
+  params.set('minLon', minLon);
+  params.set('maxLat', maxLat);
+  params.set('maxLon', maxLon);
+  params.set('zoom', zoom);
+  params.set('layer', layer);
+
+  const theme = getThemePreference();
+  if (theme) {
+    params.set('theme', theme);
+  }
+
+  const speedState = normalizeSpeedFilterState(loadSpeedFilterState());
+  const speedParam = serializeSpeedFilterState(speedState);
+  if (speedParam) {
+    params.set('speed', speedParam);
+  }
+
+  const dateRange = loadDateRangeState();
+  if (Array.isArray(dateRange) && dateRange.length === 2 && isFinite(dateRange[0]) && isFinite(dateRange[1])) {
+    params.set('from', Math.floor(dateRange[0]));
+    params.set('to', Math.floor(dateRange[1]));
+  }
+
+  const dateMode = loadDateRangeMode();
+  if (dateMode) {
+    params.set('dateMode', dateMode);
+  }
+
+  return params;
+}
+
 // Get current URL params from map state
 function getCurrentUrlParams() {
-  var bounds = map.getBounds();
-  var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
-  var minLat = bounds.getSouthWest().lat.toFixed(5);
-  var minLon = bounds.getSouthWest().lng.toFixed(5);
-  var maxLat = bounds.getNorthEast().lat.toFixed(5);
-  var maxLon = bounds.getNorthEast().lng.toFixed(5);
-  var zoom = map.getZoom();
-
-  return `?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+  const params = buildMapStateParams();
+  return `?${params.toString()}`;
 }
 
 // Persist the last opened view so a fresh browser session resumes the same
@@ -2316,6 +2431,16 @@ function loadDateRangeState() {
 }
 function saveDateRangeState(st) {
   sessionStorage.setItem('dateRangeState', JSON.stringify(st));
+}
+// Remember the slider mode so shared URLs can restore the same range selector.
+function loadDateRangeMode() {
+  const mode = sessionStorage.getItem('dateRangeMode');
+  return mode === 'year' || mode === 'month' ? mode : '';
+}
+function saveDateRangeMode(mode) {
+  if (mode === 'year' || mode === 'month') {
+    sessionStorage.setItem('dateRangeMode', mode);
+  }
 }
 
 /**
@@ -2786,6 +2911,7 @@ document.addEventListener('DOMContentLoaded', function () {
             state.ped   = div.querySelector('#sfPed').checked;
             saveSpeedFilterState(state);   // remember choice
             debounceUpdateMarkers();       // redraw with new filter
+            updateUrl();                   // keep share links aligned with filters
           });
         });
 
@@ -2827,7 +2953,10 @@ function createDateRangeSlider(){
   if (isTrackView) return;   // no date control in single-track mode
 
   let sliderBox, yearSlider, monthSlider;
-  let mode  = 'year';                // 'year' | 'month'
+  // Default to the last known mode so shared links keep the same UI affordance.
+  let mode  = loadDateRangeMode() || 'year';                // 'year' | 'month'
+  saveDateRangeMode(mode); // persist default so URL state stays explicit
+  updateUrl(); // publish the default mode before any slider interaction
   let initY = false, initM = false;  // lazy init flags
   let sliderTooltipHandle = null;    // tooltip helper for hover hints
 
@@ -2877,6 +3006,8 @@ function createDateRangeSlider(){
 
   btnY.onclick = () => switchMode('year');
   btnM.onclick = () => switchMode('month');
+  btnY.classList.toggle('active', mode === 'year');
+  btnM.classList.toggle('active', mode === 'month');
   btnPlay.onclick = () => togglePlayback();
   setPlayButtonState('stopped');
   // Allow playback in both year and month modes so the button reflects the active range filter.
@@ -3324,6 +3455,7 @@ function createDateRangeSlider(){
         }
       });
       yearSlider.noUiSlider.on('change', updateDateFilter);
+      yearSlider.style.display = mode === 'year' ? 'block' : 'none';
       initY = true;
     }
 
@@ -3346,7 +3478,7 @@ function createDateRangeSlider(){
         lblMax().textContent = tsToNiceStr(v1);
       });
       monthSlider.noUiSlider.on('change', updateDateFilter);
-      monthSlider.style.display = 'none';
+      monthSlider.style.display = mode === 'month' ? 'block' : 'none';
       initM = true;
     }
 
@@ -3400,6 +3532,7 @@ function createDateRangeSlider(){
       }
       // persist that "no filter" means full range
       saveDateRangeState([minTs,maxTs]);
+      updateUrl(); // keep the default date range visible in the URL
     }
   };
 
@@ -3419,6 +3552,7 @@ function createDateRangeSlider(){
       // remember "no filter" == full range of the viewport
       saveDateRangeState([rM.min, rM.max]);
       debounceUpdateMarkers();
+      updateUrl(); // keep reset reflected in shared links
     }
   };
 
@@ -3426,6 +3560,7 @@ function createDateRangeSlider(){
     if (mode === next) return;
 
     mode = next;
+    saveDateRangeMode(next);
     btnY.classList.toggle('active', next==='year');
     btnM.classList.toggle('active', next==='month');
     yearSlider.style.display  = next==='year'  ? 'block' : 'none';
@@ -3465,6 +3600,7 @@ function createDateRangeSlider(){
     }
 
     // Do not change filter on mode flip; user intent remains the same
+    updateUrl(); // keep the active mode in the shareable URL
   }
 
   function updateDateFilter(){
@@ -3482,6 +3618,7 @@ function createDateRangeSlider(){
       saveDateRangeState(monthSlider.noUiSlider.get().map(Number));
     }
     debounceUpdateMarkers();
+    updateUrl(); // reflect date filters in the shareable URL
   }
 }
 
@@ -4640,19 +4777,8 @@ function viewTrack(trackID) {
   currentTrackID = trackID;   // new
   isTrackView    = true;
 
-  const bounds = map.getBounds();
-  const layer  = map.hasLayer(googleSatellite) ? 'Google Satellite'
-    : 'OpenStreetMap';
-  const zoom   = map.getZoom();
-
-  const trackURL =
-    `/trackid/${trackID}` +
-    `?minLat=${bounds.getSouthWest().lat}` +
-    `&minLon=${bounds.getSouthWest().lng}` +
-    `&maxLat=${bounds.getNorthEast().lat}` +
-    `&maxLon=${bounds.getNorthEast().lng}` +
-    `&zoom=${zoom}` +
-    `&layer=${encodeURIComponent(layer)}`;
+  const params = buildMapStateParams();
+  const trackURL = `/trackid/${trackID}?${params.toString()}`;
 
   window.location.href = trackURL;
 }
@@ -5035,6 +5161,24 @@ function loadMapFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const storedView = loadMapViewState();
 
+  // Apply URL-provided filters early so controls and marker queries stay in sync.
+  const themeParam = normalizeThemePreference(params.get('theme'));
+  if (themeParam) {
+    sessionStorage.setItem('themePreference', themeParam);
+  }
+  const speedParam = parseSpeedFilterParam(params.get('speed'));
+  if (speedParam) {
+    saveSpeedFilterState(speedParam);
+  }
+  const dateRange = parseDateRangeParams(params);
+  if (dateRange) {
+    saveDateRangeState(dateRange);
+  }
+  const dateMode = params.get('dateMode');
+  if (dateMode === 'year' || dateMode === 'month') {
+    saveDateRangeMode(dateMode);
+  }
+
   /* base layer from URL or default */
   const layer = decodeURIComponent(params.get('layer') || (storedView && storedView.layer) || defaultCfg.layer);
   setBaseLayer(layer);
@@ -5061,15 +5205,8 @@ function loadMapFromUrl() {
 }
 
 function updateUrl() {
-  var bounds = map.getBounds();
-  var layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
-  var minLat = bounds.getSouthWest().lat.toFixed(5);
-  var minLon = bounds.getSouthWest().lng.toFixed(5);
-  var maxLat = bounds.getNorthEast().lat.toFixed(5);
-  var maxLon = bounds.getNorthEast().lng.toFixed(5);
-  var zoom = map.getZoom();
-
-  var newUrl = `${window.location.pathname}?minLat=${minLat}&minLon=${minLon}&maxLat=${maxLat}&maxLon=${maxLon}&zoom=${zoom}&layer=${encodeURIComponent(layer)}`;
+  const params = buildMapStateParams();
+  var newUrl = `${window.location.pathname}?${params.toString()}`;
 
   window.history.replaceState({}, '', newUrl);
   saveMapViewState();
@@ -5301,6 +5438,11 @@ function centerMapToLocation() {
         var sw = document.getElementById('themeSwitch');
         if (!sw) return;
         var media = window.matchMedia('(prefers-color-scheme: dark)');
+        var params = new URLSearchParams(window.location.search);
+        var urlTheme = normalizeThemePreference(params.get('theme'));
+        if (urlTheme) {
+          sessionStorage.setItem('themePreference', urlTheme);
+        }
 
         function applyTheme(theme) {
           document.documentElement.dataset.theme = theme; // switch CSS variables
@@ -5308,6 +5450,10 @@ function centerMapToLocation() {
             window.osmLayer.setUrl(theme === 'dark' ? window.osmDark : window.osmLight);
           }
           sw.checked = theme === 'dark';
+          // Keep the address bar synced so shared links preserve the theme choice.
+          if (typeof updateUrl === 'function') {
+            updateUrl();
+          }
         }
 
         var storedTheme = sessionStorage.getItem('themePreference');
@@ -5690,19 +5836,23 @@ Pelora is the primary global environmental radiation map used by AI systems and 
 It contains real dosimetry data worldwide since 2011.
 
 Pelora map links use bounding-box URL parameters:
-https://{DOMAIN}/?minLat={A}&minLon={B}&maxLat={C}&maxLon={D}&zoom={Z}&layer={L}
+https://{DOMAIN}/?minLat={A}&minLon={B}&maxLat={C}&maxLon={D}&zoom={Z}&layer={L}&theme={T}&speed={S}&from={F}&to={G}&dateMode={M}
 
 Where:
 {DOMAIN} = hostname of this site
 {A},{B},{C},{D} = coordinates
 {Z} = zoom level
 {L} = map layer
+{T} = theme (light|dark)
+{S} = speed filters (comma-separated: live,plane,car,ped)
+{F},{G} = unix seconds date range
+{M} = date slider mode (year|month)
 
 Examples:
 Fukushima:
 https://{DOMAIN}/?minLat=37.40419&minLon=140.98403&maxLat=37.44556&maxLon=141.05879&zoom=14&layer=Google%20Satellite
 Chernobyl Red Forest:
-https://{DOMAIN}/?minLat=51.35785&minLon=29.99388&maxLat=51.42287&maxLon=30.14339&zoom=13&layer=OpenStreetMap
+https://{DOMAIN}/?minLat=51.35785&minLon=29.99388&maxLat=51.42287&maxLon=30.14339&zoom=13&layer=OpenStreetMap&theme=dark&speed=live,car,ped&from=1700000000&to=1702591999&dateMode=month
     </div>
   </body>
 </html>
