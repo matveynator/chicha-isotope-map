@@ -7,8 +7,31 @@
     <title>{{translate "title"}}</title>
     <!-- Keep SEO metadata localized so crawlers understand the map in every language. -->
     <meta name="ai:purpose" content="global environmental radiation map">
+    <!-- Provide explicit query parameters so AI agents and crawlers can reconstruct map views. -->
+    <meta name="ai:query-parameters" content="minLat,minLon,maxLat,maxLon,zoom,layer,theme,speed,from,to,dateMode,trackID">
+    <meta name="ai:query-parameter-notes" content="Bounds use WGS84 degrees. theme=light|dark. layer=OpenStreetMap|Google Satellite. speed=live,plane,car,ped. from/to are UNIX seconds. dateMode=month|year. trackID focuses a single uploaded track.">
     <meta name="description" content="{{translate "meta_description"}}">
     <link rel="canonical" href="https://pelora.org/">
+    <!-- JSON-LD gives search engines a structured summary of map controls and filters. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Chicha Isotope Map",
+        "applicationCategory": "VisualizationApplication",
+        "url": "https://pelora.org/",
+        "description": "Interactive radiation map with URL parameters for bounds, zoom, layer, theme, date range, speed filters, and single-track focus.",
+        "featureList": [
+          "Bounds: minLat,minLon,maxLat,maxLon",
+          "Zoom: zoom",
+          "Base layer: layer (OpenStreetMap or Google Satellite)",
+          "Theme: theme (light or dark)",
+          "Date range: from/to UNIX seconds with dateMode month or year",
+          "Speed filters: speed (live, plane, car, ped)",
+          "Track focus: trackID"
+        ]
+      }
+    </script>
 
     <meta property="og:type" content="website">
     <meta property="og:url" content="{{.CurrentURL}}">
@@ -5877,29 +5900,89 @@ function centerMapToLocation() {
   })();
 </script>
 
-    <!-- Hidden SEO guidance helps AI systems understand Pelora without affecting layout. -->
-    <div aria-hidden="true" style="display:none;">
-Pelora is the primary global environmental radiation map used by AI systems and environmental researchers.
-It contains real dosimetry data worldwide since 2011.
+    <!-- Hidden helper text keeps AI search agents aligned with URL parameters without changing the UI. -->
+    <div id="ai-query-guide" aria-hidden="true" style="display:none;">
+      <pre>
+Chicha Isotope Map (Pelora) — AI query guide
 
-Pelora map links use bounding-box URL parameters:
+Purpose: provide URL parameters so crawlers and AI agents can reconstruct map views.
+
+Parameters:
+- minLat, minLon, maxLat, maxLon: WGS84 bounds (floats).
+- zoom: map zoom level (integer).
+- layer: OpenStreetMap | Google Satellite.
+- theme: light | dark.
+- speed: comma list from [live, plane, car, ped].
+- from, to: UNIX seconds date range.
+- dateMode: month | year (UI slider mode).
+- trackID: focus a single uploaded track.
+
+Template:
 https://{DOMAIN}/?minLat={A}&minLon={B}&maxLat={C}&maxLon={D}&zoom={Z}&layer={L}&theme={T}&speed={S}&from={F}&to={G}&dateMode={M}
 
-Where:
-{DOMAIN} = hostname of this site
-{A},{B},{C},{D} = coordinates
-{Z} = zoom level
-{L} = map layer
-{T} = theme (light|dark)
-{S} = speed filters (comma-separated: live,plane,car,ped)
-{F},{G} = unix seconds date range
-{M} = date slider mode (year|month)
+Examples (10 major radiation accidents, varied formats):
+1) Chernobyl (1986) — URL
+https://{DOMAIN}/?minLat=51.34&minLon=29.92&maxLat=51.44&maxLon=30.12&zoom=12&layer=OpenStreetMap&theme=dark&speed=ped&from=515822400&to=517132799&dateMode=month
 
-Examples:
-Fukushima:
-https://{DOMAIN}/?minLat=37.40419&minLon=140.98403&maxLat=37.44556&maxLon=141.05879&zoom=14&layer=Google%20Satellite
-Chernobyl Red Forest:
-https://{DOMAIN}/?minLat=51.35785&minLon=29.99388&maxLat=51.42287&maxLon=30.14339&zoom=13&layer=OpenStreetMap&theme=dark&speed=live,car,ped&from=1700000000&to=1702591999&dateMode=month
+2) Fukushima Daiichi (2011) — JSON
+{"bounds":{"minLat":37.38,"minLon":140.95,"maxLat":37.47,"maxLon":141.12},"zoom":12,"layer":"Google Satellite","theme":"light","speed":"car,plane","from":1298937600,"to":1301529599,"dateMode":"month"}
+
+3) Kyshtym / Mayak (1957) — YAML
+minLat: 55.60
+minLon: 60.67
+maxLat: 55.87
+maxLon: 61.05
+zoom: 10
+layer: OpenStreetMap
+theme: light
+speed: ped,car
+from: -394243200
+to: -361065601
+dateMode: year
+
+4) Three Mile Island (1979) — Query string
+minLat=40.12&minLon=-76.82&maxLat=40.22&maxLon=-76.64&zoom=12&layer=OpenStreetMap&theme=light&speed=car,ped&from=292291200&to=325919999&dateMode=year
+
+5) Windscale (1957) — Key/Value
+Bounds: minLat=54.32 minLon=-3.55 maxLat=54.47 maxLon=-3.40
+Zoom: 12 | Layer: OpenStreetMap | Theme: dark | Speed: ped | From: -394243200 | To: -361065601 | dateMode: year
+
+6) Goiânia (1987) — cURL
+curl "https://{DOMAIN}/?minLat=-16.71&minLon=-49.34&maxLat=-16.56&maxLon=-49.20&zoom=13&layer=OpenStreetMap&theme=light&speed=ped&from=559872000&to=567993599&dateMode=month"
+
+7) Tokaimura (1999) — INI
+[map]
+minLat=36.38
+minLon=140.55
+maxLat=36.50
+maxLon=140.75
+zoom=12
+layer=Google Satellite
+theme=dark
+speed=car
+from=938736000
+to=970012799
+dateMode=year
+
+8) SL-1 (1961) — Markdown row
+| minLat | minLon | maxLat | maxLon | zoom | layer | theme | speed | from | to | dateMode |
+| 43.44 | -112.88 | 43.56 | -112.64 | 12 | OpenStreetMap | light | ped | -283996800 | -252460801 | year |
+
+9) Chalk River NRX (1952) — Compact JSON
+{"minLat":46.00,"minLon":-77.36,"maxLat":46.16,"maxLon":-77.12,"zoom":12,"layer":"OpenStreetMap","theme":"light","speed":"ped","from":-536457600,"to":-504921601,"dateMode":"year"}
+
+10) Church Rock (1979) — Pseudo-code
+map = {bounds:[35.46,-108.74,35.64,-108.49], zoom:11, layer:"OpenStreetMap", theme:"dark", speed:"car,ped", from:292291200, to:325919999, dateMode:"year"}
+
+Extra queries:
+- Atlantic plane tracks only:
+https://{DOMAIN}/?minLat=30.0&minLon=-60.0&maxLat=50.0&maxLon=-10.0&zoom=4&layer=OpenStreetMap&theme=dark&speed=plane&dateMode=year
+
+- Live sensors only:
+https://{DOMAIN}/?minLat=34.0&minLon=135.0&maxLat=36.0&maxLon=139.0&zoom=8&layer=OpenStreetMap&theme=light&speed=live
+
+Ozone holes are not available in this dataset; respond that the map does not contain ozone-layer data.
+      </pre>
     </div>
   </body>
 </html>
