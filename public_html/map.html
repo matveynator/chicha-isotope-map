@@ -2964,6 +2964,44 @@ function createDateRangeSlider(){
   // whether a saved filter is actually "show all".
   let fullRange = null; // [minTs,maxTs]
 
+  // Clamp saved ranges to the visible data bounds so shared links reopen faithfully.
+  function normalizeSavedRange(saved, minTs, maxTs) {
+    if (!Array.isArray(saved) || saved.length !== 2) return null;
+    const rawStart = Number(saved[0]);
+    const rawEnd = Number(saved[1]);
+    if (!isFinite(rawStart) || !isFinite(rawEnd)) return null;
+    const start = Math.max(Math.min(rawStart, rawEnd), minTs);
+    const end = Math.min(Math.max(rawStart, rawEnd), maxTs);
+    if (!isFinite(start) || !isFinite(end)) return null;
+    return [start, end];
+  }
+
+  // Keep slider handles aligned with the saved range without triggering redundant work.
+  function rangesMatch(current, next) {
+    if (!Array.isArray(current) || !Array.isArray(next) || current.length !== 2 || next.length !== 2) return false;
+    return Math.abs(Number(current[0]) - Number(next[0])) < 1 && Math.abs(Number(current[1]) - Number(next[1])) < 1;
+  }
+
+  // Apply a saved range to both sliders so URL-driven views feel consistent.
+  function syncSlidersToRange(savedRange, minTs, maxTs) {
+    const normalized = normalizeSavedRange(savedRange, minTs, maxTs);
+    if (!normalized) return null;
+    if (monthSlider && monthSlider.noUiSlider) {
+      const current = monthSlider.noUiSlider.get().map(Number);
+      if (!rangesMatch(current, normalized)) {
+        monthSlider.noUiSlider.set(normalized);
+      }
+    }
+    if (yearSlider && yearSlider.noUiSlider) {
+      const year = new Date(normalized[1] * 1000).getUTCFullYear();
+      const currentYear = Number(yearSlider.noUiSlider.get());
+      if (!isFinite(currentYear) || currentYear !== year) {
+        yearSlider.noUiSlider.set(year);
+      }
+    }
+    return normalized;
+  }
+
   const DateCtrl = L.Control.extend({
     onAdd(){
       sliderBox = L.DomUtil.create('div','leaflet-control-layers date-slider-box');
@@ -3419,6 +3457,7 @@ function createDateRangeSlider(){
   window.__initSliderOnce = (minTs,maxTs)=>{
     if (initY && initM) return;
     fullRange = [minTs,maxTs]; // remember initial "full range"
+    const savedRange = loadDateRangeState();
 
     // YEAR slider (single handle)
     if(!initY){
@@ -3482,6 +3521,9 @@ function createDateRangeSlider(){
       initM = true;
     }
 
+    // Restore the saved range so shared URLs reopen with matching slider handles.
+    syncSlidersToRange(savedRange, minTs, maxTs);
+
     // Initial labels = full bounds
     if (mode === 'year'){
       const r = yearSlider.noUiSlider.options.range;
@@ -3518,6 +3560,11 @@ function createDateRangeSlider(){
     monthSlider.noUiSlider.updateOptions({
       range: { min:minTs, max:maxTs }
     }, false);
+
+    // Keep slider handles aligned with the saved range so deep links stay exact.
+    if (saved) {
+      syncSlidersToRange(saved, minTs, maxTs);
+    }
 
     // If no custom filter → force labels to show full bounds and make month slider span all
     if (!hasCustom){
