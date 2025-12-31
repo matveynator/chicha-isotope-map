@@ -198,6 +198,11 @@ body, html {
           color-scheme: light; /* Force light scheme when manually selected */
         }
 
+        /* Reduce satellite imagery contrast in light mode so markers remain easier to spot. */
+        :root[data-theme='light'] .google-satellite-layer img {
+          filter: contrast(0.85);
+        }
+
         :root[data-theme='dark'] {
           --overlay-bg: rgba(0, 0, 0, 0.7);
           --progress-bg: #2b2b2b;
@@ -2788,7 +2793,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // Use the same satellite layer regardless of theme
   googleSatellite = L.tileLayer(googleSat, {
     maxZoom: 20,
-    attribution: '&copy; Google'
+    attribution: '&copy; Google',
+    className: 'google-satellite-layer' // Apply theme-aware styling to satellite tiles.
   });
 
   // right after creating osmLayer and googleSatellite
