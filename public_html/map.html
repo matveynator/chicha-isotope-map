@@ -11,6 +11,8 @@
     <meta name="ai:query-parameters" content="minLat,minLon,maxLat,maxLon,zoom,layer,theme,speed,from,to,dateMode,trackID">
     <meta name="ai:query-parameter-notes" content="Bounds use WGS84 degrees. theme=light|dark. layer=OpenStreetMap|Google Satellite. speed=live,plane,car,ped. from/to are UNIX seconds. dateMode=month|year. trackID focuses a single uploaded track.">
     <meta name="description" content="{{translate "meta_description"}}">
+    <!-- Preserve upstream attribution in metadata for downstream crawlers. -->
+    <meta name="generator" content="{{ .MetaGenerator }}">
     <link rel="canonical" href="https://pelora.org/">
     <!-- JSON-LD gives search engines a structured summary of map controls and filters. -->
     <script type="application/ld+json">
@@ -1312,6 +1314,13 @@ body, html {
       window.supportEmail = {{if .SupportEmail}}{{printf "%q" .SupportEmail}}{{else}}""{{end}};
     </script>
     <script>
+      // Expose upstream attribution ingredients so sources remain localized.
+      window.chichaVersion = {{ printf "%q" .Version }};
+      window.chichaGitHubURL = {{ printf "%q" .ChichaGitHubURL }};
+      // Only show the GitHub tooltip when the logo still points to GitHub.
+      window.showGithubLinkTooltip = {{if .ShowGithubTooltip}}true{{else}}false{{end}};
+    </script>
+    <script>
       // Expose the realtime flag so the UI can hide controls when the backend keeps the feature off.
       window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
     </script>
@@ -1392,8 +1401,8 @@ body, html {
     </div>
 
     <!-- GitHub link and program info -->
-    <a href="https://github.com/matveynator/chicha-isotope-map" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{translate "github_link_tooltip_desc"}}">
-      <img src="/static/images/chicha-isotope-map-round-logo.png" width="80" alt="{{translate "description"}} (version: {{ .Version }})" >
+    <a href="{{ .LogoLink }}" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{if .ShowGithubTooltip}}{{translate "github_link_tooltip_desc"}}{{else}}{{translate "logo_title"}}{{end}}">
+      <img src="{{ .LogoImageURL }}" width="80" alt="{{translate "description"}} (version: {{ .Version }})" >
     </a>
 
     <!-- World radiation logo announces the map identity for every language. -->
@@ -2738,7 +2747,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   var githubLink = document.querySelector('.github-link');
-  if (githubLink) {
+  if (githubLink && window.showGithubLinkTooltip) {
     var githubHandle = attachControlTooltip(githubLink, {
       placement: 'top',
       html: true,
@@ -2792,6 +2801,15 @@ document.addEventListener('DOMContentLoaded', function () {
     zoom  : defaultCfg.zoom,
     layers: [startLayer],           // only one base layer
   });
+
+  // Keep the attribution prefix short so Chicha appears before Leaflet and tiles.
+  if (map.attributionControl) {
+    var chichaHref = window.chichaGitHubURL || 'https://github.com/matveynator/chicha-isotope-map';
+    map.attributionControl.setPrefix(
+      '<a href=\"' + chichaHref + '\" target=\"_blank\" rel=\"noopener noreferrer\">chicha</a> | ' +
+      '<a href=\"https://leafletjs.com\" target=\"_blank\" rel=\"noopener noreferrer\">Leaflet</a>'
+    );
+  }
 
   // Layer control
   var baseLayers = {
@@ -5851,6 +5869,17 @@ function centerMapToLocation() {
     var infoText = translate(topic + '_full');
     if (topic === 'legal' && typeof window.supportEmail === 'string' && window.supportEmail.trim() !== '') {
       infoText += '\n\n' + translate('legal_contact') + ' ' + window.supportEmail.trim();
+    }
+    if (topic === 'sources') {
+      var poweredTemplate = translate('sources_powered_by');
+      var version = (typeof window.chichaVersion === 'string') ? window.chichaVersion : '';
+      var githubURL = (typeof window.chichaGitHubURL === 'string') ? window.chichaGitHubURL : '';
+      var githubLink = githubURL ? '<a href=\"' + githubURL + '\" target=\"_blank\" rel=\"noopener noreferrer\">GitHub</a>' : 'GitHub';
+      if (poweredTemplate && poweredTemplate !== 'sources_powered_by') {
+        // Localize the attribution line so every language keeps the upstream credit.
+        var poweredText = poweredTemplate.replace('{version}', version).replace('{github}', githubLink);
+        infoText += '\n\n' + poweredText;
+      }
     }
     if (topic === 'license') {
       infoText = decorateLicenseLinks(infoText);

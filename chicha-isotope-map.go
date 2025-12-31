@@ -88,6 +88,8 @@ var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a 
 var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz of exported JSON files, log progress, and exit once finished.")
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var debugIPsFlag = flag.String("debug", "", "Comma separated IP addresses allowed to view the debug overlay")
+var logoPath = flag.String("logo-path", "", "Filesystem path to a custom logo image that replaces the default branding.")
+var logoLink = flag.String("logo-link", "", "Destination URL for the logo link; defaults to the Chicha Isotope Map GitHub repository.")
 
 // setupWizardEnabled is registered only on Linux so other platforms avoid unusable
 // flags. We keep the pointer nullable to preserve zero-value semantics without extra
@@ -100,6 +102,28 @@ var setupWizardEnabled = registerSetupFlag()
 // built-in map semantics.
 var debugIPAllowlist map[string]struct{}
 
+const chichaGitHubURL = "https://github.com/matveynator/chicha-isotope-map"
+
+// logoAsset stores an in-memory custom logo so we can serve it without
+// filesystem reads on every request.
+type logoAsset struct {
+	Data        []byte
+	ContentType string
+	ModTime     time.Time
+}
+
+// logoConfig captures the resolved UI branding choices to keep handlers lean.
+type logoConfig struct {
+	ImageURL              string
+	LinkURL               string
+	ShowGithubLinkTooltip bool
+}
+
+var (
+	activeLogoConfig logoConfig
+	customLogoAsset  *logoAsset
+)
+
 // usageSection groups CLI flags so operators can scan help output quickly. This keeps
 // the help text approachable without duplicating flag registration everywhere.
 type usageSection struct {
@@ -108,7 +132,7 @@ type usageSection struct {
 }
 
 var cliUsageSections = []usageSection{
-	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "setup"}},
+	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "logo-path", "logo-link", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
@@ -3872,6 +3896,83 @@ func parseDebugAllowlist(raw string) map[string]struct{} {
 	return allow
 }
 
+// buildMetaGenerator localizes the attribution metadata so the head section
+// matches the chosen language without HTML formatting.
+func buildMetaGenerator(lang, version, githubURL string, translations map[string]map[string]string) string {
+	template := ""
+	if lang != "" {
+		template = translations[lang]["meta_generator"]
+	}
+	if template == "" {
+		template = translations["en"]["meta_generator"]
+	}
+	template = strings.ReplaceAll(template, "{version}", version)
+	template = strings.ReplaceAll(template, "{github}", githubURL)
+	return template
+}
+
+// resolveDisplayVersion normalizes the compile version so templates show
+// a friendly label even in development builds.
+func resolveDisplayVersion() string {
+	if CompileVersion == "dev" {
+		return "latest"
+	}
+	return CompileVersion
+}
+
+// resolveLogoConfig loads optional branding overrides and returns the
+// resulting UI configuration plus an in-memory logo asset when provided.
+func resolveLogoConfig(path, link string, logf func(string, ...interface{})) (logoConfig, *logoAsset) {
+	config := logoConfig{
+		ImageURL:              "/static/images/chicha-isotope-map-round-logo.png",
+		LinkURL:               chichaGitHubURL,
+		ShowGithubLinkTooltip: true,
+	}
+	link = strings.TrimSpace(link)
+	if link != "" {
+		config.LinkURL = link
+		config.ShowGithubLinkTooltip = link == chichaGitHubURL
+	}
+
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return config, nil
+	}
+
+	absPath := path
+	if abs, err := filepath.Abs(path); err == nil {
+		absPath = abs
+	}
+
+	logoBytes, err := os.ReadFile(absPath)
+	if err != nil {
+		logf("custom logo read failed (%s): %v", absPath, err)
+		return config, nil
+	}
+
+	config.ImageURL = "/custom-logo"
+	asset := &logoAsset{
+		Data:        logoBytes,
+		ContentType: http.DetectContentType(logoBytes),
+		ModTime:     time.Now(),
+	}
+	logf("custom logo loaded from %s", absPath)
+	return config, asset
+}
+
+// customLogoHandler serves the override logo bytes to match the configured UI.
+func customLogoHandler(w http.ResponseWriter, r *http.Request) {
+	if customLogoAsset == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", customLogoAsset.ContentType)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	reader := bytes.NewReader(customLogoAsset.Data)
+	http.ServeContent(w, r, "custom-logo", customLogoAsset.ModTime, reader)
+}
+
 // requestClientIP mirrors the API rate-limiter helper so template handlers can
 // decide whether to surface diagnostics. We respect X-Forwarded-For first so the
 // overlay still works when the service sits behind a proxy.
@@ -3947,6 +4048,8 @@ func debugEnabledForRequest(r *http.Request) bool {
 
 func mapHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
+	displayVersion := resolveDisplayVersion()
+	metaGenerator := buildMetaGenerator(lang, displayVersion, chichaGitHubURL, translations)
 
 	// Готовим шаблон
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
@@ -3957,10 +4060,6 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 			return translations["en"][key]
 		},
 	}).ParseFS(content, "public_html/map.html"))
-
-	if CompileVersion == "dev" {
-		CompileVersion = "latest"
-	}
 
 	translationsJSON, err := marshalTemplateJS(translations)
 	if err != nil {
@@ -3982,7 +4081,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Данные для шаблона
 	// Default social preview stays stable so crawlers have a reliable fallback.
-	const defaultSocialImage = "/static/images/chicha-isotope-map-round-logo.png"
+	defaultSocialImage := activeLogoConfig.ImageURL
 
 	data := struct {
 		Version            string
@@ -4000,22 +4099,32 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DebugEnabled       bool
 		CurrentURL         string
 		DefaultSocialImage string
+		MetaGenerator      string
+		LogoImageURL       string
+		LogoLink           string
+		ShowGithubTooltip  bool
+		ChichaGitHubURL    string
 	}{
-		Version:           CompileVersion,
-		Translations:      translations,
-		Lang:              lang,
-		DefaultLat:        *defaultLat,
-		DefaultLon:        *defaultLon,
-		DefaultZoom:       *defaultZoom,
-		DefaultLayer:      *defaultLayer,
-		AutoLocateDefault: *autoLocateDefault,
-		RealtimeAvailable: *safecastRealtimeEnabled,
-		SupportEmail:      strings.TrimSpace(*supportEmail),
-		TranslationsJSON:  translationsJSON,
-		MarkersJSON:       markersJSON,
+		Version:            displayVersion,
+		Translations:       translations,
+		Lang:               lang,
+		DefaultLat:         *defaultLat,
+		DefaultLon:         *defaultLon,
+		DefaultZoom:        *defaultZoom,
+		DefaultLayer:       *defaultLayer,
+		AutoLocateDefault:  *autoLocateDefault,
+		RealtimeAvailable:  *safecastRealtimeEnabled,
+		SupportEmail:       strings.TrimSpace(*supportEmail),
+		TranslationsJSON:   translationsJSON,
+		MarkersJSON:        markersJSON,
 		DebugEnabled:       debugEnabledForRequest(r),
 		CurrentURL:         resolveCurrentURL(r),
 		DefaultSocialImage: defaultSocialImage,
+		MetaGenerator:      metaGenerator,
+		LogoImageURL:       activeLogoConfig.ImageURL,
+		LogoLink:           activeLogoConfig.LinkURL,
+		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
+		ChichaGitHubURL:    chichaGitHubURL,
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader
@@ -4182,6 +4291,8 @@ func shortRedirectHandler(w http.ResponseWriter, r *http.Request) {
 // Теперь НЕ загружает маркеры в HTML: JS сам запросит нужный зум.
 func trackHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
+	displayVersion := resolveDisplayVersion()
+	metaGenerator := buildMetaGenerator(lang, displayVersion, chichaGitHubURL, translations)
 
 	// /trackid/<ID>
 	parts := strings.Split(r.URL.Path, "/")
@@ -4217,7 +4328,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Default social preview stays stable so crawlers have a reliable fallback.
-	const defaultSocialImage = "/static/images/chicha-isotope-map-round-logo.png"
+	defaultSocialImage := activeLogoConfig.ImageURL
 
 	// отдаём пустой срез маркеров
 	data := struct {
@@ -4236,8 +4347,13 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DebugEnabled       bool
 		CurrentURL         string
 		DefaultSocialImage string
+		MetaGenerator      string
+		LogoImageURL       string
+		LogoLink           string
+		ShowGithubTooltip  bool
+		ChichaGitHubURL    string
 	}{
-		Version:            CompileVersion,
+		Version:            displayVersion,
 		Translations:       translations,
 		Lang:               lang,
 		DefaultLat:         *defaultLat,
@@ -4252,6 +4368,11 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DebugEnabled:       debugEnabledForRequest(r),
 		CurrentURL:         resolveCurrentURL(r),
 		DefaultSocialImage: defaultSocialImage,
+		MetaGenerator:      metaGenerator,
+		LogoImageURL:       activeLogoConfig.ImageURL,
+		LogoLink:           activeLogoConfig.LinkURL,
+		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
+		ChichaGitHubURL:    chichaGitHubURL,
 	}
 
 	var buf bytes.Buffer
@@ -5231,6 +5352,8 @@ func main() {
 	}
 	debugIPAllowlist = parseDebugAllowlist(*debugIPsFlag)
 	loadTranslations(content, "public_html/translations.json")
+	// Resolve UI branding early so handlers can rely on the final logo settings.
+	activeLogoConfig, customLogoAsset = resolveLogoConfig(*logoPath, *logoLink, log.Printf)
 	selfupgradeStartupDelay(log.Printf)
 
 	archiveFrequency, freqErr := jsonarchive.ParseFrequency(*jsonArchiveFrequencyFlag)
@@ -5363,6 +5486,10 @@ func main() {
 
 	http.Handle("/static/", http.StripPrefix("/static/",
 		http.FileServer(http.FS(staticFS))))
+	if customLogoAsset != nil {
+		// Only register the custom logo handler when an override was loaded.
+		http.HandleFunc("/custom-logo", customLogoHandler)
+	}
 	http.HandleFunc("/", mapHandler)
 	// Serve license documents straight from the embedded filesystem so UI
 	// modals can reuse the same source without relying on external storage.
