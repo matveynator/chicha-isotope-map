@@ -203,6 +203,11 @@ body, html {
           filter: contrast(0.85);
         }
 
+        /* Match the lighter contrast in dark mode, with a touch of extra darkening for legibility. */
+        :root[data-theme='dark'] .google-satellite-layer img {
+          filter: contrast(0.85) brightness(0.9);
+        }
+
         :root[data-theme='dark'] {
           --overlay-bg: rgba(0, 0, 0, 0.7);
           --progress-bg: #2b2b2b;
