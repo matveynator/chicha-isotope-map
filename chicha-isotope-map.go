@@ -3968,7 +3968,10 @@ func customLogoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", customLogoAsset.ContentType)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// Disable caching so brand updates appear immediately after upload.
+	w.Header().Set("Cache-Control", "no-store, max-age=0, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	reader := bytes.NewReader(customLogoAsset.Data)
 	http.ServeContent(w, r, "custom-logo", customLogoAsset.ModTime, reader)
 }
