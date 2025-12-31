@@ -655,6 +655,15 @@ body, html {
           z-index: 1000;
         }
 
+        /* Ensure the logo renders at its intrinsic size without stretching. */
+        .github-link img {
+          display: block;
+          width: auto;
+          height: auto;
+          max-width: none;
+          max-height: none;
+        }
+
         .github-icon {
           width: 60px;
           height: 60px;
