@@ -2277,6 +2277,13 @@ function parseDateRangeParams(params) {
   return [to, from];
 }
 
+// Parse the playback flag so shared URLs can request autoplay explicitly.
+function parsePlaybackParam(raw) {
+  if (!raw) return false;
+  const normalized = String(raw).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'play';
+}
+
 // Build the full map state query so every share link mirrors the UI.
 function buildMapStateParams() {
   const params = new URLSearchParams();
@@ -2315,6 +2322,10 @@ function buildMapStateParams() {
   const dateMode = loadDateRangeMode();
   if (dateMode) {
     params.set('dateMode', dateMode);
+  }
+
+  if (playbackShareActive) {
+    params.set('play', '1');
   }
 
   return params;
@@ -2392,6 +2403,8 @@ const shortLinkFocusDelayMs = 900;
 const mapViewStorageKey = 'cim.map.view.v1';
 let storedUserCenter = null;
 let waitForDangerFit = false;
+// Cache short link payloads by target URL so play/pause toggles reuse two entries.
+const shortLinkCache = new Map();
 
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
@@ -2418,6 +2431,11 @@ function refreshDownloadLink() {
 // New controller to cancel previous request
 var markerStreamSource = null;
 var trackPlaybackActive = false;
+// Playback sharing flags keep URL state aligned with the active play button.
+let playbackShareActive = false;
+// Autoplay flags capture URL intent and ensure we trigger playback only once.
+let playbackAutoplayRequested = false;
+let playbackAutoplayDone = false;
 
 var liveHistoryCache = new Map();
 
@@ -3103,6 +3121,29 @@ function createDateRangeSlider(){
     btnPlay.textContent = isPlaying ? '⏸' : '▶';
     btnPlay.title = translate(labelKey);
     btnPlay.setAttribute('aria-label', translate(labelKey));
+    if (playbackShareActive !== isPlaying) {
+      // Keep the share URL in sync with the play button state for deep links.
+      playbackShareActive = isPlaying;
+      if (typeof updateUrl === 'function') {
+        updateUrl();
+      }
+    }
+  }
+
+  // Autoplay should only start once, after sliders are ready for playback.
+  function maybeStartPlaybackFromUrl() {
+    if (!playbackAutoplayRequested || playbackAutoplayDone) {
+      return;
+    }
+    if (trackPlaybackActive || playbackPaused) {
+      playbackAutoplayDone = true;
+      return;
+    }
+    if (!sliderBox || sliderBox.style.display === 'none') {
+      return;
+    }
+    playbackAutoplayDone = true;
+    togglePlayback();
   }
 
   function clearPlaybackMarkers() {
@@ -3556,6 +3597,7 @@ function createDateRangeSlider(){
       lblMin().textContent = tsToNiceStr(minTs);
       lblMax().textContent = tsToNiceStr(maxTs);
     }
+    maybeStartPlaybackFromUrl();
   };
 
   // Sync ranges and labels to the *current* viewport on every pan/zoom,
@@ -4934,6 +4976,19 @@ function requestShortLink(fullURL) {
   if (!shortLinkBox) return;
   pendingShortLinkFull = fullURL;
 
+  const cached = shortLinkCache.get(fullURL);
+  if (cached) {
+    // Reuse cached short links so play/pause toggles don't exhaust storage.
+    pendingShortLinkFull = '';
+    lastShortLinkFull = cached.target || fullURL;
+    if (shortLinkAbort) {
+      shortLinkAbort.abort();
+      shortLinkAbort = null;
+    }
+    applyShortLink(cached);
+    return;
+  }
+
   let controller = null;
   if (typeof AbortController !== 'undefined') {
     if (shortLinkAbort) {
@@ -4993,7 +5048,8 @@ function applyShortLink(details) {
   const shortURL = details.short || '';
   const code = details.code || '';
   const target = details.target || '';
-  const stored = details.stored ? 'true' : 'false';
+  const storedFlag = !!details.stored;
+  const stored = storedFlag ? 'true' : 'false';
   if (!shortURL || !target) {
     hideShortLink();
     return;
@@ -5004,6 +5060,13 @@ function applyShortLink(details) {
   shortLinkBox.dataset.code = code;
   shortLinkBox.dataset.target = target;
   shortLinkBox.dataset.persisted = stored;
+  // Cache the response so we reuse the same short URL for identical targets.
+  shortLinkCache.set(target, {
+    short: shortURL,
+    code: code,
+    target: target,
+    stored: storedFlag,
+  });
 }
 
 function hideShortLink() {
@@ -5247,6 +5310,10 @@ function loadMapFromUrl() {
   const dateMode = params.get('dateMode');
   if (dateMode === 'year' || dateMode === 'month') {
     saveDateRangeMode(dateMode);
+  }
+  const playParam = parsePlaybackParam(params.get('play'));
+  if (playParam) {
+    playbackAutoplayRequested = true;
   }
 
   /* base layer from URL or default */
