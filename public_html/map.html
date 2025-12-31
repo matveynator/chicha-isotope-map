@@ -2804,7 +2804,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Keep the attribution prefix short so Chicha appears before Leaflet and tiles.
   if (map.attributionControl) {
-    var chichaHref = window.chichaGitHubURL || 'https://github.com/matveynator/chicha-isotope-map';
+    // Pin the short attribution link to the canonical repository even if branding overrides the logo link.
+    var chichaHref = 'https://github.com/matveynator/chicha-isotope-map';
     map.attributionControl.setPrefix(
       '<a href=\"' + chichaHref + '\" target=\"_blank\" rel=\"noopener noreferrer\">chicha</a> | ' +
       '<a href=\"https://leafletjs.com\" target=\"_blank\" rel=\"noopener noreferrer\">Leaflet</a>'
@@ -5873,7 +5874,8 @@ function centerMapToLocation() {
     if (topic === 'sources') {
       var poweredTemplate = translate('sources_powered_by');
       var version = (typeof window.chichaVersion === 'string') ? window.chichaVersion : '';
-      var githubURL = (typeof window.chichaGitHubURL === 'string') ? window.chichaGitHubURL : '';
+      // Keep data source attribution anchored to the upstream repository for consistency.
+      var githubURL = 'https://github.com/matveynator/chicha-isotope-map';
       var githubLink = githubURL ? '<a href=\"' + githubURL + '\" target=\"_blank\" rel=\"noopener noreferrer\">GitHub</a>' : 'GitHub';
       if (poweredTemplate && poweredTemplate !== 'sources_powered_by') {
         // Localize the attribution line so every language keeps the upstream credit.
