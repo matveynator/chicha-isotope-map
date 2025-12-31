@@ -2403,6 +2403,8 @@ const shortLinkFocusDelayMs = 900;
 const mapViewStorageKey = 'cim.map.view.v1';
 let storedUserCenter = null;
 let waitForDangerFit = false;
+// Cache short link payloads by target URL so play/pause toggles reuse two entries.
+const shortLinkCache = new Map();
 
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
@@ -4974,6 +4976,19 @@ function requestShortLink(fullURL) {
   if (!shortLinkBox) return;
   pendingShortLinkFull = fullURL;
 
+  const cached = shortLinkCache.get(fullURL);
+  if (cached) {
+    // Reuse cached short links so play/pause toggles don't exhaust storage.
+    pendingShortLinkFull = '';
+    lastShortLinkFull = cached.target || fullURL;
+    if (shortLinkAbort) {
+      shortLinkAbort.abort();
+      shortLinkAbort = null;
+    }
+    applyShortLink(cached);
+    return;
+  }
+
   let controller = null;
   if (typeof AbortController !== 'undefined') {
     if (shortLinkAbort) {
@@ -5033,7 +5048,8 @@ function applyShortLink(details) {
   const shortURL = details.short || '';
   const code = details.code || '';
   const target = details.target || '';
-  const stored = details.stored ? 'true' : 'false';
+  const storedFlag = !!details.stored;
+  const stored = storedFlag ? 'true' : 'false';
   if (!shortURL || !target) {
     hideShortLink();
     return;
@@ -5044,6 +5060,13 @@ function applyShortLink(details) {
   shortLinkBox.dataset.code = code;
   shortLinkBox.dataset.target = target;
   shortLinkBox.dataset.persisted = stored;
+  // Cache the response so we reuse the same short URL for identical targets.
+  shortLinkCache.set(target, {
+    short: shortURL,
+    code: code,
+    target: target,
+    stored: storedFlag,
+  });
 }
 
 function hideShortLink() {
