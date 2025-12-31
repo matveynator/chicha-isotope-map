@@ -64,7 +64,7 @@ body, html {
   color: var(--modal-text); /* Ensure text inherits theme color */
   font-family: var(--font-family-base); /* Keep text styling consistent across the UI */
   font-size: var(--font-size-base); /* Align base size so similar widgets match */
-  line-height: 1.5; /* Provide comfortable reading in both themes */
+  line-height: 1; /* Provide comfortable reading in both themes */
 }
 
         /* Color and typography variables adapt to system theme */
@@ -200,12 +200,12 @@ body, html {
 
         /* Reduce satellite imagery contrast in light mode so markers remain easier to spot. */
         :root[data-theme='light'] .google-satellite-layer img {
-          filter: contrast(0.85);
+          filter: contrast(0.80);
         }
 
         /* Match the lighter contrast in dark mode, with a touch of extra darkening for legibility. */
         :root[data-theme='dark'] .google-satellite-layer img {
-          filter: contrast(0.85) brightness(0.9);
+          filter: contrast(0.80) brightness(0.8);
         }
 
         :root[data-theme='dark'] {
@@ -1412,7 +1412,7 @@ body, html {
 
     <!-- GitHub link and program info -->
     <a href="{{ .LogoLink }}" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{if .ShowGithubTooltip}}{{translate "github_link_tooltip_desc"}}{{else}}{{translate "logo_title"}}{{end}}">
-      <img src="{{ .LogoImageURL }}" width="80" alt="{{translate "description"}} (version: {{ .Version }})" >
+      <img src="{{ .LogoImageURL }}" alt="{{translate "description"}} (version: {{ .Version }})" >
     </a>
 
     <!-- World radiation logo announces the map identity for every language. -->
