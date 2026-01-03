@@ -750,6 +750,34 @@ body, html {
           background-color: var(--control-bg-hover);
         }
 
+        /* Track playback control stays grouped with other track-only buttons. */
+        .track-playback-container {
+          position: absolute;
+          top: 265px; /* keep consistent spacing below the download button */
+          right: 20px;
+          z-index: 1000;
+          display: none;
+        }
+
+        .track-playback-btn {
+          background-color: var(--control-bg);
+          border: var(--legend-border);
+          border-radius: 4px;
+          padding: 5px 10px;
+          cursor: pointer;
+          font-size: var(--font-size-base);
+          color: var(--modal-text);
+          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 44px;
+        }
+
+        .track-playback-btn:hover {
+          background-color: var(--control-bg-hover);
+        }
+
 
         /* ─────────–– Slider clean-look patch ─────────── */
         .date-slider-box {
@@ -1410,6 +1438,10 @@ body, html {
     <!-- Track download button appears only in track view so users can retrieve the original JSON quickly. -->
     <div class="download-track-container leaflet-control" style="display: none;">
       <a id="downloadTrackLink" class="download-track-btn" href="#">{{ translate "download_track_cim" }}</a>
+    </div>
+    <!-- Track playback button appears only in track view for immediate playback control. -->
+    <div class="track-playback-container leaflet-control" style="display: none;">
+      <button id="trackPlaybackButton" class="track-playback-btn" type="button">▶</button>
     </div>
 
     <!-- File upload overlay -->
@@ -2456,6 +2488,301 @@ function refreshDownloadLink() {
   }
 }
 
+/* ---------------------------------------------------------------
+ * Track view playback controls keep the single-track view engaging
+ * without forcing the full dataset to render immediately.
+ * ---------------------------------------------------------------*/
+function setTrackViewPlaybackButtonState(state) {
+  if (!trackViewPlaybackButton) {
+    return;
+  }
+  const isPlaying = state === 'playing';
+  const labelKey = isPlaying ? 'track_view_pause' : 'track_view_play';
+  trackViewPlaybackButton.classList.toggle('is-playing', isPlaying);
+  trackViewPlaybackButton.textContent = isPlaying ? '⏸' : '▶';
+  trackViewPlaybackButton.setAttribute('title', translate(labelKey));
+  trackViewPlaybackButton.setAttribute('aria-label', translate(labelKey));
+}
+
+function refreshTrackViewPlaybackControl() {
+  if (!trackViewPlaybackContainer || !trackViewPlaybackButton) {
+    return;
+  }
+  if (currentTrackID) {
+    trackViewPlaybackContainer.style.display = 'block';
+    if (trackPlaybackActive && !trackViewPlaybackPaused) {
+      setTrackViewPlaybackButtonState('playing');
+    } else {
+      setTrackViewPlaybackButtonState('stopped');
+    }
+  } else {
+    trackViewPlaybackContainer.style.display = 'none';
+  }
+}
+
+function clearTrackViewPlaybackMarkers() {
+  Object.keys(circleMarkers).forEach(function(key) {
+    map.removeLayer(circleMarkers[key]);
+    delete circleMarkers[key];
+  });
+}
+
+function trackViewDelay(ms) {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, ms);
+  });
+}
+
+function waitTrackViewWhilePaused() {
+  if (!trackViewPlaybackPaused) {
+    return Promise.resolve();
+  }
+  return new Promise(function(resolve) {
+    trackViewPlaybackResume = resolve;
+  });
+}
+
+function createTrackViewPlaybackState() {
+  return {
+    queue: [],
+    pointIndex: 0,
+    streamDone: false,
+    waiter: null,
+  };
+}
+
+function queueTrackViewPlaybackPoint(state, point) {
+  state.queue.push(point);
+  if (state.waiter) {
+    state.waiter();
+    state.waiter = null;
+  }
+}
+
+function markTrackViewPlaybackStreamDone(state) {
+  state.streamDone = true;
+  if (state.waiter) {
+    state.waiter();
+    state.waiter = null;
+  }
+}
+
+function waitForNextTrackViewPoint(state) {
+  if (state.queue.length || state.streamDone) {
+    return Promise.resolve();
+  }
+  return new Promise(function(resolve) {
+    state.waiter = resolve;
+  });
+}
+
+function normalizeTrackViewPlaybackMarker(marker) {
+  if (!marker || typeof marker.lat !== 'number' || typeof marker.lon !== 'number') {
+    return null;
+  }
+  if (typeof marker.doseRate !== 'number') {
+    return null;
+  }
+  if (typeof marker.speed !== 'number' || !isFinite(marker.speed)) {
+    marker.speed = 0;
+  }
+  return marker;
+}
+
+async function streamTrackViewPlaybackPoints(trackID, signal, onPoint, onDone) {
+  const resp = await fetch('/api/track/' + encodeURIComponent(trackID) + '.json', { signal: signal });
+  if (!resp.ok) {
+    throw new Error('track_fetch_failed');
+  }
+  if (!resp.body) {
+    throw new Error('track_stream_unsupported');
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let doneCalled = false;
+
+  function finishOnce() {
+    if (doneCalled) return;
+    doneCalled = true;
+    onDone();
+  }
+
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        break;
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      lines.forEach(function(line) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return;
+        }
+        let marker;
+        try {
+          marker = JSON.parse(trimmed);
+        } catch (e) {
+          return;
+        }
+        const normalized = normalizeTrackViewPlaybackMarker(marker);
+        if (!normalized) {
+          return;
+        }
+        onPoint(normalized);
+      });
+    }
+    if (buffer.trim() !== '') {
+      try {
+        const marker = JSON.parse(buffer);
+        const normalized = normalizeTrackViewPlaybackMarker(marker);
+        if (normalized) {
+          onPoint(normalized);
+        }
+      } catch (e) {
+        // Ignore trailing partial JSON chunks so playback can complete cleanly.
+      }
+    }
+  } finally {
+    finishOnce();
+  }
+}
+
+function addTrackViewPlaybackMarker(marker, index) {
+  const zoom = map.getZoom();
+  const circle = L.circleMarker([marker.lat, marker.lon], {
+    radius: getRadius(marker.doseRate, zoom),
+    fillColor: getGradientColor(marker.doseRate),
+    color: getGradientColor(marker.doseRate),
+    weight: 1,
+    opacity: getFillOpacity(marker.speed) + 0.1,
+    fillOpacity: getFillOpacity(marker.speed)
+  })
+  .addTo(map)
+  .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+  .bindPopup(getPopupContent(marker));
+
+  circle.doseRate = marker.doseRate;
+  circle.date = marker.date;
+  circle.isRealtime = false;
+  const trackKey = marker.trackID || currentTrackID || 'track';
+  circleMarkers[marker.id || trackKey + ':' + marker.date + ':' + index] = circle;
+}
+
+async function playTrackViewPoints(state) {
+  while (trackPlaybackActive) {
+    if (!state.queue.length) {
+      if (state.streamDone) {
+        return;
+      }
+      await waitForNextTrackViewPoint(state);
+      continue;
+    }
+    if (trackViewPlaybackPaused) {
+      await waitTrackViewWhilePaused();
+      if (!trackPlaybackActive) {
+        return;
+      }
+    }
+    const point = state.queue.shift();
+    addTrackViewPlaybackMarker(point, state.pointIndex);
+    state.pointIndex += 1;
+    await trackViewDelay(trackViewPlaybackConfig.pointDelayMs);
+  }
+}
+
+function stopTrackViewPlayback(keepMarkers) {
+  if (!trackPlaybackActive && !trackViewPlaybackPaused) {
+    return;
+  }
+  trackPlaybackActive = false;
+  trackViewPlaybackPaused = false;
+  if (trackViewPlaybackResume) {
+    trackViewPlaybackResume();
+    trackViewPlaybackResume = null;
+  }
+  if (trackViewPlaybackAbortController) {
+    trackViewPlaybackAbortController.abort();
+    trackViewPlaybackAbortController = null;
+  }
+  trackViewPlaybackState = null;
+  if (!keepMarkers) {
+    clearTrackViewPlaybackMarkers();
+  }
+  setTrackViewPlaybackButtonState('stopped');
+}
+
+async function startTrackViewPlayback() {
+  if (!currentTrackID) {
+    return;
+  }
+  trackPlaybackActive = true;
+  trackViewPlaybackPaused = false;
+  setTrackViewPlaybackButtonState('playing');
+
+  if (markerStreamSource) {
+    markerStreamSource.close();
+  }
+  clearTrackViewPlaybackMarkers();
+
+  const controller = new AbortController();
+  trackViewPlaybackAbortController = controller;
+  trackViewPlaybackState = createTrackViewPlaybackState();
+  try {
+    const streamPromise = streamTrackViewPlaybackPoints(
+      currentTrackID,
+      controller.signal,
+      function(point) { queueTrackViewPlaybackPoint(trackViewPlaybackState, point); },
+      function() { markTrackViewPlaybackStreamDone(trackViewPlaybackState); }
+    );
+    const playPromise = playTrackViewPoints(trackViewPlaybackState);
+    await Promise.all([streamPromise, playPromise]);
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      return;
+    }
+  } finally {
+    stopTrackViewPlayback(true);
+  }
+}
+
+function toggleTrackViewPlayback() {
+  if (trackPlaybackActive && !trackViewPlaybackPaused) {
+    trackViewPlaybackPaused = true;
+    setTrackViewPlaybackButtonState('paused');
+    return;
+  }
+  if (trackPlaybackActive && trackViewPlaybackPaused) {
+    trackViewPlaybackPaused = false;
+    setTrackViewPlaybackButtonState('playing');
+    if (trackViewPlaybackResume) {
+      trackViewPlaybackResume();
+      trackViewPlaybackResume = null;
+    }
+    return;
+  }
+  startTrackViewPlayback();
+}
+
+function maybeAutoplayTrackViewPlayback() {
+  if (!trackViewAutoplayRequested || trackViewAutoplayDone) {
+    return;
+  }
+  if (!currentTrackID || !map) {
+    return;
+  }
+  if (trackPlaybackActive || trackViewPlaybackPaused) {
+    trackViewAutoplayDone = true;
+    return;
+  }
+  trackViewAutoplayDone = true;
+  startTrackViewPlayback();
+}
+
 // New controller to cancel previous request
 var markerStreamSource = null;
 var trackPlaybackActive = false;
@@ -2464,6 +2791,16 @@ let playbackShareActive = false;
 // Autoplay flags capture URL intent and ensure we trigger playback only once.
 let playbackAutoplayRequested = false;
 let playbackAutoplayDone = false;
+// Track view playback flags avoid auto-starting more than once per page load.
+let trackViewAutoplayRequested = false;
+let trackViewAutoplayDone = false;
+let trackViewPlaybackPaused = false;
+let trackViewPlaybackResume = null;
+let trackViewPlaybackAbortController = null;
+let trackViewPlaybackState = null;
+const trackViewPlaybackConfig = { pointDelayMs: 18 };
+let trackViewPlaybackButton = null;
+let trackViewPlaybackContainer = null;
 
 var liveHistoryCache = new Map();
 
@@ -2706,11 +3043,13 @@ document.addEventListener('DOMContentLoaded', function () {
   if (match) {
     currentTrackID = match[1];
     isTrackView = true;
+    trackViewAutoplayRequested = true;
     // NEW: show back button immediately
     var backBox = document.querySelector('.back-to-all-container');
     if (backBox) backBox.style.display = 'block';
   }
   refreshDownloadLink();
+  refreshTrackViewPlaybackControl();
 
   // Theme-aware hover hints keep visitors oriented without repeating markup titles.
   var uploadLabel = document.querySelector('.upload-btn');
@@ -5416,6 +5755,14 @@ function initializeUIElements() {
   // Keep the download button aligned with the current track state even if
   // the DOM was injected before listeners finished binding.
   refreshDownloadLink();
+  trackViewPlaybackButton = document.getElementById('trackPlaybackButton');
+  trackViewPlaybackContainer = document.querySelector('.track-playback-container');
+  if (trackViewPlaybackButton) {
+    trackViewPlaybackButton.addEventListener('click', function () {
+      toggleTrackViewPlayback();
+    });
+  }
+  refreshTrackViewPlaybackControl();
 
   if (shortLinkBox) {
     const hint = translate('short_link_tooltip');
@@ -5442,6 +5789,13 @@ function initializeUIElements() {
   }
 
   scheduleShortLinkRefresh();
+
+  if (isTrackView && map && typeof map.whenReady === 'function') {
+    // Autoplay kicks in once the map is ready so the playback starts immediately.
+    map.whenReady(function () {
+      requestAnimationFrame(maybeAutoplayTrackViewPlayback);
+    });
+  }
 }
 
 function centerMapToLocation() {
