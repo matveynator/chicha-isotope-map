@@ -2510,7 +2510,7 @@ function refreshTrackViewPlaybackControl() {
   }
   if (currentTrackID) {
     trackViewPlaybackContainer.style.display = 'block';
-    if (trackPlaybackActive && !trackViewPlaybackPaused) {
+    if (trackViewPlaybackActive && !trackViewPlaybackPaused) {
       setTrackViewPlaybackButtonState('playing');
     } else {
       setTrackViewPlaybackButtonState('stopped');
@@ -2674,7 +2674,7 @@ function addTrackViewPlaybackMarker(marker, index) {
 }
 
 async function playTrackViewPoints(state) {
-  while (trackPlaybackActive) {
+  while (trackViewPlaybackActive) {
     if (!state.queue.length) {
       if (state.streamDone) {
         return;
@@ -2684,7 +2684,7 @@ async function playTrackViewPoints(state) {
     }
     if (trackViewPlaybackPaused) {
       await waitTrackViewWhilePaused();
-      if (!trackPlaybackActive) {
+      if (!trackViewPlaybackActive) {
         return;
       }
     }
@@ -2695,11 +2695,11 @@ async function playTrackViewPoints(state) {
   }
 }
 
-function stopTrackViewPlayback(keepMarkers) {
-  if (!trackPlaybackActive && !trackViewPlaybackPaused) {
+function stopTrackViewPlayback(refreshMarkers) {
+  if (!trackViewPlaybackActive && !trackViewPlaybackPaused) {
     return;
   }
-  trackPlaybackActive = false;
+  trackViewPlaybackActive = false;
   trackViewPlaybackPaused = false;
   if (trackViewPlaybackResume) {
     trackViewPlaybackResume();
@@ -2710,17 +2710,17 @@ function stopTrackViewPlayback(keepMarkers) {
     trackViewPlaybackAbortController = null;
   }
   trackViewPlaybackState = null;
-  if (!keepMarkers) {
-    clearTrackViewPlaybackMarkers();
-  }
   setTrackViewPlaybackButtonState('stopped');
+  if (refreshMarkers) {
+    debounceUpdateMarkers();
+  }
 }
 
 async function startTrackViewPlayback() {
   if (!currentTrackID) {
     return;
   }
-  trackPlaybackActive = true;
+  trackViewPlaybackActive = true;
   trackViewPlaybackPaused = false;
   setTrackViewPlaybackButtonState('playing');
 
@@ -2751,12 +2751,12 @@ async function startTrackViewPlayback() {
 }
 
 function toggleTrackViewPlayback() {
-  if (trackPlaybackActive && !trackViewPlaybackPaused) {
+  if (trackViewPlaybackActive && !trackViewPlaybackPaused) {
     trackViewPlaybackPaused = true;
     setTrackViewPlaybackButtonState('paused');
     return;
   }
-  if (trackPlaybackActive && trackViewPlaybackPaused) {
+  if (trackViewPlaybackActive && trackViewPlaybackPaused) {
     trackViewPlaybackPaused = false;
     setTrackViewPlaybackButtonState('playing');
     if (trackViewPlaybackResume) {
@@ -2775,7 +2775,7 @@ function maybeAutoplayTrackViewPlayback() {
   if (!currentTrackID || !map) {
     return;
   }
-  if (trackPlaybackActive || trackViewPlaybackPaused) {
+  if (trackViewPlaybackActive || trackViewPlaybackPaused) {
     trackViewAutoplayDone = true;
     return;
   }
@@ -2798,6 +2798,7 @@ let trackViewPlaybackPaused = false;
 let trackViewPlaybackResume = null;
 let trackViewPlaybackAbortController = null;
 let trackViewPlaybackState = null;
+let trackViewPlaybackActive = false;
 const trackViewPlaybackConfig = { pointDelayMs: 18 };
 let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
@@ -4245,7 +4246,7 @@ function getTooltipContent(marker) {
  */
 function updateMarkers(){
   const loadingEl = document.getElementById('loadingOverlay');
-  if (trackPlaybackActive) {
+  if (trackPlaybackActive || trackViewPlaybackActive) {
     if (loadingEl) loadingEl.style.display='none';
     return;
   }
