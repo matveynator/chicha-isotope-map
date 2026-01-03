@@ -403,6 +403,38 @@ func startIDGenerator(initialID int64) chan int64 {
 	return idChannel
 }
 
+// syncPostgresSequence realigns a BIGSERIAL sequence with the current max(id).
+// We keep the logic in Go so the SQL stays minimal and the decision about when
+// to run it remains explicit, matching "Clear is better than clever."
+func syncPostgresSequence(ctx context.Context, db *sql.DB, table, column string, maxID int64) error {
+	if db == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	isCalled := true
+	if maxID < 1 {
+		maxID = 1
+		isCalled = false
+	}
+
+	_, err := db.ExecContext(ctx, `SELECT setval(pg_get_serial_sequence($1, $2), $3, $4)`, table, column, maxID, isCalled)
+	if err != nil {
+		return fmt.Errorf("sync postgres sequence %s.%s: %w", table, column, err)
+	}
+	return nil
+}
+
+// maxInt64OrZero returns the underlying value or zero when NULL, keeping call sites tidy.
+func maxInt64OrZero(v sql.NullInt64) int64 {
+	if v.Valid {
+		return v.Int64
+	}
+	return 0
+}
+
 // Config holds the configuration details for initializing the database.
 type Config struct {
 	DBType      string // The type of the database driver (e.g., "sqlite", "chai", or "pgx" (PostgreSQL))
@@ -624,6 +656,19 @@ func NewDatabase(config Config) (*Database, error) {
 		initialID = maxRealtime.Int64 + 1
 	}
 	idChannel := startIDGenerator(initialID)
+
+	if driverName == "pgx" {
+		// PostgreSQL sequences can drift when data is loaded with explicit IDs, so we
+		// realign them on startup to prevent duplicate key errors during inserts.
+		seqCtx, seqCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := syncPostgresSequence(seqCtx, db, "markers", "id", maxInt64OrZero(maxMarkers)); err != nil {
+			log.Printf("postgres sequence sync skipped for markers: %v", err)
+		}
+		if err := syncPostgresSequence(seqCtx, db, "realtime_measurements", "id", maxInt64OrZero(maxRealtime)); err != nil {
+			log.Printf("postgres sequence sync skipped for realtime_measurements: %v", err)
+		}
+		seqCancel()
+	}
 
 	var pipeline *serializedPipeline
 	if driverName == "duckdb" || driverName == "sqlite" || driverName == "chai" {
