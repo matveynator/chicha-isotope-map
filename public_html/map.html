@@ -750,32 +750,10 @@ body, html {
           background-color: var(--control-bg-hover);
         }
 
-        /* Track playback control stays grouped with other track-only buttons. */
-        .track-playback-container {
-          position: absolute;
-          top: 265px; /* keep consistent spacing below the download button */
-          right: 20px;
-          z-index: 1000;
-          display: none;
-        }
-
-        .track-playback-btn {
-          background-color: var(--control-bg);
-          border: var(--legend-border);
-          border-radius: 4px;
-          padding: 5px 10px;
-          cursor: pointer;
-          font-size: var(--font-size-base);
-          color: var(--modal-text);
-          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 44px;
-        }
-
-        .track-playback-btn:hover {
-          background-color: var(--control-bg-hover);
+        /* Track playback button uses the slider play styling so it stays familiar. */
+        .track-playback-control {
+          padding: 6px;
+          width: 50px;
         }
 
 
@@ -1438,10 +1416,6 @@ body, html {
     <!-- Track download button appears only in track view so users can retrieve the original JSON quickly. -->
     <div class="download-track-container leaflet-control" style="display: none;">
       <a id="downloadTrackLink" class="download-track-btn" href="#">{{ translate "download_track_cim" }}</a>
-    </div>
-    <!-- Track playback button appears only in track view for immediate playback control. -->
-    <div class="track-playback-container leaflet-control" style="display: none;">
-      <button id="trackPlaybackButton" class="track-playback-btn" type="button">▶</button>
     </div>
 
     <!-- File upload overlay -->
@@ -2518,6 +2492,35 @@ function refreshTrackViewPlaybackControl() {
   } else {
     trackViewPlaybackContainer.style.display = 'none';
   }
+}
+
+// Track view playback control sits where the date slider play button lives.
+function createTrackViewPlaybackControl() {
+  if (!map) {
+    return;
+  }
+  const TrackCtrl = L.Control.extend({
+    onAdd() {
+      const div = L.DomUtil.create('div', 'leaflet-control-layers track-playback-control');
+      div.innerHTML = `
+        <button id="trackPlaybackButton" class="slider-play-btn" type="button">
+          ▶
+        </button>
+      `;
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    }
+  });
+  const control = new TrackCtrl({ position: 'topleft' });
+  control.addTo(map);
+  trackViewPlaybackContainer = control.getContainer();
+  trackViewPlaybackButton = trackViewPlaybackContainer.querySelector('#trackPlaybackButton');
+  if (trackViewPlaybackButton) {
+    trackViewPlaybackButton.addEventListener('click', function () {
+      toggleTrackViewPlayback();
+    });
+  }
+  refreshTrackViewPlaybackControl();
 }
 
 function clearTrackViewPlaybackMarkers() {
@@ -4266,7 +4269,7 @@ function updateMarkers(){
   };
   if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
-  const savedRange = loadDateRangeState();
+  const savedRange = isTrackView ? null : loadDateRangeState();
 
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
@@ -5756,14 +5759,7 @@ function initializeUIElements() {
   // Keep the download button aligned with the current track state even if
   // the DOM was injected before listeners finished binding.
   refreshDownloadLink();
-  trackViewPlaybackButton = document.getElementById('trackPlaybackButton');
-  trackViewPlaybackContainer = document.querySelector('.track-playback-container');
-  if (trackViewPlaybackButton) {
-    trackViewPlaybackButton.addEventListener('click', function () {
-      toggleTrackViewPlayback();
-    });
-  }
-  refreshTrackViewPlaybackControl();
+  createTrackViewPlaybackControl();
 
   if (shortLinkBox) {
     const hint = translate('short_link_tooltip');
