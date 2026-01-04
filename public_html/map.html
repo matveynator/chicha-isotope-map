@@ -750,6 +750,12 @@ body, html {
           background-color: var(--control-bg-hover);
         }
 
+        /* Track playback button uses the slider play styling so it stays familiar. */
+        .track-playback-control {
+          padding: 6px;
+          width: 50px;
+        }
+
 
         /* ─────────–– Slider clean-look patch ─────────── */
         .date-slider-box {
@@ -2456,6 +2462,259 @@ function refreshDownloadLink() {
   }
 }
 
+/* ---------------------------------------------------------------
+ * Track view playback controls keep the single-track view engaging
+ * without forcing the full dataset to render immediately.
+ * ---------------------------------------------------------------*/
+function setTrackViewPlaybackButtonState(state) {
+  if (!trackViewPlaybackButton) {
+    return;
+  }
+  const isPlaying = state === 'playing';
+  const labelKey = isPlaying ? 'track_view_pause' : 'track_view_play';
+  trackViewPlaybackButton.classList.toggle('is-playing', isPlaying);
+  trackViewPlaybackButton.textContent = isPlaying ? '⏸' : '▶';
+  trackViewPlaybackButton.setAttribute('title', translate(labelKey));
+  trackViewPlaybackButton.setAttribute('aria-label', translate(labelKey));
+}
+
+function refreshTrackViewPlaybackControl() {
+  if (!trackViewPlaybackContainer || !trackViewPlaybackButton) {
+    return;
+  }
+  if (currentTrackID) {
+    trackViewPlaybackContainer.style.display = 'block';
+    if (trackViewPlaybackActive && !trackViewPlaybackPaused) {
+      setTrackViewPlaybackButtonState('playing');
+    } else {
+      setTrackViewPlaybackButtonState('stopped');
+    }
+  } else {
+    trackViewPlaybackContainer.style.display = 'none';
+  }
+}
+
+// Track view playback control sits where the date slider play button lives.
+function createTrackViewPlaybackControl() {
+  if (!map) {
+    return;
+  }
+  const TrackCtrl = L.Control.extend({
+    onAdd() {
+      const div = L.DomUtil.create('div', 'leaflet-control-layers track-playback-control');
+      div.innerHTML = `
+        <button id="trackPlaybackButton" class="slider-play-btn" type="button">
+          ▶
+        </button>
+      `;
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    }
+  });
+  const control = new TrackCtrl({ position: 'topleft' });
+  control.addTo(map);
+  trackViewPlaybackContainer = control.getContainer();
+  trackViewPlaybackButton = trackViewPlaybackContainer.querySelector('#trackPlaybackButton');
+  if (trackViewPlaybackButton) {
+    trackViewPlaybackButton.addEventListener('click', function () {
+      toggleTrackViewPlayback();
+    });
+  }
+  refreshTrackViewPlaybackControl();
+}
+
+function clearTrackViewPlaybackMarkers() {
+  Object.keys(circleMarkers).forEach(function(key) {
+    map.removeLayer(circleMarkers[key]);
+    delete circleMarkers[key];
+  });
+}
+
+function renderTrackViewMarker(marker, zoomLevel, index) {
+  const isLive = marker && marker.speed < 0;
+  let rendered;
+  if (isLive) {
+    const nowSec = Date.now() / 1000;
+    const icon = buildRealtimeIcon(marker, zoomLevel, nowSec);
+    if (!icon) {
+      return;
+    }
+    rendered = L.marker([marker.lat, marker.lon], {
+      icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
+    })
+    .addTo(map)
+    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+    .bindPopup(getPopupContent(marker));
+  } else {
+    rendered = L.circleMarker([marker.lat, marker.lon], {
+      radius: getRadius(marker.doseRate, zoomLevel),
+      fillColor: getGradientColor(marker.doseRate),
+      color: getGradientColor(marker.doseRate),
+      weight: 1,
+      opacity: getFillOpacity(marker.speed) + 0.1,
+      fillOpacity: getFillOpacity(marker.speed)
+    })
+    .addTo(map)
+    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+    .bindPopup(getPopupContent(marker));
+  }
+
+  rendered.doseRate = marker.doseRate;
+  rendered.date = marker.date;
+  rendered.isRealtime = isLive;
+  const trackKey = marker.trackID || currentTrackID || 'track';
+  circleMarkers[marker.id || trackKey + ':' + marker.date + ':' + index] = rendered;
+}
+
+function renderTrackViewSnapshot() {
+  if (!map || !Array.isArray(trackViewMarkers)) {
+    return;
+  }
+  clearTrackViewPlaybackMarkers();
+  const zoom = map.getZoom();
+  trackViewMarkers.forEach(function(marker, index) {
+    renderTrackViewMarker(marker, zoom, index);
+  });
+}
+
+function trackViewDelay(ms) {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, ms);
+  });
+}
+
+function waitTrackViewWhilePaused() {
+  if (!trackViewPlaybackPaused) {
+    return Promise.resolve();
+  }
+  return new Promise(function(resolve) {
+    trackViewPlaybackResume = resolve;
+  });
+}
+
+function createTrackViewPlaybackState() {
+  return {
+    pointIndex: 0,
+  };
+}
+
+function normalizeTrackViewPlaybackMarker(marker) {
+  if (!marker || typeof marker.lat !== 'number' || typeof marker.lon !== 'number') {
+    return null;
+  }
+  if (typeof marker.doseRate !== 'number') {
+    return null;
+  }
+  if (typeof marker.speed !== 'number' || !isFinite(marker.speed)) {
+    marker.speed = 0;
+  }
+  return marker;
+}
+
+async function playTrackViewPoints(state, points) {
+  for (let i = state.pointIndex; i < points.length; i++) {
+    if (!trackViewPlaybackActive) {
+      return;
+    }
+    if (trackViewPlaybackPaused) {
+      await waitTrackViewWhilePaused();
+      if (!trackViewPlaybackActive) {
+        return;
+      }
+    }
+    renderTrackViewMarker(points[i], map.getZoom(), i);
+    state.pointIndex = i + 1;
+    await trackViewDelay(trackViewPlaybackConfig.pointDelayMs);
+  }
+}
+
+function stopTrackViewPlayback(refreshMarkers) {
+  if (!trackViewPlaybackActive && !trackViewPlaybackPaused) {
+    return;
+  }
+  trackViewPlaybackActive = false;
+  trackViewPlaybackPaused = false;
+  if (trackViewPlaybackResume) {
+    trackViewPlaybackResume();
+    trackViewPlaybackResume = null;
+  }
+  setTrackViewPlaybackButtonState('stopped');
+  if (refreshMarkers) {
+    renderTrackViewSnapshot();
+  }
+}
+
+async function startTrackViewPlayback() {
+  if (!currentTrackID) {
+    return;
+  }
+  if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
+    return;
+  }
+  trackViewPlaybackActive = true;
+  trackViewPlaybackPaused = false;
+  setTrackViewPlaybackButtonState('playing');
+
+  if (markerStreamSource) {
+    markerStreamSource.close();
+  }
+  clearTrackViewPlaybackMarkers();
+
+  trackViewPlaybackState = createTrackViewPlaybackState();
+  try {
+    // Sort by timestamp so playback always runs from the first marker to the last.
+    const normalized = trackViewMarkers
+      .map(normalizeTrackViewPlaybackMarker)
+      .filter(Boolean)
+      .sort(function(a, b) {
+        const aDate = typeof a.date === 'number' ? a.date : 0;
+        const bDate = typeof b.date === 'number' ? b.date : 0;
+        return aDate - bDate;
+      });
+    await playTrackViewPoints(trackViewPlaybackState, normalized);
+  } catch (err) {
+    return;
+  } finally {
+    stopTrackViewPlayback(true);
+  }
+}
+
+function toggleTrackViewPlayback() {
+  if (trackViewPlaybackActive && !trackViewPlaybackPaused) {
+    trackViewPlaybackPaused = true;
+    setTrackViewPlaybackButtonState('paused');
+    return;
+  }
+  if (trackViewPlaybackActive && trackViewPlaybackPaused) {
+    trackViewPlaybackPaused = false;
+    setTrackViewPlaybackButtonState('playing');
+    if (trackViewPlaybackResume) {
+      trackViewPlaybackResume();
+      trackViewPlaybackResume = null;
+    }
+    return;
+  }
+  startTrackViewPlayback();
+}
+
+function maybeAutoplayTrackViewPlayback() {
+  if (!trackViewAutoplayRequested || trackViewAutoplayDone) {
+    return;
+  }
+  if (!currentTrackID || !map) {
+    return;
+  }
+  if (trackViewPlaybackActive || trackViewPlaybackPaused) {
+    trackViewAutoplayDone = true;
+    return;
+  }
+  if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
+    return;
+  }
+  trackViewAutoplayDone = true;
+  startTrackViewPlayback();
+}
+
 // New controller to cancel previous request
 var markerStreamSource = null;
 var trackPlaybackActive = false;
@@ -2464,6 +2723,17 @@ let playbackShareActive = false;
 // Autoplay flags capture URL intent and ensure we trigger playback only once.
 let playbackAutoplayRequested = false;
 let playbackAutoplayDone = false;
+// Track view playback flags avoid auto-starting more than once per page load.
+let trackViewAutoplayRequested = false;
+let trackViewAutoplayDone = false;
+let trackViewPlaybackPaused = false;
+let trackViewPlaybackResume = null;
+let trackViewPlaybackActive = false;
+const trackViewPlaybackConfig = { pointDelayMs: 18 };
+let trackViewPlaybackButton = null;
+let trackViewPlaybackContainer = null;
+let trackViewMarkers = [];
+let trackViewMarkersReady = false;
 
 var liveHistoryCache = new Map();
 
@@ -2706,11 +2976,13 @@ document.addEventListener('DOMContentLoaded', function () {
   if (match) {
     currentTrackID = match[1];
     isTrackView = true;
+    trackViewAutoplayRequested = true;
     // NEW: show back button immediately
     var backBox = document.querySelector('.back-to-all-container');
     if (backBox) backBox.style.display = 'block';
   }
   refreshDownloadLink();
+  refreshTrackViewPlaybackControl();
 
   // Theme-aware hover hints keep visitors oriented without repeating markup titles.
   var uploadLabel = document.querySelector('.upload-btn');
@@ -3906,7 +4178,7 @@ function getTooltipContent(marker) {
  */
 function updateMarkers(){
   const loadingEl = document.getElementById('loadingOverlay');
-  if (trackPlaybackActive) {
+  if (trackPlaybackActive || trackViewPlaybackActive) {
     if (loadingEl) loadingEl.style.display='none';
     return;
   }
@@ -3926,10 +4198,14 @@ function updateMarkers(){
   };
   if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
-  const savedRange = loadDateRangeState();
+  const savedRange = isTrackView ? null : loadDateRangeState();
 
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
+  if (isTrackView) {
+    trackViewMarkers = [];
+    trackViewMarkersReady = false;
+  }
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
@@ -3946,6 +4222,9 @@ function updateMarkers(){
     maxTs = Math.max(maxTs, m.date);
     if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
+    if (isTrackView) {
+      trackViewMarkers.push(m);
+    }
 
     let marker;
     if (isLive) { // realtime marker with value inside the circle
@@ -3999,6 +4278,10 @@ function updateMarkers(){
     }
     if (loadingEl) loadingEl.style.display='none';
     es.close();
+    if (isTrackView) {
+      trackViewMarkersReady = true;
+      maybeAutoplayTrackViewPlayback();
+    }
   });
 
   es.onerror = () => {
@@ -5416,6 +5699,7 @@ function initializeUIElements() {
   // Keep the download button aligned with the current track state even if
   // the DOM was injected before listeners finished binding.
   refreshDownloadLink();
+  createTrackViewPlaybackControl();
 
   if (shortLinkBox) {
     const hint = translate('short_link_tooltip');
@@ -5442,6 +5726,13 @@ function initializeUIElements() {
   }
 
   scheduleShortLinkRefresh();
+
+  if (isTrackView && map && typeof map.whenReady === 'function') {
+    // Autoplay kicks in once the map is ready so the playback starts immediately.
+    map.whenReady(function () {
+      requestAnimationFrame(maybeAutoplayTrackViewPlayback);
+    });
+  }
 }
 
 function centerMapToLocation() {

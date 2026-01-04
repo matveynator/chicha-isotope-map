@@ -729,6 +729,8 @@
     "date_time": "Date and Time",
     "description": "Chicha’s Radiation Map",
     "download_track_cim": "Download track (.json)",
+    "track_view_play": "Play track",
+    "track_view_pause": "Pause track",
     "duration_days": "[[count]] days",
     "duration_hours": "[[count]] hr",
     "duration_minutes": "[[count]] min",
