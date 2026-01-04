@@ -2662,7 +2662,15 @@ async function startTrackViewPlayback() {
 
   trackViewPlaybackState = createTrackViewPlaybackState();
   try {
-    const normalized = trackViewMarkers.map(normalizeTrackViewPlaybackMarker).filter(Boolean);
+    // Sort by timestamp so playback always runs from the first marker to the last.
+    const normalized = trackViewMarkers
+      .map(normalizeTrackViewPlaybackMarker)
+      .filter(Boolean)
+      .sort(function(a, b) {
+        const aDate = typeof a.date === 'number' ? a.date : 0;
+        const bDate = typeof b.date === 'number' ? b.date : 0;
+        return aDate - bDate;
+      });
     await playTrackViewPoints(trackViewPlaybackState, normalized);
   } catch (err) {
     return;
