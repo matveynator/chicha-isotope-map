@@ -2530,6 +2530,53 @@ function clearTrackViewPlaybackMarkers() {
   });
 }
 
+function renderTrackViewMarker(marker, zoomLevel, index) {
+  const isLive = marker && marker.speed < 0;
+  let rendered;
+  if (isLive) {
+    const nowSec = Date.now() / 1000;
+    const icon = buildRealtimeIcon(marker, zoomLevel, nowSec);
+    if (!icon) {
+      return;
+    }
+    rendered = L.marker([marker.lat, marker.lon], {
+      icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
+    })
+    .addTo(map)
+    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+    .bindPopup(getPopupContent(marker));
+  } else {
+    rendered = L.circleMarker([marker.lat, marker.lon], {
+      radius: getRadius(marker.doseRate, zoomLevel),
+      fillColor: getGradientColor(marker.doseRate),
+      color: getGradientColor(marker.doseRate),
+      weight: 1,
+      opacity: getFillOpacity(marker.speed) + 0.1,
+      fillOpacity: getFillOpacity(marker.speed)
+    })
+    .addTo(map)
+    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+    .bindPopup(getPopupContent(marker));
+  }
+
+  rendered.doseRate = marker.doseRate;
+  rendered.date = marker.date;
+  rendered.isRealtime = isLive;
+  const trackKey = marker.trackID || currentTrackID || 'track';
+  circleMarkers[marker.id || trackKey + ':' + marker.date + ':' + index] = rendered;
+}
+
+function renderTrackViewSnapshot() {
+  if (!map || !Array.isArray(trackViewMarkers)) {
+    return;
+  }
+  clearTrackViewPlaybackMarkers();
+  const zoom = map.getZoom();
+  trackViewMarkers.forEach(function(marker, index) {
+    renderTrackViewMarker(marker, zoom, index);
+  });
+}
+
 function trackViewDelay(ms) {
   return new Promise(function(resolve) {
     setTimeout(resolve, ms);
@@ -2547,36 +2594,8 @@ function waitTrackViewWhilePaused() {
 
 function createTrackViewPlaybackState() {
   return {
-    queue: [],
     pointIndex: 0,
-    streamDone: false,
-    waiter: null,
   };
-}
-
-function queueTrackViewPlaybackPoint(state, point) {
-  state.queue.push(point);
-  if (state.waiter) {
-    state.waiter();
-    state.waiter = null;
-  }
-}
-
-function markTrackViewPlaybackStreamDone(state) {
-  state.streamDone = true;
-  if (state.waiter) {
-    state.waiter();
-    state.waiter = null;
-  }
-}
-
-function waitForNextTrackViewPoint(state) {
-  if (state.queue.length || state.streamDone) {
-    return Promise.resolve();
-  }
-  return new Promise(function(resolve) {
-    state.waiter = resolve;
-  });
 }
 
 function normalizeTrackViewPlaybackMarker(marker) {
@@ -2592,98 +2611,10 @@ function normalizeTrackViewPlaybackMarker(marker) {
   return marker;
 }
 
-async function streamTrackViewPlaybackPoints(trackID, signal, onPoint, onDone) {
-  const resp = await fetch('/api/track/' + encodeURIComponent(trackID) + '.json', { signal: signal });
-  if (!resp.ok) {
-    throw new Error('track_fetch_failed');
-  }
-  if (!resp.body) {
-    throw new Error('track_stream_unsupported');
-  }
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let doneCalled = false;
-
-  function finishOnce() {
-    if (doneCalled) return;
-    doneCalled = true;
-    onDone();
-  }
-
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        break;
-      }
-      buffer += decoder.decode(chunk.value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      lines.forEach(function(line) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          return;
-        }
-        let marker;
-        try {
-          marker = JSON.parse(trimmed);
-        } catch (e) {
-          return;
-        }
-        const normalized = normalizeTrackViewPlaybackMarker(marker);
-        if (!normalized) {
-          return;
-        }
-        onPoint(normalized);
-      });
-    }
-    if (buffer.trim() !== '') {
-      try {
-        const marker = JSON.parse(buffer);
-        const normalized = normalizeTrackViewPlaybackMarker(marker);
-        if (normalized) {
-          onPoint(normalized);
-        }
-      } catch (e) {
-        // Ignore trailing partial JSON chunks so playback can complete cleanly.
-      }
-    }
-  } finally {
-    finishOnce();
-  }
-}
-
-function addTrackViewPlaybackMarker(marker, index) {
-  const zoom = map.getZoom();
-  const circle = L.circleMarker([marker.lat, marker.lon], {
-    radius: getRadius(marker.doseRate, zoom),
-    fillColor: getGradientColor(marker.doseRate),
-    color: getGradientColor(marker.doseRate),
-    weight: 1,
-    opacity: getFillOpacity(marker.speed) + 0.1,
-    fillOpacity: getFillOpacity(marker.speed)
-  })
-  .addTo(map)
-  .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-  .bindPopup(getPopupContent(marker));
-
-  circle.doseRate = marker.doseRate;
-  circle.date = marker.date;
-  circle.isRealtime = false;
-  const trackKey = marker.trackID || currentTrackID || 'track';
-  circleMarkers[marker.id || trackKey + ':' + marker.date + ':' + index] = circle;
-}
-
-async function playTrackViewPoints(state) {
-  while (trackViewPlaybackActive) {
-    if (!state.queue.length) {
-      if (state.streamDone) {
-        return;
-      }
-      await waitForNextTrackViewPoint(state);
-      continue;
+async function playTrackViewPoints(state, points) {
+  for (let i = state.pointIndex; i < points.length; i++) {
+    if (!trackViewPlaybackActive) {
+      return;
     }
     if (trackViewPlaybackPaused) {
       await waitTrackViewWhilePaused();
@@ -2691,9 +2622,8 @@ async function playTrackViewPoints(state) {
         return;
       }
     }
-    const point = state.queue.shift();
-    addTrackViewPlaybackMarker(point, state.pointIndex);
-    state.pointIndex += 1;
+    renderTrackViewMarker(points[i], map.getZoom(), i);
+    state.pointIndex = i + 1;
     await trackViewDelay(trackViewPlaybackConfig.pointDelayMs);
   }
 }
@@ -2708,19 +2638,17 @@ function stopTrackViewPlayback(refreshMarkers) {
     trackViewPlaybackResume();
     trackViewPlaybackResume = null;
   }
-  if (trackViewPlaybackAbortController) {
-    trackViewPlaybackAbortController.abort();
-    trackViewPlaybackAbortController = null;
-  }
-  trackViewPlaybackState = null;
   setTrackViewPlaybackButtonState('stopped');
   if (refreshMarkers) {
-    debounceUpdateMarkers();
+    renderTrackViewSnapshot();
   }
 }
 
 async function startTrackViewPlayback() {
   if (!currentTrackID) {
+    return;
+  }
+  if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
     return;
   }
   trackViewPlaybackActive = true;
@@ -2732,22 +2660,12 @@ async function startTrackViewPlayback() {
   }
   clearTrackViewPlaybackMarkers();
 
-  const controller = new AbortController();
-  trackViewPlaybackAbortController = controller;
   trackViewPlaybackState = createTrackViewPlaybackState();
   try {
-    const streamPromise = streamTrackViewPlaybackPoints(
-      currentTrackID,
-      controller.signal,
-      function(point) { queueTrackViewPlaybackPoint(trackViewPlaybackState, point); },
-      function() { markTrackViewPlaybackStreamDone(trackViewPlaybackState); }
-    );
-    const playPromise = playTrackViewPoints(trackViewPlaybackState);
-    await Promise.all([streamPromise, playPromise]);
+    const normalized = trackViewMarkers.map(normalizeTrackViewPlaybackMarker).filter(Boolean);
+    await playTrackViewPoints(trackViewPlaybackState, normalized);
   } catch (err) {
-    if (err && err.name === 'AbortError') {
-      return;
-    }
+    return;
   } finally {
     stopTrackViewPlayback(true);
   }
@@ -2782,6 +2700,9 @@ function maybeAutoplayTrackViewPlayback() {
     trackViewAutoplayDone = true;
     return;
   }
+  if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
+    return;
+  }
   trackViewAutoplayDone = true;
   startTrackViewPlayback();
 }
@@ -2799,12 +2720,12 @@ let trackViewAutoplayRequested = false;
 let trackViewAutoplayDone = false;
 let trackViewPlaybackPaused = false;
 let trackViewPlaybackResume = null;
-let trackViewPlaybackAbortController = null;
-let trackViewPlaybackState = null;
 let trackViewPlaybackActive = false;
 const trackViewPlaybackConfig = { pointDelayMs: 18 };
 let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
+let trackViewMarkers = [];
+let trackViewMarkersReady = false;
 
 var liveHistoryCache = new Map();
 
@@ -4273,6 +4194,10 @@ function updateMarkers(){
 
   for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
   circleMarkers = {};
+  if (isTrackView) {
+    trackViewMarkers = [];
+    trackViewMarkersReady = false;
+  }
 
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
@@ -4289,6 +4214,9 @@ function updateMarkers(){
     maxTs = Math.max(maxTs, m.date);
     if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
+    if (isTrackView) {
+      trackViewMarkers.push(m);
+    }
 
     let marker;
     if (isLive) { // realtime marker with value inside the circle
@@ -4342,6 +4270,10 @@ function updateMarkers(){
     }
     if (loadingEl) loadingEl.style.display='none';
     es.close();
+    if (isTrackView) {
+      trackViewMarkersReady = true;
+      maybeAutoplayTrackViewPlayback();
+    }
   });
 
   es.onerror = () => {
