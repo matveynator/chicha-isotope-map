@@ -2729,7 +2729,7 @@ let trackViewAutoplayDone = false;
 let trackViewPlaybackPaused = false;
 let trackViewPlaybackResume = null;
 let trackViewPlaybackActive = false;
-const trackViewPlaybackConfig = { pointDelayMs: 18 };
+const trackViewPlaybackConfig = { pointDelayMs: 70 };
 let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
 let trackViewMarkers = [];
@@ -3416,8 +3416,8 @@ function createDateRangeSlider(){
   };
 
   const playbackConfig = {
-    pointDelayMs: 18,
-    trackDelayMs: 150,
+    pointDelayMs: 20,
+    trackDelayMs: 200,
   };
   let playbackAbortController = null;
   let playbackPaused = false;
