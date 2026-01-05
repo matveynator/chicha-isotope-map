@@ -61,6 +61,15 @@ type Client struct {
 	jitter     *rand.Rand
 }
 
+// markerRecord captures the raw AtomFast JSON shape.
+// We keep a named type so slices are compatible across helpers.
+type markerRecord struct {
+	D   float64 `json:"d"`
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+	T   int64   `json:"t"`
+}
+
 // NewClient constructs an AtomFast client with conservative timeouts.
 // A dedicated rand source avoids global locking while we add jitter between calls.
 func NewClient() *Client {
@@ -184,12 +193,7 @@ func (c *Client) SleepWithJitter(ctx context.Context, minDelay, maxDelay time.Du
 // ParseMarkers supports both the raw array format and object-wrapped payloads.
 // We accept the object format because AtomFast sometimes attaches metadata.
 func ParseMarkers(data []byte) ([]database.Marker, DeviceInfo, error) {
-	var rawMarkers []struct {
-		D   float64 `json:"d"`
-		Lat float64 `json:"lat"`
-		Lng float64 `json:"lng"`
-		T   int64   `json:"t"`
-	}
+	var rawMarkers []markerRecord
 	if err := json.Unmarshal(data, &rawMarkers); err == nil {
 		return recordsToMarkers(rawMarkers), DeviceInfo{}, nil
 	}
@@ -215,12 +219,7 @@ func parseWrappedMarkers(obj map[string]json.RawMessage) ([]database.Marker, err
 		if !ok {
 			continue
 		}
-		var records []struct {
-			D   float64 `json:"d"`
-			Lat float64 `json:"lat"`
-			Lng float64 `json:"lng"`
-			T   int64   `json:"t"`
-		}
+		var records []markerRecord
 		if err := json.Unmarshal(raw, &records); err != nil {
 			continue
 		}
@@ -279,12 +278,7 @@ func parseDeviceRaw(raw json.RawMessage) DeviceInfo {
 	return device
 }
 
-func recordsToMarkers(records []struct {
-	D   float64
-	Lat float64
-	Lng float64
-	T   int64
-}) []database.Marker {
+func recordsToMarkers(records []markerRecord) []database.Marker {
 	markers := make([]database.Marker, 0, len(records))
 	for _, r := range records {
 		markers = append(markers, database.Marker{
