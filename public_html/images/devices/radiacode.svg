@@ -1,0 +1,5 @@
+<!-- Larger icon for device detail views; text keeps it self-documenting. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" role="img" aria-label="Radiacode">
+  <rect width="160" height="160" rx="24" fill="#8b5cf6"/>
+  <text x="80" y="90" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="26" fill="#ffffff">Radiacode</text>
+</svg>

@@ -49,9 +49,11 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/api"
+	"chicha-isotope-map/pkg/atomfast"
 	"chicha-isotope-map/pkg/cimimport"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
+	"chicha-isotope-map/pkg/devices"
 	"chicha-isotope-map/pkg/jsonarchive"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
@@ -82,6 +84,7 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+var atomfastEnabled = flag.Bool("atomfast", false, "Enable automatic AtomFast track sync from atomfast.net")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of exported JSON files, log progress, and exit once finished. Example: https://pelora.org/api/json/weekly.tgz")
@@ -103,6 +106,9 @@ var setupWizardEnabled = registerSetupFlag()
 var debugIPAllowlist map[string]struct{}
 
 const chichaGitHubURL = "https://github.com/matveynator/chicha-isotope-map"
+const atomfastListURL = "http://www.atomfast.net/maps/?lat=34.307144&lng=20.742188&z=2&p=1"
+const atomfastSyncInterval = 30 * time.Minute
+const atomfastMaxPages = 80
 
 // logoAsset stores an in-memory custom logo so we can serve it without
 // filesystem reads on every request.
@@ -135,7 +141,7 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "logo-path", "logo-link", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
-	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
+	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "atomfast", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
 
@@ -967,6 +973,7 @@ func processBGeigieZenFile(
 			Zoom:      0,
 			Speed:     0,
 			TrackID:   trackID,
+			Detector:  devices.DeviceBGeigie,
 		})
 		parsed++
 	}
@@ -1172,6 +1179,24 @@ func convertRhToSv(markers []database.Marker) []database.Marker {
 		filteredMarkers = append(filteredMarkers, newMarker)
 	}
 	return filteredMarkers
+}
+
+// applyDeviceDefaults normalizes detector labels and fills empty values with a fallback.
+// We keep the helper pure so different importers can reuse it without hidden state.
+func applyDeviceDefaults(markers []database.Marker, fallback string) []database.Marker {
+	normalizedFallback := devices.NormalizeDeviceID(fallback)
+	if normalizedFallback == "" {
+		normalizedFallback = devices.DeviceUnknown
+	}
+
+	for i := range markers {
+		if strings.TrimSpace(markers[i].Detector) == "" {
+			markers[i].Detector = normalizedFallback
+			continue
+		}
+		markers[i].Detector = devices.NormalizeDeviceID(markers[i].Detector)
+	}
+	return markers
 }
 
 // filterZeroMarkers убирает маркеры с нулевым значением дозы
@@ -2356,6 +2381,7 @@ func processAtomSwiftCSVFile(
 	if err != nil {
 		return database.Bounds{}, trackID, fmt.Errorf("parse CSV: %w", err)
 	}
+	markers = applyDeviceDefaults(markers, devices.DeviceAtomFast)
 	logT(trackID, "CSV", "parsed %d markers", len(markers))
 
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
@@ -2379,6 +2405,7 @@ func processGPXFile(
 	if err != nil {
 		return database.Bounds{}, trackID, fmt.Errorf("parse GPX: %w", err)
 	}
+	markers = applyDeviceDefaults(markers, devices.DeviceGeneric)
 	logT(trackID, "GPX", "parsed %d markers", len(markers))
 
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
@@ -2403,6 +2430,7 @@ func processKMLFile(
 	if err != nil {
 		return database.Bounds{}, trackID, fmt.Errorf("parse KML: %w", err)
 	}
+	markers = applyDeviceDefaults(markers, devices.DeviceGeneric)
 	logT(trackID, "KML", "parsed %d markers", len(markers))
 
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
@@ -2450,6 +2478,7 @@ func processKMZFile(
 		if err != nil {
 			return global, trackID, fmt.Errorf("parse %s: %w", zf.Name, err)
 		}
+		kmlMarkers = applyDeviceDefaults(kmlMarkers, devices.DeviceGeneric)
 		logT(trackID, "KMZ", "parsed %d markers from %q", len(kmlMarkers), zf.Name)
 
 		bbox, trackID, err := processAndStoreMarkers(kmlMarkers, trackID, db, dbType)
@@ -2525,6 +2554,7 @@ func processRCTRKFile(
 			data.Markers = convertRhToSv(data.Markers)
 		}
 
+		data.Markers = applyDeviceDefaults(data.Markers, devices.DeviceRadiacode)
 		return processAndStoreMarkers(data.Markers, trackID, db, dbType)
 	}
 
@@ -2535,6 +2565,7 @@ func processRCTRKFile(
 	}
 	logT(trackID, "RCTRK", "parsed %d markers (text)", len(markers))
 
+	markers = applyDeviceDefaults(markers, devices.DeviceRadiacode)
 	return processAndStoreMarkers(markers, trackID, db, dbType)
 }
 
@@ -2581,10 +2612,118 @@ func processAtomFastData(
 			Lat:       r.Lat,
 			Lon:       r.Lng,
 			Date:      r.T / 1000, // ms → s
+			Detector:  devices.DeviceAtomFast,
 		})
 	}
 
+	markers = applyDeviceDefaults(markers, devices.DeviceAtomFast)
 	return processAndStoreMarkers(markers, trackID, db, dbType)
+}
+
+// -----------------------------------------------------------------------------
+// AtomFast background sync
+// -----------------------------------------------------------------------------
+
+// startAtomFastSync launches the AtomFast discovery and import pipeline.
+// Each stage communicates over channels so we never rely on mutexes.
+func startAtomFastSync(
+	ctx context.Context,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) context.CancelFunc {
+	ctx, cancel := context.WithCancel(ctx)
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	cfg := atomfast.Config{
+		ListURL:     atomfastListURL,
+		Interval:    atomfastSyncInterval,
+		MaxPages:    atomfastMaxPages,
+		MaxBodySize: 8 << 20,
+		UserAgent:   "ChichaAtomFastSync/1.0",
+		Client:      httpClient,
+	}
+
+	discovered := atomfast.StartDiscovery(ctx, cfg, logf)
+	workCh := make(chan atomfast.TrackRef, 16)
+
+	go atomfastDeduper(ctx, discovered, workCh, logf)
+
+	for i := 0; i < 2; i++ {
+		go atomfastWorker(ctx, i+1, cfg, workCh, db, dbType, logf)
+	}
+
+	return cancel
+}
+
+// atomfastDeduper keeps a single goroutine in charge of the seen set.
+func atomfastDeduper(
+	ctx context.Context,
+	in <-chan atomfast.TrackRef,
+	out chan<- atomfast.TrackRef,
+	logf func(string, ...any),
+) {
+	defer close(out)
+
+	seen := make(map[string]struct{})
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ref, ok := <-in:
+			if !ok {
+				return
+			}
+			if strings.TrimSpace(ref.URL) == "" {
+				continue
+			}
+			if _, ok := seen[ref.URL]; ok {
+				continue
+			}
+			seen[ref.URL] = struct{}{}
+			select {
+			case <-ctx.Done():
+				return
+			case out <- ref:
+			}
+		}
+	}
+}
+
+// atomfastWorker downloads and imports AtomFast tracks in the background.
+func atomfastWorker(
+	ctx context.Context,
+	index int,
+	cfg atomfast.Config,
+	in <-chan atomfast.TrackRef,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ref, ok := <-in:
+			if !ok {
+				return
+			}
+			trackID := "atomfast-" + ref.ID
+			logT(trackID, "AtomFast", "sync worker %d downloading %s", index, ref.URL)
+			data, err := atomfast.FetchTrack(ctx, cfg.Client, cfg.UserAgent, ref)
+			if err != nil {
+				if logf != nil {
+					logf("atomfast download failed (%s): %v", ref.URL, err)
+				}
+				continue
+			}
+			if _, _, err := processAtomFastData(data, trackID, db, dbType); err != nil {
+				if logf != nil {
+					logf("atomfast import failed (%s): %v", ref.URL, err)
+				}
+			}
+		}
+	}
 }
 
 // processTrackExportFile ingests a single JSON track generated by our exporter.
@@ -2805,6 +2944,7 @@ func processTrackExportReader(
 	if len(markers) == 0 {
 		return bounds, trackID, false, fmt.Errorf("track export import: no usable markers")
 	}
+	markers = applyDeviceDefaults(markers, devices.DeviceUnknown)
 
 	logT(trackID, "Export", "parsed %d markers", len(markers))
 
@@ -3319,6 +3459,10 @@ func processChichaTrackJSON(
 		}
 		if detector == "" {
 			detector = detectorTypeFromName(detectorName)
+		}
+		detector = devices.NormalizeDeviceID(detector)
+		if detector == "" {
+			detector = devices.DeviceUnknown
 		}
 
 		radiationList := normalizeRadiationList(item.RadiationTypes)
@@ -4145,6 +4289,135 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			log.Printf("Error writing response: %v", err)
 		}
+	}
+}
+
+// devicesHandler renders the catalog of supported mapping devices.
+// Keeping it separate from mapHandler avoids shipping heavyweight scripts to the catalog page.
+func devicesHandler(w http.ResponseWriter, r *http.Request) {
+	lang := getPreferredLanguage(r)
+	displayVersion := resolveDisplayVersion()
+	metaGenerator := buildMetaGenerator(lang, displayVersion, chichaGitHubURL, translations)
+
+	tmpl := template.Must(template.New("devices.html").Funcs(template.FuncMap{
+		"translate": func(key string) string {
+			if val, ok := translations[lang][key]; ok {
+				return val
+			}
+			return translations["en"][key]
+		},
+	}).ParseFS(content, "public_html/devices.html"))
+
+	data := struct {
+		Lang          string
+		Devices       []devices.Device
+		CurrentURL    string
+		MetaGenerator string
+	}{
+		Lang:          lang,
+		Devices:       devices.Catalog(),
+		CurrentURL:    resolveCurrentURL(r),
+		MetaGenerator: metaGenerator,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		log.Printf("devices handler: execute template failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := buf.WriteTo(w); err != nil {
+		if isClientDisconnect(err) {
+			log.Printf("client disconnected while writing devices response")
+		} else {
+			log.Printf("devices handler: write error: %v", err)
+		}
+	}
+}
+
+// buildDevicePurchaseLink crafts a mailto fallback so device pages can offer a next step.
+func buildDevicePurchaseLink(device devices.Device, support string) string {
+	if strings.TrimSpace(device.PurchaseURL) != "" {
+		return device.PurchaseURL
+	}
+	if strings.TrimSpace(support) == "" {
+		return ""
+	}
+	subject := url.QueryEscape(fmt.Sprintf("Purchase request: %s", device.Name))
+	return fmt.Sprintf("mailto:%s?subject=%s", strings.TrimSpace(support), subject)
+}
+
+// deviceDetailHandler renders the detail page for a specific device.
+func deviceDetailHandler(w http.ResponseWriter, r *http.Request) {
+	lang := getPreferredLanguage(r)
+	displayVersion := resolveDisplayVersion()
+	metaGenerator := buildMetaGenerator(lang, displayVersion, chichaGitHubURL, translations)
+
+	deviceID := strings.TrimPrefix(r.URL.Path, "/devices/")
+	deviceID = strings.Trim(deviceID, "/")
+	if deviceID == "" {
+		http.Redirect(w, r, "/devices", http.StatusFound)
+		return
+	}
+
+	device, ok := devices.ByID(deviceID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	purchaseLink := buildDevicePurchaseLink(device, *supportEmail)
+
+	tmpl := template.Must(template.New("device.html").Funcs(template.FuncMap{
+		"translate": func(key string) string {
+			if val, ok := translations[lang][key]; ok {
+				return val
+			}
+			return translations["en"][key]
+		},
+	}).ParseFS(content, "public_html/device.html"))
+
+	data := struct {
+		Lang          string
+		Device        devices.Device
+		PurchaseLink  string
+		CurrentURL    string
+		MetaGenerator string
+	}{
+		Lang:          lang,
+		Device:        device,
+		PurchaseLink:  purchaseLink,
+		CurrentURL:    resolveCurrentURL(r),
+		MetaGenerator: metaGenerator,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		log.Printf("device handler: execute template failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := buf.WriteTo(w); err != nil {
+		if isClientDisconnect(err) {
+			log.Printf("client disconnected while writing device response")
+		} else {
+			log.Printf("device handler: write error: %v", err)
+		}
+	}
+}
+
+// devicesAPIHandler exposes the device catalog for frontend popups.
+func devicesAPIHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(devices.Catalog()); err != nil {
+		log.Printf("devices api: encode failed: %v", err)
 	}
 }
 
@@ -5447,6 +5720,15 @@ func main() {
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
 
+	// AtomFast sync keeps pulling shared tracks when the operator opts in.
+	var atomfastCancel context.CancelFunc
+	if *atomfastEnabled {
+		atomfastCancel = startAtomFastSync(context.Background(), db, *dbType, log.Printf)
+	}
+	if atomfastCancel != nil {
+		defer atomfastCancel()
+	}
+
 	// Build a JSON archive tgz with all known exported tracks only when
 	// operators explicitly opt in via -json-archive-path. The cadence flag
 	// keeps IO predictable while letting deployments choose how fresh the
@@ -5497,6 +5779,8 @@ func main() {
 	// Serve license documents straight from the embedded filesystem so UI
 	// modals can reuse the same source without relying on external storage.
 	http.HandleFunc("/licenses/", licenseHandler)
+	http.HandleFunc("/devices", devicesHandler)
+	http.HandleFunc("/devices/", deviceDetailHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_playback", streamPlaybackHandler)
@@ -5505,6 +5789,7 @@ func main() {
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
 	http.HandleFunc("/api/geoip", geoIPHandler)
+	http.HandleFunc("/api/devices", devicesAPIHandler)
 	http.HandleFunc("/s/", shortRedirectHandler)
 	http.HandleFunc("/api/docs", apiDocsHandler)
 

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="{{ .Lang }}">
+  <head>
+    <!-- Keep metadata simple so the devices catalog loads fast on mobile. -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ translate "devices_title" }}</title>
+    <meta name="description" content="{{ translate "devices_intro" }}">
+    <meta name="generator" content="{{ .MetaGenerator }}">
+    <link rel="canonical" href="{{ .CurrentURL }}">
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --text: #1f2933;
+        --card-bg: #ffffff;
+        --card-border: #e5e7eb;
+        --link: #2563eb;
+        --accent: #10b981;
+        --font-family: "Segoe UI", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      }
+      body {
+        margin: 0;
+        font-family: var(--font-family);
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 24px;
+        background: #ffffff;
+        border-bottom: 1px solid var(--card-border);
+      }
+      header h1 {
+        margin: 0 0 8px 0;
+        font-size: 24px;
+      }
+      header p {
+        margin: 0;
+        max-width: 720px;
+      }
+      nav a {
+        margin-right: 16px;
+        color: var(--link);
+        text-decoration: none;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        padding: 24px;
+      }
+      .device-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 200px;
+      }
+      .device-card img {
+        width: 52px;
+        height: 52px;
+      }
+      .device-card h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .device-card p {
+        margin: 0;
+        font-size: 14px;
+        color: #4b5563;
+      }
+      .device-card a {
+        margin-top: auto;
+        color: var(--link);
+        font-weight: 600;
+        text-decoration: none;
+      }
+      footer {
+        padding: 16px 24px 32px;
+        font-size: 12px;
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a href="/">{{ translate "devices_back_to_map" }}</a>
+        <a href="/api/docs">{{ translate "attr_api" }}</a>
+      </nav>
+      <h1>{{ translate "devices_title" }}</h1>
+      <p>{{ translate "devices_intro" }}</p>
+    </header>
+
+    <main class="grid">
+      {{ range .Devices }}
+      <article class="device-card">
+        <img src="{{ .SmallImage }}" alt="{{ .Name }}">
+        <div>
+          <h2>{{ .Name }}</h2>
+          <p>{{ .Summary }}</p>
+        </div>
+        <a href="/devices/{{ .ID }}">{{ translate "devices_details_link" }}</a>
+      </article>
+      {{ end }}
+    </main>
+
+    <footer>
+      {{ translate "devices_footer" }}
+    </footer>
+  </body>
+</html>

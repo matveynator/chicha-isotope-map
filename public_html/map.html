@@ -1075,6 +1075,29 @@ body, html {
           margin-top: 4px;
         }
 
+        /* Device badges in marker popups keep the hardware context visible. */
+        .device-badge {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .device-badge img {
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          flex-shrink: 0;
+        }
+
+        .device-badge a {
+          color: var(--link-color);
+          font-weight: 600;
+          text-decoration: none;
+        }
+
 
 
         .live-extra-list {
@@ -2124,6 +2147,63 @@ function renderLiveExtras(extra) {
   return '<div><strong>' + translate('live_marker_extra_intro') + ':</strong><ul class="live-extra-list">' + items.join('') + '</ul></div>';
 }
 
+// Device catalog helpers keep marker popups linked to the hardware registry.
+const deviceCatalog = {};
+let deviceCatalogLoaded = false;
+
+function loadDeviceCatalog() {
+  return fetch('/api/devices')
+    .then(function(response) {
+      if (!response.ok) {
+        throw new Error('device catalog unavailable');
+      }
+      return response.json();
+    })
+    .then(function(payload) {
+      if (!payload || !Array.isArray(payload)) {
+        return;
+      }
+      payload.forEach(function(device){
+        if (!device || !device.id) return;
+        deviceCatalog[String(device.id).toLowerCase()] = device;
+      });
+      deviceCatalogLoaded = true;
+    })
+    .catch(function(){
+      deviceCatalogLoaded = false;
+    });
+}
+
+function buildDeviceBadge(marker) {
+  const detectorRaw = marker.detector || marker.Detector || '';
+  if (!detectorRaw) return '';
+  const key = String(detectorRaw).toLowerCase();
+  const device = deviceCatalog[key];
+  const label = device && device.name ? device.name : detectorRaw;
+  const labelHtml = escapeHtml(label);
+  if (device && device.id) {
+    const url = '/devices/' + encodeURIComponent(device.id);
+    const img = device.smallImage ? `<img src="${device.smallImage}" alt="${labelHtml}">` : '';
+    return `
+      <div class="device-badge">
+        ${img}
+        <div>
+          <strong>${translate('device_used_label')}:</strong>
+          <a href="${url}">${labelHtml}</a>
+        </div>
+      </div>`;
+  }
+  if (!deviceCatalogLoaded) {
+    return '';
+  }
+  return `
+    <div class="device-badge">
+      <div>
+        <strong>${translate('device_used_label')}:</strong> ${labelHtml}
+      </div>
+    </div>`;
+}
+
 function buildDeviceMeta(marker) {
   const rows = [];
   if (marker.deviceName) {
@@ -2981,6 +3061,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var backBox = document.querySelector('.back-to-all-container');
     if (backBox) backBox.style.display = 'block';
   }
+  // Load device metadata early so marker popups can link to hardware pages.
+  loadDeviceCatalog();
   refreshDownloadLink();
   refreshTrackViewPlaybackControl();
 
@@ -4143,6 +4225,7 @@ function createDateRangeSlider(){
     const speedText = (typeof marker.speed === 'number' && isFinite(marker.speed))
       ? `${(marker.speed * 3.6).toFixed(1)} km/h`
       : '—';
+    const deviceBadge = buildDeviceBadge(marker);
 
     return `
       <div class="custom-tooltip">
@@ -4159,6 +4242,7 @@ function createDateRangeSlider(){
             ${translate('track_id')}: ${marker.trackID}
           </a>
         </div>
+        ${deviceBadge}
       </div>`;
   }
 

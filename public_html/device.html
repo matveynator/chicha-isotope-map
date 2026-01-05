@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="{{ .Lang }}">
+  <head>
+    <!-- Keep the device detail page standalone so it can be linked from markers. -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Device.Name }} — {{ translate "devices_title" }}</title>
+    <meta name="description" content="{{ .Device.Summary }}">
+    <meta name="generator" content="{{ .MetaGenerator }}">
+    <link rel="canonical" href="{{ .CurrentURL }}">
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --text: #1f2933;
+        --card-bg: #ffffff;
+        --card-border: #e5e7eb;
+        --link: #2563eb;
+        --accent: #10b981;
+        --font-family: "Segoe UI", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      }
+      body {
+        margin: 0;
+        font-family: var(--font-family);
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 24px;
+        background: #ffffff;
+        border-bottom: 1px solid var(--card-border);
+      }
+      nav a {
+        margin-right: 16px;
+        color: var(--link);
+        text-decoration: none;
+      }
+      main {
+        padding: 24px;
+        display: flex;
+        justify-content: center;
+      }
+      .device-shell {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 24px;
+        max-width: 820px;
+        width: 100%;
+        display: grid;
+        gap: 24px;
+      }
+      .device-header {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+      }
+      .device-header img {
+        width: 96px;
+        height: 96px;
+      }
+      .device-header h1 {
+        margin: 0 0 8px 0;
+        font-size: 24px;
+      }
+      .device-header p {
+        margin: 0;
+        color: #4b5563;
+      }
+      .device-description {
+        font-size: 16px;
+        line-height: 1.6;
+      }
+      .device-buy {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--accent);
+        color: #ffffff;
+        padding: 12px 20px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .device-buy--disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+      }
+      footer {
+        padding: 16px 24px 32px;
+        font-size: 12px;
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a href="/">{{ translate "devices_back_to_map" }}</a>
+        <a href="/devices">{{ translate "devices_back_to_catalog" }}</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="device-shell">
+        <div class="device-header">
+          <img src="{{ .Device.LargeImage }}" alt="{{ .Device.Name }}">
+          <div>
+            <h1>{{ .Device.Name }}</h1>
+            <p>{{ .Device.Summary }}</p>
+          </div>
+        </div>
+        <div class="device-description">
+          {{ .Device.Description }}
+        </div>
+        <div>
+          {{ if .PurchaseLink }}
+            <a class="device-buy" href="{{ .PurchaseLink }}" target="_blank" rel="noopener">{{ translate "devices_buy_button" }}</a>
+          {{ else }}
+            <span class="device-buy device-buy--disabled">{{ translate "devices_buy_soon" }}</span>
+          {{ end }}
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      {{ translate "devices_footer" }}
+    </footer>
+  </body>
+</html>
