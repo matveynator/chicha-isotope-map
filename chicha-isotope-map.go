@@ -3247,9 +3247,10 @@ func processChichaTrackJSON(
 	dbType string,
 ) (database.Bounds, string, error) {
 	var payload struct {
-		Format  string `json:"format"`
-		Version int    `json:"version"`
-		Track   struct {
+		Format     string `json:"format"`
+		Version    int    `json:"version"`
+		DeviceName string `json:"deviceName"`
+		Track      struct {
 			TrackID        string   `json:"trackID"`
 			DetectorName   string   `json:"detectorName"`
 			DetectorType   string   `json:"detectorType"`
@@ -3293,6 +3294,9 @@ func processChichaTrackJSON(
 	defaultDetectorName := strings.TrimSpace(payload.Track.DetectorName)
 	defaultRadiation := normalizeRadiationList(payload.Track.RadiationTypes)
 	defaultDeviceName := strings.TrimSpace(payload.Track.DeviceName)
+	if defaultDeviceName == "" {
+		defaultDeviceName = strings.TrimSpace(payload.DeviceName)
+	}
 
 	markers := make([]database.Marker, 0, len(payload.Markers))
 	for _, item := range payload.Markers {
