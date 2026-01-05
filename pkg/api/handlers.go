@@ -405,7 +405,10 @@ func (h *Handler) handleLatestNearby(w http.ResponseWriter, r *http.Request) {
 	if !hasLat && !hasLon {
 		limit := clampInt(parseIntDefault(strings.TrimSpace(query.Get("limit")), 200), 1, 200)
 
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		// We allow a longer timeout here because grouping by track and ordering by the
+		// newest marker can be heavier than the geo-filtered query, and timing out too
+		// aggressively would surface as "request cancelled" for large databases.
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 
 		tracksCh, errCh := h.DB.StreamLatestTrackSummaries(ctx, limit, h.DBType)
