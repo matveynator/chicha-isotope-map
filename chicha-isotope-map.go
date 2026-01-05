@@ -3394,6 +3394,10 @@ func processChichaTrackJSON(
 		trackID = candidateTrackID
 	}
 
+	if defaultDeviceName != "" {
+		logT(trackID, "ChichaJSON", "device name: %s", defaultDeviceName)
+	}
+
 	logT(trackID, "ChichaJSON", "parsed %d markers", len(markers))
 	return processAndStoreMarkers(markers, trackID, db, dbType)
 }
@@ -3971,6 +3975,7 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPay
 	}
 
 	if deviceName != "" {
+		logT(finalTrackID, "AtomFast", "device name: %s", deviceName)
 		if err := l.db.UpdateTrackDeviceName(ctx, finalTrackID, deviceName, l.dbType); err != nil {
 			return err
 		}
@@ -3993,6 +3998,7 @@ func (l *atomfastLoader) ensureTrackDeviceLabel(ctx context.Context, trackID str
 	if deviceName == "" {
 		return nil
 	}
+	logT(trackID, "AtomFast", "device name: %s", deviceName)
 	return l.db.UpdateTrackDeviceName(ctx, trackID, deviceName, l.dbType)
 }
 
