@@ -1368,6 +1368,14 @@ CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
 
+CREATE TABLE IF NOT EXISTS track_sources (
+  source          TEXT NOT NULL,
+  source_track_id TEXT NOT NULL,
+  track_id        TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
+  ON track_sources (source, source_track_id);
+
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGSERIAL PRIMARY KEY,
   device_id   TEXT,
@@ -1428,6 +1436,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
 CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
+
+CREATE TABLE IF NOT EXISTS track_sources (
+  source          TEXT NOT NULL,
+  source_track_id TEXT NOT NULL,
+  track_id        TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
+  ON track_sources (source, source_track_id);
 
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          INTEGER PRIMARY KEY,
@@ -1493,6 +1509,14 @@ CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
 
+CREATE TABLE IF NOT EXISTS track_sources (
+  source          TEXT NOT NULL,
+  source_track_id TEXT NOT NULL,
+  track_id        TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
+  ON track_sources (source, source_track_id);
+
 CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
@@ -1552,6 +1576,12 @@ ORDER BY (trackID, date, id);`,
   trackID     String
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (trackID);`,
+			`CREATE TABLE IF NOT EXISTS track_sources (
+  source          String,
+  source_track_id String,
+  track_id        String
+) ENGINE = MergeTree()
+ORDER BY (source, source_track_id);`,
 			`CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          UInt64,
   device_id   String,

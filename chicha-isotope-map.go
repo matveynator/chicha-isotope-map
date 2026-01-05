@@ -3920,11 +3920,23 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 	if trackID == "" {
 		return fmt.Errorf("empty track id")
 	}
+	// Resolve stored mappings first so we skip re-downloading tracks that were
+	// deduplicated into a different internal track ID.
+	mappedTrackID, err := l.db.ResolveTrackSource(ctx, "atomfast", trackID, l.dbType)
+	if err != nil {
+		return err
+	}
+	if mappedTrackID != "" {
+		return l.ensureTrackDeviceLabel(ctx, trackID, mappedTrackID)
+	}
 	exists, err := l.db.TrackExists(ctx, trackID, l.dbType)
 	if err != nil {
 		return err
 	}
 	if exists {
+		if err := l.db.EnsureTrackSource(ctx, "atomfast", trackID, trackID, l.dbType); err != nil {
+			return err
+		}
 		hasLabel, err := l.db.TrackHasDeviceName(ctx, trackID, l.dbType)
 		if err != nil {
 			return err
@@ -3939,7 +3951,7 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 		}
 		// If the marker payload fetch fails, fall back to a label-only probe
 		// to keep existing tracks enriched without blocking the loader.
-		return l.ensureTrackDeviceLabel(ctx, trackID)
+		return l.ensureTrackDeviceLabel(ctx, trackID, trackID)
 	}
 	return l.requestTrack(ctx, jobs, results, trackID)
 }
@@ -3993,6 +4005,10 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPay
 	if err != nil {
 		return err
 	}
+	// Persist the upstream ID mapping so restarts can skip already ingested data.
+	if err := l.db.EnsureTrackSource(ctx, "atomfast", track.TrackID, finalTrackID, l.dbType); err != nil {
+		return err
+	}
 
 	if deviceName != "" {
 		logT(finalTrackID, "AtomFast", "device name: %s", deviceName)
@@ -4003,23 +4019,26 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPay
 	return nil
 }
 
-func (l *atomfastLoader) ensureTrackDeviceLabel(ctx context.Context, trackID string) error {
-	hasLabel, err := l.db.TrackHasDeviceName(ctx, trackID, l.dbType)
+func (l *atomfastLoader) ensureTrackDeviceLabel(ctx context.Context, sourceTrackID, storedTrackID string) error {
+	if strings.TrimSpace(storedTrackID) == "" {
+		storedTrackID = sourceTrackID
+	}
+	hasLabel, err := l.db.TrackHasDeviceName(ctx, storedTrackID, l.dbType)
 	if err != nil {
 		return err
 	}
 	if hasLabel {
 		return nil
 	}
-	deviceName, err := l.client.FetchDeviceLabel(ctx, trackID)
+	deviceName, err := l.client.FetchDeviceLabel(ctx, sourceTrackID)
 	if err != nil {
 		return err
 	}
 	if deviceName == "" {
 		return nil
 	}
-	logT(trackID, "AtomFast", "device name: %s", deviceName)
-	return l.db.UpdateTrackDeviceName(ctx, trackID, deviceName, l.dbType)
+	logT(storedTrackID, "AtomFast", "device name: %s", deviceName)
+	return l.db.UpdateTrackDeviceName(ctx, storedTrackID, deviceName, l.dbType)
 }
 
 func (l *atomfastLoader) sleepBetween(ctx context.Context) error {
