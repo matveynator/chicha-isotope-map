@@ -5672,11 +5672,50 @@ function updateUrl() {
   scheduleShortLinkRefresh();
 }
 
+// Resolve a short link for the current map view so QR codes stay compact and
+// readable across scanners that struggle with oversized URLs.
+function resolveShortLinkForQr() {
+  const full = window.location.href;
+  if (shortLinkBox && shortLinkBox.dataset && shortLinkBox.dataset.target === full) {
+    return finalizeShortLink();
+  }
+
+  const payload = { url: full, commit: true };
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  };
+
+  return fetch('/api/shorten', options)
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('shorten failed: ' + response.status);
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (!data || !data.short) {
+        throw new Error('shorten response missing URL');
+      }
+      applyShortLink(data);
+      return data.short;
+    });
+}
+
 function openServerPoster() {
   if (typeof updateUrl === 'function') { try { updateUrl(); } catch(_){} }
   var full = window.location.href;
-  var dst  = '/qrpng?u=' + encodeURIComponent(full);
-  window.open(dst, '_blank', 'noopener,noreferrer');
+  resolveShortLinkForQr()
+    .then(function (shortURL) {
+      var payload = shortURL || full;
+      var dst = '/qrpng?u=' + encodeURIComponent(payload);
+      window.open(dst, '_blank', 'noopener,noreferrer');
+    })
+    .catch(function () {
+      var dst = '/qrpng?u=' + encodeURIComponent(full);
+      window.open(dst, '_blank', 'noopener,noreferrer');
+    });
 }
 
 function initializeUIElements() {
