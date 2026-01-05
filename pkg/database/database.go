@@ -1365,7 +1365,13 @@ CREATE TABLE IF NOT EXISTS markers (
 );
 
 CREATE TABLE IF NOT EXISTS tracks (
-  trackID     TEXT PRIMARY KEY
+  trackID     TEXT PRIMARY KEY,
+  device_id   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS realtime_measurements (
@@ -1426,7 +1432,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
   ON markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID);
 
 CREATE TABLE IF NOT EXISTS tracks (
-  trackID     TEXT PRIMARY KEY
+  trackID     TEXT PRIMARY KEY,
+  device_id   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS realtime_measurements (
@@ -1490,7 +1502,13 @@ CREATE TABLE IF NOT EXISTS markers (
 );
 
 CREATE TABLE IF NOT EXISTS tracks (
-  trackID     TEXT PRIMARY KEY
+  trackID     TEXT PRIMARY KEY,
+  device_id   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
 );
 
 CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
@@ -1549,9 +1567,15 @@ CREATE INDEX IF NOT EXISTS idx_short_links_created
 ) ENGINE = MergeTree()
 ORDER BY (trackID, date, id);`,
 			`CREATE TABLE IF NOT EXISTS tracks (
-  trackID     String
+  trackID     String,
+  device_id   String
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (trackID);`,
+			`CREATE TABLE IF NOT EXISTS devices (
+  device_id   String,
+  model       String
+) ENGINE = ReplacingMergeTree()
+ORDER BY (device_id);`,
 			`CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          UInt64,
   device_id   String,
@@ -1597,6 +1621,12 @@ ORDER BY (code);`,
 	}
 	if err := db.ensureRealtimeMetadataColumns(cfg.DBType); err != nil {
 		return fmt.Errorf("add realtime metadata column: %w", err)
+	}
+	if err := db.ensureDevicesTable(cfg.DBType); err != nil {
+		return fmt.Errorf("ensure devices table: %w", err)
+	}
+	if err := db.ensureTrackDeviceColumns(cfg.DBType); err != nil {
+		return fmt.Errorf("add track device column: %w", err)
 	}
 
 	return nil
@@ -1754,6 +1784,98 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 				continue
 			}
 			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN %s", col.def)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// ensureDevicesTable adds the devices table on older databases that predate device tracking.
+// Keeping this separate from InitSchema lets existing deployments migrate without manual SQL.
+func (db *Database) ensureDevicesTable(dbType string) error {
+	switch strings.ToLower(dbType) {
+	case "clickhouse":
+		stmt := `CREATE TABLE IF NOT EXISTS devices (
+  device_id   String,
+  model       String
+) ENGINE = ReplacingMergeTree()
+ORDER BY (device_id);`
+		_, err := db.DB.Exec(stmt)
+		return err
+
+	default:
+		stmt := `CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
+);`
+		_, err := db.DB.Exec(stmt)
+		return err
+	}
+}
+
+// ensureTrackDeviceColumns appends the device_id column to the tracks table when missing.
+// We use a lightweight ALTER so existing datasets stay intact.
+func (db *Database) ensureTrackDeviceColumns(dbType string) error {
+	type column struct {
+		name string
+		def  string
+	}
+	required := []column{
+		{name: "device_id", def: "device_id TEXT"},
+	}
+
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		for _, col := range required {
+			stmt := fmt.Sprintf("ALTER TABLE tracks ADD COLUMN IF NOT EXISTS %s", col.def)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case "clickhouse":
+		for _, col := range required {
+			stmt := fmt.Sprintf("ALTER TABLE tracks ADD COLUMN IF NOT EXISTS %s String", col.name)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	default:
+		rows, err := db.DB.Query(`PRAGMA table_info(tracks);`)
+		if err != nil {
+			return fmt.Errorf("describe tracks: %w", err)
+		}
+		defer rows.Close()
+
+		present := make(map[string]bool)
+		for rows.Next() {
+			var (
+				cid     int
+				name    string
+				ctype   string
+				notnull int
+				dflt    sql.NullString
+				pk      int
+			)
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+				return fmt.Errorf("scan tracks pragma: %w", err)
+			}
+			present[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate tracks pragma: %w", err)
+		}
+
+		for _, col := range required {
+			if present[col.name] {
+				continue
+			}
+			stmt := fmt.Sprintf("ALTER TABLE tracks ADD COLUMN %s", col.def)
 			if _, err := db.DB.Exec(stmt); err != nil {
 				return err
 			}
@@ -3274,14 +3396,19 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 				}
 				_ = startDate
 
-				query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
-                                     COALESCE(altitude, 0) AS altitude,
-                                     COALESCE(detector, '') AS detector,
-                                     COALESCE(radiation, '') AS radiation,
-                                     COALESCE(temperature, 0) AS temperature,
-                                     COALESCE(humidity, 0) AS humidity
-                              FROM markers WHERE %s AND trackID = %s
-                              ORDER BY date;`, whereClause, placeholder(dbType, len(baseArgs)+1))
+				query := fmt.Sprintf(`SELECT m.id,m.doseRate,m.date,m.lon,m.lat,m.countRate,m.zoom,m.speed,m.trackID,
+                                     COALESCE(m.altitude, 0) AS altitude,
+                                     COALESCE(m.detector, '') AS detector,
+                                     COALESCE(m.radiation, '') AS radiation,
+                                     COALESCE(m.temperature, 0) AS temperature,
+                                     COALESCE(m.humidity, 0) AS humidity,
+                                     COALESCE(NULLIF(m.device_id, ''), t.device_id, '') AS device_id,
+                                     COALESCE(NULLIF(m.device_name, ''), d.model, '') AS device_name
+                              FROM markers m
+                              LEFT JOIN tracks t ON m.trackID = t.trackID
+                              LEFT JOIN devices d ON t.device_id = d.device_id
+                              WHERE %s AND m.trackID = %s
+                              ORDER BY m.date;`, whereClause, placeholder(dbType, len(baseArgs)+1))
 				perTrackArgs := append(append([]interface{}{}, baseArgs...), trackID)
 				rows, err := conn.QueryContext(runCtx, query, perTrackArgs...)
 				if err != nil {
@@ -3291,7 +3418,8 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 					var m Marker
 					if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
 						&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-						&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+						&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity,
+						&m.DeviceID, &m.DeviceName); err != nil {
 						rows.Close()
 						return fmt.Errorf("scan markers: %w", err)
 					}
@@ -3406,13 +3534,18 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 // that live writes and heavy imports cannot starve web readers. A shared scanner keeps
 // the call sites compact while still returning fully populated Marker structs.
 func (db *Database) queryMarkers(ctx context.Context, where string, args []interface{}, dbType string, lane WorkloadKind) ([]Marker, error) {
-	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
-                                     COALESCE(altitude, 0) AS altitude,
-                                     COALESCE(detector, '') AS detector,
-                                     COALESCE(radiation, '') AS radiation,
-                                     COALESCE(temperature, 0) AS temperature,
-                                     COALESCE(humidity, 0) AS humidity
-                              FROM markers WHERE %s;`, where)
+	query := fmt.Sprintf(`SELECT m.id,m.doseRate,m.date,m.lon,m.lat,m.countRate,m.zoom,m.speed,m.trackID,
+                                     COALESCE(m.altitude, 0) AS altitude,
+                                     COALESCE(m.detector, '') AS detector,
+                                     COALESCE(m.radiation, '') AS radiation,
+                                     COALESCE(m.temperature, 0) AS temperature,
+                                     COALESCE(m.humidity, 0) AS humidity,
+                                     COALESCE(NULLIF(m.device_id, ''), t.device_id, '') AS device_id,
+                                     COALESCE(NULLIF(m.device_name, ''), d.model, '') AS device_name
+                              FROM markers m
+                              LEFT JOIN tracks t ON m.trackID = t.trackID
+                              LEFT JOIN devices d ON t.device_id = d.device_id
+                              WHERE %s;`, where)
 
 	var out []Marker
 
@@ -3436,7 +3569,8 @@ func (db *Database) queryMarkers(ctx context.Context, where string, args []inter
 			var m Marker
 			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
 				&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-				&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+				&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity,
+				&m.DeviceID, &m.DeviceName); err != nil {
 				return fmt.Errorf("scan markers: %w", err)
 			}
 			out = append(out, m)

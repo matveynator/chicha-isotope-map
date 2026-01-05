@@ -4143,6 +4143,14 @@ function createDateRangeSlider(){
     const speedText = (typeof marker.speed === 'number' && isFinite(marker.speed))
       ? `${(marker.speed * 3.6).toFixed(1)} km/h`
       : '—';
+    const deviceRows = [];
+    if (marker.deviceName) {
+      deviceRows.push('<div><strong>' + translate('live_marker_device_label') + ':</strong> ' + escapeHtml(marker.deviceName) + '</div>');
+    }
+    if (marker.deviceID) {
+      deviceRows.push('<div><strong>' + translate('live_marker_device_id') + ':</strong> ' + escapeHtml(marker.deviceID) + '</div>');
+    }
+    const deviceMeta = deviceRows.length ? '<div class="live-popup-meta">' + deviceRows.join('') + '</div>' : '';
 
     return `
       <div class="custom-tooltip">
@@ -4159,6 +4167,7 @@ function createDateRangeSlider(){
             ${translate('track_id')}: ${marker.trackID}
           </a>
         </div>
+        ${deviceMeta}
       </div>`;
   }
 

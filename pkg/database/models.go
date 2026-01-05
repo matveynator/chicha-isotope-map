@@ -37,6 +37,13 @@ type Data struct {
 	IsSievertLegacy bool `json:"isSievert"` // старые iOS-дампы
 }
 
+// Device tracks the hardware model behind a set of measurements.
+// We keep the model string intact so callers can display the exact wording.
+type Device struct {
+	ID    string
+	Model string
+}
+
 // TrackSummary provides lightweight metadata for iterating over tracks.
 // We expose index boundaries so clients can page through markers without
 // issuing unbounded queries, mirroring Go's advice to "keep the interface

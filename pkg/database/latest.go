@@ -89,15 +89,19 @@ func (db *Database) StreamLatestMarkersNear(
 		maxLonPlaceholder := nextPlaceholder()
 		limitPlaceholder := nextPlaceholder()
 
-		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-       altitude,
-       COALESCE(detector, '') AS detector,
-       COALESCE(radiation, '') AS radiation,
-       temperature,
-       humidity
-FROM markers
-WHERE lat >= %s AND lat <= %s AND lon >= %s AND lon <= %s
-ORDER BY date DESC
+		query := fmt.Sprintf(`SELECT m.id, m.doseRate, m.date, m.lon, m.lat, m.countRate, m.zoom, m.speed, m.trackID,
+       m.altitude,
+       COALESCE(m.detector, '') AS detector,
+       COALESCE(m.radiation, '') AS radiation,
+       m.temperature,
+       m.humidity,
+       COALESCE(NULLIF(m.device_id, ''), t.device_id, '') AS device_id,
+       COALESCE(NULLIF(m.device_name, ''), d.model, '') AS device_name
+FROM markers m
+LEFT JOIN tracks t ON m.trackID = t.trackID
+LEFT JOIN devices d ON t.device_id = d.device_id
+WHERE m.lat >= %s AND m.lat <= %s AND m.lon >= %s AND m.lon <= %s
+ORDER BY m.date DESC
 LIMIT %s;`,
 			minLatPlaceholder,
 			maxLatPlaceholder,
@@ -135,6 +139,8 @@ LIMIT %s;`,
 				&marker.Radiation,
 				&temperature,
 				&humidity,
+				&marker.DeviceID,
+				&marker.DeviceName,
 			); err != nil {
 				errs <- fmt.Errorf("scan latest marker: %w", err)
 				return

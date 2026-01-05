@@ -271,15 +271,19 @@ func (db *Database) StreamMarkersByTrackRange(
 			args = append(args, limit)
 		}
 
-		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
-       altitude,
-       COALESCE(detector, '') AS detector,
-       COALESCE(radiation, '') AS radiation,
-       temperature,
-       humidity
-FROM markers
-WHERE trackID = %s AND id >= %s AND id <= %s
-ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
+		query := fmt.Sprintf(`SELECT m.id, m.doseRate, m.date, m.lon, m.lat, m.countRate, m.zoom, m.speed, m.trackID,
+       m.altitude,
+       COALESCE(m.detector, '') AS detector,
+       COALESCE(m.radiation, '') AS radiation,
+       m.temperature,
+       m.humidity,
+       COALESCE(NULLIF(m.device_id, ''), t.device_id, '') AS device_id,
+       COALESCE(NULLIF(m.device_name, ''), d.model, '') AS device_name
+FROM markers m
+LEFT JOIN tracks t ON m.trackID = t.trackID
+LEFT JOIN devices d ON t.device_id = d.device_id
+WHERE m.trackID = %s AND m.id >= %s AND m.id <= %s
+ORDER BY m.id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
 
 		var batch []Marker
 		err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
@@ -295,7 +299,7 @@ ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
 				var temperature sql.NullFloat64
 				var humidity sql.NullFloat64
 				if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-					&altitude, &m.Detector, &m.Radiation, &temperature, &humidity); err != nil {
+					&altitude, &m.Detector, &m.Radiation, &temperature, &humidity, &m.DeviceID, &m.DeviceName); err != nil {
 					return fmt.Errorf("scan marker: %w", err)
 				}
 				if altitude.Valid {
@@ -363,6 +367,31 @@ WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, value, value)
 		}
 		return nil
 	})
+}
+
+// TrackExists reports whether a track ID is already present in the registry.
+// A small lookup keeps AtomFast polling lightweight while staying portable.
+func (db *Database) TrackExists(ctx context.Context, trackID, dbType string) (bool, error) {
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	query := fmt.Sprintf("SELECT 1 FROM tracks WHERE trackID = %s", placeholder(dbType, 1))
+	var found int
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		return conn.QueryRowContext(ctx, query, trackID).Scan(&found)
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // backfillTracksTable refreshes the tracks registry from existing markers so

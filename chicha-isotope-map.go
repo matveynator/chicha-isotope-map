@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/api"
+	"chicha-isotope-map/pkg/atomfast"
 	"chicha-isotope-map/pkg/cimimport"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
@@ -82,6 +83,7 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+var atomfastEnabled = flag.Bool("atomfast", false, "Enable sequential AtomFast track ingestion and polling")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of exported JSON files, log progress, and exit once finished. Example: https://pelora.org/api/json/weekly.tgz")
@@ -135,7 +137,7 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "logo-path", "logo-link", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
-	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
+	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "atomfast", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
 
@@ -2562,29 +2564,261 @@ func processAtomFastData(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, error) {
-	var records []struct {
-		D   float64 `json:"d"`
-		Lat float64 `json:"lat"`
-		Lng float64 `json:"lng"`
-		T   int64   `json:"t"`
-	}
-	if err := json.Unmarshal(data, &records); err != nil {
+	markers, _, err := atomfast.ParseMarkers(data)
+	if err != nil {
 		return database.Bounds{}, trackID, fmt.Errorf("parse AtomFast JSON: %w", err)
 	}
-	logT(trackID, "AtomFast", "parsed %d markers", len(records))
-
-	markers := make([]database.Marker, 0, len(records))
-	for _, r := range records {
-		markers = append(markers, database.Marker{
-			DoseRate:  r.D,
-			CountRate: r.D, // AtomFast stores cps in same field
-			Lat:       r.Lat,
-			Lon:       r.Lng,
-			Date:      r.T / 1000, // ms → s
-		})
-	}
+	logT(trackID, "AtomFast", "parsed %d markers", len(markers))
 
 	return processAndStoreMarkers(markers, trackID, db, dbType)
+}
+
+// ---------- AtomFast loader ----------
+
+const (
+	atomfastPollInterval = 30 * time.Minute
+	atomfastDelayMin     = 900 * time.Millisecond
+	atomfastDelayMax     = 1800 * time.Millisecond
+)
+
+type atomfastJob struct {
+	full bool
+}
+
+// startAtomFastLoader spins up a sequential worker so AtomFast polling never runs in parallel.
+// A buffered job channel keeps scheduling non-blocking without requiring mutexes.
+func startAtomFastLoader(
+	ctx context.Context,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) {
+	client := atomfast.NewClient()
+	jobs := make(chan atomfastJob, 1)
+
+	go runAtomFastWorker(ctx, jobs, client, db, dbType, logf)
+
+	go func() {
+		ticker := time.NewTicker(atomfastPollInterval)
+		defer ticker.Stop()
+
+		select {
+		case jobs <- atomfastJob{full: true}:
+		default:
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				select {
+				case jobs <- atomfastJob{full: false}:
+				default:
+					logf("atomfast: skip poll tick because a job is already queued")
+				}
+			}
+		}
+	}()
+}
+
+func runAtomFastWorker(
+	ctx context.Context,
+	jobs <-chan atomfastJob,
+	client *atomfast.Client,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job, ok := <-jobs:
+			if !ok {
+				return
+			}
+			if job.full {
+				if err := runAtomFastFull(ctx, client, db, dbType, logf); err != nil {
+					logf("atomfast: full load stopped: %v", err)
+				}
+				continue
+			}
+			if err := runAtomFastDelta(ctx, client, db, dbType, logf); err != nil {
+				logf("atomfast: delta check stopped: %v", err)
+			}
+		}
+	}
+}
+
+func runAtomFastFull(
+	ctx context.Context,
+	client *atomfast.Client,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) error {
+	logf("atomfast: full load starting")
+	for page := 1; ; page++ {
+		if err := observeContext(ctx); err != nil {
+			return err
+		}
+
+		ids, err := client.FetchPageTrackIDs(ctx, page)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			logf("atomfast: no tracks on page %d; full load complete", page)
+			return nil
+		}
+		logf("atomfast: page %d has %d tracks", page, len(ids))
+		client.SleepWithJitter(ctx, atomfastDelayMin, atomfastDelayMax)
+
+		for _, id := range ids {
+			if err := observeContext(ctx); err != nil {
+				return err
+			}
+			stored, err := ingestAtomFastTrack(ctx, client, db, dbType, id, false, logf)
+			if err != nil {
+				logf("atomfast: track %s failed: %v", id, err)
+			} else if stored {
+				logf("atomfast: track %s stored", id)
+			}
+		}
+	}
+}
+
+func runAtomFastDelta(
+	ctx context.Context,
+	client *atomfast.Client,
+	db *database.Database,
+	dbType string,
+	logf func(string, ...any),
+) error {
+	logf("atomfast: delta check starting")
+	for page := 1; ; page++ {
+		if err := observeContext(ctx); err != nil {
+			return err
+		}
+
+		ids, err := client.FetchPageTrackIDs(ctx, page)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			logf("atomfast: no tracks on page %d; delta check complete", page)
+			return nil
+		}
+		logf("atomfast: page %d has %d tracks", page, len(ids))
+		client.SleepWithJitter(ctx, atomfastDelayMin, atomfastDelayMax)
+
+		foundNew := false
+		for _, id := range ids {
+			if err := observeContext(ctx); err != nil {
+				return err
+			}
+
+			trackID := atomfast.TrackID(id)
+			exists, err := db.TrackExists(ctx, trackID, dbType)
+			if err != nil {
+				logf("atomfast: track %s lookup failed: %v", id, err)
+				continue
+			}
+			if exists {
+				continue
+			}
+			foundNew = true
+			stored, err := ingestAtomFastTrack(ctx, client, db, dbType, id, true, logf)
+			if err != nil {
+				logf("atomfast: track %s failed: %v", id, err)
+			} else if stored {
+				logf("atomfast: track %s stored", id)
+			}
+		}
+
+		if !foundNew {
+			logf("atomfast: page %d has no new tracks; stopping delta scan", page)
+			return nil
+		}
+	}
+}
+
+func ingestAtomFastTrack(
+	ctx context.Context,
+	client *atomfast.Client,
+	db *database.Database,
+	dbType string,
+	id string,
+	assumeNew bool,
+	logf func(string, ...any),
+) (bool, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, nil
+	}
+
+	trackID := atomfast.TrackID(id)
+	if !assumeNew {
+		exists, err := db.TrackExists(ctx, trackID, dbType)
+		if err != nil {
+			return false, err
+		}
+		if exists {
+			return false, nil
+		}
+	}
+
+	deviceFromPage, err := client.FetchTrackPageDevice(ctx, id)
+	if err != nil {
+		logf("atomfast: track %s device page failed: %v", id, err)
+	}
+	client.SleepWithJitter(ctx, atomfastDelayMin, atomfastDelayMax)
+
+	markers, deviceFromJSON, err := client.FetchTrackMarkers(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if len(markers) == 0 {
+		return false, fmt.Errorf("AtomFast track %s returned no markers", id)
+	}
+
+	mergedDevice := mergeAtomFastDevice(deviceFromJSON, deviceFromPage)
+	bbox, finalTrackID, err := processAndStoreMarkersWithContext(ctx, markers, trackID, db, dbType)
+	if err != nil {
+		return false, err
+	}
+	logf("atomfast: track %s stored bounds=%v", id, bbox)
+
+	device := normalizeAtomFastDevice(mergedDevice)
+	if device.ID != "" || device.Model != "" {
+		if err := db.AssignTrackDevice(ctx, finalTrackID, device, dbType); err != nil {
+			return true, err
+		}
+	}
+
+	client.SleepWithJitter(ctx, atomfastDelayMin, atomfastDelayMax)
+	return true, nil
+}
+
+func mergeAtomFastDevice(primary atomfast.DeviceInfo, fallback atomfast.DeviceInfo) atomfast.DeviceInfo {
+	if primary.ID == "" {
+		primary.ID = fallback.ID
+	}
+	if primary.Model == "" {
+		primary.Model = fallback.Model
+	}
+	return primary
+}
+
+func normalizeAtomFastDevice(info atomfast.DeviceInfo) database.Device {
+	if info.ID == "" {
+		info.ID = info.Model
+	}
+	return database.Device{
+		ID:    strings.TrimSpace(info.ID),
+		Model: strings.TrimSpace(info.Model),
+	}
 }
 
 // processTrackExportFile ingests a single JSON track generated by our exporter.
@@ -5445,6 +5679,13 @@ func main() {
 		ctxRT, cancelRT := context.WithCancel(context.Background())
 		defer cancelRT()
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
+	}
+
+	if *atomfastEnabled {
+		// Run AtomFast ingestion in a single worker so requests stay sequential and polite.
+		ctxAtomFast, cancelAtomFast := context.WithCancel(context.Background())
+		defer cancelAtomFast()
+		startAtomFastLoader(ctxAtomFast, db, *dbType, log.Printf)
 	}
 
 	// Build a JSON archive tgz with all known exported tracks only when

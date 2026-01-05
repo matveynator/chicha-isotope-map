@@ -19,15 +19,23 @@ func (db *Database) StreamMarkersByZoomAndBounds(ctx context.Context, zoom int, 
 		switch dbType {
 		case "pgx":
 			query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-                FROM markers
-                WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
+                SELECT m.id, m.doseRate, m.date, m.lon, m.lat, m.countRate, m.zoom, m.speed, m.trackID,
+                       COALESCE(NULLIF(m.device_id, ''), t.device_id, '') AS device_id,
+                       COALESCE(NULLIF(m.device_name, ''), d.model, '') AS device_name
+                FROM markers m
+                LEFT JOIN tracks t ON m.trackID = t.trackID
+                LEFT JOIN devices d ON t.device_id = d.device_id
+                WHERE m.zoom = $1 AND m.lat BETWEEN $2 AND $3 AND m.lon BETWEEN $4 AND $5;
             `
 		default:
 			query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-                FROM markers
-                WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
+                SELECT m.id, m.doseRate, m.date, m.lon, m.lat, m.countRate, m.zoom, m.speed, m.trackID,
+                       COALESCE(NULLIF(m.device_id, ''), t.device_id, '') AS device_id,
+                       COALESCE(NULLIF(m.device_name, ''), d.model, '') AS device_name
+                FROM markers m
+                LEFT JOIN tracks t ON m.trackID = t.trackID
+                LEFT JOIN devices d ON t.device_id = d.device_id
+                WHERE m.zoom = ? AND m.lat BETWEEN ? AND ? AND m.lon BETWEEN ? AND ?;
             `
 		}
 
@@ -40,7 +48,7 @@ func (db *Database) StreamMarkersByZoomAndBounds(ctx context.Context, zoom int, 
 
 		for rows.Next() {
 			var m Marker
-			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID, &m.DeviceID, &m.DeviceName); err != nil {
 				errCh <- fmt.Errorf("scan marker: %w", err)
 				return
 			}
@@ -74,15 +82,23 @@ func (db *Database) StreamMarkersByTrackIDZoomAndBounds(ctx context.Context, tra
 		switch dbType {
 		case "pgx":
 			query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-                FROM markers
-                WHERE trackID = $1 AND zoom = $2 AND lat BETWEEN $3 AND $4 AND lon BETWEEN $5 AND $6;
+                SELECT m.id, m.doseRate, m.date, m.lon, m.lat, m.countRate, m.zoom, m.speed, m.trackID,
+                       COALESCE(NULLIF(m.device_id, ''), t.device_id, '') AS device_id,
+                       COALESCE(NULLIF(m.device_name, ''), d.model, '') AS device_name
+                FROM markers m
+                LEFT JOIN tracks t ON m.trackID = t.trackID
+                LEFT JOIN devices d ON t.device_id = d.device_id
+                WHERE m.trackID = $1 AND m.zoom = $2 AND m.lat BETWEEN $3 AND $4 AND m.lon BETWEEN $5 AND $6;
             `
 		default:
 			query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
-                FROM markers
-                WHERE trackID = ? AND zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
+                SELECT m.id, m.doseRate, m.date, m.lon, m.lat, m.countRate, m.zoom, m.speed, m.trackID,
+                       COALESCE(NULLIF(m.device_id, ''), t.device_id, '') AS device_id,
+                       COALESCE(NULLIF(m.device_name, ''), d.model, '') AS device_name
+                FROM markers m
+                LEFT JOIN tracks t ON m.trackID = t.trackID
+                LEFT JOIN devices d ON t.device_id = d.device_id
+                WHERE m.trackID = ? AND m.zoom = ? AND m.lat BETWEEN ? AND ? AND m.lon BETWEEN ? AND ?;
             `
 		}
 
@@ -95,7 +111,7 @@ func (db *Database) StreamMarkersByTrackIDZoomAndBounds(ctx context.Context, tra
 
 		for rows.Next() {
 			var m Marker
-			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID, &m.DeviceID, &m.DeviceName); err != nil {
 				errCh <- fmt.Errorf("scan marker: %w", err)
 				return
 			}
