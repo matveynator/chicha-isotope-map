@@ -1247,6 +1247,7 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 		sumAlt, sumTemp, sumHum                float64
 		altCount, tempCount, humCount          int
 		detector, radiation                    string
+		deviceName                             string
 		latest                                 int64
 		n                                      int
 	}
@@ -1285,6 +1286,9 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 		}
 		if a.radiation == "" && m.Radiation != "" {
 			a.radiation = m.Radiation
+		}
+		if a.deviceName == "" && m.DeviceName != "" {
+			a.deviceName = m.DeviceName
 		}
 		a.n++
 	}
@@ -1325,6 +1329,7 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 			Humidity:         hum,
 			Detector:         c.detector,
 			Radiation:        c.radiation,
+			DeviceName:       c.deviceName,
 			Date:             c.latest,
 			Zoom:             zoom,
 			TrackID:          markers[0].TrackID,
@@ -1394,6 +1399,7 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 		var latestDate int64
 		detector := ""
 		radiation := ""
+		deviceName := ""
 		for _, c := range cluster {
 			sumLat += c.Marker.Lat
 			sumLon += c.Marker.Lon
@@ -1416,6 +1422,9 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			}
 			if radiation == "" && c.Marker.Radiation != "" {
 				radiation = c.Marker.Radiation
+			}
+			if deviceName == "" && c.Marker.DeviceName != "" {
+				deviceName = c.Marker.DeviceName
 			}
 			// возьмём дату последнего
 			if c.Marker.Date > latestDate {
@@ -1464,6 +1473,7 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			Humidity:         hum,
 			Detector:         detector,
 			Radiation:        radiation,
+			DeviceName:       deviceName,
 			Date:             latestDate,
 			Speed:            avgSpeed,
 			Zoom:             zoom,
