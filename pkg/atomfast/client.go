@@ -289,10 +289,12 @@ func defaultPlatforms() []string {
 // without triggering locale-specific content changes in AtomFast.
 func defaultLanguages() []string {
 	return []string{
+		"ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+		"ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
 		"en-US,en;q=0.9",
 		"en-GB,en;q=0.9",
 		"en-US,en;q=0.8,ru;q=0.6",
-		"en-US,en;q=0.8,uk;q=0.5",
+		"ru-RU,ru;q=0.9,en;q=0.7",
 		"en-US,en;q=0.8,de;q=0.5",
 		"en-US,en;q=0.8,fr;q=0.5",
 		"en-US,en;q=0.8,es;q=0.5",
