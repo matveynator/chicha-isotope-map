@@ -406,7 +406,7 @@ func extractMarkers(doc any) ([]database.Marker, error) {
 	return markers, nil
 }
 
-func findMarkerEntries(doc any, depth int) []map[string]any {
+func findMarkerEntries(doc any, depth int) []any {
 	if depth > 4 {
 		return nil
 	}
@@ -422,7 +422,7 @@ func findMarkerEntries(doc any, depth int) []map[string]any {
 			}
 		}
 	case map[string]any:
-		for _, key := range []string{"markers", "points", "data", "records", "track"} {
+		for _, key := range []string{"markers", "points", "data", "records", "track", "path", "coords"} {
 			if raw, ok := val[key]; ok {
 				if nested := findMarkerEntries(raw, depth+1); len(nested) > 0 {
 					return nested
@@ -438,69 +438,42 @@ func findMarkerEntries(doc any, depth int) []map[string]any {
 	return nil
 }
 
-func collectMarkerEntries(items []any) []map[string]any {
-	entries := make([]map[string]any, 0, len(items))
+func collectMarkerEntries(items []any) []any {
+	entries := make([]any, 0, len(items))
 	for _, entry := range items {
-		m, ok := entry.(map[string]any)
-		if !ok {
-			continue
-		}
-		if hasCoordinates(m) {
-			entries = append(entries, m)
+		switch typed := entry.(type) {
+		case map[string]any:
+			if hasCoordinates(typed) {
+				entries = append(entries, typed)
+			}
+		case []any:
+			if hasCoordinatesSlice(typed) {
+				entries = append(entries, typed)
+			}
 		}
 	}
 	return entries
 }
 
 func hasCoordinates(m map[string]any) bool {
-	_, latOk := readFloat(m, "lat", "latitude")
-	_, lonOk := readFloat(m, "lon", "lng", "longitude")
+	_, latOk := readFloat(m, "lat", "latitude", "y")
+	_, lonOk := readFloat(m, "lon", "lng", "longitude", "x")
 	return latOk && lonOk
 }
 
-func parseMarker(m map[string]any) (database.Marker, bool) {
-	lat, latOk := readFloat(m, "lat", "latitude")
-	lon, lonOk := readFloat(m, "lon", "lng", "longitude")
-	if !latOk || !lonOk {
+func parseMarker(entry any) (database.Marker, bool) {
+	switch typed := entry.(type) {
+	case map[string]any:
+		return parseMarkerFromMap(typed)
+	case []any:
+		return parseMarkerFromSlice(typed)
+	default:
 		return database.Marker{}, false
 	}
-	timestamp := readTimestamp(m)
-	if timestamp == 0 {
-		return database.Marker{}, false
-	}
-	dose, _ := readFloat(m, "doseRate", "dose_rate", "dose", "sv", "usvh", "svh")
-	countRate, _ := readFloat(m, "countRate", "count_rate", "cps", "cpm")
-	speed, _ := readFloat(m, "speed", "speed_ms", "speedMS")
-	altitude, altitudeOk := readFloat(m, "altitude", "alt", "height")
-	temperature, temperatureOk := readFloat(m, "temperature", "temp", "temp_c")
-	humidity, humidityOk := readFloat(m, "humidity", "hum", "humidity_percent")
-	detector := readString(m, "detector", "sensor", "device")
-	tube := readString(m, "tube")
-	radiation := readString(m, "radiation", "channels")
-
-	marker := database.Marker{
-		DoseRate:         dose,
-		Date:             timestamp,
-		Lon:              lon,
-		Lat:              lat,
-		CountRate:        countRate,
-		Speed:            speed,
-		Altitude:         altitude,
-		Detector:         strings.TrimSpace(detector),
-		Radiation:        strings.TrimSpace(radiation),
-		AltitudeValid:    altitudeOk,
-		Zoom:             0,
-		Temperature:      temperature,
-		Humidity:         humidity,
-		Tube:             strings.TrimSpace(tube),
-		TemperatureValid: temperatureOk,
-		HumidityValid:    humidityOk,
-	}
-	return marker, true
 }
 
 func readTimestamp(m map[string]any) int64 {
-	if raw, ok := readInt64(m, "time", "timestamp", "date", "datetime", "ts"); ok {
+	if raw, ok := readInt64(m, "time", "timestamp", "date", "datetime", "ts", "time_unix", "timeUnix", "created", "created_at"); ok {
 		return normalizeTimestamp(raw)
 	}
 	if text := readString(m, "time", "timestamp", "date", "datetime", "ts"); text != "" {
@@ -616,6 +589,187 @@ func stringify(value any) string {
 	default:
 		return ""
 	}
+}
+
+func hasCoordinatesSlice(values []any) bool {
+	if len(values) < 2 {
+		return false
+	}
+	_, _, ok := parseLatLonFromSlice(values)
+	return ok
+}
+
+func parseMarkerFromMap(m map[string]any) (database.Marker, bool) {
+	lat, latOk := readFloat(m, "lat", "latitude", "y")
+	lon, lonOk := readFloat(m, "lon", "lng", "longitude", "x")
+	if !latOk || !lonOk {
+		return database.Marker{}, false
+	}
+	timestamp := readTimestamp(m)
+	if timestamp == 0 {
+		return database.Marker{}, false
+	}
+	dose, _ := readFloat(m, "doseRate", "dose_rate", "dose", "sv", "usvh", "svh")
+	countRate, _ := readFloat(m, "countRate", "count_rate", "cps", "cpm")
+	speed, _ := readFloat(m, "speed", "speed_ms", "speedMS")
+	altitude, altitudeOk := readFloat(m, "altitude", "alt", "height")
+	temperature, temperatureOk := readFloat(m, "temperature", "temp", "temp_c")
+	humidity, humidityOk := readFloat(m, "humidity", "hum", "humidity_percent")
+	detector := readString(m, "detector", "sensor", "device")
+	tube := readString(m, "tube")
+	radiation := readString(m, "radiation", "channels")
+
+	marker := database.Marker{
+		DoseRate:         dose,
+		Date:             timestamp,
+		Lon:              lon,
+		Lat:              lat,
+		CountRate:        countRate,
+		Speed:            speed,
+		Altitude:         altitude,
+		Detector:         strings.TrimSpace(detector),
+		Radiation:        strings.TrimSpace(radiation),
+		AltitudeValid:    altitudeOk,
+		Zoom:             0,
+		Temperature:      temperature,
+		Humidity:         humidity,
+		Tube:             strings.TrimSpace(tube),
+		TemperatureValid: temperatureOk,
+		HumidityValid:    humidityOk,
+	}
+	return marker, true
+}
+
+func parseMarkerFromSlice(values []any) (database.Marker, bool) {
+	lat, lon, ok := parseLatLonFromSlice(values)
+	if !ok {
+		return database.Marker{}, false
+	}
+	timestamp := readTimestampFromSlice(values)
+	if timestamp == 0 {
+		return database.Marker{}, false
+	}
+	dose, count := readDoseAndCount(values)
+	altitude, altitudeOk := readFloatFromSlice(values, 5)
+	temperature, temperatureOk := readFloatFromSlice(values, 6)
+	humidity, humidityOk := readFloatFromSlice(values, 7)
+
+	marker := database.Marker{
+		DoseRate:         dose,
+		Date:             timestamp,
+		Lon:              lon,
+		Lat:              lat,
+		CountRate:        count,
+		Altitude:         altitude,
+		AltitudeValid:    altitudeOk,
+		Zoom:             0,
+		Temperature:      temperature,
+		Humidity:         humidity,
+		TemperatureValid: temperatureOk,
+		HumidityValid:    humidityOk,
+	}
+	return marker, true
+}
+
+func parseLatLonFromSlice(values []any) (float64, float64, bool) {
+	if len(values) < 2 {
+		return 0, 0, false
+	}
+	a, okA := readFloatFromAny(values[0])
+	b, okB := readFloatFromAny(values[1])
+	if !okA || !okB {
+		return 0, 0, false
+	}
+	if abs(a) <= 90 && abs(b) <= 180 {
+		return a, b, true
+	}
+	if abs(b) <= 90 && abs(a) <= 180 {
+		return b, a, true
+	}
+	return 0, 0, false
+}
+
+func readTimestampFromSlice(values []any) int64 {
+	for _, raw := range values {
+		if n, ok := readIntFromAny(raw); ok && n >= 1_000_000_000 {
+			return normalizeTimestamp(n)
+		}
+		if text, ok := raw.(string); ok {
+			if ts, ok := parseTimeString(text); ok {
+				return ts
+			}
+		}
+	}
+	return 0
+}
+
+func readDoseAndCount(values []any) (float64, float64) {
+	if len(values) < 3 {
+		return 0, 0
+	}
+	dose, _ := readFloatFromAny(values[2])
+	count, _ := readFloatFromAny(values[3])
+	if dose == 0 && count > 0 {
+		dose = count
+	}
+	return dose, count
+}
+
+func readFloatFromSlice(values []any, index int) (float64, bool) {
+	if index < 0 || index >= len(values) {
+		return 0, false
+	}
+	return readFloatFromAny(values[index])
+}
+
+func readFloatFromAny(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		if math.IsNaN(v) {
+			return 0, false
+		}
+		return v, true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f, true
+		}
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
+func readIntFromAny(value any) (int64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return int64(v), true
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	case json.Number:
+		if n, err := v.Int64(); err == nil {
+			return n, true
+		}
+	case string:
+		if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
+}
+
+func abs(value float64) float64 {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func extractDeviceInfo(doc any) DeviceInfo {

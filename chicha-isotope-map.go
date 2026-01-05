@@ -1189,7 +1189,7 @@ func convertRhToSv(markers []database.Marker) []database.Marker {
 func filterZeroMarkers(markers []database.Marker) []database.Marker {
 	filteredMarkers := []database.Marker{}
 	for _, m := range markers {
-		if m.DoseRate == 0 {
+		if m.DoseRate == 0 && m.CountRate == 0 {
 			continue
 		}
 		filteredMarkers = append(filteredMarkers, m)
