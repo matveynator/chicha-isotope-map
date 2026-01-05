@@ -1,0 +1,71 @@
+name: Stable Release
+
+on:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  release:
+    if: contains(github.event.head_commit.message, 'stable release')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: freebsd
+            goarch: amd64
+          - goos: freebsd
+            goarch: arm64
+          - goos: openbsd
+            goarch: amd64
+          - goos: openbsd
+            goarch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build release binaries
+        run: |
+          mkdir -p dist
+          ext=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            ext=".exe"
+          fi
+          outfile="chicha-isotope-map-${{ matrix.goos }}-${{ matrix.goarch }}${ext}"
+          # CGO is disabled so the archives remain portable across target OSes.
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 \
+            go build -trimpath -ldflags="-s -w" -o "dist/${outfile}" .
+
+      - name: Compute release tag
+        id: tag
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          echo "value=stable-${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: Stable Release ${{ steps.tag.outputs.value }}
+          files: dist/*
+          target_commitish: ${{ github.sha }}

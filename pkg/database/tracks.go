@@ -175,13 +175,20 @@ ORDER BY trackID%s;`, strings.Join(conditions, " AND "), limitClause)
 // The API layer uses this to hint clients about the upper bound of the
 // pagination sequence so they can plan how many requests to issue. We count all
 // markers regardless of zoom so archive exports never miss tracks whose data
-// arrived with differing zoom levels.
+// arrived with differing zoom levels, while filtering out realtime and blank
+// IDs so the total matches the paged track summaries.
 func (db *Database) CountTracks(ctx context.Context) (int64, error) {
 	// Counting without zoom filters keeps the archive progress estimates
 	// accurate because every stored measurement contributes to the total
 	// upfront. This follows the proverb "Simplicity is complicated" by
 	// preferring a portable query that still covers all ingestion paths.
-	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID) FROM markers`)
+	// We also exclude realtime-only IDs to keep this count aligned with the
+	// archive and API summary streams.
+	row := db.DB.QueryRowContext(ctx, `SELECT COUNT(DISTINCT trackID)
+FROM markers
+WHERE trackID IS NOT NULL
+  AND trackID <> ''
+  AND trackID NOT LIKE 'live:%'`)
 	var count sql.NullInt64
 	if err := row.Scan(&count); err != nil {
 		return 0, fmt.Errorf("count tracks: %w", err)
@@ -499,14 +506,15 @@ WHERE m.trackID IS NOT NULL AND m.trackID <> ''
 
 // CountTrackIDsUpTo returns how many distinct track IDs are lexicographically
 // less than or equal to the provided ID. We use it to translate string track
-// IDs into stable numeric indices for the API.
+// IDs into stable numeric indices for the API, skipping realtime-only entries
+// so indices align with paged track summaries.
 func (db *Database) CountTrackIDsUpTo(ctx context.Context, trackID, dbType string) (int64, error) {
 	if strings.TrimSpace(trackID) == "" {
 		return 0, nil
 	}
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
-	where := fmt.Sprintf("trackID <= %s", nextPlaceholder())
+	where := fmt.Sprintf("trackID <= %s AND trackID IS NOT NULL AND trackID <> '' AND trackID NOT LIKE 'live:%%'", nextPlaceholder())
 	query := fmt.Sprintf(`SELECT COUNT(*) FROM tracks WHERE %s;`, where)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
@@ -531,7 +539,7 @@ func (db *Database) CountTrackIDsUpTo(ctx context.Context, trackID, dbType strin
 
 // GetTrackIDByIndex resolves a 1-based numeric index to the actual track ID.
 // Returning an empty string keeps HTTP handlers free to decide how to map it
-// to status codes.
+// to status codes, while filtering realtime-only IDs to keep indexes aligned.
 func (db *Database) GetTrackIDByIndex(ctx context.Context, index int64, dbType string) (string, error) {
 	if index <= 0 {
 		return "", fmt.Errorf("index must be positive")
@@ -539,7 +547,12 @@ func (db *Database) GetTrackIDByIndex(ctx context.Context, index int64, dbType s
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
 	offsetPlaceholder := nextPlaceholder()
-	query := fmt.Sprintf(`SELECT trackID FROM tracks ORDER BY trackID LIMIT 1 OFFSET %s;`, offsetPlaceholder)
+	query := fmt.Sprintf(`SELECT trackID FROM tracks
+WHERE trackID IS NOT NULL
+  AND trackID <> ''
+  AND trackID NOT LIKE 'live:%%'
+ORDER BY trackID
+LIMIT 1 OFFSET %s;`, offsetPlaceholder)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -563,12 +576,20 @@ func (db *Database) GetTrackIDByIndex(ctx context.Context, index int64, dbType s
 
 // CountTracksInRange reports how many distinct tracks contain markers inside
 // the provided date window. Handlers expose the number so API users know how
-// many pages exist for the requested period.
+// many pages exist for the requested period, excluding realtime-only IDs so
+// the totals match the paged summary streams.
 func (db *Database) CountTracksInRange(ctx context.Context, from, to int64, dbType string) (int64, error) {
 	nextPlaceholder := newPlaceholderGenerator(dbType)
 	condFrom := fmt.Sprintf("date >= %s", nextPlaceholder())
 	condTo := fmt.Sprintf("date < %s", nextPlaceholder())
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM (SELECT DISTINCT trackID FROM markers WHERE %s AND %s) AS sub;`, condFrom, condTo)
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM (
+  SELECT DISTINCT trackID
+  FROM markers
+  WHERE %s AND %s
+    AND trackID IS NOT NULL
+    AND trackID <> ''
+    AND trackID NOT LIKE 'live:%%'
+) AS sub;`, condFrom, condTo)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
