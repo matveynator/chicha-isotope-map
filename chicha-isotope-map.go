@@ -3925,6 +3925,20 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 		return err
 	}
 	if exists {
+		hasLabel, err := l.db.TrackHasDeviceName(ctx, trackID, l.dbType)
+		if err != nil {
+			return err
+		}
+		if hasLabel {
+			return nil
+		}
+		// We still re-import AtomFast tracks without device labels so we can
+		// update every stored marker once the upstream device name appears.
+		if err := l.requestTrack(ctx, jobs, results, trackID); err == nil {
+			return nil
+		}
+		// If the marker payload fetch fails, fall back to a label-only probe
+		// to keep existing tracks enriched without blocking the loader.
 		return l.ensureTrackDeviceLabel(ctx, trackID)
 	}
 	return l.requestTrack(ctx, jobs, results, trackID)
