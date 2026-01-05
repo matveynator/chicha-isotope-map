@@ -28,6 +28,7 @@ type File struct {
 	FirstID     int64             `json:"firstID"`
 	LastID      int64             `json:"lastID"`
 	MarkerCount int64             `json:"markerCount"`
+	DeviceName  string            `json:"deviceName,omitempty"`
 	Markers     []markerPayload   `json:"markers"`
 	Disclaimers map[string]string `json:"disclaimers"`
 }
@@ -86,9 +87,13 @@ func (f File) ToDatabaseMarkers(defaultTrackID string) ([]database.Marker, datab
 
 	go func(trackID string) {
 		defer close(updates)
+		deviceName := strings.TrimSpace(f.DeviceName)
 		for _, raw := range f.Markers {
 			marker := convertMarker(raw)
 			marker.TrackID = trackID
+			if deviceName != "" {
+				marker.DeviceName = deviceName
+			}
 			updates <- marker
 		}
 	}(strings.TrimSpace(defaultTrackID))

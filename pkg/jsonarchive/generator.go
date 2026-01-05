@@ -604,6 +604,15 @@ func writeTrackJSON(
 	if _, err := fmt.Fprintf(w, "  \"apiURL\": %q,\n", trackjson.TrackAPIPath(summary.TrackID)); err != nil {
 		return time.Time{}, err
 	}
+	deviceName, err := db.GetTrackDeviceName(ctx, summary.TrackID, dbType)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("track %s device name: %w", summary.TrackID, err)
+	}
+	if deviceName != "" {
+		if _, err := fmt.Fprintf(w, "  \"deviceName\": %q,\n", deviceName); err != nil {
+			return time.Time{}, err
+		}
+	}
 	if _, err := fmt.Fprintf(w, "  \"firstID\": %d,\n", summary.FirstID); err != nil {
 		return time.Time{}, err
 	}

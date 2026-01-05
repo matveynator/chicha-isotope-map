@@ -3357,7 +3357,7 @@ func processChichaTrackJSON(
 		}
 
 		markers = append(markers, database.Marker{
-			ID:               item.ID,
+			ID:               0,
 			DoseRate:         dose,
 			Date:             ts,
 			Lon:              item.Lon,
