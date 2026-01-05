@@ -18,6 +18,8 @@ import (
 
 const (
 	mapPageTemplate      = "http://www.atomfast.net/maps/?lat=34.307144&lng=20.742188&z=2&p=%d"
+	mapRecentTemplate    = "http://www.atomfast.net/maps/recent_list/?p=%d&lim=%d"
+	defaultRecentLimit   = 50
 	trackPageTemplate    = "http://www.atomfast.net/maps/show/%s/"
 	trackMarkersTemplate = "http://www.atomfast.net/maps/markers/%s"
 	defaultUserAgent     = "Mozilla/5.0 (compatible; ChichaAtomFast/1.0)"
@@ -71,6 +73,14 @@ type markerRecord struct {
 	T   int64   `json:"t"`
 }
 
+// recentListPayload mirrors the recent_list JSON API that backs the web UI.
+// We only need map IDs, so we keep the shape intentionally small.
+type recentListPayload struct {
+	Maps []struct {
+		ID int `json:"id"`
+	} `json:"maps"`
+}
+
 // NewClient constructs an AtomFast client with conservative timeouts.
 // A dedicated rand source avoids global locking while we add jitter between calls.
 func NewClient() *Client {
@@ -82,12 +92,17 @@ func NewClient() *Client {
 }
 
 // FetchPageTrackIDs loads a paginated AtomFast map page and extracts track IDs.
-// We keep the parser regex-based because the markup is lightweight and avoids
-// pulling in a full HTML parser.
+// The UI is populated via a JSON endpoint, so we use it first and fall back
+// to HTML parsing to stay resilient without extra dependencies.
 func (c *Client) FetchPageTrackIDs(ctx context.Context, page int) ([]string, error) {
 	if page < 1 {
 		page = 1
 	}
+
+	if ids, err := c.fetchRecentTrackIDs(ctx, page, defaultRecentLimit); err == nil && len(ids) > 0 {
+		return ids, nil
+	}
+
 	url := fmt.Sprintf(mapPageTemplate, page)
 	body, err := c.fetch(ctx, url)
 	if err != nil {
@@ -106,6 +121,40 @@ func (c *Client) FetchPageTrackIDs(ctx context.Context, page int) ([]string, err
 			continue
 		}
 		id := strings.TrimSpace(match[1])
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
+// fetchRecentTrackIDs calls the JSON endpoint used by the AtomFast UI so we
+// can read track IDs without running a browser.
+func (c *Client) fetchRecentTrackIDs(ctx context.Context, page, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = defaultRecentLimit
+	}
+	url := fmt.Sprintf(mapRecentTemplate, page, limit)
+	body, err := c.fetch(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("fetch recent list page %d: %w", page, err)
+	}
+
+	var payload recentListPayload
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		return nil, fmt.Errorf("parse recent list page %d: %w", page, err)
+	}
+
+	seen := make(map[string]struct{})
+	ids := make([]string, 0, len(payload.Maps))
+	for _, item := range payload.Maps {
+		id := strings.TrimSpace(fmt.Sprintf("%d", item.ID))
 		if id == "" {
 			continue
 		}
