@@ -70,7 +70,7 @@ func NewClient(cfg Config) *Client {
 	}
 	pageFormat := strings.TrimSpace(cfg.TrackPageFormat)
 	if pageFormat == "" {
-		pageFormat = base + "/maps/track/%s"
+		pageFormat = base + "/maps/show/%s/"
 	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
