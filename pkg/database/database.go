@@ -1368,6 +1368,17 @@ CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
 
+CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS track_devices (
+  trackID     TEXT NOT NULL,
+  device_id   TEXT NOT NULL,
+  PRIMARY KEY (trackID, device_id)
+);
+
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGSERIAL PRIMARY KEY,
   device_id   TEXT,
@@ -1427,6 +1438,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
 
 CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
+);
+
+CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS track_devices (
+  trackID     TEXT NOT NULL,
+  device_id   TEXT NOT NULL,
+  PRIMARY KEY (trackID, device_id)
 );
 
 CREATE TABLE IF NOT EXISTS realtime_measurements (
@@ -1493,6 +1515,17 @@ CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
 
+CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS track_devices (
+  trackID     TEXT NOT NULL,
+  device_id   TEXT NOT NULL,
+  PRIMARY KEY (trackID, device_id)
+);
+
 CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
@@ -1552,6 +1585,16 @@ ORDER BY (trackID, date, id);`,
   trackID     String
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (trackID);`,
+			`CREATE TABLE IF NOT EXISTS devices (
+  device_id   String,
+  model       String
+) ENGINE = MergeTree()
+ORDER BY (device_id);`,
+			`CREATE TABLE IF NOT EXISTS track_devices (
+  trackID     String,
+  device_id   String
+) ENGINE = MergeTree()
+ORDER BY (trackID, device_id);`,
 			`CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          UInt64,
   device_id   String,
@@ -1597,6 +1640,9 @@ ORDER BY (code);`,
 	}
 	if err := db.ensureRealtimeMetadataColumns(cfg.DBType); err != nil {
 		return fmt.Errorf("add realtime metadata column: %w", err)
+	}
+	if err := db.ensureDeviceTables(cfg.DBType); err != nil {
+		return fmt.Errorf("ensure device tables: %w", err)
 	}
 
 	return nil
@@ -1759,6 +1805,55 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 			}
 		}
 		return nil
+	}
+}
+
+// ensureDeviceTables creates the shared device catalog and the track/device
+// association table so loaders can link tracks to the instruments that recorded
+// them without relying on vendor-specific DDL.
+func (db *Database) ensureDeviceTables(dbType string) error {
+	driver := strings.ToLower(dbType)
+	switch driver {
+	case "clickhouse":
+		stmts := []string{
+			`CREATE TABLE IF NOT EXISTS devices (
+  device_id   String,
+  model       String
+) ENGINE = MergeTree()
+ORDER BY (device_id);`,
+			`CREATE TABLE IF NOT EXISTS track_devices (
+  trackID     String,
+  device_id   String
+) ENGINE = MergeTree()
+ORDER BY (trackID, device_id);`,
+		}
+		return execStatements(db.DB, stmts)
+	case "pgx", "duckdb":
+		_, err := db.DB.Exec(`
+CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS track_devices (
+  trackID     TEXT NOT NULL,
+  device_id   TEXT NOT NULL,
+  PRIMARY KEY (trackID, device_id)
+);`)
+		return err
+	default:
+		_, err := db.DB.Exec(`
+CREATE TABLE IF NOT EXISTS devices (
+  device_id   TEXT PRIMARY KEY,
+  model       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS track_devices (
+  trackID     TEXT NOT NULL,
+  device_id   TEXT NOT NULL,
+  PRIMARY KEY (trackID, device_id)
+);`)
+		return err
 	}
 }
 
@@ -1969,9 +2064,9 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 		switch driver {
 		case "pgx":
 			// PostgreSQL: BIGSERIAL fills id, so we only ship the payload columns.
-			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+			sb.WriteString("INSERT INTO markers (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country) VALUES ")
 			argn := 0
-			const cols = 13
+			const cols = 18
 			for j, m := range chunk {
 				if j > 0 {
 					sb.WriteString(",")
@@ -1992,6 +2087,7 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 					m.Detector, m.Radiation,
 					nullableFloat64(m.TemperatureValid, m.Temperature),
 					nullableFloat64(m.HumidityValid, m.Humidity),
+					m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 				)
 			}
 			sb.WriteString(" ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING")
@@ -2006,9 +2102,9 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 				continue
 			}
 
-			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country) VALUES ")
 			argn := 0
-			const cols = 14
+			const cols = 19
 			for j, m := range usable {
 				if j > 0 {
 					sb.WriteString(",")
@@ -2029,14 +2125,15 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 					m.Detector, m.Radiation,
 					nullableFloat64(m.TemperatureValid, m.Temperature),
 					nullableFloat64(m.HumidityValid, m.Humidity),
+					m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 				)
 			}
 
 		default:
 			// SQLite / Chai: keep explicit ids to avoid PRIMARY KEY clashes when aggregating zooms.
-			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+			sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country) VALUES ")
 			argn := 0
-			const cols = 14
+			const cols = 19
 			for j, m := range chunk {
 				if j > 0 {
 					sb.WriteString(",")
@@ -2061,6 +2158,7 @@ func (db *Database) InsertMarkersBulk(ctx context.Context, tx *sql.Tx, markers [
 					m.Detector, m.Radiation,
 					nullableFloat64(m.TemperatureValid, m.Temperature),
 					nullableFloat64(m.HumidityValid, m.Humidity),
+					m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 				)
 			}
 			sb.WriteString(" ON CONFLICT DO NOTHING")
@@ -2279,11 +2377,11 @@ func (db *Database) insertMarkersSingleStatement(ctx context.Context, exec sqlEx
 	}
 
 	var sb strings.Builder
-	args := make([]interface{}, 0, len(markers)*14)
+	args := make([]interface{}, 0, len(markers)*19)
 
 	switch driver {
 	case "duckdb":
-		sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+		sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country) VALUES ")
 		for i, m := range markers {
 			if i > 0 {
 				sb.WriteString(",")
@@ -2293,7 +2391,7 @@ func (db *Database) insertMarkersSingleStatement(ctx context.Context, exec sqlEx
 				markers[i].ID = m.ID
 			}
 			sb.WriteString("(")
-			for k := 0; k < 14; k++ {
+			for k := 0; k < 19; k++ {
 				if k > 0 {
 					sb.WriteString(",")
 				}
@@ -2307,11 +2405,12 @@ func (db *Database) insertMarkersSingleStatement(ctx context.Context, exec sqlEx
 				m.Detector, m.Radiation,
 				nullableFloat64(m.TemperatureValid, m.Temperature),
 				nullableFloat64(m.HumidityValid, m.Humidity),
+				m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			)
 		}
 		sb.WriteString(" ON CONFLICT DO NOTHING")
 	case "clickhouse":
-		sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity) VALUES ")
+		sb.WriteString("INSERT INTO markers (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country) VALUES ")
 		for i, m := range markers {
 			if i > 0 {
 				sb.WriteString(",")
@@ -2321,7 +2420,7 @@ func (db *Database) insertMarkersSingleStatement(ctx context.Context, exec sqlEx
 				markers[i].ID = m.ID
 			}
 			sb.WriteString("(")
-			for k := 0; k < 14; k++ {
+			for k := 0; k < 19; k++ {
 				if k > 0 {
 					sb.WriteString(",")
 				}
@@ -2335,6 +2434,7 @@ func (db *Database) insertMarkersSingleStatement(ctx context.Context, exec sqlEx
 				m.Detector, m.Radiation,
 				nullableFloat64(m.TemperatureValid, m.Temperature),
 				nullableFloat64(m.HumidityValid, m.Humidity),
+				m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country,
 			)
 		}
 	default:
@@ -2475,15 +2575,16 @@ func (db *Database) SaveMarkerAtomic(
 	case "pgx":
 		_, err := exec.ExecContext(ctx, `
 INSERT INTO markers
-      (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      (doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 			m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
 			nullableFloat64(m.AltitudeValid, m.Altitude),
 			m.Detector, m.Radiation,
 			nullableFloat64(m.TemperatureValid, m.Temperature),
-			nullableFloat64(m.HumidityValid, m.Humidity))
+			nullableFloat64(m.HumidityValid, m.Humidity),
+			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country)
 		return err
 
 	case "clickhouse":
@@ -2499,14 +2600,15 @@ ON CONFLICT ON CONSTRAINT markers_unique DO NOTHING`,
 		}
 		_, err = exec.ExecContext(ctx, `
 INSERT INTO markers
-      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
 			nullableFloat64(m.AltitudeValid, m.Altitude),
 			m.Detector, m.Radiation,
 			nullableFloat64(m.TemperatureValid, m.Temperature),
-			nullableFloat64(m.HumidityValid, m.Humidity))
+			nullableFloat64(m.HumidityValid, m.Humidity),
+			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country)
 		return err
 
 		// ─────────────────────── SQLite / Chai / другие ─────────
@@ -2517,15 +2619,16 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		}
 		_, err := exec.ExecContext(ctx, `
 INSERT INTO markers
-      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      (id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,altitude,detector,radiation,temperature,humidity,device_id,transport,device_name,tube,country)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT DO NOTHING`,
 			m.ID, m.DoseRate, m.Date, m.Lon, m.Lat,
 			m.CountRate, m.Zoom, m.Speed, m.TrackID,
 			nullableFloat64(m.AltitudeValid, m.Altitude),
 			m.Detector, m.Radiation,
 			nullableFloat64(m.TemperatureValid, m.Temperature),
-			nullableFloat64(m.HumidityValid, m.Humidity))
+			nullableFloat64(m.HumidityValid, m.Humidity),
+			m.DeviceID, m.Transport, m.DeviceName, m.Tube, m.Country)
 		if driver == "duckdb" && duckDBIsConflict(err) {
 			// DuckDB occasionally reports constraint violations even when ON CONFLICT is
 			// present. We treat those as benign so imports do not halt on duplicates.
@@ -3279,7 +3382,12 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
                                      COALESCE(detector, '') AS detector,
                                      COALESCE(radiation, '') AS radiation,
                                      COALESCE(temperature, 0) AS temperature,
-                                     COALESCE(humidity, 0) AS humidity
+                                     COALESCE(humidity, 0) AS humidity,
+                                     COALESCE(device_id, '') AS device_id,
+                                     COALESCE(transport, '') AS transport,
+                                     COALESCE(device_name, '') AS device_name,
+                                     COALESCE(tube, '') AS tube,
+                                     COALESCE(country, '') AS country
                               FROM markers WHERE %s AND trackID = %s
                               ORDER BY date;`, whereClause, placeholder(dbType, len(baseArgs)+1))
 				perTrackArgs := append(append([]interface{}{}, baseArgs...), trackID)
@@ -3291,7 +3399,8 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 					var m Marker
 					if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
 						&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-						&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+						&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity,
+						&m.DeviceID, &m.Transport, &m.DeviceName, &m.Tube, &m.Country); err != nil {
 						rows.Close()
 						return fmt.Errorf("scan markers: %w", err)
 					}
@@ -3411,7 +3520,12 @@ func (db *Database) queryMarkers(ctx context.Context, where string, args []inter
                                      COALESCE(detector, '') AS detector,
                                      COALESCE(radiation, '') AS radiation,
                                      COALESCE(temperature, 0) AS temperature,
-                                     COALESCE(humidity, 0) AS humidity
+                                     COALESCE(humidity, 0) AS humidity,
+                                     COALESCE(device_id, '') AS device_id,
+                                     COALESCE(transport, '') AS transport,
+                                     COALESCE(device_name, '') AS device_name,
+                                     COALESCE(tube, '') AS tube,
+                                     COALESCE(country, '') AS country
                               FROM markers WHERE %s;`, where)
 
 	var out []Marker
@@ -3436,7 +3550,8 @@ func (db *Database) queryMarkers(ctx context.Context, where string, args []inter
 			var m Marker
 			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat,
 				&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
-				&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity); err != nil {
+				&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity,
+				&m.DeviceID, &m.Transport, &m.DeviceName, &m.Tube, &m.Country); err != nil {
 				return fmt.Errorf("scan markers: %w", err)
 			}
 			out = append(out, m)

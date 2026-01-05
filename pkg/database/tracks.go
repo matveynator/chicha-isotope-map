@@ -192,6 +192,31 @@ func (db *Database) CountTracks(ctx context.Context) (int64, error) {
 	return count.Int64, nil
 }
 
+// TrackExists checks whether a track identifier already exists in the registry
+// table. We keep it lightweight so loaders can avoid duplicate network fetches.
+func (db *Database) TrackExists(ctx context.Context, trackID, dbType string) (bool, error) {
+	if db == nil || db.DB == nil {
+		return false, fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	query := fmt.Sprintf("SELECT 1 FROM tracks WHERE trackID = %s LIMIT 1", placeholder(dbType, 1))
+	var one int
+	err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("track exists: %w", err)
+	}
+	return true, nil
+}
+
 // GetTrackSummary returns metadata for a single track.
 // Keeping this function tiny lets the HTTP handler reuse the information
 // for range validation without duplicating SQL statements.
