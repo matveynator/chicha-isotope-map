@@ -2579,17 +2579,9 @@ func processRCTRKFile(
 			return bbox, storedTrackID, err
 		}
 		if deviceName != "" {
-			// Re-check after insert so duplicate uploads can backfill missing labels.
-			// We query the DB because inserts may be skipped by ON CONFLICT when the
-			// track already exists, leaving older rows without device names.
-			hasLabel, err := db.TrackHasDeviceName(context.Background(), storedTrackID, dbType)
-			if err != nil {
+			// Fill missing labels after insert because ON CONFLICT can skip rows on duplicates.
+			if err := db.FillMissingTrackDeviceName(context.Background(), storedTrackID, deviceName, dbType); err != nil {
 				return bbox, storedTrackID, err
-			}
-			if !hasLabel {
-				if err := db.UpdateTrackDeviceName(context.Background(), storedTrackID, deviceName, dbType); err != nil {
-					return bbox, storedTrackID, err
-				}
 			}
 		}
 		return bbox, storedTrackID, nil
