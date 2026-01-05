@@ -75,7 +75,7 @@ func NewClient(cfg Config) *Client {
 	}
 	pageFormat := strings.TrimSpace(cfg.TrackPageFormat)
 	if pageFormat == "" {
-		pageFormat = base + "/maps/show/%s/"
+		pageFormat = base + "/maps/show/%s/?lat=0&lng=0&z=1"
 	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
@@ -965,6 +965,7 @@ func searchDeviceInfo(node any, depth int) DeviceInfo {
 
 func extractDeviceInfoFromHTML(html string) DeviceInfo {
 	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)devices?\s*:\s*([^<\n]+)`),
 		regexp.MustCompile(`(?i)(?:device|detector|model|device model|модель|устройство)[^:]*:\s*([^<\n]+)`),
 		regexp.MustCompile(`(?i)(?:device|detector|model|модель|устройство)\s*</[^>]+>\s*([^<\n]+)`),
 	}

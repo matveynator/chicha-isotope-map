@@ -87,7 +87,7 @@ var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center init
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
 var atomfastEnabled = flag.Bool("atomfast-loader", true, "Enable sequential AtomFast track ingestion and refresh polling")
 var atomfastBaseURL = flag.String("atomfast-base-url", "http://www.atomfast.net", "AtomFast base URL for list and marker endpoints")
-var atomfastTrackPage = flag.String("atomfast-track-page", "/maps/show/%s/", "AtomFast track page path for device scraping")
+var atomfastTrackPage = flag.String("atomfast-track-page", "/maps/show/%s/?lat=0&lng=0&z=1", "AtomFast track page path for device scraping")
 var atomfastPageLimit = flag.Int("atomfast-page-limit", 20, "AtomFast list page size")
 var atomfastDelayMin = flag.Duration("atomfast-delay-min", 500*time.Millisecond, "Minimum delay between AtomFast HTTP requests")
 var atomfastDelayMax = flag.Duration("atomfast-delay-max", 1500*time.Millisecond, "Maximum delay between AtomFast HTTP requests")
