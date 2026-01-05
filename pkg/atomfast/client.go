@@ -390,6 +390,10 @@ func decodeJSON(body []byte) (any, error) {
 }
 
 func extractMarkers(doc any) ([]database.Marker, error) {
+	if markers := parseColumnarMarkers(doc); len(markers) > 0 {
+		return markers, nil
+	}
+
 	entries := findMarkerEntries(doc, 0)
 	if len(entries) == 0 {
 		return nil, errors.New("atomfast: no markers found")
@@ -772,6 +776,145 @@ func abs(value float64) float64 {
 		return -value
 	}
 	return value
+}
+
+// parseColumnarMarkers handles payloads where marker attributes are columnar arrays
+// (e.g. lat[], lon[], time[]). The helper keeps parsing fast and avoids extra
+// allocations by iterating only to the shortest slice length.
+func parseColumnarMarkers(doc any) []database.Marker {
+	root, ok := doc.(map[string]any)
+	if !ok {
+		return nil
+	}
+	if markers := parseColumnarMarkersMap(root); len(markers) > 0 {
+		return markers
+	}
+	if nested, ok := root["markers"].(map[string]any); ok {
+		return parseColumnarMarkersMap(nested)
+	}
+	return nil
+}
+
+func parseColumnarMarkersMap(m map[string]any) []database.Marker {
+	lat := readFloatSlice(m, "lat", "latitude", "y")
+	lon := readFloatSlice(m, "lon", "lng", "longitude", "x")
+	if len(lat) == 0 || len(lon) == 0 {
+		return nil
+	}
+	times := readIntSlice(m, "time", "timestamp", "date", "datetime", "ts", "time_unix", "timeUnix")
+	dose := readFloatSlice(m, "dose", "doseRate", "dose_rate", "sv", "usvh", "svh")
+	count := readFloatSlice(m, "countRate", "count_rate", "cps", "cpm")
+	altitude := readFloatSlice(m, "altitude", "alt", "height")
+	temperature := readFloatSlice(m, "temperature", "temp", "temp_c")
+	humidity := readFloatSlice(m, "humidity", "hum", "humidity_percent")
+
+	n := minIntSlice(len(lat), len(lon), len(times))
+	if n == 0 {
+		return nil
+	}
+
+	markers := make([]database.Marker, 0, n)
+	for i := 0; i < n; i++ {
+		ts := normalizeTimestamp(times[i])
+		if ts == 0 {
+			continue
+		}
+		m := database.Marker{
+			Lat:         lat[i],
+			Lon:         lon[i],
+			Date:        ts,
+			DoseRate:    valueAt(dose, i),
+			CountRate:   valueAt(count, i),
+			Altitude:    valueAt(altitude, i),
+			Temperature: valueAt(temperature, i),
+			Humidity:    valueAt(humidity, i),
+			Zoom:        0,
+		}
+		if i < len(altitude) {
+			m.AltitudeValid = true
+		}
+		if i < len(temperature) {
+			m.TemperatureValid = true
+		}
+		if i < len(humidity) {
+			m.HumidityValid = true
+		}
+		markers = append(markers, m)
+	}
+	return markers
+}
+
+func readFloatSlice(m map[string]any, keys ...string) []float64 {
+	for _, key := range keys {
+		if raw, ok := m[key]; ok {
+			if vals := readFloatSliceFromAny(raw); len(vals) > 0 {
+				return vals
+			}
+		}
+	}
+	return nil
+}
+
+func readFloatSliceFromAny(raw any) []float64 {
+	values, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]float64, 0, len(values))
+	for _, entry := range values {
+		if f, ok := readFloatFromAny(entry); ok {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func readIntSlice(m map[string]any, keys ...string) []int64 {
+	for _, key := range keys {
+		if raw, ok := m[key]; ok {
+			if vals := readIntSliceFromAny(raw); len(vals) > 0 {
+				return vals
+			}
+		}
+	}
+	return nil
+}
+
+func readIntSliceFromAny(raw any) []int64 {
+	values, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]int64, 0, len(values))
+	for _, entry := range values {
+		if n, ok := readIntFromAny(entry); ok {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func minIntSlice(values ...int) int {
+	if len(values) == 0 {
+		return 0
+	}
+	min := values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+	}
+	if min < 0 {
+		return 0
+	}
+	return min
+}
+
+func valueAt(values []float64, index int) float64 {
+	if index >= 0 && index < len(values) {
+		return values[index]
+	}
+	return 0
 }
 
 func extractDeviceInfo(doc any) DeviceInfo {
