@@ -180,7 +180,7 @@ func (c *Client) fetchBody(ctx context.Context, endpoint string, wantJSON bool) 
 		return nil, err
 	}
 	if wantJSON {
-		req.Header.Set("Accept", "application/json, text/plain, */*")
+		req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	} else {
 		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -327,7 +327,7 @@ func findTrackIDs(doc any) []string {
 	case []any:
 		return idsFromSlice(val)
 	case map[string]any:
-		for _, key := range []string{"data", "list", "tracks", "items", "results"} {
+		for _, key := range []string{"maps", "data", "list", "tracks", "items", "results"} {
 			if raw, ok := val[key]; ok {
 				if ids := findTrackIDs(raw); len(ids) > 0 {
 					return ids
