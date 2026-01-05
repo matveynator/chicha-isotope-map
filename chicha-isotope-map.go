@@ -3254,6 +3254,7 @@ func processChichaTrackJSON(
 			DetectorName   string   `json:"detectorName"`
 			DetectorType   string   `json:"detectorType"`
 			RadiationTypes []string `json:"radiationTypes"`
+			DeviceName     string   `json:"deviceName"`
 		} `json:"track"`
 		Markers []struct {
 			ID                 int64    `json:"id"`
@@ -3291,6 +3292,7 @@ func processChichaTrackJSON(
 	defaultDetectorType := strings.TrimSpace(payload.Track.DetectorType)
 	defaultDetectorName := strings.TrimSpace(payload.Track.DetectorName)
 	defaultRadiation := normalizeRadiationList(payload.Track.RadiationTypes)
+	defaultDeviceName := strings.TrimSpace(payload.Track.DeviceName)
 
 	markers := make([]database.Marker, 0, len(payload.Markers))
 	for _, item := range payload.Markers {
@@ -3329,6 +3331,8 @@ func processChichaTrackJSON(
 			radiationList = defaultRadiation
 		}
 
+		deviceName := strings.TrimSpace(defaultDeviceName)
+
 		var altitude float64
 		var altitudeValid bool
 		if item.AltitudeM != nil {
@@ -3361,6 +3365,7 @@ func processChichaTrackJSON(
 			Humidity:         humidity,
 			Detector:         detector,
 			Radiation:        strings.Join(radiationList, ","),
+			DeviceName:       deviceName,
 			AltitudeValid:    altitudeValid,
 			TemperatureValid: temperatureValid,
 			HumidityValid:    humidityValid,

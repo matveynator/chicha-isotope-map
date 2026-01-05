@@ -970,6 +970,11 @@ func (h *Handler) buildTrackDataJSON(ctx context.Context, trackID string) ([]byt
 		return nil, newAPIError(http.StatusNotFound, "track not found", "", nil)
 	}
 
+	deviceName, err := h.DB.GetTrackDeviceName(ctx, trackID, h.DBType)
+	if err != nil {
+		return nil, newAPIError(http.StatusInternalServerError, "device name error", fmt.Sprintf("track %s device name error", trackID), err)
+	}
+
 	trackIndex, err := h.DB.CountTrackIDsUpTo(ctx, trackID, h.DBType)
 	if err != nil {
 		return nil, newAPIError(http.StatusInternalServerError, "track index error", fmt.Sprintf("track %s index error", trackID), err)
@@ -1005,6 +1010,7 @@ func (h *Handler) buildTrackDataJSON(ctx context.Context, trackID string) ([]byt
 		FirstID     int64                     `json:"firstID"`
 		LastID      int64                     `json:"lastID"`
 		MarkerCount int64                     `json:"markerCount"`
+		DeviceName  string                    `json:"deviceName,omitempty"`
 		Markers     []trackjson.MarkerPayload `json:"markers"`
 		Disclaimers map[string]string         `json:"disclaimers"`
 	}{
@@ -1014,6 +1020,7 @@ func (h *Handler) buildTrackDataJSON(ctx context.Context, trackID string) ([]byt
 		FirstID:     summary.FirstID,
 		LastID:      summary.LastID,
 		MarkerCount: summary.MarkerCount,
+		DeviceName:  deviceName,
 		Markers:     markers,
 		Disclaimers: trackjson.Disclaimers,
 	}

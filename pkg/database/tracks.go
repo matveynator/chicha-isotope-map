@@ -445,6 +445,35 @@ func (db *Database) TrackHasDeviceName(ctx context.Context, trackID, dbType stri
 	return true, nil
 }
 
+// GetTrackDeviceName returns the first non-empty device name for a track so
+// exports can attach a track-level instrument label.
+func (db *Database) GetTrackDeviceName(ctx context.Context, trackID, dbType string) (string, error) {
+	if db == nil || db.DB == nil {
+		return "", fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return "", nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := placeholder(dbType, 1)
+	query := fmt.Sprintf(`SELECT device_name FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
+	var name sql.NullString
+	if err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&name); err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("track device name: %w", err)
+	}
+	if !name.Valid {
+		return "", nil
+	}
+	return strings.TrimSpace(name.String), nil
+}
+
 // backfillTracksTable refreshes the tracks registry from existing markers so
 // older databases inherit the faster pagination path without manual scripts.
 // The operation is idempotent thanks to the NOT EXISTS guard above the SELECT
