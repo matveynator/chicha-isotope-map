@@ -2523,26 +2523,6 @@ func applyDeviceNameToMarkers(markers []database.Marker, deviceName string) {
 	}
 }
 
-// rctrkProbeTrackDeviceState checks for an existing track before we insert new markers.
-// This avoids "self-satisfying" lookups where the new rows mask missing labels.
-func rctrkProbeTrackDeviceState(
-	ctx context.Context,
-	db *database.Database,
-	markers []database.Marker,
-	dbType string,
-) (string, bool, error) {
-	probe := pickIdentityProbe(markers, 128)
-	existing, err := db.DetectExistingTrackID(probe, 10, dbType)
-	if err != nil || existing == "" {
-		return existing, false, err
-	}
-	hasLabel, err := db.TrackHasDeviceName(ctx, existing, dbType)
-	if err != nil {
-		return existing, false, err
-	}
-	return existing, hasLabel, nil
-}
-
 // -----------------------------------------------------------------------------
 // processRCTRKFile — принимает *.rctrk (Radiacode) в JSON- или текстовом виде.
 // Поддерживает оба признака единиц: "sv" (новый Android) и "isSievert" (старый iOS).
@@ -2589,16 +2569,8 @@ func processRCTRKFile(
 		}
 
 		deviceName := rctrkDeviceLabel(data.Devices)
-		existingTrackID := ""
-		existingHasLabel := false
 		if deviceName != "" {
 			logT(trackID, "RCTRK", "device name: %s", deviceName)
-			probedTrackID, hasLabel, err := rctrkProbeTrackDeviceState(context.Background(), db, data.Markers, dbType)
-			if err != nil {
-				return database.Bounds{}, trackID, err
-			}
-			existingTrackID = probedTrackID
-			existingHasLabel = hasLabel
 			applyDeviceNameToMarkers(data.Markers, deviceName)
 		}
 
@@ -2606,9 +2578,18 @@ func processRCTRKFile(
 		if err != nil {
 			return bbox, storedTrackID, err
 		}
-		if deviceName != "" && existingTrackID != "" && !existingHasLabel {
-			if err := db.UpdateTrackDeviceName(context.Background(), storedTrackID, deviceName, dbType); err != nil {
+		if deviceName != "" {
+			// Re-check after insert so duplicate uploads can backfill missing labels.
+			// We query the DB because inserts may be skipped by ON CONFLICT when the
+			// track already exists, leaving older rows without device names.
+			hasLabel, err := db.TrackHasDeviceName(context.Background(), storedTrackID, dbType)
+			if err != nil {
 				return bbox, storedTrackID, err
+			}
+			if !hasLabel {
+				if err := db.UpdateTrackDeviceName(context.Background(), storedTrackID, deviceName, dbType); err != nil {
+					return bbox, storedTrackID, err
+				}
 			}
 		}
 		return bbox, storedTrackID, nil
