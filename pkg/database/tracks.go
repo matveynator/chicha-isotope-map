@@ -38,6 +38,81 @@ func (db *Database) StreamTrackSummariesByDateRange(
 	return db.streamTrackSummaries(ctx, startAfter, limit, dbType, true, from, to)
 }
 
+// ============================
+// Latest track lookup helpers
+// ============================
+
+// StreamLatestTrackSummaries streams the most recently added tracks based on
+// their newest marker timestamp. We keep the same channel-based contract so
+// callers can respond progressively without blocking.
+func (db *Database) StreamLatestTrackSummaries(
+	ctx context.Context,
+	limit int,
+	dbType string,
+) (<-chan TrackSummary, <-chan error) {
+	results := make(chan TrackSummary)
+	errs := make(chan error, 1)
+
+	go func() {
+		defer close(results)
+		defer close(errs)
+
+		if db == nil || db.DB == nil {
+			errs <- fmt.Errorf("database unavailable")
+			return
+		}
+
+		if limit <= 0 {
+			limit = 1
+		}
+		if limit > 500 {
+			limit = 500
+		}
+
+		nextPlaceholder := newPlaceholderGenerator(dbType)
+		trackNotLike := nextPlaceholder()
+		limitPlaceholder := nextPlaceholder()
+
+		query := fmt.Sprintf(`SELECT trackID, MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
+FROM markers
+WHERE trackID NOT LIKE %s
+GROUP BY trackID
+ORDER BY MAX(date) DESC
+LIMIT %s;`, trackNotLike, limitPlaceholder)
+
+		rows, err := db.DB.QueryContext(ctx, query, "live:%", limit)
+		if err != nil {
+			errs <- fmt.Errorf("list latest tracks: %w", err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var summary TrackSummary
+			if err := rows.Scan(&summary.TrackID, &summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
+				errs <- fmt.Errorf("scan latest track summary: %w", err)
+				return
+			}
+
+			select {
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			case results <- summary:
+			}
+		}
+
+		if err := rows.Err(); err != nil {
+			errs <- fmt.Errorf("iterate latest track summaries: %w", err)
+			return
+		}
+
+		errs <- nil
+	}()
+
+	return results, errs
+}
+
 // streamTrackSummaries performs the actual query and pushes rows over
 // channels so handlers can encode responses progressively.
 func (db *Database) streamTrackSummaries(

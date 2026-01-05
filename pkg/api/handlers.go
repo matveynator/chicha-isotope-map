@@ -300,8 +300,8 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 			"latestNearby": map[string]any{
 				"method":      "GET",
 				"path":        "/api/latest",
-				"query":       []string{"lat", "lon", "radius_m", "limit"},
-				"description": "Returns the newest measurements near the provided coordinates within the requested radius in metres.",
+				"query":       []string{"lat (optional)", "lon (optional)", "radius_m", "limit"},
+				"description": "Returns newest measurements near provided coordinates within the requested radius in metres. When coordinates are omitted, it returns the most recently added tracks instead.",
 			},
 			"listTracks": map[string]any{
 				"method":      "GET",
@@ -396,11 +396,61 @@ func (h *Handler) handleLatestNearby(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	latRaw := strings.TrimSpace(query.Get("lat"))
 	lonRaw := strings.TrimSpace(query.Get("lon"))
-	if latRaw == "" || lonRaw == "" {
-		http.Error(w, "lat and lon are required", http.StatusBadRequest)
+	hasLat := latRaw != ""
+	hasLon := lonRaw != ""
+
+	// ------------------------------
+	// Latest tracks without geo data
+	// ------------------------------
+	if !hasLat && !hasLon {
+		limit := clampInt(parseIntDefault(strings.TrimSpace(query.Get("limit")), 200), 1, 200)
+
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+
+		tracksCh, errCh := h.DB.StreamLatestTrackSummaries(ctx, limit, h.DBType)
+		summaries, _, err := collectTrackSummaries(ctx, tracksCh, errCh, limit)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				http.Error(w, "request cancelled", http.StatusRequestTimeout)
+				return
+			}
+			http.Error(w, "latest lookup failed", http.StatusInternalServerError)
+			if h.Logf != nil {
+				h.Logf("latest tracks error: %v", err)
+			}
+			return
+		}
+
+		// We attach API URLs here to keep the query simple and avoid extra SQL.
+		for i := range summaries {
+			summaries[i].APIURL = trackjson.TrackAPIPath(summaries[i].TrackID)
+		}
+
+		resp := struct {
+			Limit       int                     `json:"limit"`
+			Returned    int                     `json:"returned"`
+			Tracks      []database.TrackSummary `json:"tracks"`
+			Disclaimers map[string]string       `json:"disclaimers"`
+		}{
+			Limit:       limit,
+			Returned:    len(summaries),
+			Tracks:      summaries,
+			Disclaimers: trackjson.CopyDisclaimers(),
+		}
+
+		h.respondJSON(w, resp)
 		return
 	}
 
+	if hasLat != hasLon {
+		http.Error(w, "lat and lon are required together", http.StatusBadRequest)
+		return
+	}
+
+	// ----------------------------
+	// Latest markers near a center
+	// ----------------------------
 	lat, err := strconv.ParseFloat(latRaw, 64)
 	if err != nil {
 		http.Error(w, "invalid lat", http.StatusBadRequest)
