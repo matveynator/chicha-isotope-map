@@ -2806,6 +2806,12 @@ func processTrackExportReader(
 		trackID = parsedTrackID
 	}
 
+	deviceName := strings.TrimSpace(payload.DeviceName)
+	if deviceName != "" {
+		// Logging the device name here keeps export imports observable before we touch the DB.
+		logT(trackID, "Export", "device name: %s", deviceName)
+	}
+
 	// Ignore live-only exports because they belong to the realtime cache.
 	// Skipping them keeps weekly archives from stalling on transient snapshots
 	// while the map still renders live points directly from the realtime table.
