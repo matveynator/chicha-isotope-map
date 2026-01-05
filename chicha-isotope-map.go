@@ -14,10 +14,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha1"
 	"crypto/tls"
 	"database/sql"
 	"embed"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -49,6 +51,7 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/api"
+	"chicha-isotope-map/pkg/atomfast"
 	"chicha-isotope-map/pkg/cimimport"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
@@ -82,6 +85,13 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+var atomfastEnabled = flag.Bool("atomfast-loader", true, "Enable sequential AtomFast track ingestion and refresh polling")
+var atomfastBaseURL = flag.String("atomfast-base-url", "http://www.atomfast.net", "AtomFast base URL for list and marker endpoints")
+var atomfastTrackPage = flag.String("atomfast-track-page", "/maps/show/%s/", "AtomFast track page path for device scraping")
+var atomfastPageLimit = flag.Int("atomfast-page-limit", 20, "AtomFast list page size")
+var atomfastDelayMin = flag.Duration("atomfast-delay-min", 2*time.Second, "Minimum delay between AtomFast HTTP requests")
+var atomfastDelayMax = flag.Duration("atomfast-delay-max", 6*time.Second, "Maximum delay between AtomFast HTTP requests")
+var atomfastPollInterval = flag.Duration("atomfast-poll-interval", 30*time.Minute, "Polling interval for new AtomFast tracks")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of exported JSON files, log progress, and exit once finished. Example: https://pelora.org/api/json/weekly.tgz")
@@ -135,6 +145,7 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "logo-path", "logo-link", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
+	{Title: "AtomFast loader", Flags: []string{"atomfast-loader", "atomfast-base-url", "atomfast-track-page", "atomfast-page-limit", "atomfast-delay-min", "atomfast-delay-max", "atomfast-poll-interval"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
@@ -3509,6 +3520,29 @@ func processAndStoreMarkersWithContext(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, error) {
+	return processAndStoreMarkersWithContextOptions(ctx, markers, initTrackID, db, dbType, true)
+}
+
+// processAndStoreMarkersWithContextFixedID stores markers without probing for
+// an existing track ID so external loaders can preserve the upstream identity.
+func processAndStoreMarkersWithContextFixedID(
+	ctx context.Context,
+	markers []database.Marker,
+	initTrackID string,
+	db *database.Database,
+	dbType string,
+) (database.Bounds, string, error) {
+	return processAndStoreMarkersWithContextOptions(ctx, markers, initTrackID, db, dbType, false)
+}
+
+func processAndStoreMarkersWithContextOptions(
+	ctx context.Context,
+	markers []database.Marker,
+	initTrackID string,
+	db *database.Database,
+	dbType string,
+	probeExisting bool,
+) (database.Bounds, string, error) {
 
 	// ── step 0: bounding box (cheap) ────────────────────────────────
 	bbox := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
@@ -3537,15 +3571,18 @@ func processAndStoreMarkersWithContext(
 	if err := observeContext(ctx); err != nil {
 		return bbox, trackID, err
 	}
-
-	probe := pickIdentityProbe(markers, 128)
-	if existing, err := db.DetectExistingTrackID(probe, 10, dbType); err != nil {
-		return bbox, trackID, err
-	} else if existing != "" {
-		logT(trackID, "Store", "⚠ detected existing trackID %s — reusing", existing)
-		trackID = existing
+	if probeExisting {
+		probe := pickIdentityProbe(markers, 128)
+		if existing, err := db.DetectExistingTrackID(probe, 10, dbType); err != nil {
+			return bbox, trackID, err
+		} else if existing != "" {
+			logT(trackID, "Store", "⚠ detected existing trackID %s — reusing", existing)
+			trackID = existing
+		} else {
+			logT(trackID, "Store", "unique track, proceed with new trackID")
+		}
 	} else {
-		logT(trackID, "Store", "unique track, proceed with new trackID")
+		logT(trackID, "Store", "skip duplicate probe; preserving upstream track ID")
 	}
 
 	// ── step 2: attach FINAL TrackID ────────────────────────────────
@@ -3660,6 +3697,320 @@ func processAndStoreMarkersWithContext(
 
 	logT(trackID, "Store", "✔ stored (new %d markers)", len(allZoom))
 	return bbox, trackID, nil
+}
+
+// =====================
+// AtomFast loader
+// =====================
+
+// atomfastLoader wires the AtomFast client into the existing ingestion pipeline
+// while keeping requests sequential and spaced out to mimic human browsing.
+type atomfastLoader struct {
+	client       *atomfast.Client
+	db           *database.Database
+	dbType       string
+	logf         func(string, ...any)
+	minDelay     time.Duration
+	maxDelay     time.Duration
+	pollInterval time.Duration
+	rng          *rand.Rand
+}
+
+type atomfastJobKind int
+
+const (
+	atomfastJobPage atomfastJobKind = iota
+	atomfastJobTrack
+)
+
+type atomfastJob struct {
+	kind    atomfastJobKind
+	page    int
+	trackID string
+}
+
+type atomfastResult struct {
+	job   atomfastJob
+	ids   []string
+	track atomfast.TrackData
+	err   error
+}
+
+func startAtomFastLoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
+	if !*atomfastEnabled {
+		logf("atomfast loader disabled: set -atomfast-loader to enable")
+		return
+	}
+
+	base := strings.TrimRight(strings.TrimSpace(*atomfastBaseURL), "/")
+	trackPage := strings.TrimSpace(*atomfastTrackPage)
+	if trackPage != "" && strings.HasPrefix(trackPage, "/") {
+		trackPage = base + trackPage
+	}
+
+	client := atomfast.NewClient(atomfast.Config{
+		BaseURL:         base,
+		PageLimit:       *atomfastPageLimit,
+		TrackPageFormat: trackPage,
+	})
+
+	minDelay := *atomfastDelayMin
+	maxDelay := *atomfastDelayMax
+	if minDelay < 0 {
+		minDelay = 0
+	}
+	if maxDelay < minDelay {
+		maxDelay = minDelay
+	}
+
+	loader := &atomfastLoader{
+		client:       client,
+		db:           db,
+		dbType:       dbType,
+		logf:         logf,
+		minDelay:     minDelay,
+		maxDelay:     maxDelay,
+		pollInterval: *atomfastPollInterval,
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+
+	go loader.run(ctx)
+}
+
+func (l *atomfastLoader) run(ctx context.Context) {
+	jobs := make(chan atomfastJob)
+	results := make(chan atomfastResult)
+
+	go l.worker(ctx, jobs, results)
+
+	if err := l.runInitial(ctx, jobs, results); err != nil {
+		l.logf("atomfast initial load stopped: %v", err)
+	}
+
+	interval := l.pollInterval
+	if interval <= 0 {
+		interval = 30 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := l.runRefresh(ctx, jobs, results); err != nil {
+				l.logf("atomfast refresh stopped: %v", err)
+			}
+		}
+	}
+}
+
+func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, results chan<- atomfastResult) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-jobs:
+			switch job.kind {
+			case atomfastJobPage:
+				ids, err := l.client.FetchRecentIDs(ctx, job.page)
+				if delayErr := l.sleepBetween(ctx); err == nil {
+					err = delayErr
+				}
+				results <- atomfastResult{job: job, ids: ids, err: err}
+			case atomfastJobTrack:
+				track, err := l.client.FetchTrack(ctx, job.trackID)
+				if err == nil {
+					err = l.storeTrack(ctx, track)
+				}
+				if delayErr := l.sleepBetween(ctx); err == nil {
+					err = delayErr
+				}
+				results <- atomfastResult{job: job, track: track, err: err}
+			}
+		}
+	}
+}
+
+func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
+	l.logf("atomfast initial load: start")
+	for page := 1; ; page++ {
+		ids, err := l.requestPage(ctx, jobs, results, page)
+		if err != nil {
+			return err
+		}
+		if page == 1 && len(ids) == 0 {
+			return fmt.Errorf("atomfast initial load: empty list on first page")
+		}
+		if len(ids) == 0 {
+			break
+		}
+		for _, id := range ids {
+			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
+				l.logf("atomfast initial track %s skipped: %v", id, err)
+			}
+		}
+	}
+	l.logf("atomfast initial load: done")
+	return nil
+}
+
+func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
+	l.logf("atomfast refresh: start")
+	for page := 1; ; page++ {
+		ids, err := l.requestPage(ctx, jobs, results, page)
+		if err != nil {
+			return err
+		}
+		if page == 1 && len(ids) == 0 {
+			return fmt.Errorf("atomfast refresh: empty list on first page")
+		}
+		if len(ids) == 0 {
+			break
+		}
+		newCount := 0
+		for _, id := range ids {
+			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
+				l.logf("atomfast refresh track %s skipped: %v", id, err)
+				continue
+			}
+			newCount++
+		}
+		if newCount == 0 {
+			break
+		}
+	}
+	l.logf("atomfast refresh: done")
+	return nil
+}
+
+func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID string) error {
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return fmt.Errorf("empty track id")
+	}
+	exists, err := l.db.TrackExists(ctx, trackID, l.dbType)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	return l.requestTrack(ctx, jobs, results, trackID)
+}
+
+func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]string, error) {
+	job := atomfastJob{kind: atomfastJobPage, page: page}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case jobs <- job:
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-results:
+		if res.job.kind != atomfastJobPage {
+			return nil, fmt.Errorf("unexpected atomfast result kind")
+		}
+		return res.ids, res.err
+	}
+}
+
+func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID string) error {
+	job := atomfastJob{kind: atomfastJobTrack, trackID: trackID}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case jobs <- job:
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case res := <-results:
+		if res.job.kind != atomfastJobTrack {
+			return fmt.Errorf("unexpected atomfast result kind")
+		}
+		return res.err
+	}
+}
+
+func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackData) error {
+	if len(track.Markers) == 0 {
+		return fmt.Errorf("atomfast track %s empty", track.TrackID)
+	}
+
+	device := l.prepareDevice(track.Device)
+	for i := range track.Markers {
+		track.Markers[i].TrackID = track.TrackID
+		if device.ID != "" && track.Markers[i].DeviceID == "" {
+			track.Markers[i].DeviceID = device.ID
+		}
+		if device.Model != "" && track.Markers[i].DeviceName == "" {
+			track.Markers[i].DeviceName = device.Model
+		}
+	}
+
+	if device.ID != "" {
+		if err := l.db.EnsureDevice(ctx, device, l.dbType); err != nil {
+			return err
+		}
+		if err := l.db.EnsureTrackDeviceMapping(ctx, track.TrackID, device.ID, l.dbType); err != nil {
+			return err
+		}
+	}
+
+	_, finalTrackID, err := processAndStoreMarkersWithContextFixedID(ctx, track.Markers, track.TrackID, l.db, l.dbType)
+	if err != nil {
+		return err
+	}
+	if finalTrackID != track.TrackID && device.ID != "" {
+		if err := l.db.EnsureTrackDeviceMapping(ctx, finalTrackID, device.ID, l.dbType); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *atomfastLoader) prepareDevice(info atomfast.DeviceInfo) database.Device {
+	id := strings.TrimSpace(info.ID)
+	model := strings.TrimSpace(info.Model)
+	if id == "" && model != "" {
+		id = "atomfast:model:" + stableDeviceHash(model)
+	}
+	return database.Device{ID: id, Model: model}
+}
+
+func (l *atomfastLoader) sleepBetween(ctx context.Context) error {
+	if l.minDelay <= 0 && l.maxDelay <= 0 {
+		return nil
+	}
+	minDelay := l.minDelay
+	maxDelay := l.maxDelay
+	if maxDelay < minDelay {
+		maxDelay = minDelay
+	}
+	wait := minDelay
+	if maxDelay > minDelay {
+		span := maxDelay - minDelay
+		wait = minDelay + time.Duration(l.rng.Int63n(int64(span)+1))
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func stableDeviceHash(value string) string {
+	sum := sha1.Sum([]byte(strings.ToLower(strings.TrimSpace(value))))
+	return hex.EncodeToString(sum[:])
 }
 
 // enqueueArchiveImport writes the uploaded tgz to a temporary file and processes it in the background.
@@ -5415,6 +5766,8 @@ func main() {
 	if err = db.InitSchema(dbCfg); err != nil {
 		log.Fatalf("DB schema: %v", err)
 	}
+
+	startAtomFastLoader(context.Background(), db, driverName, log.Printf)
 
 	remoteURL := strings.TrimSpace(*importTGZURLFlag)
 	localArchive := strings.TrimSpace(*importTGZFileFlag)
