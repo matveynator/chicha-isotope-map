@@ -3732,7 +3732,7 @@ type atomfastJob struct {
 type atomfastResult struct {
 	job   atomfastJob
 	ids   []string
-	track atomfast.TrackData
+	track atomfast.TrackPayload
 	err   error
 }
 
@@ -3820,7 +3820,7 @@ func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, re
 				}
 				results <- atomfastResult{job: job, ids: ids, err: err}
 			case atomfastJobTrack:
-				track, err := l.client.FetchTrack(ctx, job.trackID)
+				track, err := l.client.FetchTrackPayload(ctx, job.trackID)
 				if err == nil {
 					err = l.storeTrack(ctx, track)
 				}
@@ -3938,22 +3938,12 @@ func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJ
 	}
 }
 
-func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackData) error {
-	if len(track.Markers) == 0 {
+func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPayload) error {
+	if len(track.Payload) == 0 {
 		return fmt.Errorf("atomfast track %s empty", track.TrackID)
 	}
 
 	device := l.prepareDevice(track.Device)
-	for i := range track.Markers {
-		track.Markers[i].TrackID = track.TrackID
-		if device.ID != "" && track.Markers[i].DeviceID == "" {
-			track.Markers[i].DeviceID = device.ID
-		}
-		if device.Model != "" && track.Markers[i].DeviceName == "" {
-			track.Markers[i].DeviceName = device.Model
-		}
-	}
-
 	if device.ID != "" {
 		if err := l.db.EnsureDevice(ctx, device, l.dbType); err != nil {
 			return err
@@ -3963,12 +3953,13 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackDat
 		}
 	}
 
-	_, finalTrackID, err := processAndStoreMarkersWithContextFixedID(ctx, track.Markers, track.TrackID, l.db, l.dbType)
+	_, finalTrackID, err := processAtomFastData(track.Payload, track.TrackID, l.db, l.dbType)
 	if err != nil {
 		return err
 	}
-	if finalTrackID != track.TrackID && device.ID != "" {
-		if err := l.db.EnsureTrackDeviceMapping(ctx, finalTrackID, device.ID, l.dbType); err != nil {
+
+	if device.ID != "" {
+		if err := l.db.UpdateTrackDeviceMetadata(ctx, finalTrackID, device.ID, device.Model, l.dbType); err != nil {
 			return err
 		}
 	}

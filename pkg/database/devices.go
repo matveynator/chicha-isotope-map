@@ -77,3 +77,33 @@ WHERE NOT EXISTS (SELECT 1 FROM track_devices WHERE trackID = %s AND device_id =
 	}
 	return nil
 }
+
+// UpdateTrackDeviceMetadata stamps device details onto stored markers so the
+// UI can render device information without re-parsing track payloads.
+func (db *Database) UpdateTrackDeviceMetadata(ctx context.Context, trackID, deviceID, deviceName, dbType string) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	deviceID = strings.TrimSpace(deviceID)
+	deviceName = strings.TrimSpace(deviceName)
+	if trackID == "" || deviceID == "" {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := placeholder(dbType, 1)
+	ph2 := placeholder(dbType, 2)
+	ph3 := placeholder(dbType, 3)
+
+	stmt := fmt.Sprintf(`UPDATE markers
+SET device_id = %s,
+    device_name = %s
+WHERE trackID = %s;`, ph, ph2, ph3)
+	if _, err := db.DB.ExecContext(ctx, stmt, deviceID, deviceName, trackID); err != nil {
+		return fmt.Errorf("update track device metadata: %w", err)
+	}
+	return nil
+}

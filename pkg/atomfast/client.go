@@ -36,11 +36,11 @@ type DeviceInfo struct {
 	Model string
 }
 
-// TrackData bundles the parsed markers with any device metadata discovered in
-// the AtomFast payloads.
-type TrackData struct {
+// TrackPayload bundles the raw AtomFast JSON payload with any device metadata
+// so callers can feed it into the standard parser without reinterpreting it here.
+type TrackPayload struct {
 	TrackID string
-	Markers []database.Marker
+	Payload []byte
 	Device  DeviceInfo
 }
 
@@ -121,27 +121,23 @@ func (c *Client) FetchRecentIDs(ctx context.Context, page int) ([]string, error)
 
 // FetchTrack downloads the AtomFast marker JSON for a given track ID and
 // enriches it with any device metadata found in JSON or HTML payloads.
-func (c *Client) FetchTrack(ctx context.Context, trackID string) (TrackData, error) {
+func (c *Client) FetchTrackPayload(ctx context.Context, trackID string) (TrackPayload, error) {
 	trackID = strings.TrimSpace(trackID)
 	if trackID == "" {
-		return TrackData{}, errors.New("atomfast track id empty")
+		return TrackPayload{}, errors.New("atomfast track id empty")
 	}
 	endpoint := fmt.Sprintf("%s/maps/markers/%s", c.baseURL, trackID)
-	doc, err := c.fetchJSON(ctx, endpoint)
+	body, err := c.fetchBody(ctx, endpoint, true)
 	if err != nil {
-		return TrackData{}, err
+		return TrackPayload{}, err
 	}
-	markers, err := extractMarkers(doc)
-	if err != nil {
-		return TrackData{}, err
-	}
-	device := extractDeviceInfo(doc)
+	device := DeviceInfo{}
 	if device.Model == "" && device.ID == "" {
 		if pageDevice, pageErr := c.fetchDeviceFromTrackPage(ctx, trackID); pageErr == nil {
 			device = pageDevice
 		}
 	}
-	return TrackData{TrackID: trackID, Markers: markers, Device: device}, nil
+	return TrackPayload{TrackID: trackID, Payload: body, Device: device}, nil
 }
 
 // fetchJSON performs a JSON request with a friendly user-agent header so the
