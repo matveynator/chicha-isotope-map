@@ -69,28 +69,60 @@ func (db *Database) StreamLatestTrackSummaries(
 			limit = 500
 		}
 
+		// Querying MAX(date) with GROUP BY can be expensive on large datasets.
+		// Instead, we fetch the newest markers first, dedupe track IDs in Go,
+		// and then load summaries only for the needed tracks.
+		fetchLimit := limit * 50
+		if fetchLimit < limit {
+			fetchLimit = limit
+		}
+		if fetchLimit > 5000 {
+			fetchLimit = 5000
+		}
+
 		nextPlaceholder := newPlaceholderGenerator(dbType)
 		trackNotLike := nextPlaceholder()
 		limitPlaceholder := nextPlaceholder()
-
-		query := fmt.Sprintf(`SELECT trackID, MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
+		query := fmt.Sprintf(`SELECT trackID
 FROM markers
 WHERE trackID NOT LIKE %s
-GROUP BY trackID
-ORDER BY MAX(date) DESC
+ORDER BY date DESC
 LIMIT %s;`, trackNotLike, limitPlaceholder)
 
-		rows, err := db.DB.QueryContext(ctx, query, "live:%", limit)
+		rows, err := db.DB.QueryContext(ctx, query, "live:%", fetchLimit)
 		if err != nil {
-			errs <- fmt.Errorf("list latest tracks: %w", err)
+			errs <- fmt.Errorf("list latest track ids: %w", err)
 			return
 		}
 		defer rows.Close()
 
+		trackIDs := make([]string, 0, limit)
+		seen := make(map[string]struct{}, limit)
 		for rows.Next() {
-			var summary TrackSummary
-			if err := rows.Scan(&summary.TrackID, &summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
-				errs <- fmt.Errorf("scan latest track summary: %w", err)
+			var trackID string
+			if err := rows.Scan(&trackID); err != nil {
+				errs <- fmt.Errorf("scan latest track id: %w", err)
+				return
+			}
+			if _, exists := seen[trackID]; exists {
+				continue
+			}
+			seen[trackID] = struct{}{}
+			trackIDs = append(trackIDs, trackID)
+			if len(trackIDs) >= limit {
+				break
+			}
+		}
+
+		if err := rows.Err(); err != nil {
+			errs <- fmt.Errorf("iterate latest track ids: %w", err)
+			return
+		}
+
+		for _, trackID := range trackIDs {
+			summary, err := db.GetTrackSummary(ctx, trackID, dbType)
+			if err != nil {
+				errs <- fmt.Errorf("load latest track summary: %w", err)
 				return
 			}
 
@@ -100,11 +132,6 @@ LIMIT %s;`, trackNotLike, limitPlaceholder)
 				return
 			case results <- summary:
 			}
-		}
-
-		if err := rows.Err(); err != nil {
-			errs <- fmt.Errorf("iterate latest track summaries: %w", err)
-			return
 		}
 
 		errs <- nil
