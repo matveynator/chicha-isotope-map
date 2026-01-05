@@ -24,7 +24,8 @@ const (
 )
 
 var (
-	trackIDPattern  = regexp.MustCompile(`/maps/show/([0-9]+)/`)
+	// Allow optional trailing slash because AtomFast links vary by page template.
+	trackIDPattern  = regexp.MustCompile(`/maps/show/([0-9]+)`)
 	stripTags       = regexp.MustCompile(`<[^>]+>`)
 	deviceLineRegex = regexp.MustCompile(`(?i)\b(device|model|detector)\b\s*:\s*([^\r\n]+)`)
 )
