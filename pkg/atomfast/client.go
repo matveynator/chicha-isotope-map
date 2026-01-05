@@ -95,11 +95,17 @@ func (c *Client) FetchRecentIDs(ctx context.Context, page int) ([]string, error)
 		page = 1
 	}
 	endpoint := fmt.Sprintf("%s/maps/recent_list/?p=%d&lim=%d", c.baseURL, page, c.pageLimit)
-	doc, err := c.fetchJSON(ctx, endpoint)
+	body, err := c.fetchBody(ctx, endpoint, true)
 	if err != nil {
 		return nil, err
 	}
-	ids := extractTrackIDs(doc)
+	doc, err := decodeJSON(body)
+	if err == nil {
+		if ids := extractTrackIDs(doc); len(ids) > 0 {
+			return ids, nil
+		}
+	}
+	ids := extractTrackIDsFromText(string(body))
 	return ids, nil
 }
 
@@ -131,12 +137,48 @@ func (c *Client) FetchTrack(ctx context.Context, trackID string) (TrackData, err
 // fetchJSON performs a JSON request with a friendly user-agent header so the
 // AtomFast endpoints treat the loader as a normal browser session.
 func (c *Client) fetchJSON(ctx context.Context, endpoint string) (any, error) {
+	body, err := c.fetchBody(ctx, endpoint, true)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := decodeJSON(body)
+	if err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+// fetchDeviceFromTrackPage retrieves the HTML page for a track and scrapes
+// device hints using lightweight regex parsing to avoid extra dependencies.
+func (c *Client) fetchDeviceFromTrackPage(ctx context.Context, trackID string) (DeviceInfo, error) {
+	if c.trackPageFormat == "" {
+		return DeviceInfo{}, errors.New("track page format not configured")
+	}
+	endpoint := fmt.Sprintf(c.trackPageFormat, trackID)
+	body, err := c.fetchBody(ctx, endpoint, false)
+	if err != nil {
+		return DeviceInfo{}, err
+	}
+	return extractDeviceInfoFromHTML(string(body)), nil
+}
+
+// fetchBody loads a URL payload while emulating a browser session, keeping
+// AtomFast's anti-bot filters satisfied without external dependencies.
+func (c *Client) fetchBody(ctx context.Context, endpoint string, wantJSON bool) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
-	req.Header.Set("Accept", "application/json")
+	if wantJSON {
+		req.Header.Set("Accept", "application/json, text/plain, */*")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	} else {
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	}
+	if c.baseURL != "" {
+		req.Header.Set("Referer", c.baseURL+"/maps/")
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -150,38 +192,7 @@ func (c *Client) fetchJSON(ctx context.Context, endpoint string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	var doc any
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return nil, err
-	}
-	return doc, nil
-}
-
-// fetchDeviceFromTrackPage retrieves the HTML page for a track and scrapes
-// device hints using lightweight regex parsing to avoid extra dependencies.
-func (c *Client) fetchDeviceFromTrackPage(ctx context.Context, trackID string) (DeviceInfo, error) {
-	if c.trackPageFormat == "" {
-		return DeviceInfo{}, errors.New("track page format not configured")
-	}
-	endpoint := fmt.Sprintf(c.trackPageFormat, trackID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return DeviceInfo{}, err
-	}
-	req.Header.Set("User-Agent", c.userAgent)
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return DeviceInfo{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return DeviceInfo{}, fmt.Errorf("atomfast track page %s", resp.Status)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return DeviceInfo{}, err
-	}
-	return extractDeviceInfoFromHTML(string(body)), nil
+	return body, nil
 }
 
 // -----------------------------
@@ -255,6 +266,18 @@ func parseTrackID(m map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func decodeJSON(body []byte) (any, error) {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return nil, errors.New("atomfast empty payload")
+	}
+	var doc any
+	if err := json.Unmarshal([]byte(trimmed), &doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
 }
 
 func extractMarkers(doc any) ([]database.Marker, error) {
@@ -552,4 +575,32 @@ func extractDeviceInfoFromHTML(html string) DeviceInfo {
 		}
 	}
 	return DeviceInfo{}
+}
+
+func extractTrackIDsFromText(text string) []string {
+	ids := make([]string, 0, 32)
+	seen := make(map[string]struct{})
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`\"id\"\\s*:\\s*\"?(\\d+)\"?`),
+		regexp.MustCompile(`data-id\\s*=\\s*\"(\\d+)\"`),
+		regexp.MustCompile(`track(?:_|\\s)?id\\s*[:=]\\s*\"?(\\d+)\"?`),
+	}
+	for _, re := range patterns {
+		matches := re.FindAllStringSubmatch(text, -1)
+		for _, match := range matches {
+			if len(match) < 2 {
+				continue
+			}
+			id := strings.TrimSpace(match[1])
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }

@@ -3840,6 +3840,9 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 		if err != nil {
 			return err
 		}
+		if page == 1 && len(ids) == 0 {
+			return fmt.Errorf("atomfast initial load: empty list on first page")
+		}
 		if len(ids) == 0 {
 			break
 		}
@@ -3859,6 +3862,9 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 		ids, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
 			return err
+		}
+		if page == 1 && len(ids) == 0 {
+			return fmt.Errorf("atomfast refresh: empty list on first page")
 		}
 		if len(ids) == 0 {
 			break
