@@ -4282,7 +4282,7 @@ function updateMarkers(){
     const trackCount = streamSummary && Number.isFinite(streamSummary.trackCount) ? streamSummary.trackCount : tracks.size;
     const dateSpanMonths = (isFinite(summaryMin) && isFinite(summaryMax))
                             ? monthsApart(summaryMin, summaryMax) : 0;
-    const needSlider = !isTrackView && trackCount > 1 && dateSpanMonths > 1;
+    const needSlider = !isTrackView && trackCount > 1 && isFinite(summaryMin) && isFinite(summaryMax) && summaryMax > summaryMin;
     if (window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(needSlider);
     }
