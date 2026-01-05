@@ -383,7 +383,9 @@ WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, value, value)
 	defer cancel()
 
 	return db.withSerializedConnectionFor(ctx, WorkloadUserUpload, func(ctx context.Context, conn *sql.DB) error {
-		if _, err := conn.ExecContext(ctx, stmt, trackID); err != nil {
+		// We pass the track ID twice to satisfy both placeholders in the
+		// portable NOT EXISTS insert statement.
+		if _, err := conn.ExecContext(ctx, stmt, trackID, trackID); err != nil {
 			return fmt.Errorf("ensure track presence: %w", err)
 		}
 		return nil
