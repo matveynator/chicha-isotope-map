@@ -2584,7 +2584,7 @@ func processAtomFastFile(
 		return database.Bounds{}, trackID, fmt.Errorf("read AtomFast JSON: %w", err)
 	}
 
-	return processAtomFastData(data, trackID, db, dbType)
+	return processAtomFastData(data, trackID, db, dbType, devices.DeviceAtomFast)
 }
 
 func processAtomFastData(
@@ -2592,6 +2592,7 @@ func processAtomFastData(
 	trackID string,
 	db *database.Database,
 	dbType string,
+	deviceType string,
 ) (database.Bounds, string, error) {
 	var records []struct {
 		D   float64 `json:"d"`
@@ -2612,11 +2613,11 @@ func processAtomFastData(
 			Lat:       r.Lat,
 			Lon:       r.Lng,
 			Date:      r.T / 1000, // ms → s
-			Detector:  devices.DeviceAtomFast,
+			Detector:  devices.NormalizeDeviceID(deviceType),
 		})
 	}
 
-	markers = applyDeviceDefaults(markers, devices.DeviceAtomFast)
+	markers = applyDeviceDefaults(markers, deviceType)
 	return processAndStoreMarkers(markers, trackID, db, dbType)
 }
 
@@ -2645,7 +2646,7 @@ func startAtomFastSync(
 	}
 
 	discovered := atomfast.StartDiscovery(ctx, cfg, logf)
-	workCh := make(chan atomfast.TrackRef, 16)
+	workCh := make(chan atomfast.ShowRef, 16)
 
 	go atomfastDeduper(ctx, discovered, workCh, logf)
 
@@ -2659,8 +2660,8 @@ func startAtomFastSync(
 // atomfastDeduper keeps a single goroutine in charge of the seen set.
 func atomfastDeduper(
 	ctx context.Context,
-	in <-chan atomfast.TrackRef,
-	out chan<- atomfast.TrackRef,
+	in <-chan atomfast.ShowRef,
+	out chan<- atomfast.ShowRef,
 	logf func(string, ...any),
 ) {
 	defer close(out)
@@ -2695,7 +2696,7 @@ func atomfastWorker(
 	ctx context.Context,
 	index int,
 	cfg atomfast.Config,
-	in <-chan atomfast.TrackRef,
+	in <-chan atomfast.ShowRef,
 	db *database.Database,
 	dbType string,
 	logf func(string, ...any),
@@ -2708,18 +2709,25 @@ func atomfastWorker(
 			if !ok {
 				return
 			}
-			trackID := "atomfast-" + ref.ID
-			logT(trackID, "AtomFast", "sync worker %d downloading %s", index, ref.URL)
-			data, err := atomfast.FetchTrack(ctx, cfg.Client, cfg.UserAgent, ref)
+			trackRef, err := atomfast.ResolveTrack(ctx, cfg.Client, cfg.UserAgent, ref)
 			if err != nil {
 				if logf != nil {
-					logf("atomfast download failed (%s): %v", ref.URL, err)
+					logf("atomfast show resolve failed (%s): %v", ref.URL, err)
 				}
 				continue
 			}
-			if _, _, err := processAtomFastData(data, trackID, db, dbType); err != nil {
+			trackID := "atomfast-" + trackRef.ID
+			logT(trackID, "AtomFast", "sync worker %d downloading %s", index, trackRef.MarkersURL)
+			data, err := atomfast.FetchTrack(ctx, cfg.Client, cfg.UserAgent, trackRef)
+			if err != nil {
 				if logf != nil {
-					logf("atomfast import failed (%s): %v", ref.URL, err)
+					logf("atomfast download failed (%s): %v", trackRef.MarkersURL, err)
+				}
+				continue
+			}
+			if _, _, err := processAtomFastData(data, trackID, db, dbType, trackRef.DeviceType); err != nil {
+				if logf != nil {
+					logf("atomfast import failed (%s): %v", trackRef.MarkersURL, err)
 				}
 			}
 		}
@@ -3902,7 +3910,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 				bbox, trackID, err = processChichaTrackJSON(raw, trackID, db, *dbType)
 			}
 			if errors.Is(err, errNotChichaTrackJSON) {
-				bbox, trackID, err = processAtomFastData(raw, trackID, db, *dbType)
+				bbox, trackID, err = processAtomFastData(raw, trackID, db, *dbType, devices.DeviceAtomFast)
 			}
 			if err == nil && !imported {
 				logT(trackID, "Upload", "skipped duplicate track export JSON")
@@ -4226,6 +4234,13 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	deviceCatalogJSON, err := marshalTemplateJS(devices.Catalog())
+	if err != nil {
+		log.Printf("map handler: marshal devices failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	// Данные для шаблона
 	// Default social preview stays stable so crawlers have a reliable fallback.
 	defaultSocialImage := activeLogoConfig.ImageURL
@@ -4251,6 +4266,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		LogoLink           string
 		ShowGithubTooltip  bool
 		ChichaGitHubURL    string
+		DeviceCatalogJSON  template.JS
 	}{
 		Version:            displayVersion,
 		Translations:       translations,
@@ -4272,6 +4288,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		LogoLink:           activeLogoConfig.LinkURL,
 		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
 		ChichaGitHubURL:    chichaGitHubURL,
+		DeviceCatalogJSON:  deviceCatalogJSON,
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader
@@ -4405,19 +4422,6 @@ func deviceDetailHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			log.Printf("device handler: write error: %v", err)
 		}
-	}
-}
-
-// devicesAPIHandler exposes the device catalog for frontend popups.
-func devicesAPIHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(devices.Catalog()); err != nil {
-		log.Printf("devices api: encode failed: %v", err)
 	}
 }
 
@@ -4603,6 +4607,13 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	deviceCatalogJSON, err := marshalTemplateJS(devices.Catalog())
+	if err != nil {
+		log.Printf("track handler: marshal devices failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	// Default social preview stays stable so crawlers have a reliable fallback.
 	defaultSocialImage := activeLogoConfig.ImageURL
 
@@ -4628,6 +4639,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		LogoLink           string
 		ShowGithubTooltip  bool
 		ChichaGitHubURL    string
+		DeviceCatalogJSON  template.JS
 	}{
 		Version:            displayVersion,
 		Translations:       translations,
@@ -4649,6 +4661,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		LogoLink:           activeLogoConfig.LinkURL,
 		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
 		ChichaGitHubURL:    chichaGitHubURL,
+		DeviceCatalogJSON:  deviceCatalogJSON,
 	}
 
 	var buf bytes.Buffer
@@ -5789,7 +5802,6 @@ func main() {
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
 	http.HandleFunc("/api/geoip", geoIPHandler)
-	http.HandleFunc("/api/devices", devicesAPIHandler)
 	http.HandleFunc("/s/", shortRedirectHandler)
 	http.HandleFunc("/api/docs", apiDocsHandler)
 

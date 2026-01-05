@@ -1349,6 +1349,10 @@ body, html {
         }
     </script>
     <script>
+      // Device catalog is embedded so popups never depend on extra API calls.
+      window.deviceCatalog = {{ .DeviceCatalogJSON }};
+    </script>
+    <script>
       const defaultCfg = {
         lat:  {{printf "%.6f" .DefaultLat}},
         lon:  {{printf "%.6f" .DefaultLon}},
@@ -2148,31 +2152,12 @@ function renderLiveExtras(extra) {
 }
 
 // Device catalog helpers keep marker popups linked to the hardware registry.
-const deviceCatalog = {};
-let deviceCatalogLoaded = false;
-
-function loadDeviceCatalog() {
-  return fetch('/api/devices')
-    .then(function(response) {
-      if (!response.ok) {
-        throw new Error('device catalog unavailable');
-      }
-      return response.json();
-    })
-    .then(function(payload) {
-      if (!payload || !Array.isArray(payload)) {
-        return;
-      }
-      payload.forEach(function(device){
-        if (!device || !device.id) return;
-        deviceCatalog[String(device.id).toLowerCase()] = device;
-      });
-      deviceCatalogLoaded = true;
-    })
-    .catch(function(){
-      deviceCatalogLoaded = false;
-    });
-}
+const deviceCatalog = (window.deviceCatalog || []).reduce(function(acc, device) {
+  if (!device || !device.id) return acc;
+  acc[String(device.id).toLowerCase()] = device;
+  return acc;
+}, {});
+const deviceCatalogLoaded = true;
 
 function buildDeviceBadge(marker) {
   const detectorRaw = marker.detector || marker.Detector || '';
@@ -2192,9 +2177,6 @@ function buildDeviceBadge(marker) {
           <a href="${url}">${labelHtml}</a>
         </div>
       </div>`;
-  }
-  if (!deviceCatalogLoaded) {
-    return '';
   }
   return `
     <div class="device-badge">
@@ -3061,8 +3043,6 @@ document.addEventListener('DOMContentLoaded', function () {
     var backBox = document.querySelector('.back-to-all-container');
     if (backBox) backBox.style.display = 'block';
   }
-  // Load device metadata early so marker popups can link to hardware pages.
-  loadDeviceCatalog();
   refreshDownloadLink();
   refreshTrackViewPlaybackControl();
 

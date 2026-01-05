@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -16,6 +15,14 @@ import (
 
 // TrackRef describes a remote AtomFast track resource.
 type TrackRef struct {
+	ID         string
+	MarkersURL string
+	DeviceType string
+	ShowURL    string
+}
+
+// ShowRef keeps the show-page information so we can resolve metadata later.
+type ShowRef struct {
 	ID  string
 	URL string
 }
@@ -34,8 +41,8 @@ const defaultBodyLimit = int64(6 << 20)
 
 // StartDiscovery launches a background loop that emits discovered tracks.
 // The returned channel closes when the context is cancelled.
-func StartDiscovery(ctx context.Context, cfg Config, logf func(string, ...any)) <-chan TrackRef {
-	out := make(chan TrackRef)
+func StartDiscovery(ctx context.Context, cfg Config, logf func(string, ...any)) <-chan ShowRef {
+	out := make(chan ShowRef)
 
 	go func() {
 		defer close(out)
@@ -49,7 +56,7 @@ func StartDiscovery(ctx context.Context, cfg Config, logf func(string, ...any)) 
 		defer ticker.Stop()
 
 		for {
-			refs, err := DiscoverTracks(ctx, cfg)
+			refs, err := DiscoverShows(ctx, cfg)
 			if err != nil && logf != nil {
 				logf("atomfast discovery error: %v", err)
 			}
@@ -73,7 +80,7 @@ func StartDiscovery(ctx context.Context, cfg Config, logf func(string, ...any)) 
 }
 
 // DiscoverTracks walks paginated AtomFast pages and extracts track links.
-func DiscoverTracks(ctx context.Context, cfg Config) ([]TrackRef, error) {
+func DiscoverShows(ctx context.Context, cfg Config) ([]ShowRef, error) {
 	if strings.TrimSpace(cfg.ListURL) == "" {
 		return nil, fmt.Errorf("list url missing")
 	}
@@ -93,7 +100,7 @@ func DiscoverTracks(ctx context.Context, cfg Config) ([]TrackRef, error) {
 		bodyLimit = defaultBodyLimit
 	}
 
-	refs := make([]TrackRef, 0, 32)
+	refs := make([]ShowRef, 0, 32)
 	seen := make(map[string]struct{})
 	emptyPages := 0
 
@@ -108,7 +115,7 @@ func DiscoverTracks(ctx context.Context, cfg Config) ([]TrackRef, error) {
 			return refs, err
 		}
 
-		links := extractTrackLinks(body, pageURL)
+		links := extractShowLinks(body, pageURL)
 		if len(links) == 0 {
 			emptyPages++
 			if emptyPages >= 2 && page > 1 {
@@ -132,13 +139,13 @@ func DiscoverTracks(ctx context.Context, cfg Config) ([]TrackRef, error) {
 
 // FetchTrack downloads the raw track payload for later parsing.
 func FetchTrack(ctx context.Context, client *http.Client, userAgent string, ref TrackRef) ([]byte, error) {
-	if strings.TrimSpace(ref.URL) == "" {
+	if strings.TrimSpace(ref.MarkersURL) == "" {
 		return nil, fmt.Errorf("track url missing")
 	}
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
-	return fetchURL(ctx, client, userAgent, ref.URL, 20<<20)
+	return fetchURL(ctx, client, userAgent, ref.MarkersURL, 20<<20)
 }
 
 // withPageParam updates the p query parameter while preserving other params.
@@ -184,29 +191,31 @@ func fetchURL(ctx context.Context, client *http.Client, userAgent, rawURL string
 }
 
 var (
-	linkPattern      = regexp.MustCompile(`(?i)(?:href|data-url|data-file)=["']([^"']+?\\.json[^"']*)["']`)
-	absoluteJSONLink = regexp.MustCompile(`(?i)https?://[^\\s"'<>]+?\\.json[^\\s"'<>]*`)
+	showPattern  = regexp.MustCompile(`(?i)(?:href|data-url|data-href)=["']([^"']*?/maps/show/\\d+/[^"']*)["']`)
+	showAbsolute = regexp.MustCompile(`(?i)https?://[^\\s"'<>]+?/maps/show/\\d+/[^\\s"'<>]*`)
+	showIDRegexp = regexp.MustCompile(`/maps/show/(\\d+)/`)
+	deviceRegexp = regexp.MustCompile(`(?i)Devices:\\s*([^\\n<]+)`)
 )
 
-// extractTrackLinks searches an AtomFast page for JSON track links.
-func extractTrackLinks(body []byte, rawBase string) []TrackRef {
+// extractShowLinks searches an AtomFast page for show-page links.
+func extractShowLinks(body []byte, rawBase string) []ShowRef {
 	baseURL, err := url.Parse(rawBase)
 	if err != nil {
 		return nil
 	}
 
 	candidates := make([]string, 0, 16)
-	matches := linkPattern.FindAllSubmatch(body, -1)
+	matches := showPattern.FindAllSubmatch(body, -1)
 	for _, m := range matches {
 		if len(m) < 2 {
 			continue
 		}
 		candidates = append(candidates, string(m[1]))
 	}
-	plain := absoluteJSONLink.FindAllString(string(body), -1)
+	plain := showAbsolute.FindAllString(string(body), -1)
 	candidates = append(candidates, plain...)
 
-	refs := make([]TrackRef, 0, len(candidates))
+	refs := make([]ShowRef, 0, len(candidates))
 	seen := make(map[string]struct{})
 	for _, raw := range candidates {
 		raw = strings.TrimSpace(raw)
@@ -225,41 +234,74 @@ func extractTrackLinks(body []byte, rawBase string) []TrackRef {
 			continue
 		}
 		seen[refURL] = struct{}{}
-		refs = append(refs, TrackRef{
-			ID:  normalizeTrackID(u),
+		refs = append(refs, ShowRef{
+			ID:  normalizeShowID(u),
 			URL: refURL,
 		})
 	}
 	return refs
 }
 
-// normalizeTrackID derives a stable identifier from the URL path.
-func normalizeTrackID(u *url.URL) string {
-	base := strings.TrimSuffix(path.Base(u.Path), path.Ext(u.Path))
-	base = strings.TrimSpace(base)
-	if base == "" {
-		sum := sha1.Sum([]byte(u.String()))
-		return "track-" + hex.EncodeToString(sum[:6])
+// ResolveTrack visits a show page to discover the markers URL and device type.
+func ResolveTrack(ctx context.Context, client *http.Client, userAgent string, show ShowRef) (TrackRef, error) {
+	if strings.TrimSpace(show.URL) == "" {
+		return TrackRef{}, fmt.Errorf("show url missing")
 	}
-	var b strings.Builder
-	for _, r := range base {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '-' || r == '_':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('-')
-		}
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
 	}
-	out := strings.Trim(b.String(), "-")
-	if out == "" {
-		sum := sha1.Sum([]byte(u.String()))
-		return "track-" + hex.EncodeToString(sum[:6])
+
+	body, err := fetchURL(ctx, client, userAgent, show.URL, 6<<20)
+	if err != nil {
+		return TrackRef{}, err
 	}
-	return out
+
+	deviceType := resolveDeviceType(body)
+	showID := strings.TrimSpace(show.ID)
+	if showID == "" {
+		showID = normalizeShowIDFromURL(show.URL)
+	}
+	markersURL := ""
+	if showID != "" {
+		markersURL = fmt.Sprintf("http://www.atomfast.net/maps/markers/%s", showID)
+	}
+
+	if showID == "" || markersURL == "" {
+		return TrackRef{}, fmt.Errorf("unable to resolve markers url")
+	}
+
+	return TrackRef{
+		ID:         showID,
+		MarkersURL: markersURL,
+		DeviceType: deviceType,
+		ShowURL:    show.URL,
+	}, nil
+}
+
+// normalizeShowID derives a stable identifier from the show URL path.
+func normalizeShowID(u *url.URL) string {
+	match := showIDRegexp.FindStringSubmatch(u.Path)
+	if len(match) > 1 {
+		return match[1]
+	}
+	return normalizeShowIDFromURL(u.String())
+}
+
+// normalizeShowIDFromURL ensures even malformed links still get a stable ID.
+func normalizeShowIDFromURL(raw string) string {
+	match := showIDRegexp.FindStringSubmatch(raw)
+	if len(match) > 1 {
+		return match[1]
+	}
+	sum := sha1.Sum([]byte(raw))
+	return "track-" + hex.EncodeToString(sum[:6])
+}
+
+// resolveDeviceType extracts the device name from the show page body.
+func resolveDeviceType(body []byte) string {
+	match := deviceRegexp.FindSubmatch(body)
+	if len(match) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(string(match[1]))
 }
