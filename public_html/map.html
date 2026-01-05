@@ -3123,6 +3123,37 @@ document.addEventListener('DOMContentLoaded', function () {
     '<a href="#" class="attr-link" data-info="license">' + translate('attr_license') + '</a>'
   );
 
+  // Keep base-layer attribution in sync when the user switches maps without reloads.
+  // Leaflet should handle this, but a manual refresh prevents stale attribution in some setups.
+  function getLayerAttribution(layer) {
+    if (!layer) return '';
+    if (typeof layer.getAttribution === 'function') {
+      return layer.getAttribution() || '';
+    }
+    if (layer.options && layer.options.attribution) {
+      return layer.options.attribution;
+    }
+    return '';
+  }
+
+  function refreshBaseLayerAttribution() {
+    if (!map || !map.attributionControl) return;
+    const baseAttributions = [
+      getLayerAttribution(osmLayer),
+      getLayerAttribution(googleSatellite)
+    ];
+    baseAttributions.forEach(function (attr) {
+      if (attr) {
+        map.attributionControl.removeAttribution(attr);
+      }
+    });
+    const activeLayer = map.hasLayer(googleSatellite) ? googleSatellite : osmLayer;
+    const activeAttribution = getLayerAttribution(activeLayer);
+    if (activeAttribution) {
+      map.attributionControl.addAttribution(activeAttribution);
+    }
+  }
+
   // Track view initialization
   // Inject markers as literal JSON so the first render avoids the template parse error
   // and the frontend can inspect the slice immediately.
@@ -3157,6 +3188,8 @@ document.addEventListener('DOMContentLoaded', function () {
   map.on('baselayerchange', updateUrl);
   map.on('moveend', updateUrl);
   map.on('zoomend', updateUrl);
+  map.on('baselayerchange', refreshBaseLayerAttribution);
+  refreshBaseLayerAttribution();
 
   // Initialize UI elements
   initializeUIElements();
