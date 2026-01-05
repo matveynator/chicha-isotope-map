@@ -5015,6 +5015,73 @@ func streamPlaybackHandler(w http.ResponseWriter, r *http.Request) {
 // aggregateMarkers chooses the most radioactive marker per grid cell while merging the
 // static query feed with an optional live stream. Keeping the grid map inside the goroutine
 // lets us reuse previous emissions and drop later duplicates without mutexes.
+// markerStreamSummary captures stream-wide metadata so the UI can decide when
+// to show the date range slider even if the aggregated markers come from a
+// single dominant track.
+type markerStreamSummary struct {
+	TrackCount int   `json:"trackCount"`
+	MinTs      int64 `json:"minTs"`
+	MaxTs      int64 `json:"maxTs"`
+}
+
+// summarizeMarkerStream forwards markers while tracking aggregate metadata.
+// Using a single goroutine and a buffered summary channel keeps the stream
+// non-blocking and avoids locks per the Go proverb "Don't communicate by
+// sharing memory; share memory by communicating."
+func summarizeMarkerStream(ctx context.Context, in <-chan database.Marker) (<-chan database.Marker, <-chan markerStreamSummary) {
+	out := make(chan database.Marker)
+	summaryCh := make(chan markerStreamSummary, 1)
+
+	go func() {
+		defer close(out)
+		defer close(summaryCh)
+
+		trackIDs := make(map[string]struct{})
+		var minTs, maxTs int64
+		haveMin := false
+		haveMax := false
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case m, ok := <-in:
+				if !ok {
+					summaryCh <- markerStreamSummary{
+						TrackCount: len(trackIDs),
+						MinTs:      minTs,
+						MaxTs:      maxTs,
+					}
+					return
+				}
+
+				trackID := strings.TrimSpace(m.TrackID)
+				if trackID != "" && !strings.HasPrefix(trackID, "live:") {
+					trackIDs[trackID] = struct{}{}
+				}
+				if m.Date > 0 {
+					if !haveMin || m.Date < minTs {
+						minTs = m.Date
+						haveMin = true
+					}
+					if !haveMax || m.Date > maxTs {
+						maxTs = m.Date
+						haveMax = true
+					}
+				}
+
+				select {
+				case out <- m:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return out, summaryCh
+}
+
 func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates <-chan database.Marker, zoom int) <-chan database.Marker {
 	out := make(chan database.Marker)
 	go func() {
@@ -5099,7 +5166,8 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
 
-	agg := aggregateMarkers(ctx, baseSrc, nil, zoom)
+	streamSrc, summaryCh := summarizeMarkerStream(ctx, baseSrc)
+	agg := aggregateMarkers(ctx, streamSrc, nil, zoom)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -5133,6 +5201,11 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 			errCh = nil
 		case m, ok := <-agg:
 			if !ok {
+				if summary, ok := <-summaryCh; ok {
+					b, _ := json.Marshal(summary)
+					fmt.Fprintf(w, "event: meta\ndata: %s\n\n", b)
+					flusher.Flush()
+				}
 				fmt.Fprint(w, "event: done\ndata: end\n\n")
 				flusher.Flush()
 				return

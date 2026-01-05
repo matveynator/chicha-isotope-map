@@ -4219,6 +4219,7 @@ function updateMarkers(){
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
   markerStreamSource = es;
+  let streamSummary = null;
 
   es.onmessage = e => {
     let m; try { m = JSON.parse(e.data); } catch { return; }
@@ -4265,19 +4266,32 @@ function updateMarkers(){
     circleMarkers[m.id || m.trackID] = marker;
   };
 
+  es.addEventListener('meta', e => {
+    // Keep stream-wide stats separate from aggregated markers so UI controls
+    // remain accurate even when one dominant track owns most cells.
+    try {
+      streamSummary = JSON.parse(e.data);
+    } catch {
+      streamSummary = null;
+    }
+  });
+
   es.addEventListener('done', () => {
-    const dateSpanMonths = (isFinite(minTs) && isFinite(maxTs))
-                            ? monthsApart(minTs, maxTs) : 0;
-    const needSlider = !isTrackView && tracks.size > 1 && dateSpanMonths > 1;
+    const summaryMin = streamSummary && Number.isFinite(streamSummary.minTs) ? streamSummary.minTs : minTs;
+    const summaryMax = streamSummary && Number.isFinite(streamSummary.maxTs) ? streamSummary.maxTs : maxTs;
+    const trackCount = streamSummary && Number.isFinite(streamSummary.trackCount) ? streamSummary.trackCount : tracks.size;
+    const dateSpanMonths = (isFinite(summaryMin) && isFinite(summaryMax))
+                            ? monthsApart(summaryMin, summaryMax) : 0;
+    const needSlider = !isTrackView && trackCount > 1 && isFinite(summaryMin) && isFinite(summaryMax) && summaryMax > summaryMin;
     if (window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(needSlider);
     }
-    if (needSlider && window.__initSliderOnce && isFinite(minTs) && isFinite(maxTs)){
-      window.__initSliderOnce(minTs, maxTs);
+    if (needSlider && window.__initSliderOnce && isFinite(summaryMin) && isFinite(summaryMax)){
+      window.__initSliderOnce(summaryMin, summaryMax);
       window.__initSliderOnce = null;
     }
-    if (needSlider && window.__syncDateSliders && isFinite(minTs) && isFinite(maxTs)){
-      window.__syncDateSliders(minTs, maxTs);
+    if (needSlider && window.__syncDateSliders && isFinite(summaryMin) && isFinite(summaryMax)){
+      window.__syncDateSliders(summaryMin, summaryMax);
     }
     if (waitForDangerFit && storedUserCenter) {
       reframeAroundUser();
