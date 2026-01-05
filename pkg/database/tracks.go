@@ -374,10 +374,11 @@ func (db *Database) EnsureTrackPresence(ctx context.Context, trackID, dbType str
 	}
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
-	value := nextPlaceholder()
+	insertValue := nextPlaceholder()
+	existsValue := nextPlaceholder()
 	stmt := fmt.Sprintf(`INSERT INTO tracks (trackID)
 SELECT %s
-WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, value, value)
+WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, insertValue, existsValue)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
