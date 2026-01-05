@@ -3571,7 +3571,7 @@ func processAndStoreMarkersWithContextOptions(
 			logT(trackID, "Store", "⚠ detected existing trackID %s — reusing", existing)
 			trackID = existing
 		} else {
-			logT(trackID, "Store", "unique track, proceed with new trackID")
+			logT(trackID, "Store", "unique track, proceed with new trackID (%s)", trackID)
 		}
 	} else {
 		logT(trackID, "Store", "skip duplicate probe; preserving upstream track ID")
