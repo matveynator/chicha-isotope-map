@@ -418,6 +418,33 @@ WHERE trackID = %s;`, ph, ph2)
 	return nil
 }
 
+// TrackHasDeviceName checks whether any marker in the track already carries a device label.
+// We use it to avoid downloading full track payloads when only the device name is missing.
+func (db *Database) TrackHasDeviceName(ctx context.Context, trackID, dbType string) (bool, error) {
+	if db == nil || db.DB == nil {
+		return false, fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := placeholder(dbType, 1)
+	query := fmt.Sprintf(`SELECT 1 FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
+	var one int
+	err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("track device name check: %w", err)
+	}
+	return true, nil
+}
+
 // backfillTracksTable refreshes the tracks registry from existing markers so
 // older databases inherit the faster pagination path without manual scripts.
 // The operation is idempotent thanks to the NOT EXISTS guard above the SELECT

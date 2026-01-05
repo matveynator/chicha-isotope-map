@@ -3896,7 +3896,7 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 		return err
 	}
 	if exists {
-		return nil
+		return l.ensureTrackDeviceLabel(ctx, trackID)
 	}
 	return l.requestTrack(ctx, jobs, results, trackID)
 }
@@ -3957,6 +3957,24 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPay
 		}
 	}
 	return nil
+}
+
+func (l *atomfastLoader) ensureTrackDeviceLabel(ctx context.Context, trackID string) error {
+	hasLabel, err := l.db.TrackHasDeviceName(ctx, trackID, l.dbType)
+	if err != nil {
+		return err
+	}
+	if hasLabel {
+		return nil
+	}
+	deviceName, err := l.client.FetchDeviceLabel(ctx, trackID)
+	if err != nil {
+		return err
+	}
+	if deviceName == "" {
+		return nil
+	}
+	return l.db.UpdateTrackDeviceName(ctx, trackID, deviceName, l.dbType)
 }
 
 func (l *atomfastLoader) sleepBetween(ctx context.Context) error {

@@ -140,6 +140,20 @@ func (c *Client) FetchTrackPayload(ctx context.Context, trackID string) (TrackPa
 	return TrackPayload{TrackID: trackID, Payload: body, Device: device}, nil
 }
 
+// FetchDeviceLabel pulls the human-readable device name from the track page
+// so we can enrich existing markers without downloading the full payload.
+func (c *Client) FetchDeviceLabel(ctx context.Context, trackID string) (string, error) {
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return "", errors.New("atomfast track id empty")
+	}
+	device, err := c.fetchDeviceFromTrackPage(ctx, trackID)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(device.Model), nil
+}
+
 // fetchJSON performs a JSON request with a friendly user-agent header so the
 // AtomFast endpoints treat the loader as a normal browser session.
 func (c *Client) fetchJSON(ctx context.Context, endpoint string) (any, error) {

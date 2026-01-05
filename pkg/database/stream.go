@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
 
@@ -19,13 +20,15 @@ func (db *Database) StreamMarkersByZoomAndBounds(ctx context.Context, zoom int, 
 		switch dbType {
 		case "pgx":
 			query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+                       COALESCE(device_name, '') AS device_name
                 FROM markers
                 WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
             `
 		default:
 			query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+                       COALESCE(device_name, '') AS device_name
                 FROM markers
                 WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
             `
@@ -39,10 +42,16 @@ func (db *Database) StreamMarkersByZoomAndBounds(ctx context.Context, zoom int, 
 		defer rows.Close()
 
 		for rows.Next() {
-			var m Marker
-			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			var (
+				m         Marker
+				deviceRaw sql.NullString
+			)
+			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID, &deviceRaw); err != nil {
 				errCh <- fmt.Errorf("scan marker: %w", err)
 				return
+			}
+			if deviceRaw.Valid {
+				m.DeviceName = deviceRaw.String
 			}
 			select {
 			case out <- m:
@@ -74,13 +83,15 @@ func (db *Database) StreamMarkersByTrackIDZoomAndBounds(ctx context.Context, tra
 		switch dbType {
 		case "pgx":
 			query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+                       COALESCE(device_name, '') AS device_name
                 FROM markers
                 WHERE trackID = $1 AND zoom = $2 AND lat BETWEEN $3 AND $4 AND lon BETWEEN $5 AND $6;
             `
 		default:
 			query = `
-                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID
+                SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+                       COALESCE(device_name, '') AS device_name
                 FROM markers
                 WHERE trackID = ? AND zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
             `
@@ -94,10 +105,16 @@ func (db *Database) StreamMarkersByTrackIDZoomAndBounds(ctx context.Context, tra
 		defer rows.Close()
 
 		for rows.Next() {
-			var m Marker
-			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID); err != nil {
+			var (
+				m         Marker
+				deviceRaw sql.NullString
+			)
+			if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID, &deviceRaw); err != nil {
 				errCh <- fmt.Errorf("scan marker: %w", err)
 				return
+			}
+			if deviceRaw.Valid {
+				m.DeviceName = deviceRaw.String
 			}
 			select {
 			case out <- m:
