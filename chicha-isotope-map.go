@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/api"
+	"chicha-isotope-map/pkg/atomfast"
 	"chicha-isotope-map/pkg/cimimport"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
@@ -82,6 +83,7 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+var atomfastEnabled = flag.Bool("atomfast", false, "Enable sequential AtomFast track ingestion and refresh polling")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of exported JSON files, log progress, and exit once finished. Example: https://pelora.org/api/json/weekly.tgz")
@@ -135,6 +137,7 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "logo-path", "logo-link", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
+	{Title: "AtomFast loader", Flags: []string{"atomfast"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
@@ -1178,7 +1181,7 @@ func convertRhToSv(markers []database.Marker) []database.Marker {
 func filterZeroMarkers(markers []database.Marker) []database.Marker {
 	filteredMarkers := []database.Marker{}
 	for _, m := range markers {
-		if m.DoseRate == 0 {
+		if m.DoseRate == 0 && m.CountRate == 0 {
 			continue
 		}
 		filteredMarkers = append(filteredMarkers, m)
@@ -1244,6 +1247,7 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 		sumAlt, sumTemp, sumHum                float64
 		altCount, tempCount, humCount          int
 		detector, radiation                    string
+		deviceName                             string
 		latest                                 int64
 		n                                      int
 	}
@@ -1282,6 +1286,9 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 		}
 		if a.radiation == "" && m.Radiation != "" {
 			a.radiation = m.Radiation
+		}
+		if a.deviceName == "" && m.DeviceName != "" {
+			a.deviceName = m.DeviceName
 		}
 		a.n++
 	}
@@ -1322,6 +1329,7 @@ func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float6
 			Humidity:         hum,
 			Detector:         c.detector,
 			Radiation:        c.radiation,
+			DeviceName:       c.deviceName,
 			Date:             c.latest,
 			Zoom:             zoom,
 			TrackID:          markers[0].TrackID,
@@ -1391,6 +1399,7 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 		var latestDate int64
 		detector := ""
 		radiation := ""
+		deviceName := ""
 		for _, c := range cluster {
 			sumLat += c.Marker.Lat
 			sumLon += c.Marker.Lon
@@ -1413,6 +1422,9 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			}
 			if radiation == "" && c.Marker.Radiation != "" {
 				radiation = c.Marker.Radiation
+			}
+			if deviceName == "" && c.Marker.DeviceName != "" {
+				deviceName = c.Marker.DeviceName
 			}
 			// возьмём дату последнего
 			if c.Marker.Date > latestDate {
@@ -1461,6 +1473,7 @@ func mergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) [
 			Humidity:         hum,
 			Detector:         detector,
 			Radiation:        radiation,
+			DeviceName:       deviceName,
 			Date:             latestDate,
 			Speed:            avgSpeed,
 			Zoom:             zoom,
@@ -2793,6 +2806,12 @@ func processTrackExportReader(
 		trackID = parsedTrackID
 	}
 
+	deviceName := strings.TrimSpace(payload.DeviceName)
+	if deviceName != "" {
+		// Logging the device name here keeps export imports observable before we touch the DB.
+		logT(trackID, "Export", "device name: %s", deviceName)
+	}
+
 	// Ignore live-only exports because they belong to the realtime cache.
 	// Skipping them keeps weekly archives from stalling on transient snapshots
 	// while the map still renders live points directly from the realtime table.
@@ -3244,13 +3263,15 @@ func processChichaTrackJSON(
 	dbType string,
 ) (database.Bounds, string, error) {
 	var payload struct {
-		Format  string `json:"format"`
-		Version int    `json:"version"`
-		Track   struct {
+		Format     string `json:"format"`
+		Version    int    `json:"version"`
+		DeviceName string `json:"deviceName"`
+		Track      struct {
 			TrackID        string   `json:"trackID"`
 			DetectorName   string   `json:"detectorName"`
 			DetectorType   string   `json:"detectorType"`
 			RadiationTypes []string `json:"radiationTypes"`
+			DeviceName     string   `json:"deviceName"`
 		} `json:"track"`
 		Markers []struct {
 			ID                 int64    `json:"id"`
@@ -3288,6 +3309,10 @@ func processChichaTrackJSON(
 	defaultDetectorType := strings.TrimSpace(payload.Track.DetectorType)
 	defaultDetectorName := strings.TrimSpace(payload.Track.DetectorName)
 	defaultRadiation := normalizeRadiationList(payload.Track.RadiationTypes)
+	defaultDeviceName := strings.TrimSpace(payload.Track.DeviceName)
+	if defaultDeviceName == "" {
+		defaultDeviceName = strings.TrimSpace(payload.DeviceName)
+	}
 
 	markers := make([]database.Marker, 0, len(payload.Markers))
 	for _, item := range payload.Markers {
@@ -3326,6 +3351,8 @@ func processChichaTrackJSON(
 			radiationList = defaultRadiation
 		}
 
+		deviceName := strings.TrimSpace(defaultDeviceName)
+
 		var altitude float64
 		var altitudeValid bool
 		if item.AltitudeM != nil {
@@ -3346,7 +3373,7 @@ func processChichaTrackJSON(
 		}
 
 		markers = append(markers, database.Marker{
-			ID:               item.ID,
+			ID:               0,
 			DoseRate:         dose,
 			Date:             ts,
 			Lon:              item.Lon,
@@ -3358,6 +3385,7 @@ func processChichaTrackJSON(
 			Humidity:         humidity,
 			Detector:         detector,
 			Radiation:        strings.Join(radiationList, ","),
+			DeviceName:       deviceName,
 			AltitudeValid:    altitudeValid,
 			TemperatureValid: temperatureValid,
 			HumidityValid:    humidityValid,
@@ -3370,6 +3398,10 @@ func processChichaTrackJSON(
 
 	if candidateTrackID != "" {
 		trackID = candidateTrackID
+	}
+
+	if defaultDeviceName != "" {
+		logT(trackID, "ChichaJSON", "device name: %s", defaultDeviceName)
 	}
 
 	logT(trackID, "ChichaJSON", "parsed %d markers", len(markers))
@@ -3509,6 +3541,29 @@ func processAndStoreMarkersWithContext(
 	db *database.Database,
 	dbType string,
 ) (database.Bounds, string, error) {
+	return processAndStoreMarkersWithContextOptions(ctx, markers, initTrackID, db, dbType, true)
+}
+
+// processAndStoreMarkersWithContextFixedID stores markers without probing for
+// an existing track ID so external loaders can preserve the upstream identity.
+func processAndStoreMarkersWithContextFixedID(
+	ctx context.Context,
+	markers []database.Marker,
+	initTrackID string,
+	db *database.Database,
+	dbType string,
+) (database.Bounds, string, error) {
+	return processAndStoreMarkersWithContextOptions(ctx, markers, initTrackID, db, dbType, false)
+}
+
+func processAndStoreMarkersWithContextOptions(
+	ctx context.Context,
+	markers []database.Marker,
+	initTrackID string,
+	db *database.Database,
+	dbType string,
+	probeExisting bool,
+) (database.Bounds, string, error) {
 
 	// ── step 0: bounding box (cheap) ────────────────────────────────
 	bbox := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
@@ -3537,15 +3592,18 @@ func processAndStoreMarkersWithContext(
 	if err := observeContext(ctx); err != nil {
 		return bbox, trackID, err
 	}
-
-	probe := pickIdentityProbe(markers, 128)
-	if existing, err := db.DetectExistingTrackID(probe, 10, dbType); err != nil {
-		return bbox, trackID, err
-	} else if existing != "" {
-		logT(trackID, "Store", "⚠ detected existing trackID %s — reusing", existing)
-		trackID = existing
+	if probeExisting {
+		probe := pickIdentityProbe(markers, 128)
+		if existing, err := db.DetectExistingTrackID(probe, 10, dbType); err != nil {
+			return bbox, trackID, err
+		} else if existing != "" {
+			logT(trackID, "Store", "⚠ detected existing trackID %s — reusing", existing)
+			trackID = existing
+		} else {
+			logT(trackID, "Store", "unique track, proceed with new trackID (%s)", trackID)
+		}
 	} else {
-		logT(trackID, "Store", "unique track, proceed with new trackID")
+		logT(trackID, "Store", "skip duplicate probe; preserving upstream track ID")
 	}
 
 	// ── step 2: attach FINAL TrackID ────────────────────────────────
@@ -3660,6 +3718,318 @@ func processAndStoreMarkersWithContext(
 
 	logT(trackID, "Store", "✔ stored (new %d markers)", len(allZoom))
 	return bbox, trackID, nil
+}
+
+// =====================
+// AtomFast loader
+// =====================
+
+// atomfastLoader wires the AtomFast client into the existing ingestion pipeline
+// while keeping requests sequential and spaced out to mimic human browsing.
+type atomfastLoader struct {
+	client       *atomfast.Client
+	db           *database.Database
+	dbType       string
+	logf         func(string, ...any)
+	minDelay     time.Duration
+	maxDelay     time.Duration
+	pollInterval time.Duration
+	rng          *rand.Rand
+}
+
+type atomfastJobKind int
+
+const (
+	atomfastJobPage atomfastJobKind = iota
+	atomfastJobTrack
+)
+
+type atomfastJob struct {
+	kind    atomfastJobKind
+	page    int
+	trackID string
+}
+
+type atomfastResult struct {
+	job   atomfastJob
+	ids   []string
+	track atomfast.TrackPayload
+	err   error
+}
+
+func startAtomFastLoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
+	if !*atomfastEnabled {
+		logf("atomfast loader disabled: set -atomfast to enable")
+		return
+	}
+
+	const (
+		defaultAtomFastBaseURL      = "http://www.atomfast.net"
+		defaultAtomFastTrackPage    = "/maps/show/%s/?lat=0&lng=0&z=1"
+		defaultAtomFastPageLimit    = 20
+		defaultAtomFastDelayMin     = 500 * time.Millisecond
+		defaultAtomFastDelayMax     = 1500 * time.Millisecond
+		defaultAtomFastPollInterval = 30 * time.Minute
+	)
+
+	base := strings.TrimRight(strings.TrimSpace(defaultAtomFastBaseURL), "/")
+	trackPage := strings.TrimSpace(defaultAtomFastTrackPage)
+	if trackPage != "" && strings.HasPrefix(trackPage, "/") {
+		trackPage = base + trackPage
+	}
+
+	client := atomfast.NewClient(atomfast.Config{
+		BaseURL:         base,
+		PageLimit:       defaultAtomFastPageLimit,
+		TrackPageFormat: trackPage,
+	})
+
+	minDelay := defaultAtomFastDelayMin
+	maxDelay := defaultAtomFastDelayMax
+	if minDelay < 0 {
+		minDelay = 0
+	}
+	if maxDelay < minDelay {
+		maxDelay = minDelay
+	}
+
+	loader := &atomfastLoader{
+		client:       client,
+		db:           db,
+		dbType:       dbType,
+		logf:         logf,
+		minDelay:     minDelay,
+		maxDelay:     maxDelay,
+		pollInterval: defaultAtomFastPollInterval,
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+
+	go loader.run(ctx)
+}
+
+func (l *atomfastLoader) run(ctx context.Context) {
+	jobs := make(chan atomfastJob)
+	results := make(chan atomfastResult)
+
+	go l.worker(ctx, jobs, results)
+
+	if err := l.runInitial(ctx, jobs, results); err != nil {
+		l.logf("atomfast initial load stopped: %v", err)
+	}
+
+	interval := l.pollInterval
+	if interval <= 0 {
+		interval = 30 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := l.runRefresh(ctx, jobs, results); err != nil {
+				l.logf("atomfast refresh stopped: %v", err)
+			}
+		}
+	}
+}
+
+func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, results chan<- atomfastResult) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-jobs:
+			switch job.kind {
+			case atomfastJobPage:
+				ids, err := l.client.FetchRecentIDs(ctx, job.page)
+				if delayErr := l.sleepBetween(ctx); err == nil {
+					err = delayErr
+				}
+				results <- atomfastResult{job: job, ids: ids, err: err}
+			case atomfastJobTrack:
+				track, err := l.client.FetchTrackPayload(ctx, job.trackID)
+				if err == nil {
+					err = l.storeTrack(ctx, track)
+				}
+				if delayErr := l.sleepBetween(ctx); err == nil {
+					err = delayErr
+				}
+				results <- atomfastResult{job: job, track: track, err: err}
+			}
+		}
+	}
+}
+
+func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
+	l.logf("atomfast initial load: start")
+	for page := 1; ; page++ {
+		ids, err := l.requestPage(ctx, jobs, results, page)
+		if err != nil {
+			return err
+		}
+		if page == 1 && len(ids) == 0 {
+			return fmt.Errorf("atomfast initial load: empty list on first page")
+		}
+		if len(ids) == 0 {
+			break
+		}
+		for _, id := range ids {
+			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
+				l.logf("atomfast initial track %s skipped: %v", id, err)
+			}
+		}
+	}
+	l.logf("atomfast initial load: done")
+	return nil
+}
+
+func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
+	l.logf("atomfast refresh: start")
+	for page := 1; ; page++ {
+		ids, err := l.requestPage(ctx, jobs, results, page)
+		if err != nil {
+			return err
+		}
+		if page == 1 && len(ids) == 0 {
+			return fmt.Errorf("atomfast refresh: empty list on first page")
+		}
+		if len(ids) == 0 {
+			break
+		}
+		newCount := 0
+		for _, id := range ids {
+			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
+				l.logf("atomfast refresh track %s skipped: %v", id, err)
+				continue
+			}
+			newCount++
+		}
+		if newCount == 0 {
+			break
+		}
+	}
+	l.logf("atomfast refresh: done")
+	return nil
+}
+
+func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID string) error {
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return fmt.Errorf("empty track id")
+	}
+	exists, err := l.db.TrackExists(ctx, trackID, l.dbType)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return l.ensureTrackDeviceLabel(ctx, trackID)
+	}
+	return l.requestTrack(ctx, jobs, results, trackID)
+}
+
+func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]string, error) {
+	job := atomfastJob{kind: atomfastJobPage, page: page}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case jobs <- job:
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-results:
+		if res.job.kind != atomfastJobPage {
+			return nil, fmt.Errorf("unexpected atomfast result kind")
+		}
+		return res.ids, res.err
+	}
+}
+
+func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID string) error {
+	job := atomfastJob{kind: atomfastJobTrack, trackID: trackID}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case jobs <- job:
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case res := <-results:
+		if res.job.kind != atomfastJobTrack {
+			return fmt.Errorf("unexpected atomfast result kind")
+		}
+		return res.err
+	}
+}
+
+func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPayload) error {
+	if len(track.Payload) == 0 {
+		return fmt.Errorf("atomfast track %s empty", track.TrackID)
+	}
+
+	deviceName := strings.TrimSpace(track.Device.Model)
+
+	_, finalTrackID, err := processAtomFastData(track.Payload, track.TrackID, l.db, l.dbType)
+	if err != nil {
+		return err
+	}
+
+	if deviceName != "" {
+		logT(finalTrackID, "AtomFast", "device name: %s", deviceName)
+		if err := l.db.UpdateTrackDeviceName(ctx, finalTrackID, deviceName, l.dbType); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *atomfastLoader) ensureTrackDeviceLabel(ctx context.Context, trackID string) error {
+	hasLabel, err := l.db.TrackHasDeviceName(ctx, trackID, l.dbType)
+	if err != nil {
+		return err
+	}
+	if hasLabel {
+		return nil
+	}
+	deviceName, err := l.client.FetchDeviceLabel(ctx, trackID)
+	if err != nil {
+		return err
+	}
+	if deviceName == "" {
+		return nil
+	}
+	logT(trackID, "AtomFast", "device name: %s", deviceName)
+	return l.db.UpdateTrackDeviceName(ctx, trackID, deviceName, l.dbType)
+}
+
+func (l *atomfastLoader) sleepBetween(ctx context.Context) error {
+	if l.minDelay <= 0 && l.maxDelay <= 0 {
+		return nil
+	}
+	minDelay := l.minDelay
+	maxDelay := l.maxDelay
+	if maxDelay < minDelay {
+		maxDelay = minDelay
+	}
+	wait := minDelay
+	if maxDelay > minDelay {
+		span := maxDelay - minDelay
+		wait = minDelay + time.Duration(l.rng.Int63n(int64(span)+1))
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // enqueueArchiveImport writes the uploaded tgz to a temporary file and processes it in the background.
@@ -5415,6 +5785,8 @@ func main() {
 	if err = db.InitSchema(dbCfg); err != nil {
 		log.Fatalf("DB schema: %v", err)
 	}
+
+	startAtomFastLoader(context.Background(), db, driverName, log.Printf)
 
 	remoteURL := strings.TrimSpace(*importTGZURLFlag)
 	localArchive := strings.TrimSpace(*importTGZFileFlag)

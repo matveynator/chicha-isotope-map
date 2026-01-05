@@ -192,6 +192,31 @@ func (db *Database) CountTracks(ctx context.Context) (int64, error) {
 	return count.Int64, nil
 }
 
+// TrackExists checks whether a track identifier already exists in the registry
+// table. We keep it lightweight so loaders can avoid duplicate network fetches.
+func (db *Database) TrackExists(ctx context.Context, trackID, dbType string) (bool, error) {
+	if db == nil || db.DB == nil {
+		return false, fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	query := fmt.Sprintf("SELECT 1 FROM tracks WHERE trackID = %s LIMIT 1", placeholder(dbType, 1))
+	var one int
+	err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("track exists: %w", err)
+	}
+	return true, nil
+}
+
 // GetTrackSummary returns metadata for a single track.
 // Keeping this function tiny lets the HTTP handler reuse the information
 // for range validation without duplicating SQL statements.
@@ -358,11 +383,95 @@ WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, value, value)
 	defer cancel()
 
 	return db.withSerializedConnectionFor(ctx, WorkloadUserUpload, func(ctx context.Context, conn *sql.DB) error {
-		if _, err := conn.ExecContext(ctx, stmt, trackID); err != nil {
+		// We pass the track ID twice to satisfy both placeholders in the
+		// portable NOT EXISTS insert statement.
+		if _, err := conn.ExecContext(ctx, stmt, trackID, trackID); err != nil {
 			return fmt.Errorf("ensure track presence: %w", err)
 		}
 		return nil
 	})
+}
+
+// UpdateTrackDeviceName stamps a device label onto all markers in a track so
+// the UI can show instrument names without extra joins.
+func (db *Database) UpdateTrackDeviceName(ctx context.Context, trackID, deviceName, dbType string) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	deviceName = strings.TrimSpace(deviceName)
+	if trackID == "" || deviceName == "" {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := placeholder(dbType, 1)
+	ph2 := placeholder(dbType, 2)
+	stmt := fmt.Sprintf(`UPDATE markers
+SET device_name = %s
+WHERE trackID = %s;`, ph, ph2)
+	if _, err := db.DB.ExecContext(ctx, stmt, deviceName, trackID); err != nil {
+		return fmt.Errorf("update track device name: %w", err)
+	}
+	return nil
+}
+
+// TrackHasDeviceName checks whether any marker in the track already carries a device label.
+// We use it to avoid downloading full track payloads when only the device name is missing.
+func (db *Database) TrackHasDeviceName(ctx context.Context, trackID, dbType string) (bool, error) {
+	if db == nil || db.DB == nil {
+		return false, fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := placeholder(dbType, 1)
+	query := fmt.Sprintf(`SELECT 1 FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
+	var one int
+	err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("track device name check: %w", err)
+	}
+	return true, nil
+}
+
+// GetTrackDeviceName returns the first non-empty device name for a track so
+// exports can attach a track-level instrument label.
+func (db *Database) GetTrackDeviceName(ctx context.Context, trackID, dbType string) (string, error) {
+	if db == nil || db.DB == nil {
+		return "", fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		return "", nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := placeholder(dbType, 1)
+	query := fmt.Sprintf(`SELECT device_name FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
+	var name sql.NullString
+	if err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&name); err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("track device name: %w", err)
+	}
+	if !name.Valid {
+		return "", nil
+	}
+	return strings.TrimSpace(name.String), nil
 }
 
 // backfillTracksTable refreshes the tracks registry from existing markers so

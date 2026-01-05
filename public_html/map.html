@@ -4144,6 +4144,11 @@ function createDateRangeSlider(){
       ? `${(marker.speed * 3.6).toFixed(1)} km/h`
       : '—';
 
+    const deviceName = marker.deviceName ? String(marker.deviceName) : '';
+    const deviceLabel = deviceName
+      ? `<div><strong>${translate('live_marker_device_label')}:</strong> ${escapeHtml(deviceName)}</div>`
+      : '';
+
     return `
       <div class="custom-tooltip">
         <div><strong>${translate('radiation_dose')}:</strong><br>
@@ -4152,6 +4157,7 @@ function createDateRangeSlider(){
             ${translate(doseCategory(marker.doseRate))}
           </a>)
         </div>
+        ${deviceLabel}
         <div><strong>${translate('speed')}:</strong> ${speedText}</div>
         <div style="margin-top:4px">
           <!-- clicking the link switches to track mode -->
