@@ -85,13 +85,7 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
-var atomfastEnabled = flag.Bool("atomfast-loader", true, "Enable sequential AtomFast track ingestion and refresh polling")
-var atomfastBaseURL = flag.String("atomfast-base-url", "http://www.atomfast.net", "AtomFast base URL for list and marker endpoints")
-var atomfastTrackPage = flag.String("atomfast-track-page", "/maps/show/%s/?lat=0&lng=0&z=1", "AtomFast track page path for device scraping")
-var atomfastPageLimit = flag.Int("atomfast-page-limit", 20, "AtomFast list page size")
-var atomfastDelayMin = flag.Duration("atomfast-delay-min", 500*time.Millisecond, "Minimum delay between AtomFast HTTP requests")
-var atomfastDelayMax = flag.Duration("atomfast-delay-max", 1500*time.Millisecond, "Maximum delay between AtomFast HTTP requests")
-var atomfastPollInterval = flag.Duration("atomfast-poll-interval", 30*time.Minute, "Polling interval for new AtomFast tracks")
+var atomfastEnabled = flag.Bool("atomfast", true, "Enable sequential AtomFast track ingestion and refresh polling")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of exported JSON files, log progress, and exit once finished. Example: https://pelora.org/api/json/weekly.tgz")
@@ -145,7 +139,7 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "logo-path", "logo-link", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
-	{Title: "AtomFast loader", Flags: []string{"atomfast-loader", "atomfast-base-url", "atomfast-track-page", "atomfast-page-limit", "atomfast-delay-min", "atomfast-delay-max", "atomfast-poll-interval"}},
+	{Title: "AtomFast loader", Flags: []string{"atomfast"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
@@ -3738,24 +3732,33 @@ type atomfastResult struct {
 
 func startAtomFastLoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
 	if !*atomfastEnabled {
-		logf("atomfast loader disabled: set -atomfast-loader to enable")
+		logf("atomfast loader disabled: set -atomfast to enable")
 		return
 	}
 
-	base := strings.TrimRight(strings.TrimSpace(*atomfastBaseURL), "/")
-	trackPage := strings.TrimSpace(*atomfastTrackPage)
+	const (
+		defaultAtomFastBaseURL      = "http://www.atomfast.net"
+		defaultAtomFastTrackPage    = "/maps/show/%s/?lat=0&lng=0&z=1"
+		defaultAtomFastPageLimit    = 20
+		defaultAtomFastDelayMin     = 500 * time.Millisecond
+		defaultAtomFastDelayMax     = 1500 * time.Millisecond
+		defaultAtomFastPollInterval = 30 * time.Minute
+	)
+
+	base := strings.TrimRight(strings.TrimSpace(defaultAtomFastBaseURL), "/")
+	trackPage := strings.TrimSpace(defaultAtomFastTrackPage)
 	if trackPage != "" && strings.HasPrefix(trackPage, "/") {
 		trackPage = base + trackPage
 	}
 
 	client := atomfast.NewClient(atomfast.Config{
 		BaseURL:         base,
-		PageLimit:       *atomfastPageLimit,
+		PageLimit:       defaultAtomFastPageLimit,
 		TrackPageFormat: trackPage,
 	})
 
-	minDelay := *atomfastDelayMin
-	maxDelay := *atomfastDelayMax
+	minDelay := defaultAtomFastDelayMin
+	maxDelay := defaultAtomFastDelayMax
 	if minDelay < 0 {
 		minDelay = 0
 	}
@@ -3770,7 +3773,7 @@ func startAtomFastLoader(ctx context.Context, db *database.Database, dbType stri
 		logf:         logf,
 		minDelay:     minDelay,
 		maxDelay:     maxDelay,
-		pollInterval: *atomfastPollInterval,
+		pollInterval: defaultAtomFastPollInterval,
 		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
