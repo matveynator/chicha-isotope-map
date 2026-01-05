@@ -32,6 +32,7 @@ type Data struct {
 	ID      string   `json:"id"`
 	Markers []Marker `json:"markers"`
 	Title   string   `json:"title"`
+	Devices []string `json:"devices"` // Devices keeps upstream identifiers so importers can derive the model name.
 	// NEW — принимаем оба варианта имён
 	IsSievert       bool `json:"sv"`        // новое поле Radiacode-Android
 	IsSievertLegacy bool `json:"isSievert"` // старые iOS-дампы

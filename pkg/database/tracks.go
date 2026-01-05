@@ -426,6 +426,31 @@ WHERE trackID = %s;`, ph, ph2)
 	return nil
 }
 
+// FillMissingTrackDeviceName updates only empty device_name values so existing labels remain unchanged.
+func (db *Database) FillMissingTrackDeviceName(ctx context.Context, trackID, deviceName, dbType string) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	deviceName = strings.TrimSpace(deviceName)
+	if trackID == "" || deviceName == "" {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := placeholder(dbType, 1)
+	ph2 := placeholder(dbType, 2)
+	stmt := fmt.Sprintf(`UPDATE markers
+SET device_name = %s
+WHERE trackID = %s AND (device_name IS NULL OR device_name = '');`, ph, ph2)
+	if _, err := db.DB.ExecContext(ctx, stmt, deviceName, trackID); err != nil {
+		return fmt.Errorf("fill track device name: %w", err)
+	}
+	return nil
+}
+
 // TrackHasDeviceName checks whether any marker in the track already carries a device label.
 // We use it to avoid downloading full track payloads when only the device name is missing.
 func (db *Database) TrackHasDeviceName(ctx context.Context, trackID, dbType string) (bool, error) {

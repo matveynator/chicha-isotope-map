@@ -2494,6 +2494,36 @@ func processKMZFile(
 }
 
 // -----------------------------------------------------------------------------
+// RCTRK device helpers.
+// -----------------------------------------------------------------------------
+
+// rctrkDeviceLabel trims serial suffixes so we only store the device model.
+func rctrkDeviceLabel(devices []string) string {
+	for _, raw := range devices {
+		label := strings.TrimSpace(raw)
+		if label == "" {
+			continue
+		}
+		parts := strings.Split(label, "-")
+		if len(parts) >= 2 {
+			return strings.Join(parts[:2], "-")
+		}
+		return label
+	}
+	return ""
+}
+
+// applyDeviceNameToMarkers keeps the pipeline simple by stamping the label once.
+func applyDeviceNameToMarkers(markers []database.Marker, deviceName string) {
+	if deviceName == "" {
+		return
+	}
+	for i := range markers {
+		markers[i].DeviceName = deviceName
+	}
+}
+
+// -----------------------------------------------------------------------------
 // processRCTRKFile — принимает *.rctrk (Radiacode) в JSON- или текстовом виде.
 // Поддерживает оба признака единиц: "sv" (новый Android) и "isSievert" (старый iOS).
 // Если ни одного флага нет — считаем, что числа уже в µSv/h и конвертацию НЕ делаем.
@@ -2538,7 +2568,23 @@ func processRCTRKFile(
 			data.Markers = convertRhToSv(data.Markers)
 		}
 
-		return processAndStoreMarkers(data.Markers, trackID, db, dbType)
+		deviceName := rctrkDeviceLabel(data.Devices)
+		if deviceName != "" {
+			logT(trackID, "RCTRK", "device name: %s", deviceName)
+			applyDeviceNameToMarkers(data.Markers, deviceName)
+		}
+
+		bbox, storedTrackID, err := processAndStoreMarkers(data.Markers, trackID, db, dbType)
+		if err != nil {
+			return bbox, storedTrackID, err
+		}
+		if deviceName != "" {
+			// Fill missing labels after insert because ON CONFLICT can skip rows on duplicates.
+			if err := db.FillMissingTrackDeviceName(context.Background(), storedTrackID, deviceName, dbType); err != nil {
+				return bbox, storedTrackID, err
+			}
+		}
+		return bbox, storedTrackID, nil
 	}
 
 	// ---------- plain-text fallback ------------------------------------------
