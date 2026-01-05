@@ -965,6 +965,7 @@ func searchDeviceInfo(node any, depth int) DeviceInfo {
 
 func extractDeviceInfoFromHTML(html string) DeviceInfo {
 	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)devices?\s*:\s*<a[^>]*>([^<\n]+)</a>`),
 		regexp.MustCompile(`(?i)devices?\s*:\s*([^<\n]+)`),
 		regexp.MustCompile(`(?i)(?:device|detector|model|device model|модель|устройство)[^:]*:\s*([^<\n]+)`),
 		regexp.MustCompile(`(?i)(?:device|detector|model|модель|устройство)\s*</[^>]+>\s*([^<\n]+)`),

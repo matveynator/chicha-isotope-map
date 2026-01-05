@@ -1368,17 +1368,6 @@ CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
 
-CREATE TABLE IF NOT EXISTS devices (
-  device_id   TEXT PRIMARY KEY,
-  model       TEXT
-);
-
-CREATE TABLE IF NOT EXISTS track_devices (
-  trackID     TEXT NOT NULL,
-  device_id   TEXT NOT NULL,
-  PRIMARY KEY (trackID, device_id)
-);
-
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGSERIAL PRIMARY KEY,
   device_id   TEXT,
@@ -1438,17 +1427,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
 
 CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
-);
-
-CREATE TABLE IF NOT EXISTS devices (
-  device_id   TEXT PRIMARY KEY,
-  model       TEXT
-);
-
-CREATE TABLE IF NOT EXISTS track_devices (
-  trackID     TEXT NOT NULL,
-  device_id   TEXT NOT NULL,
-  PRIMARY KEY (trackID, device_id)
 );
 
 CREATE TABLE IF NOT EXISTS realtime_measurements (
@@ -1515,17 +1493,6 @@ CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
 
-CREATE TABLE IF NOT EXISTS devices (
-  device_id   TEXT PRIMARY KEY,
-  model       TEXT
-);
-
-CREATE TABLE IF NOT EXISTS track_devices (
-  trackID     TEXT NOT NULL,
-  device_id   TEXT NOT NULL,
-  PRIMARY KEY (trackID, device_id)
-);
-
 CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
@@ -1585,16 +1552,6 @@ ORDER BY (trackID, date, id);`,
   trackID     String
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (trackID);`,
-			`CREATE TABLE IF NOT EXISTS devices (
-  device_id   String,
-  model       String
-) ENGINE = MergeTree()
-ORDER BY (device_id);`,
-			`CREATE TABLE IF NOT EXISTS track_devices (
-  trackID     String,
-  device_id   String
-) ENGINE = MergeTree()
-ORDER BY (trackID, device_id);`,
 			`CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          UInt64,
   device_id   String,
@@ -1640,9 +1597,6 @@ ORDER BY (code);`,
 	}
 	if err := db.ensureRealtimeMetadataColumns(cfg.DBType); err != nil {
 		return fmt.Errorf("add realtime metadata column: %w", err)
-	}
-	if err := db.ensureDeviceTables(cfg.DBType); err != nil {
-		return fmt.Errorf("ensure device tables: %w", err)
 	}
 
 	return nil
@@ -1805,55 +1759,6 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 			}
 		}
 		return nil
-	}
-}
-
-// ensureDeviceTables creates the shared device catalog and the track/device
-// association table so loaders can link tracks to the instruments that recorded
-// them without relying on vendor-specific DDL.
-func (db *Database) ensureDeviceTables(dbType string) error {
-	driver := strings.ToLower(dbType)
-	switch driver {
-	case "clickhouse":
-		stmts := []string{
-			`CREATE TABLE IF NOT EXISTS devices (
-  device_id   String,
-  model       String
-) ENGINE = MergeTree()
-ORDER BY (device_id);`,
-			`CREATE TABLE IF NOT EXISTS track_devices (
-  trackID     String,
-  device_id   String
-) ENGINE = MergeTree()
-ORDER BY (trackID, device_id);`,
-		}
-		return execStatements(db.DB, stmts)
-	case "pgx", "duckdb":
-		_, err := db.DB.Exec(`
-CREATE TABLE IF NOT EXISTS devices (
-  device_id   TEXT PRIMARY KEY,
-  model       TEXT
-);
-
-CREATE TABLE IF NOT EXISTS track_devices (
-  trackID     TEXT NOT NULL,
-  device_id   TEXT NOT NULL,
-  PRIMARY KEY (trackID, device_id)
-);`)
-		return err
-	default:
-		_, err := db.DB.Exec(`
-CREATE TABLE IF NOT EXISTS devices (
-  device_id   TEXT PRIMARY KEY,
-  model       TEXT
-);
-
-CREATE TABLE IF NOT EXISTS track_devices (
-  trackID     TEXT NOT NULL,
-  device_id   TEXT NOT NULL,
-  PRIMARY KEY (trackID, device_id)
-);`)
-		return err
 	}
 }
 

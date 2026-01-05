@@ -392,6 +392,32 @@ WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, value, value)
 	})
 }
 
+// UpdateTrackDeviceName stamps a device label onto all markers in a track so
+// the UI can show instrument names without extra joins.
+func (db *Database) UpdateTrackDeviceName(ctx context.Context, trackID, deviceName, dbType string) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	deviceName = strings.TrimSpace(deviceName)
+	if trackID == "" || deviceName == "" {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ph := placeholder(dbType, 1)
+	ph2 := placeholder(dbType, 2)
+	stmt := fmt.Sprintf(`UPDATE markers
+SET device_name = %s
+WHERE trackID = %s;`, ph, ph2)
+	if _, err := db.DB.ExecContext(ctx, stmt, deviceName, trackID); err != nil {
+		return fmt.Errorf("update track device name: %w", err)
+	}
+	return nil
+}
+
 // backfillTracksTable refreshes the tracks registry from existing markers so
 // older databases inherit the faster pagination path without manual scripts.
 // The operation is idempotent thanks to the NOT EXISTS guard above the SELECT

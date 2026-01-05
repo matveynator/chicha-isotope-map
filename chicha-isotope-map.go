@@ -14,12 +14,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/sha1"
 	"crypto/tls"
 	"database/sql"
 	"embed"
 	"encoding/csv"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -3946,36 +3944,19 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPay
 		return fmt.Errorf("atomfast track %s empty", track.TrackID)
 	}
 
-	device := l.prepareDevice(track.Device)
-	if device.ID != "" {
-		if err := l.db.EnsureDevice(ctx, device, l.dbType); err != nil {
-			return err
-		}
-		if err := l.db.EnsureTrackDeviceMapping(ctx, track.TrackID, device.ID, l.dbType); err != nil {
-			return err
-		}
-	}
+	deviceName := strings.TrimSpace(track.Device.Model)
 
 	_, finalTrackID, err := processAtomFastData(track.Payload, track.TrackID, l.db, l.dbType)
 	if err != nil {
 		return err
 	}
 
-	if device.ID != "" {
-		if err := l.db.UpdateTrackDeviceMetadata(ctx, finalTrackID, device.ID, device.Model, l.dbType); err != nil {
+	if deviceName != "" {
+		if err := l.db.UpdateTrackDeviceName(ctx, finalTrackID, deviceName, l.dbType); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func (l *atomfastLoader) prepareDevice(info atomfast.DeviceInfo) database.Device {
-	id := strings.TrimSpace(info.ID)
-	model := strings.TrimSpace(info.Model)
-	if id == "" && model != "" {
-		id = "atomfast:model:" + stableDeviceHash(model)
-	}
-	return database.Device{ID: id, Model: model}
 }
 
 func (l *atomfastLoader) sleepBetween(ctx context.Context) error {
@@ -4000,11 +3981,6 @@ func (l *atomfastLoader) sleepBetween(ctx context.Context) error {
 	case <-timer.C:
 		return nil
 	}
-}
-
-func stableDeviceHash(value string) string {
-	sum := sha1.Sum([]byte(strings.ToLower(strings.TrimSpace(value))))
-	return hex.EncodeToString(sum[:])
 }
 
 // enqueueArchiveImport writes the uploaded tgz to a temporary file and processes it in the background.

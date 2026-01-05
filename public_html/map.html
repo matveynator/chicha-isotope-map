@@ -4145,8 +4145,8 @@ function createDateRangeSlider(){
       : '—';
 
     const deviceName = marker.deviceName ? String(marker.deviceName) : '';
-    const deviceLink = deviceName
-      ? `<div><strong>${translate('live_marker_device_label')}:</strong> <a href="/device/${encodeURIComponent(deviceName)}">${escapeHtml(deviceName)}</a></div>`
+    const deviceLabel = deviceName
+      ? `<div><strong>${translate('live_marker_device_label')}:</strong> ${escapeHtml(deviceName)}</div>`
       : '';
 
     return `
@@ -4158,7 +4158,7 @@ function createDateRangeSlider(){
           </a>)
         </div>
         <div><strong>${translate('speed')}:</strong> ${speedText}</div>
-        ${deviceLink}
+        ${deviceLabel}
         <div style="margin-top:4px">
           <!-- clicking the link switches to track mode -->
           <a href="#" class="track-link" data-track="${marker.trackID}" style="font-weight:bold;">
