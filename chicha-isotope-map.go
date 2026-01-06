@@ -1020,6 +1020,7 @@ func processBGeigieZenFile(
 	// bGeigie logs do not carry device names, so we stamp the default label here
 	// to keep both Safecast imports and manual uploads consistent.
 	applyDeviceNameToMarkers(markers, "bGeigie")
+	logT(trackID, "BGEIGIE", "device name: bGeigie")
 
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
 	if err != nil {
