@@ -4463,6 +4463,12 @@ func (l *safecastAPILoader) storeImport(ctx context.Context, imp safecastimport.
 	file := safecastimport.NewBytesFile(content, filename)
 	_, finalTrackID, err := processBGeigieZenFile(file, trackID, l.db, l.dbType)
 	if err != nil {
+		if isNoValidBGeigie(err) {
+			logT(trackID, "Safecast", "skip import %s: %v", sourceID, err)
+			if historyErr := l.db.EnsureImportHistory(ctx, importHistorySourceSafecast, sourceID, "", "skipped", err.Error(), l.dbType); historyErr != nil {
+				return historyErr
+			}
+		}
 		return err
 	}
 
@@ -4488,6 +4494,15 @@ func (l *safecastAPILoader) storeImport(ctx context.Context, imp safecastimport.
 	logT(finalTrackID, "Safecast", "imported source %s (%s)", sourceID, filename)
 
 	return nil
+}
+
+// isNoValidBGeigie checks for parser errors that should be marked as skipped so
+// the import history stops retrying known-invalid logs.
+func isNoValidBGeigie(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "no valid $BNRDD points")
 }
 
 func (l *safecastAPILoader) attachUser(ctx context.Context, imp safecastimport.Import, trackID string) error {
