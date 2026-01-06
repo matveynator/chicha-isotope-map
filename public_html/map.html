@@ -2452,7 +2452,9 @@ function refreshDownloadLink() {
     return;
   }
   if (currentTrackID) {
-    link.href = '/api/track/' + currentTrackID + '.json';
+    // Encode IDs so hyphens and other safe characters keep round-tripping in URLs.
+    var encodedTrackID = encodeURIComponent(currentTrackID);
+    link.href = '/api/track/' + encodedTrackID + '.json';
     link.setAttribute('download', currentTrackID + '.json');
     box.style.display = 'block';
   } else {
@@ -2971,10 +2973,10 @@ function attachControlTooltip(target, options) {
 
 document.addEventListener('DOMContentLoaded', function () {
 
-  // Initialize trackID from path
-  var match = window.location.pathname.match(/^\/trackid\/([a-zA-Z0-9]+)/);
+  // Initialize trackID from path while allowing dashes and URL-escaped segments.
+  var match = window.location.pathname.match(/^\/trackid\/([^/?#]+)/);
   if (match) {
-    currentTrackID = match[1];
+    currentTrackID = decodeURIComponent(match[1]);
     isTrackView = true;
     trackViewAutoplayRequested = true;
     // NEW: show back button immediately
@@ -5232,7 +5234,8 @@ function viewTrack(trackID) {
   isTrackView    = true;
 
   const params = buildMapStateParams();
-  const trackURL = `/trackid/${trackID}?${params.toString()}`;
+  // Encode the track ID so namespaced IDs (e.g. safecast-123) survive routing.
+  const trackURL = `/trackid/${encodeURIComponent(trackID)}?${params.toString()}`;
 
   window.location.href = trackURL;
 }
