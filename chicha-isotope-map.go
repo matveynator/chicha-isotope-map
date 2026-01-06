@@ -1017,6 +1017,10 @@ func processBGeigieZenFile(
 		return database.Bounds{}, trackID, fmt.Errorf("no valid $BNRDD points found (parsed=%d skipped=%d)", parsed, skipped)
 	}
 
+	// bGeigie logs do not carry device names, so we stamp the default label here
+	// to keep both Safecast imports and manual uploads consistent.
+	applyDeviceNameToMarkers(markers, "bGeigie")
+
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
 	if err != nil {
 		return bbox, trackID, err
