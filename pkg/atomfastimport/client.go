@@ -1,4 +1,4 @@
-package atomfast
+package atomfastimport
 
 import (
 	"context"

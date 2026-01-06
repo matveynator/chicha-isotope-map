@@ -1376,6 +1376,36 @@ CREATE TABLE IF NOT EXISTS track_sources (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
   ON track_sources (source, source_track_id);
 
+CREATE TABLE IF NOT EXISTS import_history (
+  source      TEXT NOT NULL,
+  source_id   TEXT NOT NULL,
+  track_id    TEXT,
+  status      TEXT,
+  imported_at BIGINT NOT NULL,
+  message     TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_import_history_unique
+  ON import_history (source, source_id);
+
+CREATE TABLE IF NOT EXISTS users (
+  user_id        TEXT PRIMARY KEY,
+  source         TEXT NOT NULL,
+  source_user_id TEXT NOT NULL,
+  name           TEXT,
+  created_at     BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_source_unique
+  ON users (source, source_user_id);
+
+CREATE TABLE IF NOT EXISTS track_users (
+  track_id TEXT NOT NULL,
+  user_id  TEXT NOT NULL,
+  source   TEXT NOT NULL,
+  CONSTRAINT track_users_unique UNIQUE (track_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_track_users_user
+  ON track_users (user_id);
+
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGSERIAL PRIMARY KEY,
   device_id   TEXT,
@@ -1444,6 +1474,37 @@ CREATE TABLE IF NOT EXISTS track_sources (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
   ON track_sources (source, source_track_id);
+
+CREATE TABLE IF NOT EXISTS import_history (
+  source      TEXT NOT NULL,
+  source_id   TEXT NOT NULL,
+  track_id    TEXT,
+  status      TEXT,
+  imported_at BIGINT NOT NULL,
+  message     TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_import_history_unique
+  ON import_history (source, source_id);
+
+CREATE TABLE IF NOT EXISTS users (
+  user_id        TEXT PRIMARY KEY,
+  source         TEXT NOT NULL,
+  source_user_id TEXT NOT NULL,
+  name           TEXT,
+  created_at     BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_source_unique
+  ON users (source, source_user_id);
+
+CREATE TABLE IF NOT EXISTS track_users (
+  track_id TEXT NOT NULL,
+  user_id  TEXT NOT NULL,
+  source   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_users_unique
+  ON track_users (track_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_track_users_user
+  ON track_users (user_id);
 
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          INTEGER PRIMARY KEY,
@@ -1517,6 +1578,36 @@ CREATE TABLE IF NOT EXISTS track_sources (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
   ON track_sources (source, source_track_id);
 
+CREATE TABLE IF NOT EXISTS import_history (
+  source      TEXT NOT NULL,
+  source_id   TEXT NOT NULL,
+  track_id    TEXT,
+  status      TEXT,
+  imported_at BIGINT NOT NULL,
+  message     TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_import_history_unique
+  ON import_history (source, source_id);
+
+CREATE TABLE IF NOT EXISTS users (
+  user_id        TEXT PRIMARY KEY,
+  source         TEXT NOT NULL,
+  source_user_id TEXT NOT NULL,
+  name           TEXT,
+  created_at     BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_source_unique
+  ON users (source, source_user_id);
+
+CREATE TABLE IF NOT EXISTS track_users (
+  track_id TEXT NOT NULL,
+  user_id  TEXT NOT NULL,
+  source   TEXT NOT NULL,
+  CONSTRAINT track_users_unique UNIQUE (track_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_track_users_user
+  ON track_users (user_id);
+
 CREATE SEQUENCE IF NOT EXISTS realtime_measurements_id_seq START 1;
 CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          BIGINT PRIMARY KEY DEFAULT nextval('realtime_measurements_id_seq'),
@@ -1582,6 +1673,29 @@ ORDER BY (trackID);`,
   track_id        String
 ) ENGINE = MergeTree()
 ORDER BY (source, source_track_id);`,
+			`CREATE TABLE IF NOT EXISTS import_history (
+  source      String,
+  source_id   String,
+  track_id    String,
+  status      String,
+  imported_at Int64,
+  message     String
+) ENGINE = MergeTree()
+ORDER BY (source, source_id);`,
+			`CREATE TABLE IF NOT EXISTS users (
+  user_id        String,
+  source         String,
+  source_user_id String,
+  name           String,
+  created_at     Int64
+) ENGINE = MergeTree()
+ORDER BY (source, source_user_id);`,
+			`CREATE TABLE IF NOT EXISTS track_users (
+  track_id String,
+  user_id  String,
+  source   String
+) ENGINE = MergeTree()
+ORDER BY (user_id, track_id);`,
 			`CREATE TABLE IF NOT EXISTS realtime_measurements (
   id          UInt64,
   device_id   String,
