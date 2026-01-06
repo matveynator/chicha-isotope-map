@@ -4325,6 +4325,11 @@ func (l *safecastAPILoader) run(ctx context.Context) {
 			l.logf("safecast api backfill stopped: %v", err)
 		}
 	}
+	// Run a refresh immediately so operators see new Safecast imports without
+	// waiting for the first poll interval tick.
+	if err := l.runRefresh(ctx, jobs, results); err != nil {
+		l.logf("safecast api refresh stopped: %v", err)
+	}
 
 	ticker := time.NewTicker(l.pollInterval)
 	defer ticker.Stop()
