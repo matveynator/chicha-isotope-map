@@ -4061,11 +4061,10 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 	}
 	if found {
 		if history.TrackID != "" {
-			if err := l.ensureTrackDeviceLabel(ctx, sourceTrackID, history.TrackID); err != nil {
-				return err
-			}
-			return l.attachAtomFastUser(ctx, history.TrackID, track.Author)
+			logT(history.TrackID, "AtomFast", "skip already imported source %s", sourceTrackID)
+			return nil
 		}
+		logT(storedTrackID, "AtomFast", "skip already recorded source %s", sourceTrackID)
 		return nil
 	}
 	exists, err := l.db.TrackExists(ctx, storedTrackID, l.dbType)
@@ -4102,10 +4101,11 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 			return err
 		}
 		if legacyExists {
+			logT(sourceTrackID, "AtomFast", "skip already imported legacy source %s (no prefix)", sourceTrackID)
 			if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, sourceTrackID, "imported", "", l.dbType); err != nil {
 				return err
 			}
-			return l.attachAtomFastUser(ctx, sourceTrackID, track.Author)
+			return nil
 		}
 	}
 	return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
