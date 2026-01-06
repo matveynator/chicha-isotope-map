@@ -3832,13 +3832,14 @@ type atomfastJob struct {
 	kind    atomfastJobKind
 	page    int
 	trackID string
+	author  string
 }
 
 type atomfastResult struct {
-	job   atomfastJob
-	ids   []string
-	track atomfastimport.TrackPayload
-	err   error
+	job    atomfastJob
+	tracks []atomfastimport.RecentTrack
+	track  atomfastimport.TrackPayload
+	err    error
 }
 
 func startAtomFastLoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any), enabled bool) {
@@ -3928,18 +3929,12 @@ func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, re
 		case job := <-jobs:
 			switch job.kind {
 			case atomfastJobPage:
-				ids, err := l.client.FetchRecentIDs(ctx, job.page)
-				if delayErr := l.sleepBetween(ctx); err == nil {
-					err = delayErr
-				}
-				results <- atomfastResult{job: job, ids: ids, err: err}
+				tracks, err := l.client.FetchRecentTracks(ctx, job.page)
+				results <- atomfastResult{job: job, tracks: tracks, err: err}
 			case atomfastJobTrack:
 				track, err := l.client.FetchTrackPayload(ctx, job.trackID)
 				if err == nil {
-					err = l.storeTrack(ctx, track)
-				}
-				if delayErr := l.sleepBetween(ctx); err == nil {
-					err = delayErr
+					err = l.storeTrack(ctx, track, job.author)
 				}
 				results <- atomfastResult{job: job, track: track, err: err}
 			}
@@ -3950,19 +3945,19 @@ func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, re
 func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast initial load: start")
 	for page := 1; ; page++ {
-		ids, err := l.requestPage(ctx, jobs, results, page)
+		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
 			return err
 		}
-		if page == 1 && len(ids) == 0 {
+		if page == 1 && len(tracks) == 0 {
 			return fmt.Errorf("atomfast initial load: empty list on first page")
 		}
-		if len(ids) == 0 {
+		if len(tracks) == 0 {
 			break
 		}
-		for _, id := range ids {
-			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
-				l.logf("atomfast initial track %s skipped: %v", id, err)
+		for _, track := range tracks {
+			if err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
+				l.logf("atomfast initial track %s skipped: %v", track.ID, err)
 			}
 			if err := l.sleepBetween(ctx); err != nil {
 				return err
@@ -3976,20 +3971,20 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast refresh: start")
 	for page := 1; ; page++ {
-		ids, err := l.requestPage(ctx, jobs, results, page)
+		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
 			return err
 		}
-		if page == 1 && len(ids) == 0 {
+		if page == 1 && len(tracks) == 0 {
 			return fmt.Errorf("atomfast refresh: empty list on first page")
 		}
-		if len(ids) == 0 {
+		if len(tracks) == 0 {
 			break
 		}
 		newCount := 0
-		for _, id := range ids {
-			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
-				l.logf("atomfast refresh track %s skipped: %v", id, err)
+		for _, track := range tracks {
+			if err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
+				l.logf("atomfast refresh track %s skipped: %v", track.ID, err)
 				continue
 			}
 			newCount++
@@ -4005,8 +4000,8 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 	return nil
 }
 
-func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID string) error {
-	trackID = strings.TrimSpace(trackID)
+func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, track atomfastimport.RecentTrack) error {
+	trackID := strings.TrimSpace(track.ID)
 	if trackID == "" {
 		return fmt.Errorf("empty track id")
 	}
@@ -4016,7 +4011,10 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 	}
 	if found {
 		if history.TrackID != "" {
-			return l.ensureTrackDeviceLabel(ctx, trackID, history.TrackID)
+			if err := l.ensureTrackDeviceLabel(ctx, trackID, history.TrackID); err != nil {
+				return err
+			}
+			return l.attachAtomFastUser(ctx, history.TrackID, track.Author)
 		}
 		return nil
 	}
@@ -4030,7 +4028,10 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 		if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, trackID, mappedTrackID, "imported", "", l.dbType); err != nil {
 			return err
 		}
-		return l.ensureTrackDeviceLabel(ctx, trackID, mappedTrackID)
+		if err := l.ensureTrackDeviceLabel(ctx, trackID, mappedTrackID); err != nil {
+			return err
+		}
+		return l.attachAtomFastUser(ctx, mappedTrackID, track.Author)
 	}
 	exists, err := l.db.TrackExists(ctx, trackID, l.dbType)
 	if err != nil {
@@ -4048,21 +4049,24 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 			return err
 		}
 		if hasLabel {
-			return nil
+			return l.attachAtomFastUser(ctx, trackID, track.Author)
 		}
 		// We still re-import AtomFast tracks without device labels so we can
 		// update every stored marker once the upstream device name appears.
-		if err := l.requestTrack(ctx, jobs, results, trackID); err == nil {
+		if err := l.requestTrack(ctx, jobs, results, trackID, track.Author); err == nil {
 			return nil
 		}
 		// If the marker payload fetch fails, fall back to a label-only probe
 		// to keep existing tracks enriched without blocking the loader.
-		return l.ensureTrackDeviceLabel(ctx, trackID, trackID)
+		if err := l.ensureTrackDeviceLabel(ctx, trackID, trackID); err != nil {
+			return err
+		}
+		return l.attachAtomFastUser(ctx, trackID, track.Author)
 	}
-	return l.requestTrack(ctx, jobs, results, trackID)
+	return l.requestTrack(ctx, jobs, results, trackID, track.Author)
 }
 
-func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]string, error) {
+func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]atomfastimport.RecentTrack, error) {
 	job := atomfastJob{kind: atomfastJobPage, page: page}
 	select {
 	case <-ctx.Done():
@@ -4077,12 +4081,12 @@ func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJo
 		if res.job.kind != atomfastJobPage {
 			return nil, fmt.Errorf("unexpected atomfast result kind")
 		}
-		return res.ids, res.err
+		return res.tracks, res.err
 	}
 }
 
-func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID string) error {
-	job := atomfastJob{kind: atomfastJobTrack, trackID: trackID}
+func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID, author string) error {
+	job := atomfastJob{kind: atomfastJobTrack, trackID: trackID, author: author}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -4100,7 +4104,7 @@ func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJ
 	}
 }
 
-func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfastimport.TrackPayload) error {
+func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfastimport.TrackPayload, author string) error {
 	if len(track.Payload) == 0 {
 		return fmt.Errorf("atomfast track %s empty", track.TrackID)
 	}
@@ -4125,7 +4129,31 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfastimport.Tr
 			return err
 		}
 	}
+	if err := l.attachAtomFastUser(ctx, finalTrackID, author); err != nil {
+		return err
+	}
+	logT(finalTrackID, "AtomFast", "imported track %s", track.TrackID)
 	return nil
+}
+
+func (l *atomfastLoader) attachAtomFastUser(ctx context.Context, trackID, author string) error {
+	author = strings.TrimSpace(author)
+	if author == "" {
+		return nil
+	}
+	sourceID := strings.ToLower(author)
+	if sourceID == "" {
+		return nil
+	}
+	internalID, err := l.db.EnsureUserBySource(ctx, "atomfast", sourceID, author, l.dbType)
+	if err != nil {
+		return err
+	}
+	if internalID == "" {
+		return nil
+	}
+	logT(trackID, "AtomFast", "author: %s", author)
+	return l.db.EnsureTrackUser(ctx, trackID, internalID, "atomfast", l.dbType)
 }
 
 func (l *atomfastLoader) ensureTrackDeviceLabel(ctx context.Context, sourceTrackID, storedTrackID string) error {
@@ -4457,6 +4485,8 @@ func (l *safecastAPILoader) storeImport(ctx context.Context, imp safecastimport.
 		return err
 	}
 
+	logT(finalTrackID, "Safecast", "imported source %s (%s)", sourceID, filename)
+
 	return nil
 }
 
@@ -4478,6 +4508,9 @@ func (l *safecastAPILoader) attachUser(ctx context.Context, imp safecastimport.I
 	}
 	if internalID == "" {
 		return nil
+	}
+	if userName != "" {
+		logT(trackID, "Safecast", "user: %s (id=%d)", userName, imp.UserID)
 	}
 	return l.db.EnsureTrackUser(ctx, trackID, internalID, "safecast", l.dbType)
 }
