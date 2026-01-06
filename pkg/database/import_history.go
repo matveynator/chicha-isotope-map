@@ -41,11 +41,26 @@ func (db *Database) FindImportHistory(ctx context.Context, source, sourceID, dbT
 		status  sql.NullString
 		message sql.NullString
 	)
-	if err := db.DB.QueryRowContext(ctx, query, source, sourceID).Scan(&record.Source, &record.SourceID, &trackID, &status, &record.Imported, &message); err != nil {
-		if err == sql.ErrNoRows {
-			return ImportHistory{}, false, nil
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	found := false
+	err := db.withSerializedConnectionFor(ctx, WorkloadArchive, func(runCtx context.Context, conn *sql.DB) error {
+		if err := conn.QueryRowContext(runCtx, query, source, sourceID).Scan(&record.Source, &record.SourceID, &trackID, &status, &record.Imported, &message); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("find import history: %w", err)
 		}
-		return ImportHistory{}, false, fmt.Errorf("find import history: %w", err)
+		found = true
+		return nil
+	})
+	if err != nil {
+		return ImportHistory{}, false, err
+	}
+	if !found {
+		return ImportHistory{}, false, nil
 	}
 	record.TrackID = strings.TrimSpace(trackID.String)
 	record.Status = strings.TrimSpace(status.String)
@@ -63,8 +78,16 @@ func (db *Database) CountImportHistory(ctx context.Context, source, dbType strin
 	phSource := placeholder(dbType, 1)
 	query := fmt.Sprintf(`SELECT COUNT(*) FROM import_history WHERE source = %s`, phSource)
 	var count int64
-	if err := db.DB.QueryRowContext(ctx, query, source).Scan(&count); err != nil {
-		return 0, fmt.Errorf("count import history: %w", err)
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	if err := db.withSerializedConnectionFor(ctx, WorkloadArchive, func(runCtx context.Context, conn *sql.DB) error {
+		if err := conn.QueryRowContext(runCtx, query, source).Scan(&count); err != nil {
+			return fmt.Errorf("count import history: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return 0, err
 	}
 	return count, nil
 }
@@ -85,32 +108,37 @@ func (db *Database) EnsureImportHistory(ctx context.Context, source, sourceID, t
 	}
 	importedAt := time.Now().Unix()
 
-	if strings.ToLower(dbType) == "clickhouse" {
-		existsStmt := "SELECT 1 FROM import_history WHERE source = ? AND source_id = ? LIMIT 1"
-		var exists int
-		if err := db.DB.QueryRowContext(ctx, existsStmt, source, sourceID).Scan(&exists); err == nil {
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	return db.withSerializedConnectionFor(ctx, WorkloadArchive, func(runCtx context.Context, conn *sql.DB) error {
+		if strings.ToLower(dbType) == "clickhouse" {
+			existsStmt := "SELECT 1 FROM import_history WHERE source = ? AND source_id = ? LIMIT 1"
+			var exists int
+			if err := conn.QueryRowContext(runCtx, existsStmt, source, sourceID).Scan(&exists); err == nil {
+				return nil
+			}
+			stmt := "INSERT INTO import_history (source, source_id, track_id, status, imported_at, message) VALUES (?, ?, ?, ?, ?, ?)"
+			if _, err := conn.ExecContext(runCtx, stmt, source, sourceID, trackID, status, importedAt, message); err != nil {
+				return fmt.Errorf("insert import history: %w", err)
+			}
 			return nil
 		}
-		stmt := "INSERT INTO import_history (source, source_id, track_id, status, imported_at, message) VALUES (?, ?, ?, ?, ?, ?)"
-		if _, err := db.DB.ExecContext(ctx, stmt, source, sourceID, trackID, status, importedAt, message); err != nil {
+
+		insertSource := placeholder(dbType, 1)
+		insertSourceID := placeholder(dbType, 2)
+		insertTrackID := placeholder(dbType, 3)
+		insertStatus := placeholder(dbType, 4)
+		insertImported := placeholder(dbType, 5)
+		insertMessage := placeholder(dbType, 6)
+		existsSource := placeholder(dbType, 7)
+		existsSourceID := placeholder(dbType, 8)
+		stmt := fmt.Sprintf(`INSERT INTO import_history (source, source_id, track_id, status, imported_at, message)
+SELECT %s, %s, %s, %s, %s, %s
+WHERE NOT EXISTS (SELECT 1 FROM import_history WHERE source = %s AND source_id = %s);`, insertSource, insertSourceID, insertTrackID, insertStatus, insertImported, insertMessage, existsSource, existsSourceID)
+		if _, err := conn.ExecContext(runCtx, stmt, source, sourceID, trackID, status, importedAt, message, source, sourceID); err != nil {
 			return fmt.Errorf("insert import history: %w", err)
 		}
 		return nil
-	}
-
-	insertSource := placeholder(dbType, 1)
-	insertSourceID := placeholder(dbType, 2)
-	insertTrackID := placeholder(dbType, 3)
-	insertStatus := placeholder(dbType, 4)
-	insertImported := placeholder(dbType, 5)
-	insertMessage := placeholder(dbType, 6)
-	existsSource := placeholder(dbType, 7)
-	existsSourceID := placeholder(dbType, 8)
-	stmt := fmt.Sprintf(`INSERT INTO import_history (source, source_id, track_id, status, imported_at, message)
-SELECT %s, %s, %s, %s, %s, %s
-WHERE NOT EXISTS (SELECT 1 FROM import_history WHERE source = %s AND source_id = %s);`, insertSource, insertSourceID, insertTrackID, insertStatus, insertImported, insertMessage, existsSource, existsSourceID)
-	if _, err := db.DB.ExecContext(ctx, stmt, source, sourceID, trackID, status, importedAt, message, source, sourceID); err != nil {
-		return fmt.Errorf("insert import history: %w", err)
-	}
-	return nil
+	})
 }
