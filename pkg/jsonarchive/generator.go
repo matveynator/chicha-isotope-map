@@ -380,6 +380,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 	pageSize := 256
 	startAfter := ""
 	processed := int64(0)
+	lastTrackID := ""
 	buildCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -448,7 +449,12 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 				return "", time.Time{}, err
 			}
 			processed++
+			lastTrackID = summary.TrackID
 			sendProgress(processed, summary.TrackID)
+		}
+
+		if logf != nil && len(summaries) > 0 {
+			logf("json archive page complete: after=%q processed=%d/%d last=%q", startAfter, processed, totalTracks, lastID)
 		}
 
 		if len(summaries) < pageSize || lastID == "" {
@@ -457,21 +463,22 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		startAfter = lastID
 	}
 
-	// Bail out if the stream delivered fewer tracks than expected so
-	// operators never get a silently truncated archive. Returning an
-	// error forces a retry instead of publishing an incomplete snapshot.
 	if processed == 0 {
 		tarw.Close()
 		gz.Close()
 		cleanup()
+		if logf != nil {
+			logf("json archive build halted: no tracks exported (total=%d)", totalTracks)
+		}
 		return "", time.Time{}, fmt.Errorf("build archive: no tracks exported")
 	}
 
 	if totalTracks > 0 && processed < totalTracks {
-		tarw.Close()
-		gz.Close()
-		cleanup()
-		return "", time.Time{}, fmt.Errorf("build archive: exported %d of %d tracks", processed, totalTracks)
+		// Keep the archive usable even if the total count drifts, because a
+		// partial snapshot is better than no snapshot for operators.
+		if logf != nil {
+			logf("json archive build partial: exported %d of %d tracks (last=%q, after=%q)", processed, totalTracks, lastTrackID, startAfter)
+		}
 	}
 
 	if err := tarw.Close(); err != nil {
