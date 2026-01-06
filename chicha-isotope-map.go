@@ -6416,8 +6416,14 @@ func main() {
 	}
 
 	importers := parseImportSelection(*importSourcesFlag)
-	startAtomFastLoader(context.Background(), db, driverName, log.Printf, importers.AtomFast)
-	startSafecastAPILoader(context.Background(), db, driverName, log.Printf, importers.Safecast)
+	// Importers run independently, so we launch them in parallel to keep startup
+	// responsive while each upstream source is polled sequentially.
+	if importers.AtomFast {
+		go startAtomFastLoader(context.Background(), db, driverName, log.Printf, true)
+	}
+	if importers.Safecast {
+		go startSafecastAPILoader(context.Background(), db, driverName, log.Printf, true)
+	}
 
 	remoteURL := strings.TrimSpace(*importTGZURLFlag)
 	localArchive := strings.TrimSpace(*importTGZFileFlag)
