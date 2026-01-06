@@ -962,8 +962,15 @@ func processBGeigieZenFile(
 			if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
 				ts = t.Unix()
 			}
-			cpm = parseFloat(p[3])
-			cps = parseFloat(p[4])
+			// Many Safecast logs store CPS and CPM swapped compared to the Zen docs.
+			// We treat the larger value as CPM and the smaller as CPS so both layouts work.
+			cpmRaw := parseFloat(p[3])
+			cpsRaw := parseFloat(p[4])
+			if cpmRaw < cpsRaw {
+				cpmRaw, cpsRaw = cpsRaw, cpmRaw
+			}
+			cpm = cpmRaw
+			cps = cpsRaw
 			lat = parseDMM(p[7], p[8], 2)
 			lon = parseDMM(p[9], p[10], 3)
 		} else if len(p) >= 8 { // legacy fallback: decimals (+ optional suffix)
