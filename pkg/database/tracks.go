@@ -248,11 +248,25 @@ WHERE trackID = %s;`
 
 	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
 		row := conn.QueryRowContext(ctx, query, trackID)
-		if err := row.Scan(&summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
+		var firstID sql.NullInt64
+		var lastID sql.NullInt64
+		var markerCount sql.NullInt64
+		if err := row.Scan(&firstID, &lastID, &markerCount); err != nil {
 			if err == sql.ErrNoRows {
 				return nil
 			}
 			return fmt.Errorf("track summary: %w", err)
+		}
+		// Aggregates can return NULL for empty datasets, so normalize to zero to keep
+		// downstream logic simple and avoid scan errors when a track has no markers.
+		if firstID.Valid {
+			summary.FirstID = firstID.Int64
+		}
+		if lastID.Valid {
+			summary.LastID = lastID.Int64
+		}
+		if markerCount.Valid {
+			summary.MarkerCount = markerCount.Int64
 		}
 		return nil
 	})
