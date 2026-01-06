@@ -935,7 +935,7 @@ func processBGeigieZenFile(
 			skipped++
 			continue
 		}
-		if !(strings.HasPrefix(line, "$BNRDD") || strings.HasPrefix(line, "$BMRDD") || strings.HasPrefix(line, "$BNXRDD")) {
+		if !looksLikeBGeigieLine(line) {
 			skipped++
 			continue
 		}
@@ -1035,6 +1035,29 @@ func processBGeigieZenFile(
 	}
 	logT(trackID, "BGEIGIE", "✔ done (parsed=%d)", parsed)
 	return bbox, trackID, nil
+}
+
+// looksLikeBGeigieLine keeps parsing flexible across variants like $BNRDD or
+// $CZRDD while avoiding non-track metadata lines.
+func looksLikeBGeigieLine(line string) bool {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "$") {
+		return false
+	}
+	if len(line) < 5 {
+		return false
+	}
+	head := line[1:]
+	if idx := strings.IndexByte(head, ','); idx != -1 {
+		head = head[:idx]
+	}
+	if len(head) < 4 {
+		return false
+	}
+	if !strings.HasSuffix(head, "RDD") {
+		return false
+	}
+	return true
 }
 
 var speedCatalog = map[string]SpeedRange{
@@ -4475,7 +4498,7 @@ func (l *safecastAPILoader) storeImport(ctx context.Context, imp safecastimport.
 		return err
 	}
 
-	trackID := fmt.Sprintf("safecast:%s", sourceID)
+	trackID := fmt.Sprintf("safecast-%s", sourceID)
 	file := safecastimport.NewBytesFile(content, filename)
 	_, finalTrackID, err := processBGeigieZenFile(file, trackID, l.db, l.dbType)
 	if err != nil {
