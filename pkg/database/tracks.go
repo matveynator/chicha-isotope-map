@@ -214,14 +214,22 @@ func (db *Database) TrackExists(ctx context.Context, trackID, dbType string) (bo
 	}
 	query := fmt.Sprintf("SELECT 1 FROM tracks WHERE trackID = %s LIMIT 1", placeholder(dbType, 1))
 	var one int
-	err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&one)
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(runCtx context.Context, conn *sql.DB) error {
+		if err := conn.QueryRowContext(runCtx, query, trackID).Scan(&one); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("track exists: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return false, fmt.Errorf("track exists: %w", err)
+		return false, err
 	}
-	return true, nil
+	return one == 1, nil
 }
 
 // GetTrackSummary returns metadata for a single track.
@@ -248,11 +256,25 @@ WHERE trackID = %s;`
 
 	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
 		row := conn.QueryRowContext(ctx, query, trackID)
-		if err := row.Scan(&summary.FirstID, &summary.LastID, &summary.MarkerCount); err != nil {
+		var firstID sql.NullInt64
+		var lastID sql.NullInt64
+		var markerCount sql.NullInt64
+		if err := row.Scan(&firstID, &lastID, &markerCount); err != nil {
 			if err == sql.ErrNoRows {
 				return nil
 			}
 			return fmt.Errorf("track summary: %w", err)
+		}
+		// Aggregates can return NULL for empty datasets, so normalize to zero to keep
+		// downstream logic simple and avoid scan errors when a track has no markers.
+		if firstID.Valid {
+			summary.FirstID = firstID.Int64
+		}
+		if lastID.Valid {
+			summary.LastID = lastID.Int64
+		}
+		if markerCount.Valid {
+			summary.MarkerCount = markerCount.Int64
 		}
 		return nil
 	})
@@ -468,14 +490,22 @@ func (db *Database) TrackHasDeviceName(ctx context.Context, trackID, dbType stri
 	ph := placeholder(dbType, 1)
 	query := fmt.Sprintf(`SELECT 1 FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
 	var one int
-	err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&one)
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(runCtx context.Context, conn *sql.DB) error {
+		if err := conn.QueryRowContext(runCtx, query, trackID).Scan(&one); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("track device name check: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return false, fmt.Errorf("track device name check: %w", err)
+		return false, err
 	}
-	return true, nil
+	return one == 1, nil
 }
 
 // GetTrackDeviceName returns the first non-empty device name for a track so
@@ -495,11 +525,20 @@ func (db *Database) GetTrackDeviceName(ctx context.Context, trackID, dbType stri
 	ph := placeholder(dbType, 1)
 	query := fmt.Sprintf(`SELECT device_name FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
 	var name sql.NullString
-	if err := db.DB.QueryRowContext(ctx, query, trackID).Scan(&name); err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(runCtx context.Context, conn *sql.DB) error {
+		if err := conn.QueryRowContext(runCtx, query, trackID).Scan(&name); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("track device name: %w", err)
 		}
-		return "", fmt.Errorf("track device name: %w", err)
+		return nil
+	})
+	if err != nil {
+		return "", err
 	}
 	if !name.Valid {
 		return "", nil

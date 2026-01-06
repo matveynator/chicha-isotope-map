@@ -3881,6 +3881,16 @@ type atomfastResult struct {
 	err    error
 }
 
+// atomfastStoredTrackID prefixes external IDs so AtomFast imports never collide
+// with user uploads or other provider namespaces.
+func atomfastStoredTrackID(sourceID string) string {
+	trimmed := strings.TrimSpace(sourceID)
+	if trimmed == "" {
+		return ""
+	}
+	return fmt.Sprintf("atomfast-%s", trimmed)
+}
+
 func startAtomFastLoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any), enabled bool) {
 	if !enabled {
 		logf("atomfast loader disabled: set -import atomfast to enable")
@@ -4040,69 +4050,46 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 }
 
 func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, track atomfastimport.RecentTrack) error {
-	trackID := strings.TrimSpace(track.ID)
-	if trackID == "" {
+	sourceTrackID := strings.TrimSpace(track.ID)
+	if sourceTrackID == "" {
 		return fmt.Errorf("empty track id")
 	}
-	history, found, err := l.db.FindImportHistory(ctx, importHistorySourceAtomFast, trackID, l.dbType)
+	storedTrackID := atomfastStoredTrackID(sourceTrackID)
+	history, found, err := l.db.FindImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, l.dbType)
 	if err != nil {
 		return err
 	}
 	if found {
 		if history.TrackID != "" {
-			if err := l.ensureTrackDeviceLabel(ctx, trackID, history.TrackID); err != nil {
-				return err
-			}
-			return l.attachAtomFastUser(ctx, history.TrackID, track.Author)
+			logT(history.TrackID, "AtomFast", "skip already imported source %s", sourceTrackID)
+			return nil
 		}
+		logT(storedTrackID, "AtomFast", "skip already recorded source %s", sourceTrackID)
 		return nil
 	}
-	// Resolve stored mappings first so we skip re-downloading tracks that were
-	// deduplicated into a different internal track ID.
-	mappedTrackID, err := l.db.ResolveTrackSource(ctx, importHistorySourceAtomFast, trackID, l.dbType)
-	if err != nil {
-		return err
-	}
-	if mappedTrackID != "" {
-		if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, trackID, mappedTrackID, "imported", "", l.dbType); err != nil {
-			return err
-		}
-		if err := l.ensureTrackDeviceLabel(ctx, trackID, mappedTrackID); err != nil {
-			return err
-		}
-		return l.attachAtomFastUser(ctx, mappedTrackID, track.Author)
-	}
-	exists, err := l.db.TrackExists(ctx, trackID, l.dbType)
+	exists, err := l.db.TrackExists(ctx, storedTrackID, l.dbType)
 	if err != nil {
 		return err
 	}
 	if exists {
-		if err := l.db.EnsureTrackSource(ctx, importHistorySourceAtomFast, trackID, trackID, l.dbType); err != nil {
-			return err
-		}
-		if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, trackID, trackID, "imported", "", l.dbType); err != nil {
-			return err
-		}
-		hasLabel, err := l.db.TrackHasDeviceName(ctx, trackID, l.dbType)
+		// Tracks that predate import_history should be re-imported once to
+		// capture metadata and establish a stable history record.
+		logT(storedTrackID, "AtomFast", "reimport existing track without history %s", sourceTrackID)
+		return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
+	}
+	if storedTrackID != "" && storedTrackID != sourceTrackID {
+		// Prefer the prefixed ID, but keep backward compatibility for older imports.
+		legacyExists, err := l.db.TrackExists(ctx, sourceTrackID, l.dbType)
 		if err != nil {
 			return err
 		}
-		if hasLabel {
-			return l.attachAtomFastUser(ctx, trackID, track.Author)
+		if legacyExists {
+			// Legacy tracks without history should be re-imported and recorded.
+			logT(sourceTrackID, "AtomFast", "reimport legacy track without history %s (no prefix)", sourceTrackID)
+			return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 		}
-		// We still re-import AtomFast tracks without device labels so we can
-		// update every stored marker once the upstream device name appears.
-		if err := l.requestTrack(ctx, jobs, results, trackID, track.Author); err == nil {
-			return nil
-		}
-		// If the marker payload fetch fails, fall back to a label-only probe
-		// to keep existing tracks enriched without blocking the loader.
-		if err := l.ensureTrackDeviceLabel(ctx, trackID, trackID); err != nil {
-			return err
-		}
-		return l.attachAtomFastUser(ctx, trackID, track.Author)
 	}
-	return l.requestTrack(ctx, jobs, results, trackID, track.Author)
+	return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 }
 
 func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]atomfastimport.RecentTrack, error) {
@@ -4149,15 +4136,13 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfastimport.Tr
 	}
 
 	deviceName := strings.TrimSpace(track.Device.Model)
+	storedTrackID := atomfastStoredTrackID(track.TrackID)
 
-	_, finalTrackID, err := processAtomFastData(track.Payload, track.TrackID, l.db, l.dbType)
+	_, finalTrackID, err := processAtomFastData(track.Payload, storedTrackID, l.db, l.dbType)
 	if err != nil {
 		return err
 	}
-	// Persist the upstream ID mapping so restarts can skip already ingested data.
-	if err := l.db.EnsureTrackSource(ctx, importHistorySourceAtomFast, track.TrackID, finalTrackID, l.dbType); err != nil {
-		return err
-	}
+	// Record the upstream ID in the import history so later refreshes stay idempotent.
 	if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, track.TrackID, finalTrackID, "imported", "", l.dbType); err != nil {
 		return err
 	}
@@ -4320,6 +4305,11 @@ func (l *safecastAPILoader) run(ctx context.Context) {
 		if err := l.runBackfill(ctx, jobs, results); err != nil {
 			l.logf("safecast api backfill stopped: %v", err)
 		}
+	}
+	// Run a refresh immediately so operators see new Safecast imports without
+	// waiting for the first poll interval tick.
+	if err := l.runRefresh(ctx, jobs, results); err != nil {
+		l.logf("safecast api refresh stopped: %v", err)
 	}
 
 	ticker := time.NewTicker(l.pollInterval)

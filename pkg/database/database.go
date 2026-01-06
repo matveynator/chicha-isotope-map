@@ -1368,14 +1368,6 @@ CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
 
-CREATE TABLE IF NOT EXISTS track_sources (
-  source          TEXT NOT NULL,
-  source_track_id TEXT NOT NULL,
-  track_id        TEXT NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
-  ON track_sources (source, source_track_id);
-
 CREATE TABLE IF NOT EXISTS import_history (
   source      TEXT NOT NULL,
   source_id   TEXT NOT NULL,
@@ -1466,14 +1458,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
 CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
-
-CREATE TABLE IF NOT EXISTS track_sources (
-  source          TEXT NOT NULL,
-  source_track_id TEXT NOT NULL,
-  track_id        TEXT NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
-  ON track_sources (source, source_track_id);
 
 CREATE TABLE IF NOT EXISTS import_history (
   source      TEXT NOT NULL,
@@ -1570,14 +1554,6 @@ CREATE TABLE IF NOT EXISTS tracks (
   trackID     TEXT PRIMARY KEY
 );
 
-CREATE TABLE IF NOT EXISTS track_sources (
-  source          TEXT NOT NULL,
-  source_track_id TEXT NOT NULL,
-  track_id        TEXT NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_track_sources_unique
-  ON track_sources (source, source_track_id);
-
 CREATE TABLE IF NOT EXISTS import_history (
   source      TEXT NOT NULL,
   source_id   TEXT NOT NULL,
@@ -1667,12 +1643,6 @@ ORDER BY (trackID, date, id);`,
   trackID     String
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (trackID);`,
-			`CREATE TABLE IF NOT EXISTS track_sources (
-  source          String,
-  source_track_id String,
-  track_id        String
-) ENGINE = MergeTree()
-ORDER BY (source, source_track_id);`,
 			`CREATE TABLE IF NOT EXISTS import_history (
   source      String,
   source_id   String,
