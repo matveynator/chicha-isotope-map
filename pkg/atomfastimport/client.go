@@ -1,4 +1,4 @@
-package atomfast
+package atomfastimport
 
 import (
 	"context"
@@ -42,6 +42,13 @@ type TrackPayload struct {
 	TrackID string
 	Payload []byte
 	Device  DeviceInfo
+}
+
+// RecentTrack captures the track identifier with optional author metadata so
+// importers can link tracks to a stable user record.
+type RecentTrack struct {
+	ID     string
+	Author string
 }
 
 // Client fetches AtomFast track lists and marker payloads using only standard
@@ -97,10 +104,9 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
-// FetchRecentIDs pulls one page of recent AtomFast track IDs.
-// The payload format is not documented publicly, so we parse generically
-// and search for any list of objects containing an identifier field.
-func (c *Client) FetchRecentIDs(ctx context.Context, page int) ([]string, error) {
+// FetchRecentTracks pulls one page of recent AtomFast tracks and keeps any
+// author labels so callers can connect track ownership to user records.
+func (c *Client) FetchRecentTracks(ctx context.Context, page int) ([]RecentTrack, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -111,12 +117,16 @@ func (c *Client) FetchRecentIDs(ctx context.Context, page int) ([]string, error)
 	}
 	doc, err := decodeJSON(body)
 	if err == nil {
-		if ids := extractTrackIDs(doc); len(ids) > 0 {
-			return ids, nil
+		if tracks := extractRecentTracks(doc); len(tracks) > 0 {
+			return tracks, nil
 		}
 	}
 	ids := extractTrackIDsFromText(string(body))
-	return ids, nil
+	tracks := make([]RecentTrack, 0, len(ids))
+	for _, id := range ids {
+		tracks = append(tracks, RecentTrack{ID: id})
+	}
+	return tracks, nil
 }
 
 // FetchTrack downloads the AtomFast marker JSON for a given track ID and
@@ -332,6 +342,69 @@ func extractTrackIDs(doc any) []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func extractRecentTracks(doc any) []RecentTrack {
+	tracks := make([]RecentTrack, 0, 16)
+	seen := make(map[string]struct{})
+	for _, entry := range findRecentTrackEntries(doc) {
+		track, ok := parseRecentTrackFromMap(entry)
+		if !ok {
+			continue
+		}
+		if _, exists := seen[track.ID]; exists {
+			continue
+		}
+		seen[track.ID] = struct{}{}
+		tracks = append(tracks, track)
+	}
+	return tracks
+}
+
+func findRecentTrackEntries(doc any) []map[string]any {
+	switch val := doc.(type) {
+	case []any:
+		return recentTracksFromSlice(val)
+	case map[string]any:
+		for _, key := range []string{"maps", "data", "list", "tracks", "items", "results"} {
+			if raw, ok := val[key]; ok {
+				if entries := findRecentTrackEntries(raw); len(entries) > 0 {
+					return entries
+				}
+			}
+		}
+		return recentTracksFromMap(val)
+	default:
+		return nil
+	}
+}
+
+func recentTracksFromSlice(items []any) []map[string]any {
+	tracks := make([]map[string]any, 0, len(items))
+	for _, entry := range items {
+		if typed, ok := entry.(map[string]any); ok {
+			if parseTrackID(typed) != "" {
+				tracks = append(tracks, typed)
+			}
+		}
+	}
+	return tracks
+}
+
+func recentTracksFromMap(m map[string]any) []map[string]any {
+	if parseTrackID(m) != "" {
+		return []map[string]any{m}
+	}
+	return nil
+}
+
+func parseRecentTrackFromMap(m map[string]any) (RecentTrack, bool) {
+	id := parseTrackID(m)
+	if id == "" {
+		return RecentTrack{}, false
+	}
+	author := strings.TrimSpace(readString(m, "author", "user", "username", "name"))
+	return RecentTrack{ID: id, Author: author}, true
 }
 
 func findTrackIDs(doc any) []string {

@@ -49,7 +49,7 @@ import (
 	"time"
 
 	"chicha-isotope-map/pkg/api"
-	"chicha-isotope-map/pkg/atomfast"
+	"chicha-isotope-map/pkg/atomfastimport"
 	"chicha-isotope-map/pkg/cimimport"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
@@ -57,6 +57,7 @@ import (
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
+	"chicha-isotope-map/pkg/safecastimport"
 	"chicha-isotope-map/pkg/selfupgrade"
 	"chicha-isotope-map/pkg/setupwizard"
 )
@@ -83,7 +84,7 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
-var atomfastEnabled = flag.Bool("atomfast", false, "Enable sequential AtomFast track ingestion and refresh polling")
+var importSourcesFlag = flag.String("import", "", "Enable importers: safecast, atomfast, safecast,atomfast, or all")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
 var importTGZURLFlag = flag.String("import-tgz-url", "", "Download and import a remote .tgz of exported JSON files, log progress, and exit once finished. Example: https://pelora.org/api/json/weekly.tgz")
@@ -137,9 +138,41 @@ var cliUsageSections = []usageSection{
 	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "logo-path", "logo-link", "setup"}},
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
-	{Title: "AtomFast loader", Flags: []string{"atomfast"}},
+	{Title: "Importers", Flags: []string{"import"}},
 	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
+}
+
+// importSelection captures which background importers should run based on the
+// CLI flag so startup wiring stays explicit and testable.
+type importSelection struct {
+	AtomFast bool
+	Safecast bool
+}
+
+// parseImportSelection normalizes the comma-separated import flag into a simple
+// boolean map so callers can branch without repeating string parsing logic.
+func parseImportSelection(raw string) importSelection {
+	selection := importSelection{}
+	clean := strings.ToLower(strings.TrimSpace(raw))
+	if clean == "" {
+		return selection
+	}
+	if clean == "all" {
+		selection.AtomFast = true
+		selection.Safecast = true
+		return selection
+	}
+	for _, part := range strings.Split(clean, ",") {
+		item := strings.TrimSpace(part)
+		switch item {
+		case "atomfast":
+			selection.AtomFast = true
+		case "safecast":
+			selection.Safecast = true
+		}
+	}
+	return selection
 }
 
 // registerSetupFlag avoids showing the setup wizard flag on non-Linux systems so help
@@ -897,8 +930,12 @@ func processBGeigieZenFile(
 	parsed := 0
 	skipped := 0
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || !strings.HasPrefix(line, "$BNRDD") {
+		line := strings.TrimSpace(strings.TrimRight(sc.Text(), "\r"))
+		if line == "" || strings.HasPrefix(line, "#") {
+			skipped++
+			continue
+		}
+		if !looksLikeBGeigieLine(line) {
 			skipped++
 			continue
 		}
@@ -919,14 +956,21 @@ func processBGeigieZenFile(
 			lon float64
 		)
 
-		// Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPM 4:CPS 5:TotalCounts 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
+		// bGeigie variants: 0:$B[MN]RDD 1:ver 2:ISO8601 3:CPM 4:CPS 5:TotalCounts 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
 		// We rely on CPM for the µSv/h conversion because CPS is instantaneous and noisy.
 		if len(p) >= 11 && strings.Contains(p[2], "T") {
 			if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
 				ts = t.Unix()
 			}
-			cpm = parseFloat(p[3])
-			cps = parseFloat(p[4])
+			// Many Safecast logs store CPS and CPM swapped compared to the Zen docs.
+			// We treat the larger value as CPM and the smaller as CPS so both layouts work.
+			cpmRaw := parseFloat(p[3])
+			cpsRaw := parseFloat(p[4])
+			if cpmRaw < cpsRaw {
+				cpmRaw, cpsRaw = cpsRaw, cpmRaw
+			}
+			cpm = cpmRaw
+			cps = cpsRaw
 			lat = parseDMM(p[7], p[8], 2)
 			lon = parseDMM(p[9], p[10], 3)
 		} else if len(p) >= 8 { // legacy fallback: decimals (+ optional suffix)
@@ -980,12 +1024,40 @@ func processBGeigieZenFile(
 		return database.Bounds{}, trackID, fmt.Errorf("no valid $BNRDD points found (parsed=%d skipped=%d)", parsed, skipped)
 	}
 
+	// bGeigie logs do not carry device names, so we stamp the default label here
+	// to keep both Safecast imports and manual uploads consistent.
+	applyDeviceNameToMarkers(markers, "bGeigie")
+	logT(trackID, "BGEIGIE", "device name: bGeigie")
+
 	bbox, trackID, err := processAndStoreMarkers(markers, trackID, db, dbType)
 	if err != nil {
 		return bbox, trackID, err
 	}
 	logT(trackID, "BGEIGIE", "✔ done (parsed=%d)", parsed)
 	return bbox, trackID, nil
+}
+
+// looksLikeBGeigieLine keeps parsing flexible across variants like $BNRDD or
+// $CZRDD while avoiding non-track metadata lines.
+func looksLikeBGeigieLine(line string) bool {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "$") {
+		return false
+	}
+	if len(line) < 5 {
+		return false
+	}
+	head := line[1:]
+	if idx := strings.IndexByte(head, ','); idx != -1 {
+		head = head[:idx]
+	}
+	if len(head) < 4 {
+		return false
+	}
+	if !strings.HasSuffix(head, "RDD") {
+		return false
+	}
+	return true
 }
 
 var speedCatalog = map[string]SpeedRange{
@@ -3770,10 +3842,15 @@ func processAndStoreMarkersWithContextOptions(
 // AtomFast loader
 // =====================
 
+const (
+	importHistorySourceAtomFast = "atomfast"
+	importHistorySourceSafecast = "safecast"
+)
+
 // atomfastLoader wires the AtomFast client into the existing ingestion pipeline
 // while keeping requests sequential and spaced out to mimic human browsing.
 type atomfastLoader struct {
-	client       *atomfast.Client
+	client       *atomfastimport.Client
 	db           *database.Database
 	dbType       string
 	logf         func(string, ...any)
@@ -3794,18 +3871,19 @@ type atomfastJob struct {
 	kind    atomfastJobKind
 	page    int
 	trackID string
+	author  string
 }
 
 type atomfastResult struct {
-	job   atomfastJob
-	ids   []string
-	track atomfast.TrackPayload
-	err   error
+	job    atomfastJob
+	tracks []atomfastimport.RecentTrack
+	track  atomfastimport.TrackPayload
+	err    error
 }
 
-func startAtomFastLoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
-	if !*atomfastEnabled {
-		logf("atomfast loader disabled: set -atomfast to enable")
+func startAtomFastLoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any), enabled bool) {
+	if !enabled {
+		logf("atomfast loader disabled: set -import atomfast to enable")
 		return
 	}
 
@@ -3824,7 +3902,7 @@ func startAtomFastLoader(ctx context.Context, db *database.Database, dbType stri
 		trackPage = base + trackPage
 	}
 
-	client := atomfast.NewClient(atomfast.Config{
+	client := atomfastimport.NewClient(atomfastimport.Config{
 		BaseURL:         base,
 		PageLimit:       defaultAtomFastPageLimit,
 		TrackPageFormat: trackPage,
@@ -3890,18 +3968,12 @@ func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, re
 		case job := <-jobs:
 			switch job.kind {
 			case atomfastJobPage:
-				ids, err := l.client.FetchRecentIDs(ctx, job.page)
-				if delayErr := l.sleepBetween(ctx); err == nil {
-					err = delayErr
-				}
-				results <- atomfastResult{job: job, ids: ids, err: err}
+				tracks, err := l.client.FetchRecentTracks(ctx, job.page)
+				results <- atomfastResult{job: job, tracks: tracks, err: err}
 			case atomfastJobTrack:
 				track, err := l.client.FetchTrackPayload(ctx, job.trackID)
 				if err == nil {
-					err = l.storeTrack(ctx, track)
-				}
-				if delayErr := l.sleepBetween(ctx); err == nil {
-					err = delayErr
+					err = l.storeTrack(ctx, track, job.author)
 				}
 				results <- atomfastResult{job: job, track: track, err: err}
 			}
@@ -3912,19 +3984,22 @@ func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, re
 func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast initial load: start")
 	for page := 1; ; page++ {
-		ids, err := l.requestPage(ctx, jobs, results, page)
+		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
 			return err
 		}
-		if page == 1 && len(ids) == 0 {
+		if page == 1 && len(tracks) == 0 {
 			return fmt.Errorf("atomfast initial load: empty list on first page")
 		}
-		if len(ids) == 0 {
+		if len(tracks) == 0 {
 			break
 		}
-		for _, id := range ids {
-			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
-				l.logf("atomfast initial track %s skipped: %v", id, err)
+		for _, track := range tracks {
+			if err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
+				l.logf("atomfast initial track %s skipped: %v", track.ID, err)
+			}
+			if err := l.sleepBetween(ctx); err != nil {
+				return err
 			}
 		}
 	}
@@ -3935,23 +4010,26 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast refresh: start")
 	for page := 1; ; page++ {
-		ids, err := l.requestPage(ctx, jobs, results, page)
+		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
 			return err
 		}
-		if page == 1 && len(ids) == 0 {
+		if page == 1 && len(tracks) == 0 {
 			return fmt.Errorf("atomfast refresh: empty list on first page")
 		}
-		if len(ids) == 0 {
+		if len(tracks) == 0 {
 			break
 		}
 		newCount := 0
-		for _, id := range ids {
-			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
-				l.logf("atomfast refresh track %s skipped: %v", id, err)
+		for _, track := range tracks {
+			if err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
+				l.logf("atomfast refresh track %s skipped: %v", track.ID, err)
 				continue
 			}
 			newCount++
+			if err := l.sleepBetween(ctx); err != nil {
+				return err
+			}
 		}
 		if newCount == 0 {
 			break
@@ -3961,26 +4039,48 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 	return nil
 }
 
-func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID string) error {
-	trackID = strings.TrimSpace(trackID)
+func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, track atomfastimport.RecentTrack) error {
+	trackID := strings.TrimSpace(track.ID)
 	if trackID == "" {
 		return fmt.Errorf("empty track id")
 	}
+	history, found, err := l.db.FindImportHistory(ctx, importHistorySourceAtomFast, trackID, l.dbType)
+	if err != nil {
+		return err
+	}
+	if found {
+		if history.TrackID != "" {
+			if err := l.ensureTrackDeviceLabel(ctx, trackID, history.TrackID); err != nil {
+				return err
+			}
+			return l.attachAtomFastUser(ctx, history.TrackID, track.Author)
+		}
+		return nil
+	}
 	// Resolve stored mappings first so we skip re-downloading tracks that were
 	// deduplicated into a different internal track ID.
-	mappedTrackID, err := l.db.ResolveTrackSource(ctx, "atomfast", trackID, l.dbType)
+	mappedTrackID, err := l.db.ResolveTrackSource(ctx, importHistorySourceAtomFast, trackID, l.dbType)
 	if err != nil {
 		return err
 	}
 	if mappedTrackID != "" {
-		return l.ensureTrackDeviceLabel(ctx, trackID, mappedTrackID)
+		if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, trackID, mappedTrackID, "imported", "", l.dbType); err != nil {
+			return err
+		}
+		if err := l.ensureTrackDeviceLabel(ctx, trackID, mappedTrackID); err != nil {
+			return err
+		}
+		return l.attachAtomFastUser(ctx, mappedTrackID, track.Author)
 	}
 	exists, err := l.db.TrackExists(ctx, trackID, l.dbType)
 	if err != nil {
 		return err
 	}
 	if exists {
-		if err := l.db.EnsureTrackSource(ctx, "atomfast", trackID, trackID, l.dbType); err != nil {
+		if err := l.db.EnsureTrackSource(ctx, importHistorySourceAtomFast, trackID, trackID, l.dbType); err != nil {
+			return err
+		}
+		if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, trackID, trackID, "imported", "", l.dbType); err != nil {
 			return err
 		}
 		hasLabel, err := l.db.TrackHasDeviceName(ctx, trackID, l.dbType)
@@ -3988,21 +4088,24 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 			return err
 		}
 		if hasLabel {
-			return nil
+			return l.attachAtomFastUser(ctx, trackID, track.Author)
 		}
 		// We still re-import AtomFast tracks without device labels so we can
 		// update every stored marker once the upstream device name appears.
-		if err := l.requestTrack(ctx, jobs, results, trackID); err == nil {
+		if err := l.requestTrack(ctx, jobs, results, trackID, track.Author); err == nil {
 			return nil
 		}
 		// If the marker payload fetch fails, fall back to a label-only probe
 		// to keep existing tracks enriched without blocking the loader.
-		return l.ensureTrackDeviceLabel(ctx, trackID, trackID)
+		if err := l.ensureTrackDeviceLabel(ctx, trackID, trackID); err != nil {
+			return err
+		}
+		return l.attachAtomFastUser(ctx, trackID, track.Author)
 	}
-	return l.requestTrack(ctx, jobs, results, trackID)
+	return l.requestTrack(ctx, jobs, results, trackID, track.Author)
 }
 
-func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]string, error) {
+func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]atomfastimport.RecentTrack, error) {
 	job := atomfastJob{kind: atomfastJobPage, page: page}
 	select {
 	case <-ctx.Done():
@@ -4017,12 +4120,12 @@ func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJo
 		if res.job.kind != atomfastJobPage {
 			return nil, fmt.Errorf("unexpected atomfast result kind")
 		}
-		return res.ids, res.err
+		return res.tracks, res.err
 	}
 }
 
-func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID string) error {
-	job := atomfastJob{kind: atomfastJobTrack, trackID: trackID}
+func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, trackID, author string) error {
+	job := atomfastJob{kind: atomfastJobTrack, trackID: trackID, author: author}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -4040,7 +4143,7 @@ func (l *atomfastLoader) requestTrack(ctx context.Context, jobs chan<- atomfastJ
 	}
 }
 
-func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPayload) error {
+func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfastimport.TrackPayload, author string) error {
 	if len(track.Payload) == 0 {
 		return fmt.Errorf("atomfast track %s empty", track.TrackID)
 	}
@@ -4052,7 +4155,10 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPay
 		return err
 	}
 	// Persist the upstream ID mapping so restarts can skip already ingested data.
-	if err := l.db.EnsureTrackSource(ctx, "atomfast", track.TrackID, finalTrackID, l.dbType); err != nil {
+	if err := l.db.EnsureTrackSource(ctx, importHistorySourceAtomFast, track.TrackID, finalTrackID, l.dbType); err != nil {
+		return err
+	}
+	if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, track.TrackID, finalTrackID, "imported", "", l.dbType); err != nil {
 		return err
 	}
 
@@ -4062,7 +4168,31 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfast.TrackPay
 			return err
 		}
 	}
+	if err := l.attachAtomFastUser(ctx, finalTrackID, author); err != nil {
+		return err
+	}
+	logT(finalTrackID, "AtomFast", "imported track %s", track.TrackID)
 	return nil
+}
+
+func (l *atomfastLoader) attachAtomFastUser(ctx context.Context, trackID, author string) error {
+	author = strings.TrimSpace(author)
+	if author == "" {
+		return nil
+	}
+	sourceID := strings.ToLower(author)
+	if sourceID == "" {
+		return nil
+	}
+	internalID, err := l.db.EnsureUserBySource(ctx, "atomfast", sourceID, author, l.dbType)
+	if err != nil {
+		return err
+	}
+	if internalID == "" {
+		return nil
+	}
+	logT(trackID, "AtomFast", "author: %s", author)
+	return l.db.EnsureTrackUser(ctx, trackID, internalID, "atomfast", l.dbType)
 }
 
 func (l *atomfastLoader) ensureTrackDeviceLabel(ctx context.Context, sourceTrackID, storedTrackID string) error {
@@ -4088,6 +4218,353 @@ func (l *atomfastLoader) ensureTrackDeviceLabel(ctx context.Context, sourceTrack
 }
 
 func (l *atomfastLoader) sleepBetween(ctx context.Context) error {
+	if l.minDelay <= 0 && l.maxDelay <= 0 {
+		return nil
+	}
+	minDelay := l.minDelay
+	maxDelay := l.maxDelay
+	if maxDelay < minDelay {
+		maxDelay = minDelay
+	}
+	wait := minDelay
+	if maxDelay > minDelay {
+		span := maxDelay - minDelay
+		wait = minDelay + time.Duration(l.rng.Int63n(int64(span)+1))
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// =====================
+// Safecast API loader
+// =====================
+
+// safecastAPILoader streams bGeigie imports from the Safecast API through the
+// existing parser so we can ingest new tracks without extra dependencies.
+type safecastAPILoader struct {
+	client       *safecastimport.Client
+	db           *database.Database
+	dbType       string
+	logf         func(string, ...any)
+	pollInterval time.Duration
+	minDelay     time.Duration
+	maxDelay     time.Duration
+	rng          *rand.Rand
+}
+
+type safecastAPIJobKind int
+
+const (
+	safecastAPIJobPage safecastAPIJobKind = iota
+	safecastAPIJobImport
+)
+
+type safecastAPIJob struct {
+	kind safecastAPIJobKind
+	page int
+	imp  safecastimport.Import
+}
+
+type safecastAPIResult struct {
+	job     safecastAPIJob
+	imports []safecastimport.Import
+	err     error
+}
+
+func startSafecastAPILoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any), enabled bool) {
+	if !enabled {
+		logf("safecast api loader disabled: set -import safecast to enable")
+		return
+	}
+
+	const (
+		defaultSafecastBaseURL      = "http://safecastapi-prd-010.baebmmfncu.us-west-2.elasticbeanstalk.com"
+		defaultSafecastDelayMin     = 500 * time.Millisecond
+		defaultSafecastDelayMax     = 1500 * time.Millisecond
+		defaultSafecastPollInterval = 30 * time.Minute
+	)
+
+	client := safecastimport.NewClient(safecastimport.Config{
+		BaseURL: defaultSafecastBaseURL,
+	})
+
+	loader := &safecastAPILoader{
+		client:       client,
+		db:           db,
+		dbType:       dbType,
+		logf:         logf,
+		pollInterval: defaultSafecastPollInterval,
+		minDelay:     defaultSafecastDelayMin,
+		maxDelay:     defaultSafecastDelayMax,
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+
+	go loader.run(ctx)
+}
+
+func (l *safecastAPILoader) run(ctx context.Context) {
+	jobs := make(chan safecastAPIJob)
+	results := make(chan safecastAPIResult)
+	go l.worker(ctx, jobs, results)
+
+	backfill, err := l.needsBackfill(ctx)
+	if err != nil {
+		l.logf("safecast api backfill check failed: %v", err)
+	} else if backfill {
+		if err := l.runBackfill(ctx, jobs, results); err != nil {
+			l.logf("safecast api backfill stopped: %v", err)
+		}
+	}
+
+	ticker := time.NewTicker(l.pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			l.logf("safecast api loader stopped")
+			return
+		case <-ticker.C:
+			if err := l.runRefresh(ctx, jobs, results); err != nil {
+				l.logf("safecast api refresh stopped: %v", err)
+			}
+		}
+	}
+}
+
+func (l *safecastAPILoader) needsBackfill(ctx context.Context) (bool, error) {
+	count, err := l.db.CountImportHistory(ctx, importHistorySourceSafecast, l.dbType)
+	if err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
+func (l *safecastAPILoader) worker(ctx context.Context, jobs <-chan safecastAPIJob, results chan<- safecastAPIResult) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-jobs:
+			switch job.kind {
+			case safecastAPIJobPage:
+				imports, err := l.client.FetchApprovedImports(ctx, job.page)
+				results <- safecastAPIResult{job: job, imports: imports, err: err}
+			case safecastAPIJobImport:
+				err := l.storeImport(ctx, job.imp)
+				results <- safecastAPIResult{job: job, err: err}
+			}
+		}
+	}
+}
+
+func (l *safecastAPILoader) runBackfill(ctx context.Context, jobs chan<- safecastAPIJob, results <-chan safecastAPIResult) error {
+	l.logf("safecast api backfill: start")
+	page := 1
+	for {
+		imports, err := l.requestPage(ctx, jobs, results, page)
+		if err != nil {
+			return err
+		}
+		if len(imports) == 0 {
+			break
+		}
+		for _, imp := range imports {
+			if _, _, err := l.processImportIfNew(ctx, jobs, results, imp); err != nil {
+				l.logf("safecast api import %d skipped: %v", imp.ID, err)
+			}
+			if err := l.sleepBetween(ctx); err != nil {
+				return err
+			}
+		}
+		page++
+	}
+	l.logf("safecast api backfill: done")
+	return nil
+}
+
+func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecastAPIJob, results <-chan safecastAPIResult) error {
+	l.logf("safecast api refresh: start")
+	page := 1
+	for {
+		imports, err := l.requestPage(ctx, jobs, results, page)
+		if err != nil {
+			return err
+		}
+		if len(imports) == 0 {
+			break
+		}
+		newFound := 0
+		stop := false
+		for _, imp := range imports {
+			imported, stopPage, err := l.processImportIfNew(ctx, jobs, results, imp)
+			if err != nil {
+				l.logf("safecast api import %d skipped: %v", imp.ID, err)
+				continue
+			}
+			if stopPage {
+				stop = true
+				break
+			}
+			if imported {
+				newFound++
+			}
+			if err := l.sleepBetween(ctx); err != nil {
+				return err
+			}
+		}
+		if stop || newFound == 0 {
+			break
+		}
+		page++
+	}
+	l.logf("safecast api refresh: done")
+	return nil
+}
+
+func (l *safecastAPILoader) processImportIfNew(ctx context.Context, jobs chan<- safecastAPIJob, results <-chan safecastAPIResult, imp safecastimport.Import) (bool, bool, error) {
+	sourceID := strings.TrimSpace(strconv.FormatInt(imp.ID, 10))
+	if sourceID == "" {
+		return false, false, fmt.Errorf("empty safecast import id")
+	}
+	_, found, err := l.db.FindImportHistory(ctx, importHistorySourceSafecast, sourceID, l.dbType)
+	if err != nil {
+		return false, false, err
+	}
+	if found {
+		return false, true, nil
+	}
+	if err := l.requestImport(ctx, jobs, results, imp); err != nil {
+		return false, false, err
+	}
+	return true, false, nil
+}
+
+func (l *safecastAPILoader) requestPage(ctx context.Context, jobs chan<- safecastAPIJob, results <-chan safecastAPIResult, page int) ([]safecastimport.Import, error) {
+	job := safecastAPIJob{kind: safecastAPIJobPage, page: page}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case jobs <- job:
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-results:
+		if res.job.kind != safecastAPIJobPage {
+			return nil, fmt.Errorf("unexpected safecast result kind")
+		}
+		return res.imports, res.err
+	}
+}
+
+func (l *safecastAPILoader) requestImport(ctx context.Context, jobs chan<- safecastAPIJob, results <-chan safecastAPIResult, imp safecastimport.Import) error {
+	job := safecastAPIJob{kind: safecastAPIJobImport, imp: imp}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case jobs <- job:
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case res := <-results:
+		if res.job.kind != safecastAPIJobImport {
+			return fmt.Errorf("unexpected safecast result kind")
+		}
+		return res.err
+	}
+}
+
+func (l *safecastAPILoader) storeImport(ctx context.Context, imp safecastimport.Import) error {
+	sourceID := strconv.FormatInt(imp.ID, 10)
+	if strings.TrimSpace(sourceID) == "" {
+		return fmt.Errorf("safecast import id empty")
+	}
+	if strings.TrimSpace(imp.SourceURL) == "" {
+		return fmt.Errorf("safecast import %s missing source url", sourceID)
+	}
+
+	content, filename, err := l.client.DownloadLogFile(ctx, imp.SourceURL)
+	if err != nil {
+		return err
+	}
+
+	trackID := fmt.Sprintf("safecast-%s", sourceID)
+	file := safecastimport.NewBytesFile(content, filename)
+	_, finalTrackID, err := processBGeigieZenFile(file, trackID, l.db, l.dbType)
+	if err != nil {
+		if isNoValidBGeigie(err) {
+			logT(trackID, "Safecast", "skip import %s: %v", sourceID, err)
+			if historyErr := l.db.EnsureImportHistory(ctx, importHistorySourceSafecast, sourceID, "", "skipped", err.Error(), l.dbType); historyErr != nil {
+				return historyErr
+			}
+		}
+		return err
+	}
+
+	deviceName := "bGeigie"
+	logT(finalTrackID, "Safecast", "device name: %s", deviceName)
+	if err := l.db.FillMissingTrackDeviceName(ctx, finalTrackID, deviceName, l.dbType); err != nil {
+		return err
+	}
+
+	if err := l.attachUser(ctx, imp, finalTrackID); err != nil {
+		return err
+	}
+
+	if err := l.db.EnsureImportHistory(ctx, importHistorySourceSafecast, sourceID, finalTrackID, "imported", "", l.dbType); err != nil {
+		return err
+	}
+
+	logT(finalTrackID, "Safecast", "imported source %s (%s)", sourceID, filename)
+
+	return nil
+}
+
+// isNoValidBGeigie checks for parser errors that should be marked as skipped so
+// the import history stops retrying known-invalid logs.
+func isNoValidBGeigie(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "no valid $BNRDD points")
+}
+
+func (l *safecastAPILoader) attachUser(ctx context.Context, imp safecastimport.Import, trackID string) error {
+	if imp.UserID <= 0 {
+		return nil
+	}
+	user, err := l.client.FetchUser(ctx, imp.UserID)
+	if err != nil {
+		l.logf("safecast api import %d: user fetch failed: %v", imp.ID, err)
+	}
+	userName := ""
+	if user != nil {
+		userName = strings.TrimSpace(user.Name)
+	}
+	internalID, err := l.db.EnsureUserBySource(ctx, "safecast", strconv.FormatInt(imp.UserID, 10), userName, l.dbType)
+	if err != nil {
+		return err
+	}
+	if internalID == "" {
+		return nil
+	}
+	if userName != "" {
+		logT(trackID, "Safecast", "user: %s (id=%d)", userName, imp.UserID)
+	}
+	return l.db.EnsureTrackUser(ctx, trackID, internalID, "safecast", l.dbType)
+}
+
+func (l *safecastAPILoader) sleepBetween(ctx context.Context) error {
 	if l.minDelay <= 0 && l.maxDelay <= 0 {
 		return nil
 	}
@@ -5938,7 +6415,15 @@ func main() {
 		log.Fatalf("DB schema: %v", err)
 	}
 
-	startAtomFastLoader(context.Background(), db, driverName, log.Printf)
+	importers := parseImportSelection(*importSourcesFlag)
+	// Importers run independently, so we launch them in parallel to keep startup
+	// responsive while each upstream source is polled sequentially.
+	if importers.AtomFast {
+		go startAtomFastLoader(context.Background(), db, driverName, log.Printf, true)
+	}
+	if importers.Safecast {
+		go startSafecastAPILoader(context.Background(), db, driverName, log.Printf, true)
+	}
 
 	remoteURL := strings.TrimSpace(*importTGZURLFlag)
 	localArchive := strings.TrimSpace(*importTGZFileFlag)
