@@ -4068,29 +4068,11 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 		}
 		return nil
 	}
-	// Resolve stored mappings first so we skip re-downloading tracks that were
-	// deduplicated into a different internal track ID.
-	mappedTrackID, err := l.db.ResolveTrackSource(ctx, importHistorySourceAtomFast, sourceTrackID, l.dbType)
-	if err != nil {
-		return err
-	}
-	if mappedTrackID != "" {
-		if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, mappedTrackID, "imported", "", l.dbType); err != nil {
-			return err
-		}
-		if err := l.ensureTrackDeviceLabel(ctx, sourceTrackID, mappedTrackID); err != nil {
-			return err
-		}
-		return l.attachAtomFastUser(ctx, mappedTrackID, track.Author)
-	}
 	exists, err := l.db.TrackExists(ctx, storedTrackID, l.dbType)
 	if err != nil {
 		return err
 	}
 	if exists {
-		if err := l.db.EnsureTrackSource(ctx, importHistorySourceAtomFast, sourceTrackID, storedTrackID, l.dbType); err != nil {
-			return err
-		}
 		if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, storedTrackID, "imported", "", l.dbType); err != nil {
 			return err
 		}
@@ -4120,9 +4102,6 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 			return err
 		}
 		if legacyExists {
-			if err := l.db.EnsureTrackSource(ctx, importHistorySourceAtomFast, sourceTrackID, sourceTrackID, l.dbType); err != nil {
-				return err
-			}
 			if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, sourceTrackID, "imported", "", l.dbType); err != nil {
 				return err
 			}
@@ -4182,10 +4161,7 @@ func (l *atomfastLoader) storeTrack(ctx context.Context, track atomfastimport.Tr
 	if err != nil {
 		return err
 	}
-	// Persist the upstream ID mapping so restarts can skip already ingested data.
-	if err := l.db.EnsureTrackSource(ctx, importHistorySourceAtomFast, track.TrackID, finalTrackID, l.dbType); err != nil {
-		return err
-	}
+	// Record the upstream ID in the import history so later refreshes stay idempotent.
 	if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, track.TrackID, finalTrackID, "imported", "", l.dbType); err != nil {
 		return err
 	}
