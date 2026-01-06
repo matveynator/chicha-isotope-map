@@ -4072,27 +4072,10 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 		return err
 	}
 	if exists {
-		if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, storedTrackID, "imported", "", l.dbType); err != nil {
-			return err
-		}
-		hasLabel, err := l.db.TrackHasDeviceName(ctx, storedTrackID, l.dbType)
-		if err != nil {
-			return err
-		}
-		if hasLabel {
-			return l.attachAtomFastUser(ctx, storedTrackID, track.Author)
-		}
-		// We still re-import AtomFast tracks without device labels so we can
-		// update every stored marker once the upstream device name appears.
-		if err := l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author); err == nil {
-			return nil
-		}
-		// If the marker payload fetch fails, fall back to a label-only probe
-		// to keep existing tracks enriched without blocking the loader.
-		if err := l.ensureTrackDeviceLabel(ctx, sourceTrackID, storedTrackID); err != nil {
-			return err
-		}
-		return l.attachAtomFastUser(ctx, storedTrackID, track.Author)
+		// Tracks that predate import_history should be re-imported once to
+		// capture metadata and establish a stable history record.
+		logT(storedTrackID, "AtomFast", "reimport existing track without history %s", sourceTrackID)
+		return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 	}
 	if storedTrackID != "" && storedTrackID != sourceTrackID {
 		// Prefer the prefixed ID, but keep backward compatibility for older imports.
@@ -4101,11 +4084,9 @@ func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atom
 			return err
 		}
 		if legacyExists {
-			logT(sourceTrackID, "AtomFast", "skip already imported legacy source %s (no prefix)", sourceTrackID)
-			if err := l.db.EnsureImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, sourceTrackID, "imported", "", l.dbType); err != nil {
-				return err
-			}
-			return nil
+			// Legacy tracks without history should be re-imported and recorded.
+			logT(sourceTrackID, "AtomFast", "reimport legacy track without history %s (no prefix)", sourceTrackID)
+			return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 		}
 	}
 	return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
