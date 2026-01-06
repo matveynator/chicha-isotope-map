@@ -930,8 +930,12 @@ func processBGeigieZenFile(
 	parsed := 0
 	skipped := 0
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || !strings.HasPrefix(line, "$BNRDD") {
+		line := strings.TrimSpace(strings.TrimRight(sc.Text(), "\r"))
+		if line == "" || strings.HasPrefix(line, "#") {
+			skipped++
+			continue
+		}
+		if !(strings.HasPrefix(line, "$BNRDD") || strings.HasPrefix(line, "$BMRDD") || strings.HasPrefix(line, "$BNXRDD")) {
 			skipped++
 			continue
 		}
@@ -952,7 +956,7 @@ func processBGeigieZenFile(
 			lon float64
 		)
 
-		// Zen variant: 0:$BNRDD 1:ver 2:ISO8601 3:CPM 4:CPS 5:TotalCounts 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
+		// bGeigie variants: 0:$B[MN]RDD 1:ver 2:ISO8601 3:CPM 4:CPS 5:TotalCounts 6:fix 7:LATdmm 8:N/S 9:LONdmm 10:E/W ...
 		// We rely on CPM for the µSv/h conversion because CPS is instantaneous and noisy.
 		if len(p) >= 11 && strings.Contains(p[2], "T") {
 			if t, err := time.Parse(time.RFC3339, strings.TrimSpace(p[2])); err == nil {
@@ -4472,15 +4476,10 @@ func (l *safecastAPILoader) storeImport(ctx context.Context, imp safecastimport.
 		return err
 	}
 
-	deviceName := strings.TrimSpace(imp.Name)
-	if deviceName == "" {
-		deviceName = "bGeigie"
-	}
-	if deviceName != "" {
-		logT(finalTrackID, "Safecast", "device name: %s", deviceName)
-		if err := l.db.FillMissingTrackDeviceName(ctx, finalTrackID, deviceName, l.dbType); err != nil {
-			return err
-		}
+	deviceName := "bGeigie"
+	logT(finalTrackID, "Safecast", "device name: %s", deviceName)
+	if err := l.db.FillMissingTrackDeviceName(ctx, finalTrackID, deviceName, l.dbType); err != nil {
+		return err
 	}
 
 	if err := l.attachUser(ctx, imp, finalTrackID); err != nil {
