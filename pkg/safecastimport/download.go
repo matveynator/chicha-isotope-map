@@ -28,9 +28,7 @@ func (c *Client) DownloadLogFile(ctx context.Context, sourceURL string) ([]byte,
 	if err != nil {
 		return nil, "", fmt.Errorf("create download request: %w", err)
 	}
-	if c.userAgent != "" {
-		req.Header.Set("User-Agent", c.userAgent)
-	}
+	c.applyRandomHeaders(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

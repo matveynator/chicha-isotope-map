@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -25,6 +26,10 @@ type Client struct {
 	baseURL    string
 	userAgent  string
 	httpClient *http.Client
+	rng        *rand.Rand
+	userAgents []string
+	platforms  []string
+	languages  []string
 }
 
 // NewClient builds a Safecast API client while normalizing defaults so every
@@ -42,12 +47,17 @@ func NewClient(cfg Config) *Client {
 	if agent == "" {
 		agent = "Mozilla/5.0 (compatible; ChichaIsotopeMap/1.0; +https://github.com/matveynator/chicha-isotope-map)"
 	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &Client{
 		baseURL:   base,
 		userAgent: agent,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
+		rng:        rng,
+		userAgents: defaultUserAgents(),
+		platforms:  defaultPlatforms(),
+		languages:  defaultLanguages(),
 	}
 }
 
@@ -97,9 +107,7 @@ func (c *Client) FetchApprovedImports(ctx context.Context, page int) ([]Import, 
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	if c.userAgent != "" {
-		req.Header.Set("User-Agent", c.userAgent)
-	}
+	c.applyRandomHeaders(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -150,9 +158,7 @@ func (c *Client) FetchUser(ctx context.Context, userID int64) (*User, error) {
 		return nil, fmt.Errorf("create user request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	if c.userAgent != "" {
-		req.Header.Set("User-Agent", c.userAgent)
-	}
+	c.applyRandomHeaders(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -173,4 +179,88 @@ func (c *Client) FetchUser(ctx context.Context, userID int64) (*User, error) {
 	}
 	user.Name = strings.TrimSpace(user.Name)
 	return &user, nil
+}
+
+// applyRandomHeaders rotates browser-like headers so Safecast requests avoid a
+// static fingerprint while staying readable to upstream services.
+func (c *Client) applyRandomHeaders(req *http.Request) {
+	if req == nil {
+		return
+	}
+	userAgent := c.userAgent
+	if len(c.userAgents) > 0 {
+		userAgent = c.userAgents[c.rng.Intn(len(c.userAgents))]
+	}
+	platform := ""
+	if len(c.platforms) > 0 {
+		platform = c.platforms[c.rng.Intn(len(c.platforms))]
+	}
+	lang := ""
+	if len(c.languages) > 0 {
+		lang = c.languages[c.rng.Intn(len(c.languages))]
+	}
+
+	if userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
+	if platform != "" {
+		req.Header.Set("Sec-CH-UA-Platform", fmt.Sprintf("%q", platform))
+		req.Header.Set("Sec-CH-UA-Mobile", "?0")
+	}
+	if lang != "" {
+		req.Header.Set("Accept-Language", lang)
+	}
+
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
+	req.Header.Set("X-Request-Id", randomToken(c.rng, 12))
+}
+
+// randomToken returns a short random string so each request is unique even when
+// the header pool repeats, keeping request fingerprints diverse.
+func randomToken(rng *rand.Rand, length int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+	if length <= 0 {
+		length = 8
+	}
+	out := make([]byte, length)
+	for i := range out {
+		out[i] = letters[rng.Intn(len(letters))]
+	}
+	return string(out)
+}
+
+// defaultUserAgents keeps a small pool of real-world browsers so the API stays
+// compatible with Safecast's edge filters without adding new dependencies.
+func defaultUserAgents() []string {
+	return []string{
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+	}
+}
+
+// defaultPlatforms keeps OS hints aligned with the UA pool so headers remain consistent.
+func defaultPlatforms() []string {
+	return []string{
+		"Windows",
+		"Windows",
+		"macOS",
+		"Linux",
+		"Windows",
+	}
+}
+
+// defaultLanguages rotates common Accept-Language headers without forcing
+// locale-specific content from the API.
+func defaultLanguages() []string {
+	return []string{
+		"en-US,en;q=0.9",
+		"en-GB,en;q=0.9",
+		"ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+		"en-US,en;q=0.8,ru;q=0.6",
+		"en-US,en;q=0.8,de;q=0.5",
+	}
 }

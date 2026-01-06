@@ -3964,6 +3964,9 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 			if err := l.processTrackIfNew(ctx, jobs, results, id); err != nil {
 				l.logf("atomfast initial track %s skipped: %v", id, err)
 			}
+			if err := l.sleepBetween(ctx); err != nil {
+				return err
+			}
 		}
 	}
 	l.logf("atomfast initial load: done")
@@ -3990,6 +3993,9 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 				continue
 			}
 			newCount++
+			if err := l.sleepBetween(ctx); err != nil {
+				return err
+			}
 		}
 		if newCount == 0 {
 			break
@@ -4433,6 +4439,9 @@ func (l *safecastAPILoader) storeImport(ctx context.Context, imp safecastimport.
 	}
 
 	deviceName := strings.TrimSpace(imp.Name)
+	if deviceName == "" {
+		deviceName = "bGeigie"
+	}
 	if deviceName != "" {
 		logT(finalTrackID, "Safecast", "device name: %s", deviceName)
 		if err := l.db.FillMissingTrackDeviceName(ctx, finalTrackID, deviceName, l.dbType); err != nil {
