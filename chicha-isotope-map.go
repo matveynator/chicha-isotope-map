@@ -4005,7 +4005,7 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 			break
 		}
 		for _, track := range tracks {
-			if err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
+			if _, _, err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
 				l.logf("atomfast initial track %s skipped: %v", track.ID, err)
 			}
 			if err := l.sleepBetween(ctx); err != nil {
@@ -4019,6 +4019,7 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 
 func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast refresh: start")
+	stopPaging := false
 	for page := 1; ; page++ {
 		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
@@ -4032,16 +4033,25 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 		}
 		newCount := 0
 		for _, track := range tracks {
-			if err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
+			imported, alreadyImported, err := l.processTrackIfNew(ctx, jobs, results, track)
+			if err != nil {
 				l.logf("atomfast refresh track %s skipped: %v", track.ID, err)
 				continue
 			}
-			newCount++
+			if alreadyImported {
+				// AtomFast lists the newest tracks first; once we hit an already-imported
+				// record we stop paging to avoid re-scanning the full history each refresh.
+				stopPaging = true
+				break
+			}
+			if imported {
+				newCount++
+			}
 			if err := l.sleepBetween(ctx); err != nil {
 				return err
 			}
 		}
-		if newCount == 0 {
+		if stopPaging || newCount == 0 {
 			break
 		}
 	}
@@ -4049,47 +4059,47 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 	return nil
 }
 
-func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, track atomfastimport.RecentTrack) error {
+func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, track atomfastimport.RecentTrack) (bool, bool, error) {
 	sourceTrackID := strings.TrimSpace(track.ID)
 	if sourceTrackID == "" {
-		return fmt.Errorf("empty track id")
+		return false, false, fmt.Errorf("empty track id")
 	}
 	storedTrackID := atomfastStoredTrackID(sourceTrackID)
 	history, found, err := l.db.FindImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, l.dbType)
 	if err != nil {
-		return err
+		return false, false, err
 	}
 	if found {
 		if history.TrackID != "" {
 			logT(history.TrackID, "AtomFast", "skip already imported source %s", sourceTrackID)
-			return nil
+			return false, true, nil
 		}
 		logT(storedTrackID, "AtomFast", "skip already recorded source %s", sourceTrackID)
-		return nil
+		return false, true, nil
 	}
 	exists, err := l.db.TrackExists(ctx, storedTrackID, l.dbType)
 	if err != nil {
-		return err
+		return false, false, err
 	}
 	if exists {
 		// Tracks that predate import_history should be re-imported once to
 		// capture metadata and establish a stable history record.
 		logT(storedTrackID, "AtomFast", "reimport existing track without history %s", sourceTrackID)
-		return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
+		return true, false, l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 	}
 	if storedTrackID != "" && storedTrackID != sourceTrackID {
 		// Prefer the prefixed ID, but keep backward compatibility for older imports.
 		legacyExists, err := l.db.TrackExists(ctx, sourceTrackID, l.dbType)
 		if err != nil {
-			return err
+			return false, false, err
 		}
 		if legacyExists {
 			// Legacy tracks without history should be re-imported and recorded.
 			logT(sourceTrackID, "AtomFast", "reimport legacy track without history %s (no prefix)", sourceTrackID)
-			return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
+			return true, false, l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 		}
 	}
-	return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
+	return true, false, l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 }
 
 func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]atomfastimport.RecentTrack, error) {
