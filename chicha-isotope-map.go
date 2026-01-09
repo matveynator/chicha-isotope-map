@@ -3847,6 +3847,50 @@ const (
 	importHistorySourceSafecast = "safecast"
 )
 
+// pollIntervalOrDefault keeps refresh schedules predictable even if callers
+// provide a non-positive duration.
+func pollIntervalOrDefault(interval time.Duration) time.Duration {
+	if interval <= 0 {
+		return 30 * time.Minute
+	}
+	return interval
+}
+
+// nextPollAt formats the next refresh timestamp so logs explain when polling resumes.
+func nextPollAt(interval time.Duration) string {
+	next := time.Now().Add(pollIntervalOrDefault(interval)).UTC()
+	return next.Format(time.RFC3339)
+}
+
+// formatImportHistorySummary reports how much data has been imported, the last
+// import time, and the freshest source identifier for operator visibility.
+func formatImportHistorySummary(count int64, last time.Time, latestSource string, latestAt time.Time) string {
+	if count <= 0 {
+		return "no history records"
+	}
+	if last.IsZero() {
+		return fmt.Sprintf("%d records, last import unknown (latest source %s at %s)", count, formatLatestSource(latestSource), formatLatestTime(latestAt))
+	}
+	return fmt.Sprintf("%d records, last import %s (latest source %s at %s)", count, last.UTC().Format(time.RFC3339), formatLatestSource(latestSource), formatLatestTime(latestAt))
+}
+
+// formatLatestSource keeps empty identifiers explicit in logs so operators know
+// whether upstream data actually included IDs.
+func formatLatestSource(sourceID string) string {
+	if strings.TrimSpace(sourceID) == "" {
+		return "unknown"
+	}
+	return strings.TrimSpace(sourceID)
+}
+
+// formatLatestTime keeps missing timestamps explicit in logs.
+func formatLatestTime(ts time.Time) string {
+	if ts.IsZero() {
+		return "unknown"
+	}
+	return ts.UTC().Format(time.RFC3339)
+}
+
 // atomfastLoader wires the AtomFast client into the existing ingestion pipeline
 // while keeping requests sequential and spaced out to mimic human browsing.
 type atomfastLoader struct {
@@ -3993,6 +4037,21 @@ func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, re
 
 func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast initial load: start")
+	count, lastImport, err := l.db.ImportHistoryStats(ctx, importHistorySourceAtomFast, l.dbType)
+	if err != nil {
+		return err
+	}
+	latestID, latestAt, latestErr := l.db.LatestImportHistory(ctx, importHistorySourceAtomFast, l.dbType)
+	if latestErr != nil {
+		l.logf("atomfast latest import check failed: %v", latestErr)
+	}
+	l.logf("atomfast import history: %s", formatImportHistorySummary(count, lastImport, latestID, latestAt))
+	if count > 0 {
+		// We already imported AtomFast data once, so we skip the expensive
+		// full-history scan and rely on refresh polling instead.
+		l.logf("atomfast initial load: skipped (history already present; next refresh at %s)", nextPollAt(l.pollInterval))
+		return nil
+	}
 	for page := 1; ; page++ {
 		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
@@ -4005,7 +4064,7 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 			break
 		}
 		for _, track := range tracks {
-			if err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
+			if _, _, err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
 				l.logf("atomfast initial track %s skipped: %v", track.ID, err)
 			}
 			if err := l.sleepBetween(ctx); err != nil {
@@ -4019,6 +4078,18 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 
 func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast refresh: start")
+	const alreadySeenLimit = 5
+	stopPaging := false
+	alreadySeen := 0
+	pages := 0
+	totalImported := 0
+	var (
+		firstTrackID   string
+		lastTrackID    string
+		lastImported   string
+		lastImportedAt time.Time
+		seenIDs        []string
+	)
 	for page := 1; ; page++ {
 		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
@@ -4030,66 +4101,99 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 		if len(tracks) == 0 {
 			break
 		}
+		pages++
+		if page == 1 {
+			firstTrackID = strings.TrimSpace(tracks[0].ID)
+			lastTrackID = strings.TrimSpace(tracks[len(tracks)-1].ID)
+			l.logf("atomfast refresh: received %d tracks (page=1, newest=%s, oldest=%s)", len(tracks), firstTrackID, lastTrackID)
+		}
 		newCount := 0
 		for _, track := range tracks {
-			if err := l.processTrackIfNew(ctx, jobs, results, track); err != nil {
+			imported, alreadyImported, err := l.processTrackIfNew(ctx, jobs, results, track)
+			if err != nil {
 				l.logf("atomfast refresh track %s skipped: %v", track.ID, err)
 				continue
 			}
-			newCount++
+			if alreadyImported {
+				// AtomFast lists the newest tracks first; once we hit an already-imported
+				// record a few times we stop paging to avoid re-scanning the full history
+				// during every refresh cycle.
+				alreadySeen++
+				if len(seenIDs) < alreadySeenLimit {
+					seenIDs = append(seenIDs, strings.TrimSpace(track.ID))
+				}
+				if alreadySeen >= alreadySeenLimit {
+					stopPaging = true
+					break
+				}
+				continue
+			}
+			if imported {
+				newCount++
+				totalImported++
+				lastImported = strings.TrimSpace(track.ID)
+				lastImportedAt = time.Now().UTC()
+			}
 			if err := l.sleepBetween(ctx); err != nil {
 				return err
 			}
 		}
-		if newCount == 0 {
+		if stopPaging || newCount == 0 {
 			break
 		}
+	}
+	if stopPaging {
+		l.logf("atomfast refresh paused after %d already-imported tracks (%s); next refresh at %s", alreadySeen, strings.Join(seenIDs, ","), nextPollAt(l.pollInterval))
+	} else if totalImported == 0 {
+		l.logf("atomfast refresh found no new tracks (newest=%s, oldest=%s); next refresh at %s", firstTrackID, lastTrackID, nextPollAt(l.pollInterval))
+	} else {
+		l.logf("atomfast refresh imported %d tracks across %d pages; latest imported %s at %s; next refresh at %s", totalImported, pages, formatLatestSource(lastImported), formatLatestTime(lastImportedAt), nextPollAt(l.pollInterval))
 	}
 	l.logf("atomfast refresh: done")
 	return nil
 }
 
-func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, track atomfastimport.RecentTrack) error {
+func (l *atomfastLoader) processTrackIfNew(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, track atomfastimport.RecentTrack) (bool, bool, error) {
 	sourceTrackID := strings.TrimSpace(track.ID)
 	if sourceTrackID == "" {
-		return fmt.Errorf("empty track id")
+		return false, false, fmt.Errorf("empty track id")
 	}
 	storedTrackID := atomfastStoredTrackID(sourceTrackID)
 	history, found, err := l.db.FindImportHistory(ctx, importHistorySourceAtomFast, sourceTrackID, l.dbType)
 	if err != nil {
-		return err
+		return false, false, err
 	}
 	if found {
 		if history.TrackID != "" {
 			logT(history.TrackID, "AtomFast", "skip already imported source %s", sourceTrackID)
-			return nil
+			return false, true, nil
 		}
 		logT(storedTrackID, "AtomFast", "skip already recorded source %s", sourceTrackID)
-		return nil
+		return false, true, nil
 	}
 	exists, err := l.db.TrackExists(ctx, storedTrackID, l.dbType)
 	if err != nil {
-		return err
+		return false, false, err
 	}
 	if exists {
 		// Tracks that predate import_history should be re-imported once to
 		// capture metadata and establish a stable history record.
 		logT(storedTrackID, "AtomFast", "reimport existing track without history %s", sourceTrackID)
-		return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
+		return true, false, l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 	}
 	if storedTrackID != "" && storedTrackID != sourceTrackID {
 		// Prefer the prefixed ID, but keep backward compatibility for older imports.
 		legacyExists, err := l.db.TrackExists(ctx, sourceTrackID, l.dbType)
 		if err != nil {
-			return err
+			return false, false, err
 		}
 		if legacyExists {
 			// Legacy tracks without history should be re-imported and recorded.
 			logT(sourceTrackID, "AtomFast", "reimport legacy track without history %s (no prefix)", sourceTrackID)
-			return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
+			return true, false, l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 		}
 	}
-	return l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
+	return true, false, l.requestTrack(ctx, jobs, results, sourceTrackID, track.Author)
 }
 
 func (l *atomfastLoader) requestPage(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult, page int) ([]atomfastimport.RecentTrack, error) {
@@ -4298,6 +4402,17 @@ func (l *safecastAPILoader) run(ctx context.Context) {
 	results := make(chan safecastAPIResult)
 	go l.worker(ctx, jobs, results)
 
+	count, lastImport, err := l.db.ImportHistoryStats(ctx, importHistorySourceSafecast, l.dbType)
+	if err != nil {
+		l.logf("safecast api history check failed: %v", err)
+	} else {
+		latestID, latestAt, latestErr := l.db.LatestImportHistory(ctx, importHistorySourceSafecast, l.dbType)
+		if latestErr != nil {
+			l.logf("safecast latest import check failed: %v", latestErr)
+		}
+		l.logf("safecast import history: %s", formatImportHistorySummary(count, lastImport, latestID, latestAt))
+	}
+
 	backfill, err := l.needsBackfill(ctx)
 	if err != nil {
 		l.logf("safecast api backfill check failed: %v", err)
@@ -4381,7 +4496,19 @@ func (l *safecastAPILoader) runBackfill(ctx context.Context, jobs chan<- safecas
 
 func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecastAPIJob, results <-chan safecastAPIResult) error {
 	l.logf("safecast api refresh: start")
+	const alreadySeenLimit = 5
 	page := 1
+	stopPaging := false
+	alreadySeen := 0
+	pages := 0
+	totalImported := 0
+	var (
+		firstImportID  string
+		lastImportID   string
+		lastImported   string
+		lastImportedAt time.Time
+		seenIDs        []string
+	)
 	for {
 		imports, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
@@ -4390,8 +4517,13 @@ func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecast
 		if len(imports) == 0 {
 			break
 		}
+		pages++
+		if page == 1 {
+			firstImportID = strconv.FormatInt(imports[0].ID, 10)
+			lastImportID = strconv.FormatInt(imports[len(imports)-1].ID, 10)
+			l.logf("safecast api refresh: received %d imports (page=1, newest=%s, oldest=%s)", len(imports), firstImportID, lastImportID)
+		}
 		newFound := 0
-		stop := false
 		for _, imp := range imports {
 			imported, stopPage, err := l.processImportIfNew(ctx, jobs, results, imp)
 			if err != nil {
@@ -4399,20 +4531,39 @@ func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecast
 				continue
 			}
 			if stopPage {
-				stop = true
-				break
+				// Safecast lists newest imports first; after several already-seen
+				// items we stop paging to avoid full history scans every refresh.
+				alreadySeen++
+				if len(seenIDs) < alreadySeenLimit {
+					seenIDs = append(seenIDs, strconv.FormatInt(imp.ID, 10))
+				}
+				if alreadySeen >= alreadySeenLimit {
+					stopPaging = true
+					break
+				}
+				continue
 			}
 			if imported {
 				newFound++
+				totalImported++
+				lastImported = strconv.FormatInt(imp.ID, 10)
+				lastImportedAt = time.Now().UTC()
 			}
 			if err := l.sleepBetween(ctx); err != nil {
 				return err
 			}
 		}
-		if stop || newFound == 0 {
+		if stopPaging || newFound == 0 {
 			break
 		}
 		page++
+	}
+	if stopPaging {
+		l.logf("safecast api refresh paused after %d already-seen imports (%s); next refresh at %s", alreadySeen, strings.Join(seenIDs, ","), nextPollAt(l.pollInterval))
+	} else if totalImported == 0 {
+		l.logf("safecast api refresh found no new imports (newest=%s, oldest=%s); next refresh at %s", firstImportID, lastImportID, nextPollAt(l.pollInterval))
+	} else {
+		l.logf("safecast api refresh imported %d logs across %d pages; latest imported %s at %s; next refresh at %s", totalImported, pages, formatLatestSource(lastImported), formatLatestTime(lastImportedAt), nextPollAt(l.pollInterval))
 	}
 	l.logf("safecast api refresh: done")
 	return nil

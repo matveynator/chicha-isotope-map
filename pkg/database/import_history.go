@@ -92,6 +92,75 @@ func (db *Database) CountImportHistory(ctx context.Context, source, dbType strin
 	return count, nil
 }
 
+// ImportHistoryStats returns the total count and latest import timestamp for a
+// source so callers can log health information without scanning full history.
+func (db *Database) ImportHistoryStats(ctx context.Context, source, dbType string) (int64, time.Time, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return 0, time.Time{}, nil
+	}
+	phSource := placeholder(dbType, 1)
+	query := fmt.Sprintf(`SELECT COUNT(*), MAX(imported_at) FROM import_history WHERE source = %s`, phSource)
+	var (
+		count       int64
+		lastImport  sql.NullInt64
+		latestStamp time.Time
+	)
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	if err := db.withSerializedConnectionFor(ctx, WorkloadArchive, func(runCtx context.Context, conn *sql.DB) error {
+		if err := conn.QueryRowContext(runCtx, query, source).Scan(&count, &lastImport); err != nil {
+			return fmt.Errorf("import history stats: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return 0, time.Time{}, err
+	}
+	if lastImport.Valid {
+		latestStamp = time.Unix(lastImport.Int64, 0).UTC()
+	}
+	return count, latestStamp, nil
+}
+
+// LatestImportHistory returns the newest source ID and timestamp for a source
+// so callers can include the freshest identifier in logs.
+func (db *Database) LatestImportHistory(ctx context.Context, source, dbType string) (string, time.Time, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return "", time.Time{}, nil
+	}
+	phSource := placeholder(dbType, 1)
+	query := fmt.Sprintf(`SELECT source_id, imported_at FROM import_history WHERE source = %s ORDER BY imported_at DESC LIMIT 1`, phSource)
+	var (
+		sourceID  sql.NullString
+		imported  sql.NullInt64
+		latestAt  time.Time
+		latestStr string
+	)
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	if err := db.withSerializedConnectionFor(ctx, WorkloadArchive, func(runCtx context.Context, conn *sql.DB) error {
+		if err := conn.QueryRowContext(runCtx, query, source).Scan(&sourceID, &imported); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("latest import history: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return "", time.Time{}, err
+	}
+	if sourceID.Valid {
+		latestStr = strings.TrimSpace(sourceID.String)
+	}
+	if imported.Valid {
+		latestAt = time.Unix(imported.Int64, 0).UTC()
+	}
+	return latestStr, latestAt, nil
+}
+
 // EnsureImportHistory records a completed import so future runs can skip
 // already-processed sources. The caller controls the status value.
 func (db *Database) EnsureImportHistory(ctx context.Context, source, sourceID, trackID, status, message, dbType string) error {
