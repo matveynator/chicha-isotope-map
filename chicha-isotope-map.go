@@ -4469,6 +4469,7 @@ func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecast
 	l.logf("safecast api refresh: start")
 	const alreadySeenLimit = 5
 	page := 1
+	stopPaging := false
 	alreadySeen := 0
 	pages := 0
 	totalImported := 0
@@ -4492,7 +4493,6 @@ func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecast
 			l.logf("safecast api refresh: received %d imports (page=1, newest=%s, oldest=%s)", len(imports), firstImportID, lastImportID)
 		}
 		newFound := 0
-		stop := false
 		for _, imp := range imports {
 			imported, stopPage, err := l.processImportIfNew(ctx, jobs, results, imp)
 			if err != nil {
@@ -4507,7 +4507,7 @@ func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecast
 					seenIDs = append(seenIDs, strconv.FormatInt(imp.ID, 10))
 				}
 				if alreadySeen >= alreadySeenLimit {
-					stop = true
+					stopPaging = true
 					break
 				}
 				continue
@@ -4520,12 +4520,12 @@ func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecast
 				return err
 			}
 		}
-		if stop || newFound == 0 {
+		if stopPaging || newFound == 0 {
 			break
 		}
 		page++
 	}
-	if stop {
+	if stopPaging {
 		l.logf("safecast api refresh paused after %d already-seen imports (%s); next refresh at %s", alreadySeen, strings.Join(seenIDs, ","), nextPollAt(l.pollInterval))
 	} else if totalImported == 0 {
 		l.logf("safecast api refresh found no new imports (newest=%s, oldest=%s); next refresh at %s", firstImportID, lastImportID, nextPollAt(l.pollInterval))
