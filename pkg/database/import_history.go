@@ -123,6 +123,44 @@ func (db *Database) ImportHistoryStats(ctx context.Context, source, dbType strin
 	return count, latestStamp, nil
 }
 
+// LatestImportHistory returns the newest source ID and timestamp for a source
+// so callers can include the freshest identifier in logs.
+func (db *Database) LatestImportHistory(ctx context.Context, source, dbType string) (string, time.Time, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return "", time.Time{}, nil
+	}
+	phSource := placeholder(dbType, 1)
+	query := fmt.Sprintf(`SELECT source_id, imported_at FROM import_history WHERE source = %s ORDER BY imported_at DESC LIMIT 1`, phSource)
+	var (
+		sourceID  sql.NullString
+		imported  sql.NullInt64
+		latestAt  time.Time
+		latestStr string
+	)
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	if err := db.withSerializedConnectionFor(ctx, WorkloadArchive, func(runCtx context.Context, conn *sql.DB) error {
+		if err := conn.QueryRowContext(runCtx, query, source).Scan(&sourceID, &imported); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("latest import history: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return "", time.Time{}, err
+	}
+	if sourceID.Valid {
+		latestStr = strings.TrimSpace(sourceID.String)
+	}
+	if imported.Valid {
+		latestAt = time.Unix(imported.Int64, 0).UTC()
+	}
+	return latestStr, latestAt, nil
+}
+
 // EnsureImportHistory records a completed import so future runs can skip
 // already-processed sources. The caller controls the status value.
 func (db *Database) EnsureImportHistory(ctx context.Context, source, sourceID, trackID, status, message, dbType string) error {

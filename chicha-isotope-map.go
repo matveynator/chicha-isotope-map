@@ -3864,14 +3864,23 @@ func nextPollAt(interval time.Duration) string {
 
 // formatImportHistorySummary reports how much data has been imported and when
 // the last import happened for operator visibility.
-func formatImportHistorySummary(count int64, last time.Time) string {
+func formatImportHistorySummary(count int64, last time.Time, latestSource string) string {
 	if count <= 0 {
 		return "no history records"
 	}
 	if last.IsZero() {
-		return fmt.Sprintf("%d records, last import unknown", count)
+		return fmt.Sprintf("%d records, last import unknown (latest source %s)", count, formatLatestSource(latestSource))
 	}
-	return fmt.Sprintf("%d records, last import %s", count, last.UTC().Format(time.RFC3339))
+	return fmt.Sprintf("%d records, last import %s (latest source %s)", count, last.UTC().Format(time.RFC3339), formatLatestSource(latestSource))
+}
+
+// formatLatestSource keeps empty identifiers explicit in logs so operators know
+// whether upstream data actually included IDs.
+func formatLatestSource(sourceID string) string {
+	if strings.TrimSpace(sourceID) == "" {
+		return "unknown"
+	}
+	return strings.TrimSpace(sourceID)
 }
 
 // atomfastLoader wires the AtomFast client into the existing ingestion pipeline
@@ -4024,7 +4033,11 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 	if err != nil {
 		return err
 	}
-	l.logf("atomfast import history: %s", formatImportHistorySummary(count, lastImport))
+	latestID, _, latestErr := l.db.LatestImportHistory(ctx, importHistorySourceAtomFast, l.dbType)
+	if latestErr != nil {
+		l.logf("atomfast latest import check failed: %v", latestErr)
+	}
+	l.logf("atomfast import history: %s", formatImportHistorySummary(count, lastImport, latestID))
 	if count > 0 {
 		// We already imported AtomFast data once, so we skip the expensive
 		// full-history scan and rely on refresh polling instead.
@@ -4381,7 +4394,11 @@ func (l *safecastAPILoader) run(ctx context.Context) {
 	if err != nil {
 		l.logf("safecast api history check failed: %v", err)
 	} else {
-		l.logf("safecast import history: %s", formatImportHistorySummary(count, lastImport))
+		latestID, _, latestErr := l.db.LatestImportHistory(ctx, importHistorySourceSafecast, l.dbType)
+		if latestErr != nil {
+			l.logf("safecast latest import check failed: %v", latestErr)
+		}
+		l.logf("safecast import history: %s", formatImportHistorySummary(count, lastImport, latestID))
 	}
 
 	backfill, err := l.needsBackfill(ctx)
