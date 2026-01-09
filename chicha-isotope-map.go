@@ -3993,6 +3993,16 @@ func (l *atomfastLoader) worker(ctx context.Context, jobs <-chan atomfastJob, re
 
 func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast initial load: start")
+	count, err := l.db.CountImportHistory(ctx, importHistorySourceAtomFast, l.dbType)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		// We already imported AtomFast data once, so we skip the expensive
+		// full-history scan and rely on refresh polling instead.
+		l.logf("atomfast initial load: skipped (history already present)")
+		return nil
+	}
 	for page := 1; ; page++ {
 		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
@@ -4019,7 +4029,9 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 
 func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast refresh: start")
+	const alreadySeenLimit = 5
 	stopPaging := false
+	alreadySeen := 0
 	for page := 1; ; page++ {
 		tracks, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
@@ -4040,9 +4052,14 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 			}
 			if alreadyImported {
 				// AtomFast lists the newest tracks first; once we hit an already-imported
-				// record we stop paging to avoid re-scanning the full history each refresh.
-				stopPaging = true
-				break
+				// record a few times we stop paging to avoid re-scanning the full history
+				// during every refresh cycle.
+				alreadySeen++
+				if alreadySeen >= alreadySeenLimit {
+					stopPaging = true
+					break
+				}
+				continue
 			}
 			if imported {
 				newCount++
@@ -4391,7 +4408,9 @@ func (l *safecastAPILoader) runBackfill(ctx context.Context, jobs chan<- safecas
 
 func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecastAPIJob, results <-chan safecastAPIResult) error {
 	l.logf("safecast api refresh: start")
+	const alreadySeenLimit = 5
 	page := 1
+	alreadySeen := 0
 	for {
 		imports, err := l.requestPage(ctx, jobs, results, page)
 		if err != nil {
@@ -4409,8 +4428,14 @@ func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecast
 				continue
 			}
 			if stopPage {
-				stop = true
-				break
+				// Safecast lists newest imports first; after several already-seen
+				// items we stop paging to avoid full history scans every refresh.
+				alreadySeen++
+				if alreadySeen >= alreadySeenLimit {
+					stop = true
+					break
+				}
+				continue
 			}
 			if imported {
 				newFound++
