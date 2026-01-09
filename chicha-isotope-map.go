@@ -5170,6 +5170,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentURL         string
 		DefaultSocialImage string
 		MetaGenerator      string
+		CanonicalURL       string
 		LogoImageURL       string
 		LogoLink           string
 		ShowGithubTooltip  bool
@@ -5191,6 +5192,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentURL:         resolveCurrentURL(r),
 		DefaultSocialImage: defaultSocialImage,
 		MetaGenerator:      metaGenerator,
+		CanonicalURL:       resolveCanonicalURL(r),
 		LogoImageURL:       activeLogoConfig.ImageURL,
 		LogoLink:           activeLogoConfig.LinkURL,
 		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
@@ -5240,6 +5242,32 @@ func resolveCurrentURL(r *http.Request) string {
 	}
 
 	return fmt.Sprintf("%s://%s%s", scheme, host, path)
+}
+
+// resolveCanonicalURL builds a stable canonical root URL so crawlers see a consistent domain.
+// We prefer the configured domain flag because it is explicit, and fall back to the current request
+// to avoid emitting an empty canonical tag when running locally.
+func resolveCanonicalURL(r *http.Request) string {
+	configured := strings.TrimSpace(*domain)
+	if configured == "" {
+		return resolveCurrentURL(r)
+	}
+
+	candidate := configured
+	if !strings.Contains(candidate, "://") {
+		candidate = "https://" + candidate
+	}
+	parsed, err := url.Parse(candidate)
+	if err != nil {
+		return "https://" + strings.Trim(candidate, "/") + "/"
+	}
+	if parsed.Scheme == "" {
+		parsed.Scheme = "https"
+	}
+	parsed.Path = "/"
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 // geoIPHandler returns a lightweight latitude/longitude pair derived from the
@@ -5418,6 +5446,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentURL         string
 		DefaultSocialImage string
 		MetaGenerator      string
+		CanonicalURL       string
 		LogoImageURL       string
 		LogoLink           string
 		ShowGithubTooltip  bool
@@ -5439,6 +5468,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentURL:         resolveCurrentURL(r),
 		DefaultSocialImage: defaultSocialImage,
 		MetaGenerator:      metaGenerator,
+		CanonicalURL:       resolveCanonicalURL(r),
 		LogoImageURL:       activeLogoConfig.ImageURL,
 		LogoLink:           activeLogoConfig.LinkURL,
 		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,

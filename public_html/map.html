@@ -13,7 +13,7 @@
     <meta name="description" content="{{translate "meta_description"}}">
     <!-- Preserve upstream attribution in metadata for downstream crawlers. -->
     <meta name="generator" content="{{ .MetaGenerator }}">
-    <link rel="canonical" href="https://pelora.org/">
+    <link rel="canonical" href="{{.CanonicalURL}}">
     <!-- JSON-LD gives search engines a structured summary of map controls and filters. -->
     <script type="application/ld+json">
       {
@@ -21,7 +21,7 @@
         "@type": "WebApplication",
         "name": "Chicha Isotope Map",
         "applicationCategory": "VisualizationApplication",
-        "url": "https://pelora.org/",
+        "url": "{{.CanonicalURL}}",
         "description": "Interactive radiation map with URL parameters for bounds, zoom, layer, theme, date range, speed filters, and single-track focus.",
         "featureList": [
           "Bounds: minLat,minLon,maxLat,maxLon",
@@ -4229,7 +4229,8 @@ function updateMarkers(){
     if (!isLive && m.trackID) tracks.add(m.trackID);
     minTs = Math.min(minTs, m.date);
     maxTs = Math.max(maxTs, m.date);
-    if (savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
+    // Keep realtime Safecast markers visible regardless of the date slider so live sensors are never filtered out.
+    if (!isLive && savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
     if (isTrackView) {
       trackViewMarkers.push(m);
