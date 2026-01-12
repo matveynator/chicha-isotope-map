@@ -84,6 +84,8 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+// Keep the default UI toggle explicit so operators can expose realtime data without auto-enabling it.
+var safecastRealtimeDefault = flag.Bool("safecast-realtime-default", false, "Show Safecast realtime markers by default when realtime polling is enabled")
 var importSourcesFlag = flag.String("import", "", "Enable importers: safecast, atomfast, safecast,atomfast, or all")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
@@ -139,7 +141,7 @@ var cliUsageSections = []usageSection{
 	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
 	{Title: "Importers", Flags: []string{"import"}},
-	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
+	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "safecast-realtime-default", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
 	{Title: "Self-upgrade", Flags: []string{"selfupgrade", "selfupgrade-url"}},
 }
 
@@ -5163,6 +5165,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer       string
 		AutoLocateDefault  bool
 		RealtimeAvailable  bool
+		RealtimeDefault    bool
 		SupportEmail       string
 		TranslationsJSON   template.JS
 		MarkersJSON        template.JS
@@ -5185,6 +5188,8 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer:       *defaultLayer,
 		AutoLocateDefault:  *autoLocateDefault,
 		RealtimeAvailable:  *safecastRealtimeEnabled,
+		// Keep the default toggle false unless realtime is active so the UI stays consistent.
+		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
 		SupportEmail:       strings.TrimSpace(*supportEmail),
 		TranslationsJSON:   translationsJSON,
 		MarkersJSON:        markersJSON,
@@ -5439,6 +5444,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer       string
 		AutoLocateDefault  bool
 		RealtimeAvailable  bool
+		RealtimeDefault    bool
 		SupportEmail       string
 		TranslationsJSON   template.JS
 		MarkersJSON        template.JS
@@ -5461,6 +5467,8 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer:       *defaultLayer,
 		AutoLocateDefault:  *autoLocateDefault,
 		RealtimeAvailable:  *safecastRealtimeEnabled,
+		// Keep the default toggle false unless realtime is active so the UI stays consistent.
+		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
 		SupportEmail:       strings.TrimSpace(*supportEmail),
 		TranslationsJSON:   translationsJSON,
 		MarkersJSON:        markersJSON,
