@@ -6849,6 +6849,9 @@ func main() {
 	firstSignal := <-signalCh
 	log.Printf("shutdown signal received: %v", firstSignal)
 
+	// We cancel background DB work early so long-running index builds do not block shutdown.
+	cancelIdx()
+
 	if shutdownHTTP != nil {
 		ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
 		if err := shutdownHTTP(ctxShutdown); err != nil {
@@ -6857,12 +6860,13 @@ func main() {
 		cancelShutdown()
 	}
 
+	gracefulWait := 10 * time.Second
 	select {
 	case <-indexDone:
-		log.Printf("background index build finished; safe to exit")
+		log.Printf("background index tasks stopped; safe to exit")
 	case forceSignal := <-signalCh:
 		log.Printf("forced shutdown signal received: %v", forceSignal)
-		cancelIdx()
-		<-indexDone
+	case <-time.After(gracefulWait):
+		log.Printf("background index tasks still running after %s; exiting", gracefulWait)
 	}
 }

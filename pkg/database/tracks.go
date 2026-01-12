@@ -571,6 +571,38 @@ WHERE m.trackID IS NOT NULL AND m.trackID <> ''
 	})
 }
 
+// tracksTableHasRows checks whether the tracks table already has entries so we can
+// skip expensive backfill work on warm databases. We keep it lightweight and stop
+// after the first row to avoid blocking startup.
+func (db *Database) tracksTableHasRows(ctx context.Context) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	query := `SELECT trackID FROM tracks`
+	ctx, cancel := queueFriendlyContext(ctx, 10*time.Second)
+	defer cancel()
+
+	var hasRows bool
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(ctx, query)
+		if err != nil {
+			return fmt.Errorf("track registry check: %w", err)
+		}
+		defer rows.Close()
+
+		hasRows = rows.Next()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("track registry check: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return hasRows, nil
+}
+
 // CountTrackIDsUpTo returns how many distinct track IDs are lexicographically
 // less than or equal to the provided ID. We use it to translate string track
 // IDs into stable numeric indices for the API, skipping realtime-only entries

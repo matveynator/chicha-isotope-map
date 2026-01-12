@@ -1021,15 +1021,29 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 		defer close(done)
 		logf("⏳ background index check/build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", cfg.DBType)
 
-		logf("🔎 checking track registry backfill (engine=%s)", cfg.DBType)
-		if err := db.backfillTracksTable(ctx, cfg.DBType); err != nil {
-			logf("❌ track registry backfill failed: %v", err)
+		logf("🔎 checking track registry fill state (engine=%s)", cfg.DBType)
+		hasTracks, err := db.tracksTableHasRows(ctx)
+		if err != nil {
+			logf("⚠️  track registry check failed; skipping backfill: %v", err)
+		} else if hasTracks {
+			logf("⏭️  track registry already populated. skip backfill.")
 		} else {
-			logf("✅ track registry ready for fast pagination")
+			logf("▶️  backfilling track registry from markers")
+			if err := db.backfillTracksTable(ctx, cfg.DBType); err != nil {
+				logf("❌ track registry backfill failed: %v", err)
+			} else {
+				logf("✅ track registry ready for fast pagination")
+			}
 		}
 
 		for _, it := range indexes {
 			start := time.Now()
+			select {
+			case <-ctx.Done():
+				logf("⏹️  stop index builder due to context cancel: %v", ctx.Err())
+				return
+			default:
+			}
 			logf("🔎 checking index %s", it.name)
 			exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
 			if err != nil {
