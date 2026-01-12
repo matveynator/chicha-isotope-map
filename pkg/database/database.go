@@ -1003,12 +1003,12 @@ func runDuckDBMaintenance(ctx context.Context, db *sql.DB, logf func(string, ...
 // - No pinned connections (important for sqlite/chai with MaxOpenConns(1)).
 // - No pre-checks: just CREATE INDEX IF NOT EXISTS.
 // - Retries with exponential backoff on "database is locked"/"SQLITE_BUSY".
-func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf func(string, ...any)) {
+func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf func(string, ...any)) <-chan struct{} {
 	type idx struct{ name, sql string }
 
 	indexes := desiredIndexesPortable(cfg.DBType)
 	if len(indexes) == 0 {
-		return
+		return nil
 	}
 
 	// single worker: avoids DDL self-contention and keeps app responsive
@@ -1023,6 +1023,14 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 
 		for _, it := range indexes {
 			start := time.Now()
+			exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
+			if err != nil {
+				logf("⚠️  index %s existence check failed: %v", it.name, err)
+			}
+			if err == nil && exists {
+				logf("⏭️  index %s already exists; skipping creation.", it.name)
+				continue
+			}
 			logf("▶️  start index %s", it.name)
 
 			// polite retry loop for SQLite/Chai "busy"/locks; portable for others too
@@ -1072,10 +1080,16 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 				break
 			}
 		}
+		logf("✅ background index build finished (engine=%s).", cfg.DBType)
 	}
 
 	// run in background
-	go worker()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		worker()
+	}()
+	return done
 }
 
 // desiredIndexesPortable declares the set of indexes we want to have for each engine.
@@ -1321,6 +1335,16 @@ LIMIT 1`
 		}
 		return err == nil, err
 
+	case "duckdb":
+		// DuckDB exposes indexes in information_schema, which keeps the query portable.
+		const q = `SELECT 1 FROM information_schema.indexes WHERE index_name = ? LIMIT 1`
+		var one int
+		err := db.DB.QueryRowContext(ctx, q, indexName).Scan(&one)
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return err == nil, err
+
 	default:
 		// Unknown engine: assume not exists to try creation;
 		// caller will catch "already exists" text if any.
@@ -1331,7 +1355,7 @@ LIMIT 1`
 // InitSchema creates minimal required schema synchronously so that
 // the app can accept traffic immediately. Heavy indexes are built later
 // by EnsureIndexesAsync in background.
-func (db *Database) InitSchema(cfg Config) error {
+func (db *Database) InitSchema(cfg Config, logf func(string, ...any)) error {
 	var (
 		schema     string
 		statements []string
@@ -1706,10 +1730,10 @@ ORDER BY (code);`,
 	}
 
 	// Ensure optional columns exist even for older databases.
-	if err := db.ensureMarkerMetadataColumns(cfg.DBType); err != nil {
+	if err := db.ensureMarkerMetadataColumns(cfg.DBType, logf); err != nil {
 		return fmt.Errorf("add marker metadata column: %w", err)
 	}
-	if err := db.ensureRealtimeMetadataColumns(cfg.DBType); err != nil {
+	if err := db.ensureRealtimeMetadataColumns(cfg.DBType, logf); err != nil {
 		return fmt.Errorf("add realtime metadata column: %w", err)
 	}
 
@@ -1732,12 +1756,16 @@ func execStatements(db *sql.DB, stmts []string) error {
 	return nil
 }
 
+// ---- Schema upgrade helpers -------------------------------------------------
+// We keep column checks in one place so the ALTER TABLE flow stays readable and
+// we can log exactly which columns are created or skipped.
+
 // ensureRealtimeMetadataColumns upgrades realtime_measurements with optional metadata columns.
 // Each column is added lazily so existing installations keep their history without manual SQL.
 // ensureMarkerMetadataColumns upgrades the markers table with optional telemetry columns.
 // We add altitude, detector type, radiation channel, temperature, humidity, and live metadata
 // lazily so historical databases built before this format continue working without manual SQL.
-func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
+func (db *Database) ensureMarkerMetadataColumns(dbType string, logf func(string, ...any)) error {
 	type column struct {
 		name string
 		def  string
@@ -1755,11 +1783,28 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 		{name: "country", def: "country TEXT"},
 	}
 
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
+		present, err := db.loadColumnPresence(context.Background(), dbType, "markers")
+		if err != nil {
+			return err
+		}
 		for _, col := range required {
-			stmt := fmt.Sprintf("ALTER TABLE markers ADD COLUMN IF NOT EXISTS %s", col.def)
+			if present[col.name] {
+				logf("⏭️  markers.%s already exists; skipping.", col.name)
+				continue
+			}
+			stmt := fmt.Sprintf("ALTER TABLE markers ADD COLUMN %s", col.def)
+			logf("🧩 adding markers.%s", col.name)
 			if _, err := db.DB.Exec(stmt); err != nil {
+				if isSchemaAlreadyExistsError(err) {
+					logf("⏭️  markers.%s already exists; skipping.", col.name)
+					continue
+				}
 				return err
 			}
 		}
@@ -1797,10 +1842,16 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 
 		for _, col := range required {
 			if present[col.name] {
+				logf("⏭️  markers.%s already exists; skipping.", col.name)
 				continue
 			}
 			stmt := fmt.Sprintf("ALTER TABLE markers ADD COLUMN %s", col.def)
+			logf("🧩 adding markers.%s", col.name)
 			if _, err := db.DB.Exec(stmt); err != nil {
+				if isSchemaAlreadyExistsError(err) {
+					logf("⏭️  markers.%s already exists; skipping.", col.name)
+					continue
+				}
 				return err
 			}
 		}
@@ -1808,7 +1859,7 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 	}
 }
 
-func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
+func (db *Database) ensureRealtimeMetadataColumns(dbType string, logf func(string, ...any)) error {
 	type column struct {
 		name string
 		def  string
@@ -1821,12 +1872,29 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 		{name: "extra", def: "extra TEXT"},
 	}
 
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
+		present, err := db.loadColumnPresence(context.Background(), dbType, "realtime_measurements")
+		if err != nil {
+			return err
+		}
 		// Engines with IF NOT EXISTS syntax can add columns individually without prior inspection.
 		for _, col := range required {
-			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN IF NOT EXISTS %s", col.def)
+			if present[col.name] {
+				logf("⏭️  realtime_measurements.%s already exists; skipping.", col.name)
+				continue
+			}
+			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN %s", col.def)
+			logf("🧩 adding realtime_measurements.%s", col.name)
 			if _, err := db.DB.Exec(stmt); err != nil {
+				if isSchemaAlreadyExistsError(err) {
+					logf("⏭️  realtime_measurements.%s already exists; skipping.", col.name)
+					continue
+				}
 				return err
 			}
 		}
@@ -1865,15 +1933,107 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 
 		for _, col := range required {
 			if present[col.name] {
+				logf("⏭️  realtime_measurements.%s already exists; skipping.", col.name)
 				continue
 			}
 			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN %s", col.def)
+			logf("🧩 adding realtime_measurements.%s", col.name)
 			if _, err := db.DB.Exec(stmt); err != nil {
+				if isSchemaAlreadyExistsError(err) {
+					logf("⏭️  realtime_measurements.%s already exists; skipping.", col.name)
+					continue
+				}
 				return err
 			}
 		}
 		return nil
 	}
+}
+
+// loadColumnPresence collects existing column names for the table so we can
+// decide which ALTER TABLE statements are truly needed and log the outcome.
+func (db *Database) loadColumnPresence(ctx context.Context, dbType, table string) (map[string]bool, error) {
+	present := make(map[string]bool)
+	switch strings.ToLower(dbType) {
+	case "pgx":
+		const q = `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = ANY (current_schemas(true))`
+		rows, err := db.DB.QueryContext(ctx, q, table)
+		if err != nil {
+			return nil, fmt.Errorf("describe %s columns: %w", table, err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return nil, fmt.Errorf("scan %s column: %w", table, err)
+			}
+			present[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate %s columns: %w", table, err)
+		}
+		return present, nil
+
+	case "duckdb":
+		const q = `SELECT column_name FROM information_schema.columns WHERE table_name = ?`
+		rows, err := db.DB.QueryContext(ctx, q, table)
+		if err != nil {
+			return nil, fmt.Errorf("describe %s columns: %w", table, err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return nil, fmt.Errorf("scan %s column: %w", table, err)
+			}
+			present[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate %s columns: %w", table, err)
+		}
+		return present, nil
+
+	case "sqlite", "chai":
+		rows, err := db.DB.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s);`, table))
+		if err != nil {
+			return nil, fmt.Errorf("describe %s: %w", table, err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				cid     int
+				name    string
+				ctype   string
+				notnull int
+				dflt    sql.NullString
+				pk      int
+			)
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+				return nil, fmt.Errorf("scan %s pragma: %w", table, err)
+			}
+			present[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate %s pragma: %w", table, err)
+		}
+		return present, nil
+
+	default:
+		return present, nil
+	}
+}
+
+// isSchemaAlreadyExistsError keeps schema upgrades idempotent even when multiple
+// instances race; we log and move on instead of failing the boot.
+func isSchemaAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "duplicate column") ||
+		strings.Contains(msg, "duplicate") ||
+		strings.Contains(msg, "sqlstate 42701")
 }
 
 // MarkerBatchProgress reports how many markers a bulk insert has flushed so operators can track
