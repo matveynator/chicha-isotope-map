@@ -6837,8 +6837,6 @@ func main() {
 	// асинхронные индексы в бд без блокирования основного процесса начало
 	ctxIdx, cancelIdx := context.WithCancel(context.Background())
 	defer cancelIdx()
-	// Пояснение в лог: что делаем и почему это не блокирует сервер
-	log.Printf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", dbCfg.DBType)
 	// Запуск асинхронной индексации с прогрессом
 	indexDone := db.EnsureIndexesAsync(ctxIdx, dbCfg, func(format string, args ...any) {
 		log.Printf(format, args...)

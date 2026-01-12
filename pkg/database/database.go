@@ -1019,8 +1019,9 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 	// single worker: avoids DDL self-contention and keeps app responsive
 	worker := func() {
 		defer close(done)
-		logf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", cfg.DBType)
+		logf("⏳ background index check/build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", cfg.DBType)
 
+		logf("🔎 checking track registry backfill (engine=%s)", cfg.DBType)
 		if err := db.backfillTracksTable(ctx, cfg.DBType); err != nil {
 			logf("❌ track registry backfill failed: %v", err)
 		} else {
@@ -1029,6 +1030,7 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 
 		for _, it := range indexes {
 			start := time.Now()
+			logf("🔎 checking index %s", it.name)
 			exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
 			if err != nil {
 				logf("⚠️  index %s check failed; will still attempt creation if missing: %v", it.name, err)
