@@ -1001,18 +1001,24 @@ func runDuckDBMaintenance(ctx context.Context, db *sql.DB, logf func(string, ...
 
 // EnsureIndexesAsync builds non-critical indexes in background, politely.
 // - No pinned connections (important for sqlite/chai with MaxOpenConns(1)).
-// - No pre-checks: just CREATE INDEX IF NOT EXISTS.
+// - Pre-checks avoid repeated work; CREATE INDEX IF NOT EXISTS is the fallback.
 // - Retries with exponential backoff on "database is locked"/"SQLITE_BUSY".
-func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf func(string, ...any)) {
+func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf func(string, ...any)) <-chan struct{} {
 	type idx struct{ name, sql string }
 
 	indexes := desiredIndexesPortable(cfg.DBType)
+	done := make(chan struct{})
 	if len(indexes) == 0 {
-		return
+		close(done)
+		return done
+	}
+	if logf == nil {
+		logf = log.Printf
 	}
 
 	// single worker: avoids DDL self-contention and keeps app responsive
 	worker := func() {
+		defer close(done)
 		logf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", cfg.DBType)
 
 		if err := db.backfillTracksTable(ctx, cfg.DBType); err != nil {
@@ -1023,6 +1029,14 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 
 		for _, it := range indexes {
 			start := time.Now()
+			exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
+			if err != nil {
+				logf("⚠️  index %s check failed; will still attempt creation if missing: %v", it.name, err)
+			}
+			if err == nil && exists {
+				logf("⏭️  index %s already exists. continue.", it.name)
+				continue
+			}
 			logf("▶️  start index %s", it.name)
 
 			// polite retry loop for SQLite/Chai "busy"/locks; portable for others too
@@ -1076,6 +1090,7 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 
 	// run in background
 	go worker()
+	return done
 }
 
 // desiredIndexesPortable declares the set of indexes we want to have for each engine.

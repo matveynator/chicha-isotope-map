@@ -39,6 +39,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -1098,7 +1099,11 @@ func withServerHeader(h http.Handler) http.Handler {
 // Совместимость: TLS ≥ 1.0, ALPN h2/http1.1/http1.0.
 // Все ошибки только логируются.
 
-func serveWithDomain(domain string, handler http.Handler) {
+func serveWithDomain(domain string, handler http.Handler) func(context.Context) error {
+	// We return a shutdown closure so the caller can stop listeners and wait
+	// for DB tasks to finish before exiting. Channels keep shutdown lock-free.
+	stopCh := make(chan struct{})
+
 	// ----------- ACME manager -----------
 	certMgr := &autocert.Manager{
 		Prompt: autocert.AcceptTOS,
@@ -1117,8 +1122,13 @@ func serveWithDomain(domain string, handler http.Handler) {
 	}
 
 	// ----------- :80 (challenge + redirect) -----------
+	server80 := &http.Server{
+		Addr:              ":80",
+		Handler:           http.NewServeMux(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
-		mux80 := http.NewServeMux()
+		mux80 := server80.Handler.(*http.ServeMux)
 		mux80.Handle("/.well-known/acme-challenge/", certMgr.HTTPHandler(nil))
 		mux80.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			target := "https://" + domain + r.URL.RequestURI()
@@ -1126,11 +1136,7 @@ func serveWithDomain(domain string, handler http.Handler) {
 		})
 
 		log.Printf("HTTP  server (ACME+redirect) ➜ :80")
-		if err := (&http.Server{
-			Addr:              ":80",
-			Handler:           mux80,
-			ReadHeaderTimeout: 10 * time.Second,
-		}).ListenAndServe(); err != nil {
+		if err := server80.ListenAndServe(); err != nil {
 			selfupgradeHandleServerError(err, log.Printf)
 		}
 	}()
@@ -1139,9 +1145,14 @@ func serveWithDomain(domain string, handler http.Handler) {
 	go func() {
 		t := time.NewTicker(24 * time.Hour)
 		defer t.Stop()
-		for range t.C {
-			if _, err := certMgr.GetCertificate(&tls.ClientHelloInfo{ServerName: domain}); err != nil {
-				log.Printf("autocert renewal check: %v", err)
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-t.C:
+				if _, err := certMgr.GetCertificate(&tls.ClientHelloInfo{ServerName: domain}); err != nil {
+					log.Printf("autocert renewal check: %v", err)
+				}
 			}
 		}
 	}()
@@ -1155,6 +1166,11 @@ func serveWithDomain(domain string, handler http.Handler) {
 	var defaultCert *tls.Certificate
 	go func() {
 		for defaultCert == nil {
+			select {
+			case <-stopCh:
+				return
+			default:
+			}
 			if c, err := certMgr.GetCertificate(&tls.ClientHelloInfo{ServerName: domain}); err == nil {
 				defaultCert = c
 			}
@@ -1175,13 +1191,33 @@ func serveWithDomain(domain string, handler http.Handler) {
 	}
 
 	log.Printf("HTTPS server for %s ➜ :443 (TLS ≥1.0, ALPN h2/http1.1/1.0)", domain)
-	if err := (&http.Server{
+	server443 := &http.Server{
 		Addr:              ":443",
 		Handler:           handler,
 		TLSConfig:         tlsCfg,
 		ReadHeaderTimeout: 10 * time.Second,
-	}).ListenAndServeTLS("", ""); err != nil {
-		selfupgradeHandleServerError(err, log.Printf)
+	}
+	go func() {
+		if err := server443.ListenAndServeTLS("", ""); err != nil {
+			selfupgradeHandleServerError(err, log.Printf)
+		}
+	}()
+
+	return func(ctx context.Context) error {
+		close(stopCh)
+		errCh := make(chan error, 2)
+		go func() { errCh <- server80.Shutdown(ctx) }()
+		go func() { errCh <- server443.Shutdown(ctx) }()
+		var errs []string
+		for i := 0; i < 2; i++ {
+			if err := <-errCh; err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
+		if len(errs) > 0 {
+			return fmt.Errorf("server shutdown: %s", strings.Join(errs, "; "))
+		}
+		return nil
 	}
 }
 
@@ -6776,18 +6812,26 @@ func main() {
 	rootHandler = withServerHeader(rootHandler)
 
 	// 5. HTTP/HTTPS-серверы
+	// We keep a shutdown hook so exit flows can stop network listeners before waiting
+	// on DB maintenance work, keeping shutdown graceful and deterministic.
+	var shutdownHTTP func(context.Context) error
 	if *domain != "" {
 		// Двойной сервер :80 + :443 с Let’s Encrypt
-		go serveWithDomain(*domain, rootHandler)
+		shutdownHTTP = serveWithDomain(*domain, rootHandler)
 	} else {
 		// Обычный HTTP на порт из -port
 		addr := fmt.Sprintf(":%d", *port)
+		server := &http.Server{
+			Addr:    addr,
+			Handler: rootHandler,
+		}
 		go func() {
 			log.Printf("HTTP server ➜ http://localhost:%d", *port)
-			if err := http.ListenAndServe(addr, rootHandler); err != nil {
+			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				selfupgradeHandleServerError(err, log.Printf)
 			}
 		}()
+		shutdownHTTP = server.Shutdown
 	}
 
 	// асинхронные индексы в бд без блокирования основного процесса начало
@@ -6796,11 +6840,31 @@ func main() {
 	// Пояснение в лог: что делаем и почему это не блокирует сервер
 	log.Printf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", dbCfg.DBType)
 	// Запуск асинхронной индексации с прогрессом
-	db.EnsureIndexesAsync(ctxIdx, dbCfg, func(format string, args ...any) {
+	indexDone := db.EnsureIndexesAsync(ctxIdx, dbCfg, func(format string, args ...any) {
 		log.Printf(format, args...)
 	})
 	// асинхронные индексы в бд без блокирования основного процесса конец
 
-	// 6. Держим main-goroutine живой
-	select {}
+	// 6. Держим main-goroutine живой и завершаем фоновые задачи корректно.
+	signalCh := make(chan os.Signal, 2)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+	firstSignal := <-signalCh
+	log.Printf("shutdown signal received: %v", firstSignal)
+
+	if shutdownHTTP != nil {
+		ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := shutdownHTTP(ctxShutdown); err != nil {
+			log.Printf("http shutdown: %v", err)
+		}
+		cancelShutdown()
+	}
+
+	select {
+	case <-indexDone:
+		log.Printf("background index build finished; safe to exit")
+	case forceSignal := <-signalCh:
+		log.Printf("forced shutdown signal received: %v", forceSignal)
+		cancelIdx()
+		<-indexDone
+	}
 }
