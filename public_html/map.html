@@ -3326,6 +3326,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // attach change-handlers
         checkboxes.forEach(cb => {
           cb.addEventListener('change', () => {
+            const prevState = cloneMarkerFilterState(state);
             if (window.safecastRealtimeEnabled) {
               state.live = div.querySelector('#sfLive').checked;
             } else {
@@ -3335,7 +3336,11 @@ document.addEventListener('DOMContentLoaded', function () {
             state.car   = div.querySelector('#sfCar').checked;
             state.ped   = div.querySelector('#sfPed').checked;
             saveSpeedFilterState(state);   // remember choice
-            debounceUpdateMarkers();       // redraw with new filter
+            if (shouldOnlyToggleLive(prevState, state)) {
+              updateLiveLayerOnly(state);  // refresh only realtime markers
+            } else {
+              debounceUpdateMarkers();     // redraw with new filter
+            }
             updateUrl();                   // keep share links aligned with filters
           });
         });
@@ -4406,6 +4411,16 @@ function liveFilterChanged(prev, next) {
   return !!prev.live !== !!next.live;
 }
 
+function shouldOnlyToggleLive(prev, next) {
+  if (!prev || !next) {
+    return false;
+  }
+  // Keep base layers stable when only the live checkbox changes.
+  const baseSame = !baseFiltersChanged(prev, next);
+  const liveOnly = liveFilterChanged(prev, next);
+  return baseSame && liveOnly;
+}
+
 function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   if (!params) {
     return;
@@ -4469,6 +4484,92 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     }
     es.close();
   };
+}
+
+function updateLiveLayerOnly(state) {
+  initMarkerLayers();
+  if (!map || !markerLayerGroups) {
+    return;
+  }
+  // Keep live refresh isolated so toggling it never tears down base layers.
+  const viewKey = buildMarkerViewKey();
+  if (viewKey) {
+    markerViewKey = viewKey;
+  }
+  if (!markerRenderState) {
+    markerRenderState = createMarkerRenderState(map.getZoom());
+  }
+  syncMarkerLayerVisibility(state);
+  const loadingEl = document.getElementById('loadingOverlay');
+  const liveEnabled = markerLayerEnabled(markerLiveLayerName, state);
+
+  if (liveEnabled && window.safecastRealtimeEnabled) {
+    if (loadingEl) {
+      loadingEl.style.display = 'block';
+    }
+    closeMarkerLayerStream(markerLiveLayerName);
+    clearMarkerLayerGroup(markerLiveLayerName);
+    const bounds = map.getBounds();
+    const params = new URLSearchParams({
+      zoom: map.getZoom(),
+      minLat: bounds.getSouthWest().lat,
+      minLon: bounds.getSouthWest().lng,
+      maxLat: bounds.getNorthEast().lat,
+      maxLon: bounds.getNorthEast().lng,
+      realtime: '1',
+      liveOnly: '1',
+    });
+    startMarkerLayerStream(markerLiveLayerName, params, viewKey, {
+      onMarker: function(m) {
+        if (m && typeof m.speed === 'number' && m.speed < 0) {
+          const queue = [{ marker: m, layerName: markerLiveLayerName }];
+          queue.forEach(function(entry) {
+            const group = markerLayerGroups[entry.layerName];
+            if (!group) {
+              return;
+            }
+            const nowSec = Date.now() / 1000;
+            const icon = markerRenderState.livePlacement ? buildRealtimeIcon(entry.marker, map.getZoom(), nowSec) : null;
+            if (!icon) {
+              return;
+            }
+            const placedLatLng = markerRenderState.livePlacement.place(L.latLng(entry.marker.lat, entry.marker.lon), icon.radius);
+            const marker = L.marker([placedLatLng.lat, placedLatLng.lng], {
+              icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
+            })
+            .bindTooltip(getTooltipContent(entry.marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+            .bindPopup(getPopupContent(entry.marker));
+            marker.doseRate = entry.marker.doseRate;
+            marker.date = entry.marker.date;
+            marker.isRealtime = true;
+            const markerKey = entry.marker.id || `${entry.marker.trackID || 'track'}:${entry.marker.date}:${entry.marker.lat}:${entry.marker.lon}`;
+            marker.markerKey = markerKey;
+            marker.layerGroupName = entry.layerName;
+            circleMarkers[markerKey] = marker;
+            group.addLayer(marker);
+          });
+        }
+      },
+      onDone: function() {
+        if (loadingEl) {
+          loadingEl.style.display = 'none';
+        }
+      },
+      onError: function() {
+        if (loadingEl) {
+          loadingEl.style.display = 'none';
+        }
+      },
+    });
+  } else {
+    closeMarkerLayerStream(markerLiveLayerName);
+    clearMarkerLayerGroup(markerLiveLayerName);
+    if (loadingEl) {
+      loadingEl.style.display = 'none';
+    }
+  }
+
+  markerFilterState = cloneMarkerFilterState(state);
 }
 
 function updateMapMarkers(loadingEl, forceReload) {
@@ -4701,15 +4802,7 @@ function updateMapMarkers(loadingEl, forceReload) {
   }
 
   if (liveChanged || shouldReload) {
-    if (liveEnabled && window.safecastRealtimeEnabled) {
-      closeMarkerLayerStream(markerLiveLayerName);
-      clearMarkerLayerGroup(markerLiveLayerName);
-      const params = buildStreamParams('', true, true);
-      requestLayerStream(markerLiveLayerName, params, false);
-    } else {
-      closeMarkerLayerStream(markerLiveLayerName);
-      clearMarkerLayerGroup(markerLiveLayerName);
-    }
+    updateLiveLayerOnly(state);
   }
 
   markerFilterState = cloneMarkerFilterState(state);
