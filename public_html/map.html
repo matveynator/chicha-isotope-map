@@ -1348,6 +1348,8 @@ body, html {
     <script>
       // Expose the realtime flag so the UI can hide controls when the backend keeps the feature off.
       window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
+      // Keep the default toggle server-driven so operators can require explicit opt-in.
+      window.safecastRealtimeDefault = {{if .RealtimeDefault}}true{{else}}false{{end}};
     </script>
 
   </head>
@@ -2749,7 +2751,8 @@ var liveHistoryCache = new Map();
 function loadSpeedFilterState() {
   // We derive defaults from the realtime flag so the UI matches backend capabilities.
   const base = { plane: false, car: true, ped: true };
-  if (window.safecastRealtimeEnabled) {
+  // Only enable live markers by default when the server explicitly allows it.
+  if (window.safecastRealtimeEnabled && window.safecastRealtimeDefault) {
     base.live = true;
   }
   try {
