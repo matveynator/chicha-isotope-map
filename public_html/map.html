@@ -2581,6 +2581,40 @@ function renderTrackViewSnapshot() {
   });
 }
 
+function createMarkerOverlapPruner(map, zoom) {
+  // Keep a tiny per-bucket stack so older markers do not stay in memory.
+  const bucketSize = 8;
+  const buckets = new Map();
+
+  function bucketKey(lat, lon) {
+    const point = map.latLngToLayerPoint([lat, lon]);
+    return `${Math.floor(point.x / bucketSize)}:${Math.floor(point.y / bucketSize)}`;
+  }
+
+  return function prune(markerKey, lat, lon) {
+    if (!markerKey || typeof lat !== 'number' || typeof lon !== 'number') {
+      return;
+    }
+    const key = bucketKey(lat, lon);
+    let stack = buckets.get(key);
+    if (!stack) {
+      stack = [];
+      buckets.set(key, stack);
+    }
+    stack.push(markerKey);
+    if (stack.length <= 2) {
+      return;
+    }
+    const dropKey = stack.shift();
+    const dropLayer = circleMarkers[dropKey];
+    if (!dropLayer) {
+      return;
+    }
+    map.removeLayer(dropLayer);
+    delete circleMarkers[dropKey];
+  };
+}
+
 function trackViewDelay(ms) {
   return new Promise(function(resolve) {
     setTimeout(resolve, ms);
@@ -4221,6 +4255,7 @@ function updateMarkers(){
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
   const livePlacement = createLivePlacementGrid(map, zoom);
+  const pruneOverlap = createMarkerOverlapPruner(map, zoom);
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
   markerStreamSource = es;
@@ -4271,7 +4306,11 @@ function updateMarkers(){
     marker.doseRate  = m.doseRate;
     marker.date      = m.date;
     marker.isRealtime = isLive;
-    circleMarkers[m.id || m.trackID] = marker;
+    const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
+    circleMarkers[markerKey] = marker;
+    if (!isLive) {
+      pruneOverlap(markerKey, m.lat, m.lon);
+    }
   };
 
   es.addEventListener('meta', e => {
