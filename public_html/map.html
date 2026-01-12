@@ -2581,6 +2581,60 @@ function renderTrackViewSnapshot() {
   });
 }
 
+function createMarkerOverlapPruner(map) {
+  // Keep a small per-bucket history so only nearly identical overlaps are pruned.
+  const bucketSize = 12;
+  const overlapBuckets = new Map();
+  const overlapThreshold = 0.2;
+  const maxLayers = 3;
+
+  function bucketKey(point) {
+    return `${Math.floor(point.x / bucketSize)}:${Math.floor(point.y / bucketSize)}`;
+  }
+
+  function isNearOverlap(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxRadius = Math.max(a.r, b.r);
+    return maxRadius > 0 && dist <= maxRadius * overlapThreshold;
+  }
+
+  return function prune(markerKey, lat, lon, radius) {
+    if (!markerKey || typeof lat !== 'number' || typeof lon !== 'number') {
+      return;
+    }
+    if (typeof radius !== 'number' || radius <= 0) {
+      return;
+    }
+    const point = map.latLngToLayerPoint([lat, lon]);
+    const entry = { key: markerKey, x: point.x, y: point.y, r: radius };
+    const key = bucketKey(point);
+    let stack = overlapBuckets.get(key);
+    if (!stack) {
+      stack = [];
+      overlapBuckets.set(key, stack);
+    }
+    stack.push(entry);
+    const overlaps = stack.filter(function(candidate) {
+      return candidate !== entry && isNearOverlap(candidate, entry);
+    });
+    if (overlaps.length < maxLayers) {
+      return;
+    }
+    const dropEntry = overlaps[0];
+    const dropLayer = circleMarkers[dropEntry.key];
+    if (!dropLayer) {
+      return;
+    }
+    map.removeLayer(dropLayer);
+    delete circleMarkers[dropEntry.key];
+    overlapBuckets.set(key, stack.filter(function(candidate) {
+      return candidate.key !== dropEntry.key;
+    }));
+  };
+}
+
 function trackViewDelay(ms) {
   return new Promise(function(resolve) {
     setTimeout(resolve, ms);
@@ -4221,6 +4275,68 @@ function updateMarkers(){
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
   const livePlacement = createLivePlacementGrid(map, zoom);
+  const pruneOverlap = createMarkerOverlapPruner(map);
+  const renderQueue = [];
+  let renderScheduled = false;
+
+  function enqueueMarker(marker) {
+    renderQueue.push(marker);
+    if (!renderScheduled) {
+      renderScheduled = true;
+      requestAnimationFrame(drainRenderQueue);
+    }
+  }
+
+  function drainRenderQueue() {
+    renderScheduled = false;
+    const start = performance.now();
+    while (renderQueue.length && performance.now() - start < 12) {
+      renderQueuedMarker(renderQueue.shift());
+    }
+    if (renderQueue.length) {
+      renderScheduled = true;
+      requestAnimationFrame(drainRenderQueue);
+    }
+  }
+
+  function renderQueuedMarker(m) {
+    let marker;
+    if (m.speed < 0) { // realtime marker with value inside the circle
+      const nowSec = Date.now() / 1000;
+      const icon = buildRealtimeIcon(m, zoom, nowSec);
+      if (!icon) return; // device is older than 24 hours
+      const placedLatLng = livePlacement.place(L.latLng(m.lat, m.lon), icon.radius);
+      marker = L.marker([placedLatLng.lat, placedLatLng.lng], {
+        icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
+      })
+      .addTo(map)
+      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+      .bindPopup(getPopupContent(m));
+    } else {
+      const radius = getRadius(m.doseRate, zoom);
+      marker = L.circleMarker([m.lat, m.lon], {
+        radius      : radius,
+        fillColor   : getGradientColor(m.doseRate),
+        color       : getGradientColor(m.doseRate),
+        weight      : 1,
+        opacity     : getFillOpacity(m.speed) + 0.1,
+        fillOpacity : getFillOpacity(m.speed)
+      })
+      .addTo(map)
+      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+      .bindPopup(getPopupContent(m));
+    }
+
+    // Store dose rate and timestamp on marker for later size updates.
+    marker.doseRate  = m.doseRate;
+    marker.date      = m.date;
+    marker.isRealtime = m.speed < 0;
+    const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
+    circleMarkers[markerKey] = marker;
+    if (m.speed >= 0) {
+      pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
+    }
+  }
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
   markerStreamSource = es;
@@ -4236,40 +4352,12 @@ function updateMarkers(){
     if (!isLive && savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
     if (isTrackView) {
+      // Buffer track markers so we can render them in chronological order.
       trackViewMarkers.push(m);
+      return;
     }
 
-    let marker;
-    if (isLive) { // realtime marker with value inside the circle
-      const nowSec = Date.now() / 1000;
-      const icon = buildRealtimeIcon(m, zoom, nowSec);
-      if (!icon) return; // device is older than 24 hours
-      const placedLatLng = livePlacement.place(L.latLng(m.lat, m.lon), icon.radius);
-      marker = L.marker([placedLatLng.lat, placedLatLng.lng], {
-        icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
-      })
-      .addTo(map)
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
-    } else {
-      marker = L.circleMarker([m.lat, m.lon], {
-        radius      : getRadius(m.doseRate, zoom),
-        fillColor   : getGradientColor(m.doseRate),
-        color       : getGradientColor(m.doseRate),
-        weight      : 1,
-        opacity     : getFillOpacity(m.speed) + 0.1,
-        fillOpacity : getFillOpacity(m.speed)
-      })
-      .addTo(map)
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
-    }
-
-    // Store dose rate and timestamp on marker for later size updates
-    marker.doseRate  = m.doseRate;
-    marker.date      = m.date;
-    marker.isRealtime = isLive;
-    circleMarkers[m.id || m.trackID] = marker;
+    enqueueMarker(m);
   };
 
   es.addEventListener('meta', e => {
@@ -4305,7 +4393,15 @@ function updateMarkers(){
     if (loadingEl) loadingEl.style.display='none';
     es.close();
     if (isTrackView) {
+      trackViewMarkers.sort(function(a, b) {
+        const aDate = typeof a.date === 'number' ? a.date : 0;
+        const bDate = typeof b.date === 'number' ? b.date : 0;
+        return aDate - bDate;
+      });
       trackViewMarkersReady = true;
+      if (!trackViewAutoplayRequested) {
+        renderTrackViewSnapshot();
+      }
       maybeAutoplayTrackViewPlayback();
     }
   });

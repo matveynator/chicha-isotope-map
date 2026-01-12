@@ -5833,7 +5833,7 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 }
 
 // streamMarkersHandler streams markers via Server-Sent Events.
-// Markers are emitted as soon as they are read and aggregated.
+// Map views are aggregated for responsiveness while track views preserve order.
 func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	zoom, _ := strconv.Atoi(q.Get("zoom"))
@@ -5868,8 +5868,17 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
 
-	streamSrc, summaryCh := summarizeMarkerStream(ctx, baseSrc)
-	agg := aggregateMarkers(ctx, streamSrc, nil, zoom)
+	var streamSrc <-chan database.Marker
+	var summaryCh <-chan markerStreamSummary
+	if trackID != "" {
+		// Stream raw markers for track view so chronological order is preserved.
+		streamSrc, summaryCh = summarizeMarkerStream(ctx, baseSrc)
+	} else {
+		// Aggregate map view markers to keep large-area loads responsive.
+		rawStream, rawSummary := summarizeMarkerStream(ctx, baseSrc)
+		streamSrc = aggregateMarkers(ctx, rawStream, nil, zoom)
+		summaryCh = rawSummary
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -5901,7 +5910,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			errCh = nil
-		case m, ok := <-agg:
+		case m, ok := <-streamSrc:
 			if !ok {
 				if summary, ok := <-summaryCh; ok {
 					b, _ := json.Marshal(summary)
