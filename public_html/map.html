@@ -6444,11 +6444,15 @@ function openServerPoster() {
 function initializeUIElements() {
   var locateButton = document.getElementById('locateButton');
   if (locateButton) {
-    locateButton.addEventListener('click', centerMapToLocation);
+    locateButton.addEventListener('click', function () {
+      centerMapToLocation();
+    });
   }
   var qrButton = document.getElementById('qrButton');
   if (qrButton) {
-    qrButton.addEventListener('click', openServerPoster);
+    qrButton.addEventListener('click', function () {
+      openServerPoster();
+    });
   }
   var backToAllButton = document.getElementById('backToAllButton');
   if (backToAllButton) {
