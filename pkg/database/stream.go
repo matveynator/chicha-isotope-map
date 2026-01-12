@@ -17,6 +17,7 @@ func (db *Database) StreamMarkersByZoomAndBounds(ctx context.Context, zoom int, 
 		defer close(errCh)
 
 		var query string
+		// Order by ascending timestamp so track-focused streaming paints from oldest to newest.
 		switch dbType {
 		case "pgx":
 			query = `
@@ -80,20 +81,23 @@ func (db *Database) StreamMarkersByTrackIDZoomAndBounds(ctx context.Context, tra
 		defer close(errCh)
 
 		var query string
+		// Order by ascending timestamp so track-focused streaming paints from oldest to newest.
 		switch dbType {
 		case "pgx":
 			query = `
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
                        COALESCE(device_name, '') AS device_name
                 FROM markers
-                WHERE trackID = $1 AND zoom = $2 AND lat BETWEEN $3 AND $4 AND lon BETWEEN $5 AND $6;
+                WHERE trackID = $1 AND zoom = $2 AND lat BETWEEN $3 AND $4 AND lon BETWEEN $5 AND $6
+                ORDER BY date ASC;
             `
 		default:
 			query = `
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
                        COALESCE(device_name, '') AS device_name
                 FROM markers
-                WHERE trackID = ? AND zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
+                WHERE trackID = ? AND zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+                ORDER BY date ASC;
             `
 		}
 
