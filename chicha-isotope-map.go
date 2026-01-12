@@ -125,16 +125,298 @@ var (
 // usageSection groups CLI flags so operators can scan help output quickly. This keeps
 // the help text approachable without duplicating flag registration everywhere.
 type usageSection struct {
-	Title string
+	Key   string
 	Flags []string
 }
 
+const (
+	cliSectionGeneral    = "general"
+	cliSectionDatabase   = "database"
+	cliSectionAppearance = "appearance"
+	cliSectionPlugins    = "plugins"
+	cliSectionImport     = "import"
+	cliSectionExport     = "export"
+)
+
 var cliUsageSections = []usageSection{
-	{Title: "General", Flags: []string{"version", "domain", "port", "support-email", "logo-path", "logo-link", "setup"}},
-	{Title: "Database", Flags: []string{"db-type", "db-path", "db-conn"}},
-	{Title: "Map defaults", Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default"}},
-	{Title: "Importers", Flags: []string{"import"}},
-	{Title: "Realtime & archives", Flags: []string{"safecast-realtime", "safecast-realtime-default", "json-archive-path", "json-archive-frequency", "import-tgz-url", "import-tgz-file"}},
+	{Key: cliSectionGeneral, Flags: []string{"version", "domain", "port", "setup"}},
+	{Key: cliSectionDatabase, Flags: []string{"db-type", "db-path", "db-conn"}},
+	{Key: cliSectionAppearance, Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default", "support-email", "logo-path", "logo-link"}},
+	{Key: cliSectionPlugins, Flags: []string{"safecast-realtime", "safecast-realtime-default"}},
+	{Key: cliSectionImport, Flags: []string{"import", "import-tgz-url", "import-tgz-file"}},
+	{Key: cliSectionExport, Flags: []string{"json-archive-path", "json-archive-frequency"}},
+}
+
+// cliUsageSectionTranslations keeps the help headings localized so operators see familiar
+// labels in -h output. We keep the map in code to avoid pulling UI translation files into
+// the CLI path, keeping startup lightweight and predictable.
+var cliUsageSectionTranslations = map[string]map[string]string{
+	"ar": {
+		cliSectionGeneral:    "الإعدادات العامة للتطبيق",
+		cliSectionDatabase:   "قاعدة البيانات",
+		cliSectionAppearance: "المظهر والتوطين",
+		cliSectionPlugins:    "الإضافات (الزمن الحقيقي وغيرها)",
+		cliSectionImport:     "استيراد البيانات",
+		cliSectionExport:     "تصدير البيانات",
+	},
+	"cs": {
+		cliSectionGeneral:    "Obecná nastavení aplikace",
+		cliSectionDatabase:   "Databáze",
+		cliSectionAppearance: "Vzhled a lokalizace",
+		cliSectionPlugins:    "Doplňkové pluginy (reálný čas apod.)",
+		cliSectionImport:     "Import dat",
+		cliSectionExport:     "Export dat",
+	},
+	"da": {
+		cliSectionGeneral:    "Generelle programindstillinger",
+		cliSectionDatabase:   "Database",
+		cliSectionAppearance: "Udseende og lokalisering",
+		cliSectionPlugins:    "Ekstra plugins (realtid m.m.)",
+		cliSectionImport:     "Dataimport",
+		cliSectionExport:     "Dataeksport",
+	},
+	"de": {
+		cliSectionGeneral:    "Allgemeine Anwendungseinstellungen",
+		cliSectionDatabase:   "Datenbank",
+		cliSectionAppearance: "Design und Lokalisierung",
+		cliSectionPlugins:    "Zusatz-Plugins (Realtime usw.)",
+		cliSectionImport:     "Datenimport",
+		cliSectionExport:     "Datenexport",
+	},
+	"el": {
+		cliSectionGeneral:    "Γενικές ρυθμίσεις εφαρμογής",
+		cliSectionDatabase:   "Βάση δεδομένων",
+		cliSectionAppearance: "Εμφάνιση και τοπικοποίηση",
+		cliSectionPlugins:    "Πρόσθετα πρόσθετα (πραγματικού χρόνου κ.λπ.)",
+		cliSectionImport:     "Εισαγωγή δεδομένων",
+		cliSectionExport:     "Εξαγωγή δεδομένων",
+	},
+	"en": {
+		cliSectionGeneral:    "General application settings",
+		cliSectionDatabase:   "Database",
+		cliSectionAppearance: "Appearance & localization",
+		cliSectionPlugins:    "Add-on plugins (realtime, etc.)",
+		cliSectionImport:     "Data import",
+		cliSectionExport:     "Data export",
+	},
+	"es": {
+		cliSectionGeneral:    "Configuración general de la aplicación",
+		cliSectionDatabase:   "Base de datos",
+		cliSectionAppearance: "Apariencia y localización",
+		cliSectionPlugins:    "Plugins adicionales (tiempo real, etc.)",
+		cliSectionImport:     "Importación de datos",
+		cliSectionExport:     "Exportación de datos",
+	},
+	"fa": {
+		cliSectionGeneral:    "تنظیمات عمومی برنامه",
+		cliSectionDatabase:   "پایگاه داده",
+		cliSectionAppearance: "ظاهر و بومی‌سازی",
+		cliSectionPlugins:    "افزونه‌های اضافی (بلادرنگ و غیره)",
+		cliSectionImport:     "واردات داده",
+		cliSectionExport:     "صادرات داده",
+	},
+	"fi": {
+		cliSectionGeneral:    "Yleiset sovellusasetukset",
+		cliSectionDatabase:   "Tietokanta",
+		cliSectionAppearance: "Ulkoasu ja lokalisointi",
+		cliSectionPlugins:    "Lisäliitännäiset (reaaliaikaiset jne.)",
+		cliSectionImport:     "Tietojen tuonti",
+		cliSectionExport:     "Tietojen vienti",
+	},
+	"fr": {
+		cliSectionGeneral:    "Paramètres généraux de l'application",
+		cliSectionDatabase:   "Base de données",
+		cliSectionAppearance: "Apparence et localisation",
+		cliSectionPlugins:    "Plugins supplémentaires (temps réel, etc.)",
+		cliSectionImport:     "Importation des données",
+		cliSectionExport:     "Exportation des données",
+	},
+	"he": {
+		cliSectionGeneral:    "הגדרות כלליות של היישום",
+		cliSectionDatabase:   "מסד נתונים",
+		cliSectionAppearance: "מראה ולוקליזציה",
+		cliSectionPlugins:    "תוספים נוספים (זמן אמת וכו׳)",
+		cliSectionImport:     "ייבוא נתונים",
+		cliSectionExport:     "ייצוא נתונים",
+	},
+	"hi": {
+		cliSectionGeneral:    "एप्लिकेशन की सामान्य सेटिंग्स",
+		cliSectionDatabase:   "डेटाबेस",
+		cliSectionAppearance: "रूप-रंग और स्थानीयकरण",
+		cliSectionPlugins:    "अतिरिक्त प्लगइन्स (रीयल-टाइम आदि)",
+		cliSectionImport:     "डेटा आयात",
+		cliSectionExport:     "डेटा निर्यात",
+	},
+	"hu": {
+		cliSectionGeneral:    "Alkalmazás általános beállításai",
+		cliSectionDatabase:   "Adatbázis",
+		cliSectionAppearance: "Megjelenés és lokalizáció",
+		cliSectionPlugins:    "Kiegészítő bővítmények (valós idejű stb.)",
+		cliSectionImport:     "Adatimport",
+		cliSectionExport:     "Adatexport",
+	},
+	"id": {
+		cliSectionGeneral:    "Pengaturan umum aplikasi",
+		cliSectionDatabase:   "Basis data",
+		cliSectionAppearance: "Tampilan dan lokalisasi",
+		cliSectionPlugins:    "Plugin tambahan (waktu nyata, dll.)",
+		cliSectionImport:     "Impor data",
+		cliSectionExport:     "Ekspor data",
+	},
+	"it": {
+		cliSectionGeneral:    "Impostazioni generali dell'applicazione",
+		cliSectionDatabase:   "Database",
+		cliSectionAppearance: "Aspetto e localizzazione",
+		cliSectionPlugins:    "Plugin aggiuntivi (tempo reale, ecc.)",
+		cliSectionImport:     "Importazione dati",
+		cliSectionExport:     "Esportazione dati",
+	},
+	"ja": {
+		cliSectionGeneral:    "アプリの一般設定",
+		cliSectionDatabase:   "データベース",
+		cliSectionAppearance: "外観と言語設定",
+		cliSectionPlugins:    "追加プラグイン（リアルタイムなど）",
+		cliSectionImport:     "データのインポート",
+		cliSectionExport:     "データのエクスポート",
+	},
+	"ko": {
+		cliSectionGeneral:    "애플리케이션 일반 설정",
+		cliSectionDatabase:   "데이터베이스",
+		cliSectionAppearance: "모양 및 현지화",
+		cliSectionPlugins:    "추가 플러그인(실시간 등)",
+		cliSectionImport:     "데이터 가져오기",
+		cliSectionExport:     "데이터 내보내기",
+	},
+	"ms": {
+		cliSectionGeneral:    "Tetapan umum aplikasi",
+		cliSectionDatabase:   "Pangkalan data",
+		cliSectionAppearance: "Penampilan dan penyetempatan",
+		cliSectionPlugins:    "Pemalam tambahan (masa nyata, dll.)",
+		cliSectionImport:     "Import data",
+		cliSectionExport:     "Eksport data",
+	},
+	"nl": {
+		cliSectionGeneral:    "Algemene toepassingsinstellingen",
+		cliSectionDatabase:   "Database",
+		cliSectionAppearance: "Uiterlijk en lokalisatie",
+		cliSectionPlugins:    "Extra plugins (realtime e.d.)",
+		cliSectionImport:     "Gegevensimport",
+		cliSectionExport:     "Gegevensexport",
+	},
+	"no": {
+		cliSectionGeneral:    "Generelle programinnstillinger",
+		cliSectionDatabase:   "Database",
+		cliSectionAppearance: "Utseende og lokalisering",
+		cliSectionPlugins:    "Tilleggs-plugins (sanntid m.m.)",
+		cliSectionImport:     "Dataimport",
+		cliSectionExport:     "Dataeksport",
+	},
+	"pl": {
+		cliSectionGeneral:    "Ogólne ustawienia aplikacji",
+		cliSectionDatabase:   "Baza danych",
+		cliSectionAppearance: "Wygląd i lokalizacja",
+		cliSectionPlugins:    "Dodatkowe wtyczki (czas rzeczywisty itp.)",
+		cliSectionImport:     "Import danych",
+		cliSectionExport:     "Eksport danych",
+	},
+	"pt": {
+		cliSectionGeneral:    "Configurações gerais do aplicativo",
+		cliSectionDatabase:   "Banco de dados",
+		cliSectionAppearance: "Aparência e localização",
+		cliSectionPlugins:    "Plugins adicionais (tempo real etc.)",
+		cliSectionImport:     "Importação de dados",
+		cliSectionExport:     "Exportação de dados",
+	},
+	"ru": {
+		cliSectionGeneral:    "Общие настройки приложения",
+		cliSectionDatabase:   "База данных",
+		cliSectionAppearance: "Оформление и локализация",
+		cliSectionPlugins:    "Дополнительные плагины (реaltime и т.п.)",
+		cliSectionImport:     "Импорт данных",
+		cliSectionExport:     "Экспорт данных",
+	},
+	"sv": {
+		cliSectionGeneral:    "Allmänna programinställningar",
+		cliSectionDatabase:   "Databas",
+		cliSectionAppearance: "Utseende och lokalisering",
+		cliSectionPlugins:    "Extra plugins (realtid m.m.)",
+		cliSectionImport:     "Dataimport",
+		cliSectionExport:     "Dataexport",
+	},
+	"th": {
+		cliSectionGeneral:    "การตั้งค่าทั่วไปของแอป",
+		cliSectionDatabase:   "ฐานข้อมูล",
+		cliSectionAppearance: "รูปลักษณ์และการแปลภาษา",
+		cliSectionPlugins:    "ปลั๊กอินเพิ่มเติม (แบบเรียลไทม์ ฯลฯ)",
+		cliSectionImport:     "นำเข้าข้อมูล",
+		cliSectionExport:     "ส่งออกข้อมูล",
+	},
+	"tr": {
+		cliSectionGeneral:    "Uygulama genel ayarları",
+		cliSectionDatabase:   "Veritabanı",
+		cliSectionAppearance: "Görünüm ve yerelleştirme",
+		cliSectionPlugins:    "Ek eklentiler (gerçek zamanlı vb.)",
+		cliSectionImport:     "Veri içe aktarma",
+		cliSectionExport:     "Veri dışa aktarma",
+	},
+	"uk": {
+		cliSectionGeneral:    "Загальні налаштування застосунку",
+		cliSectionDatabase:   "База даних",
+		cliSectionAppearance: "Оформлення та локалізація",
+		cliSectionPlugins:    "Додаткові плагіни (реального часу тощо)",
+		cliSectionImport:     "Імпорт даних",
+		cliSectionExport:     "Експорт даних",
+	},
+	"vi": {
+		cliSectionGeneral:    "Cài đặt chung của ứng dụng",
+		cliSectionDatabase:   "Cơ sở dữ liệu",
+		cliSectionAppearance: "Giao diện và bản địa hóa",
+		cliSectionPlugins:    "Plugin bổ sung (thời gian thực, v.v.)",
+		cliSectionImport:     "Nhập dữ liệu",
+		cliSectionExport:     "Xuất dữ liệu",
+	},
+	"zh": {
+		cliSectionGeneral:    "应用常规设置",
+		cliSectionDatabase:   "数据库",
+		cliSectionAppearance: "外观与本地化",
+		cliSectionPlugins:    "附加插件（实时等）",
+		cliSectionImport:     "数据导入",
+		cliSectionExport:     "数据导出",
+	},
+}
+
+// resolveCLILanguage inspects locale environment variables so CLI help follows the
+// operator's preferred language without extra flags.
+func resolveCLILanguage() string {
+	for _, key := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
+		raw := strings.TrimSpace(os.Getenv(key))
+		if raw == "" {
+			continue
+		}
+		raw = strings.Split(raw, ".")[0]
+		raw = strings.ReplaceAll(raw, "-", "_")
+		parts := strings.Split(raw, "_")
+		if len(parts) == 0 {
+			continue
+		}
+		lang := strings.ToLower(parts[0])
+		if _, ok := cliUsageSectionTranslations[lang]; ok {
+			return lang
+		}
+	}
+	return "en"
+}
+
+// cliUsageSectionTitle returns a localized title for the given section key. We
+// keep the fallback simple so help never fails due to missing translations.
+func cliUsageSectionTitle(sectionKey string) string {
+	lang := resolveCLILanguage()
+	if translations, ok := cliUsageSectionTranslations[lang]; ok {
+		if title, ok := translations[sectionKey]; ok {
+			return title
+		}
+	}
+	return cliUsageSectionTranslations["en"][sectionKey]
 }
 
 // importSelection captures which background importers should run based on the
@@ -245,6 +527,7 @@ func configureCLIUsage() {
 
 		printed := map[string]bool{}
 		for _, section := range cliUsageSections {
+			sectionTitle := cliUsageSectionTitle(section.Key)
 			var sectionFlags []*flag.Flag
 			for _, name := range section.Flags {
 				if f := flag.Lookup(name); f != nil {
@@ -257,9 +540,9 @@ func configureCLIUsage() {
 			}
 
 			if theme.Enabled {
-				fmt.Fprintf(out, "%s%s:%s\n", theme.Section, section.Title, theme.Reset)
+				fmt.Fprintf(out, "%s%s:%s\n", theme.Section, sectionTitle, theme.Reset)
 			} else {
-				fmt.Fprintf(out, "%s:\n", section.Title)
+				fmt.Fprintf(out, "%s:\n", sectionTitle)
 			}
 			for _, f := range sectionFlags {
 				writeFlagUsage(out, f, theme)
