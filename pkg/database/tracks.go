@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 )
 
 // =====================
@@ -546,26 +547,123 @@ func (db *Database) GetTrackDeviceName(ctx context.Context, trackID, dbType stri
 	return strings.TrimSpace(name.String), nil
 }
 
+// ---- Track registry maintenance --------------------------------------------
+// We keep the legacy backfill path here so operators can see why the work runs
+// and so the logic stays close to the tracks registry usage.
+
+const maintenanceTaskTrackBackfill = "tracks_backfill"
+
 // backfillTracksTable refreshes the tracks registry from existing markers so
 // older databases inherit the faster pagination path without manual scripts.
 // The operation is idempotent thanks to the NOT EXISTS guard above the SELECT
 // DISTINCT stage, keeping the work minimal for already-synced datasets.
-func (db *Database) backfillTracksTable(ctx context.Context, dbType string) error {
+func (db *Database) backfillTracksTable(ctx context.Context, dbType string, logf func(string, ...any)) error {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if status, ok, err := db.getMaintenanceState(ctx, dbType, maintenanceTaskTrackBackfill); err != nil {
+		logf("⚠️  track registry backfill state read failed: %v", err)
+	} else if ok {
+		logf("⏭️  track registry backfill already %s; skipping.", status)
+		return nil
+	}
+
+	needed, reason, err := db.trackBackfillNeeded(ctx, dbType)
+	if err != nil {
+		return err
+	}
+	if !needed {
+		logf("⏭️  track registry backfill skipped: %s.", reason)
+		status := "skipped"
+		if reason == "tracks registry already populated" {
+			status = "done"
+		}
+		if err := db.setMaintenanceState(ctx, dbType, maintenanceTaskTrackBackfill, status, reason); err != nil {
+			logf("⚠️  track registry backfill state update failed: %v", err)
+		}
+		return nil
+	}
+
+	logf("🧭 track registry backfill starting: syncing legacy markers into tracks for faster pagination.")
 	stmt := `INSERT INTO tracks (trackID)
 SELECT DISTINCT m.trackID
 FROM markers m
 WHERE m.trackID IS NOT NULL AND m.trackID <> ''
   AND NOT EXISTS (SELECT 1 FROM tracks t WHERE t.trackID = m.trackID);`
 
-	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	ctx, queueCancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer queueCancel()
 
-	return db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
+	err = db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
 		if _, err := conn.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("backfill tracks: %w", err)
 		}
 		return nil
 	})
+	if err != nil {
+		if err := db.setMaintenanceState(ctx, dbType, maintenanceTaskTrackBackfill, "failed", err.Error()); err != nil {
+			logf("⚠️  track registry backfill state update failed: %v", err)
+		}
+		return err
+	}
+
+	logf("✅ track registry backfill complete.")
+	if err := db.setMaintenanceState(ctx, dbType, maintenanceTaskTrackBackfill, "done", "tracks registry synced"); err != nil {
+		logf("⚠️  track registry backfill state update failed: %v", err)
+	}
+	return nil
+}
+
+// trackBackfillNeeded decides whether legacy markers still need to be copied
+// into the tracks registry. Returning a reason helps log why we skipped work.
+func (db *Database) trackBackfillNeeded(ctx context.Context, dbType string) (bool, string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	var (
+		needs  bool
+		reason string
+	)
+
+	err := db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
+		var trackID string
+		if err := conn.QueryRowContext(ctx, `SELECT trackID FROM tracks LIMIT 1`).Scan(&trackID); err == nil {
+			reason = "tracks registry already populated"
+			return nil
+		} else if err != sql.ErrNoRows {
+			return fmt.Errorf("check tracks registry: %w", err)
+		}
+
+		if err := conn.QueryRowContext(ctx, `SELECT trackID FROM markers WHERE trackID IS NOT NULL AND trackID <> '' LIMIT 1`).Scan(&trackID); err == nil {
+			needs = true
+			reason = "tracks registry empty"
+			return nil
+		} else if err != sql.ErrNoRows {
+			return fmt.Errorf("check markers for backfill: %w", err)
+		}
+		reason = "no marker tracks to backfill"
+		return nil
+	})
+	if err != nil {
+		return false, "", err
+	}
+	if needs {
+		return true, reason, nil
+	}
+	if reason == "" {
+		reason = "tracks registry already populated"
+	}
+	return false, reason, nil
 }
 
 // CountTrackIDsUpTo returns how many distinct track IDs are lexicographically

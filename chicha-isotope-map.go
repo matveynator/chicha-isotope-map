@@ -39,6 +39,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -6645,7 +6646,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("DB init: %v", err)
 	}
-	if err = db.InitSchema(dbCfg); err != nil {
+	if err = db.InitSchema(dbCfg, log.Printf); err != nil {
 		log.Fatalf("DB schema: %v", err)
 	}
 
@@ -6796,11 +6797,28 @@ func main() {
 	// Пояснение в лог: что делаем и почему это не блокирует сервер
 	log.Printf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", dbCfg.DBType)
 	// Запуск асинхронной индексации с прогрессом
-	db.EnsureIndexesAsync(ctxIdx, dbCfg, func(format string, args ...any) {
+	indexDone := db.EnsureIndexesAsync(ctxIdx, dbCfg, func(format string, args ...any) {
 		log.Printf(format, args...)
 	})
 	// асинхронные индексы в бд без блокирования основного процесса конец
 
-	// 6. Держим main-goroutine живой
-	select {}
+	// 6. Wait for termination signals so we can finish DB maintenance gracefully.
+	// We use a channel-based shutdown path to avoid mutexes and keep the control
+	// flow explicit, aligning with Go's "share memory by communicating" proverb.
+	stopSignals := make(chan os.Signal, 1)
+	signal.Notify(stopSignals, os.Interrupt, syscall.SIGTERM)
+
+	for {
+		select {
+		case sig := <-stopSignals:
+			log.Printf("🛑 shutdown signal received: %v", sig)
+			if indexDone != nil {
+				log.Printf("⏳ waiting for background index operations to finish...")
+				<-indexDone
+				log.Printf("✅ background database operations finished")
+			}
+			log.Printf("👋 shutdown complete")
+			return
+		}
+	}
 }
