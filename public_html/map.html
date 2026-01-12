@@ -4236,7 +4236,9 @@ function updateMarkers(){
     if (!isLive && savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
     if (!shouldDisplayBySpeed(m.speed)) return;
     if (isTrackView) {
+      // Buffer track markers so we can render them in chronological order.
       trackViewMarkers.push(m);
+      return;
     }
 
     let marker;
@@ -4305,7 +4307,15 @@ function updateMarkers(){
     if (loadingEl) loadingEl.style.display='none';
     es.close();
     if (isTrackView) {
+      trackViewMarkers.sort(function(a, b) {
+        const aDate = typeof a.date === 'number' ? a.date : 0;
+        const bDate = typeof b.date === 'number' ? b.date : 0;
+        return aDate - bDate;
+      });
       trackViewMarkersReady = true;
+      if (!trackViewAutoplayRequested) {
+        renderTrackViewSnapshot();
+      }
       maybeAutoplayTrackViewPlayback();
     }
   });
