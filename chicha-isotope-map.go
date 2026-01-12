@@ -84,6 +84,7 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+
 // Keep the default UI toggle explicit so operators can expose realtime data without auto-enabling it.
 var safecastRealtimeDefault = flag.Bool("safecast-realtime-default", false, "Show Safecast realtime markers by default when realtime polling is enabled")
 var importSourcesFlag = flag.String("import", "", "Enable importers: safecast, atomfast, safecast,atomfast, or all")
@@ -5179,15 +5180,15 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		ShowGithubTooltip  bool
 		ChichaGitHubURL    string
 	}{
-		Version:            displayVersion,
-		Translations:       translations,
-		Lang:               lang,
-		DefaultLat:         *defaultLat,
-		DefaultLon:         *defaultLon,
-		DefaultZoom:        *defaultZoom,
-		DefaultLayer:       *defaultLayer,
-		AutoLocateDefault:  *autoLocateDefault,
-		RealtimeAvailable:  *safecastRealtimeEnabled,
+		Version:           displayVersion,
+		Translations:      translations,
+		Lang:              lang,
+		DefaultLat:        *defaultLat,
+		DefaultLon:        *defaultLon,
+		DefaultZoom:       *defaultZoom,
+		DefaultLayer:      *defaultLayer,
+		AutoLocateDefault: *autoLocateDefault,
+		RealtimeAvailable: *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
 		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
 		SupportEmail:       strings.TrimSpace(*supportEmail),
@@ -5458,15 +5459,15 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		ShowGithubTooltip  bool
 		ChichaGitHubURL    string
 	}{
-		Version:            displayVersion,
-		Translations:       translations,
-		Lang:               lang,
-		DefaultLat:         *defaultLat,
-		DefaultLon:         *defaultLon,
-		DefaultZoom:        *defaultZoom,
-		DefaultLayer:       *defaultLayer,
-		AutoLocateDefault:  *autoLocateDefault,
-		RealtimeAvailable:  *safecastRealtimeEnabled,
+		Version:           displayVersion,
+		Translations:      translations,
+		Lang:              lang,
+		DefaultLat:        *defaultLat,
+		DefaultLon:        *defaultLon,
+		DefaultZoom:       *defaultZoom,
+		DefaultLayer:      *defaultLayer,
+		AutoLocateDefault: *autoLocateDefault,
+		RealtimeAvailable: *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
 		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
 		SupportEmail:       strings.TrimSpace(*supportEmail),
@@ -5842,23 +5843,62 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	maxLat, _ := strconv.ParseFloat(q.Get("maxLat"), 64)
 	maxLon, _ := strconv.ParseFloat(q.Get("maxLon"), 64)
 	trackID := q.Get("trackID")
+	// parseBool accepts the most common on-values so clients stay lightweight.
+	parseBool := func(raw string) bool {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "1", "true", "yes", "on":
+			return true
+		default:
+			return false
+		}
+	}
+	includeRealtime := *safecastRealtimeEnabled
+	if raw := strings.TrimSpace(q.Get("realtime")); raw != "" {
+		includeRealtime = parseBool(raw)
+	}
+	liveOnly := parseBool(q.Get("liveOnly"))
+
+	// ----- speed filter ----------------------------------------------------
+	var sr []database.SpeedRange
+	if s := q.Get("speeds"); s != "" {
+		for _, tag := range strings.Split(s, ",") {
+			if r, ok := speedCatalog[tag]; ok {
+				sr = append(sr, database.SpeedRange(r))
+			}
+		}
+	}
+	if len(sr) == 0 && q.Get("speeds") != "" {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: done\ndata: end\n\n")
+		return
+	}
 	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
 	var (
 		baseSrc <-chan database.Marker
 		errCh   <-chan error
 	)
-	if trackID != "" {
-		baseSrc, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
-	} else {
-		baseSrc, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+	if !liveOnly {
+		if trackID != "" {
+			if len(sr) > 0 {
+				baseSrc, errCh = db.StreamMarkersByTrackIDZoomBoundsSpeed(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
+			} else {
+				baseSrc, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+			}
+		} else {
+			if len(sr) > 0 {
+				baseSrc, errCh = db.StreamMarkersByZoomBoundsSpeed(ctx, zoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
+			} else {
+				baseSrc, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+			}
+		}
 	}
 
 	// Fetch current realtime points once so the map reflects network devices.
 	// We only touch the realtime table when the dedicated flag enables it so
 	// operators control the feature explicitly.
 	var rtMarks []database.Marker
-	if *safecastRealtimeEnabled {
+	if includeRealtime && *safecastRealtimeEnabled {
 		var err error
 		rtMarks, err = db.GetLatestRealtimeByBounds(ctx, minLat, minLon, maxLat, maxLon, *dbType)
 		if err != nil {
@@ -5866,18 +5906,6 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// Log bounds alongside count to help diagnose empty map tiles.
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
-	}
-
-	var streamSrc <-chan database.Marker
-	var summaryCh <-chan markerStreamSummary
-	if trackID != "" {
-		// Stream raw markers for track view so chronological order is preserved.
-		streamSrc, summaryCh = summarizeMarkerStream(ctx, baseSrc)
-	} else {
-		// Aggregate map view markers to keep large-area loads responsive.
-		rawStream, rawSummary := summarizeMarkerStream(ctx, baseSrc)
-		streamSrc = aggregateMarkers(ctx, rawStream, nil, zoom)
-		summaryCh = rawSummary
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -5894,6 +5922,24 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", b)
 	}
 	flusher.Flush()
+
+	if liveOnly {
+		fmt.Fprint(w, "event: done\ndata: end\n\n")
+		flusher.Flush()
+		return
+	}
+
+	var streamSrc <-chan database.Marker
+	var summaryCh <-chan markerStreamSummary
+	if trackID != "" {
+		// Stream raw markers for track view so chronological order is preserved.
+		streamSrc, summaryCh = summarizeMarkerStream(ctx, baseSrc)
+	} else {
+		// Aggregate map view markers to keep large-area loads responsive.
+		rawStream, rawSummary := summarizeMarkerStream(ctx, baseSrc)
+		streamSrc = aggregateMarkers(ctx, rawStream, nil, zoom)
+		summaryCh = rawSummary
+	}
 
 	for {
 		select {

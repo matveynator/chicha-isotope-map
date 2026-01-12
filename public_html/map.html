@@ -2419,8 +2419,18 @@ function setStoredUserCenter(lat, lon) {
 
     <!-- Map initialization and markers -->
     <script>
-      var map;
+var map;
 var circleMarkers = {};
+// Marker layer groups let us toggle categories without refetching everything.
+var markerLayerGroups = null;
+// Layer state tracks which view each category was loaded for.
+var markerLayerState = null;
+// Track the current viewport signature so we only reload on real view changes.
+var markerViewKey = '';
+// Keep shared render helpers per view so overlap pruning stays consistent.
+var markerRenderState = null;
+// Persist filter choices so we can avoid reloading base layers on live toggles.
+var markerFilterState = null;
 var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
@@ -2626,6 +2636,10 @@ function createMarkerOverlapPruner(map) {
     const dropLayer = circleMarkers[dropEntry.key];
     if (!dropLayer) {
       return;
+    }
+    // Remove pruned layers from their parent group so they stay hidden.
+    if (dropLayer.layerGroupName && markerLayerGroups && markerLayerGroups[dropLayer.layerGroupName]) {
+      markerLayerGroups[dropLayer.layerGroupName].removeLayer(dropLayer);
     }
     map.removeLayer(dropLayer);
     delete circleMarkers[dropEntry.key];
@@ -3312,6 +3326,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // attach change-handlers
         checkboxes.forEach(cb => {
           cb.addEventListener('change', () => {
+            const prevState = cloneMarkerFilterState(state);
             if (window.safecastRealtimeEnabled) {
               state.live = div.querySelector('#sfLive').checked;
             } else {
@@ -3321,7 +3336,11 @@ document.addEventListener('DOMContentLoaded', function () {
             state.car   = div.querySelector('#sfCar').checked;
             state.ped   = div.querySelector('#sfPed').checked;
             saveSpeedFilterState(state);   // remember choice
-            debounceUpdateMarkers();       // redraw with new filter
+            if (shouldOnlyToggleLive(prevState, state)) {
+              updateLiveLayerOnly(state);  // refresh only realtime markers
+            } else {
+              debounceUpdateMarkers();     // redraw with new filter
+            }
             updateUrl();                   // keep share links aligned with filters
           });
         });
@@ -4238,13 +4257,594 @@ function getTooltipContent(marker) {
 }
 
 
+/* ---------------------------------------------------------------
+ * Marker layer management keeps speed/realtime toggles isolated so
+ * we don't reload unrelated data on each checkbox change.
+ * ---------------------------------------------------------------*/
+const markerLayerNames = ['ped', 'car', 'plane'];
+const markerLiveLayerName = 'live';
+
+function initMarkerLayers() {
+  if (markerLayerGroups || !map) {
+    return;
+  }
+  markerLayerGroups = {
+    ped: L.layerGroup(),
+    car: L.layerGroup(),
+    plane: L.layerGroup(),
+    live: L.layerGroup(),
+  };
+  markerLayerState = {
+    ped: { loaded: false, viewKey: '', source: null },
+    car: { loaded: false, viewKey: '', source: null },
+    plane: { loaded: false, viewKey: '', source: null },
+    live: { loaded: false, viewKey: '', source: null },
+  };
+}
+
+function buildMarkerViewKey() {
+  if (!map) {
+    return '';
+  }
+  const bounds = map.getBounds();
+  const zoom = map.getZoom();
+  // Round to fixed precision so minor float drift doesn't thrash reloads.
+  return [
+    zoom,
+    bounds.getSouthWest().lat.toFixed(5),
+    bounds.getSouthWest().lng.toFixed(5),
+    bounds.getNorthEast().lat.toFixed(5),
+    bounds.getNorthEast().lng.toFixed(5),
+  ].join('|');
+}
+
+function markerLayerEnabled(name, state) {
+  if (!state) {
+    return false;
+  }
+  switch (name) {
+    case markerLiveLayerName:
+      return !!state.live;
+    case 'plane':
+      return !!state.plane;
+    case 'car':
+      return !!state.car;
+    case 'ped':
+      return !!state.ped;
+    default:
+      return false;
+  }
+}
+
+function syncMarkerLayerVisibility(state) {
+  if (!markerLayerGroups || !map) {
+    return;
+  }
+  const allLayers = markerLayerNames.concat(markerLiveLayerName);
+  allLayers.forEach(function(name) {
+    const group = markerLayerGroups[name];
+    if (!group) {
+      return;
+    }
+    const enabled = markerLayerEnabled(name, state);
+    if (enabled && !map.hasLayer(group)) {
+      group.addTo(map);
+    }
+    if (!enabled && map.hasLayer(group)) {
+      map.removeLayer(group);
+    }
+  });
+}
+
+function closeMarkerLayerStream(name) {
+  if (!markerLayerState || !markerLayerState[name]) {
+    return;
+  }
+  const source = markerLayerState[name].source;
+  if (source) {
+    source.close();
+  }
+  markerLayerState[name].source = null;
+}
+
+function clearMarkerLayerGroup(name) {
+  if (!markerLayerGroups || !markerLayerGroups[name]) {
+    return;
+  }
+  const group = markerLayerGroups[name];
+  group.eachLayer(function(layer) {
+    if (layer && layer.markerKey && circleMarkers[layer.markerKey]) {
+      delete circleMarkers[layer.markerKey];
+    }
+    if (map && map.hasLayer(layer)) {
+      map.removeLayer(layer);
+    }
+  });
+  group.clearLayers();
+  if (markerLayerState && markerLayerState[name]) {
+    markerLayerState[name].loaded = false;
+    markerLayerState[name].viewKey = '';
+  }
+}
+
+function clearMarkerLayerGroups() {
+  if (!markerLayerGroups) {
+    return;
+  }
+  markerLayerNames.concat(markerLiveLayerName).forEach(function(name) {
+    closeMarkerLayerStream(name);
+    clearMarkerLayerGroup(name);
+  });
+}
+
+function createMarkerRenderState(zoomLevel) {
+  return {
+    livePlacement: createLivePlacementGrid(map, zoomLevel),
+    pruneOverlap: createMarkerOverlapPruner(map),
+    zoom: zoomLevel,
+  };
+}
+
+function cloneMarkerFilterState(state) {
+  if (!state) {
+    return null;
+  }
+  return {
+    ped: !!state.ped,
+    car: !!state.car,
+    plane: !!state.plane,
+    live: !!state.live,
+  };
+}
+
+function baseFiltersChanged(prev, next) {
+  if (!prev || !next) {
+    return true;
+  }
+  return !!prev.ped !== !!next.ped || !!prev.car !== !!next.car || !!prev.plane !== !!next.plane;
+}
+
+function liveFilterChanged(prev, next) {
+  if (!prev || !next) {
+    return true;
+  }
+  return !!prev.live !== !!next.live;
+}
+
+function shouldOnlyToggleLive(prev, next) {
+  if (!prev || !next) {
+    return false;
+  }
+  // Keep base layers stable when only the live checkbox changes.
+  const baseSame = !baseFiltersChanged(prev, next);
+  const liveOnly = liveFilterChanged(prev, next);
+  return baseSame && liveOnly;
+}
+
+function startMarkerLayerStream(layerName, params, viewKey, handlers) {
+  if (!params) {
+    return;
+  }
+  initMarkerLayers();
+  const state = markerLayerState[layerName];
+  if (!state) {
+    return;
+  }
+  closeMarkerLayerStream(layerName);
+  const es = new EventSource('/stream_markers?' + params.toString());
+  state.source = es;
+  state.loaded = false;
+  state.viewKey = viewKey || '';
+  let streamSummary = null;
+  let streamMin = Infinity;
+  let streamMax = -Infinity;
+
+  es.onmessage = e => {
+    let marker;
+    try {
+      marker = JSON.parse(e.data);
+    } catch (err) {
+      return;
+    }
+    if (!marker) {
+      return;
+    }
+    if (typeof marker.date === 'number') {
+      streamMin = Math.min(streamMin, marker.date);
+      streamMax = Math.max(streamMax, marker.date);
+    }
+    if (handlers && typeof handlers.onMarker === 'function') {
+      handlers.onMarker(marker);
+    }
+  };
+
+  es.addEventListener('meta', e => {
+    try {
+      streamSummary = JSON.parse(e.data);
+    } catch (err) {
+      streamSummary = null;
+    }
+  });
+
+  function finishStream() {
+    state.loaded = true;
+    state.source = null;
+    if (handlers && typeof handlers.onDone === 'function') {
+      handlers.onDone(streamSummary, streamMin, streamMax);
+    }
+    es.close();
+  }
+
+  es.addEventListener('done', finishStream);
+
+  es.onerror = () => {
+    state.source = null;
+    if (handlers && typeof handlers.onError === 'function') {
+      handlers.onError();
+    }
+    es.close();
+  };
+}
+
+function updateLiveLayerOnly(state) {
+  initMarkerLayers();
+  if (!map || !markerLayerGroups) {
+    return;
+  }
+  // Keep live refresh isolated so toggling it never tears down base layers.
+  const viewKey = buildMarkerViewKey();
+  if (viewKey) {
+    markerViewKey = viewKey;
+  }
+  if (!markerRenderState) {
+    markerRenderState = createMarkerRenderState(map.getZoom());
+  }
+  syncMarkerLayerVisibility(state);
+  const loadingEl = document.getElementById('loadingOverlay');
+  const liveEnabled = markerLayerEnabled(markerLiveLayerName, state);
+
+  if (liveEnabled && window.safecastRealtimeEnabled) {
+    if (loadingEl) {
+      loadingEl.style.display = 'block';
+    }
+    closeMarkerLayerStream(markerLiveLayerName);
+    clearMarkerLayerGroup(markerLiveLayerName);
+    const bounds = map.getBounds();
+    const params = new URLSearchParams({
+      zoom: map.getZoom(),
+      minLat: bounds.getSouthWest().lat,
+      minLon: bounds.getSouthWest().lng,
+      maxLat: bounds.getNorthEast().lat,
+      maxLon: bounds.getNorthEast().lng,
+      realtime: '1',
+      liveOnly: '1',
+    });
+    startMarkerLayerStream(markerLiveLayerName, params, viewKey, {
+      onMarker: function(m) {
+        if (m && typeof m.speed === 'number' && m.speed < 0) {
+          const queue = [{ marker: m, layerName: markerLiveLayerName }];
+          queue.forEach(function(entry) {
+            const group = markerLayerGroups[entry.layerName];
+            if (!group) {
+              return;
+            }
+            const nowSec = Date.now() / 1000;
+            const icon = markerRenderState.livePlacement ? buildRealtimeIcon(entry.marker, map.getZoom(), nowSec) : null;
+            if (!icon) {
+              return;
+            }
+            const placedLatLng = markerRenderState.livePlacement.place(L.latLng(entry.marker.lat, entry.marker.lon), icon.radius);
+            const marker = L.marker([placedLatLng.lat, placedLatLng.lng], {
+              icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
+            })
+            .bindTooltip(getTooltipContent(entry.marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+            .bindPopup(getPopupContent(entry.marker));
+            marker.doseRate = entry.marker.doseRate;
+            marker.date = entry.marker.date;
+            marker.isRealtime = true;
+            const markerKey = entry.marker.id || `${entry.marker.trackID || 'track'}:${entry.marker.date}:${entry.marker.lat}:${entry.marker.lon}`;
+            marker.markerKey = markerKey;
+            marker.layerGroupName = entry.layerName;
+            circleMarkers[markerKey] = marker;
+            group.addLayer(marker);
+          });
+        }
+      },
+      onDone: function() {
+        if (loadingEl) {
+          loadingEl.style.display = 'none';
+        }
+      },
+      onError: function() {
+        if (loadingEl) {
+          loadingEl.style.display = 'none';
+        }
+      },
+    });
+  } else {
+    closeMarkerLayerStream(markerLiveLayerName);
+    clearMarkerLayerGroup(markerLiveLayerName);
+    if (loadingEl) {
+      loadingEl.style.display = 'none';
+    }
+  }
+
+  markerFilterState = cloneMarkerFilterState(state);
+}
+
+function updateMapMarkers(loadingEl, forceReload) {
+  initMarkerLayers();
+  if (!map || !markerLayerGroups) {
+    if (loadingEl) loadingEl.style.display = 'none';
+    return;
+  }
+
+  const state = loadSpeedFilterState();
+  const prevState = markerFilterState;
+  const baseChanged = baseFiltersChanged(prevState, state);
+  const liveChanged = liveFilterChanged(prevState, state);
+  const viewKey = buildMarkerViewKey();
+  const viewChanged = viewKey && viewKey !== markerViewKey;
+  const shouldReload = forceReload || viewChanged;
+  if (shouldReload) {
+    markerViewKey = viewKey;
+    clearMarkerLayerGroups();
+    markerRenderState = createMarkerRenderState(map.getZoom());
+  } else if (!markerRenderState) {
+    markerRenderState = createMarkerRenderState(map.getZoom());
+  }
+
+  syncMarkerLayerVisibility(state);
+
+  const zoom = map.getZoom();
+  const bounds = map.getBounds();
+  const savedRange = loadDateRangeState();
+
+  const renderQueue = [];
+  let renderScheduled = false;
+
+  function enqueueMarker(marker, layerName) {
+    renderQueue.push({ marker: marker, layerName: layerName });
+    if (!renderScheduled) {
+      renderScheduled = true;
+      requestAnimationFrame(drainRenderQueue);
+    }
+  }
+
+  function drainRenderQueue() {
+    renderScheduled = false;
+    const start = performance.now();
+    while (renderQueue.length && performance.now() - start < 12) {
+      const entry = renderQueue.shift();
+      renderQueuedMarker(entry.marker, entry.layerName);
+    }
+    if (renderQueue.length) {
+      renderScheduled = true;
+      requestAnimationFrame(drainRenderQueue);
+    }
+  }
+
+  function renderQueuedMarker(m, layerName) {
+    const group = markerLayerGroups[layerName];
+    if (!group) {
+      return;
+    }
+    let marker;
+    if (m.speed < 0) { // realtime marker with value inside the circle
+      const nowSec = Date.now() / 1000;
+      const icon = markerRenderState.livePlacement ? buildRealtimeIcon(m, zoom, nowSec) : null;
+      if (!icon) {
+        return;
+      }
+      const placedLatLng = markerRenderState.livePlacement.place(L.latLng(m.lat, m.lon), icon.radius);
+      marker = L.marker([placedLatLng.lat, placedLatLng.lng], {
+        icon: L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]})
+      })
+      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+      .bindPopup(getPopupContent(m));
+    } else {
+      const radius = getRadius(m.doseRate, zoom);
+      marker = L.circleMarker([m.lat, m.lon], {
+        radius      : radius,
+        fillColor   : getGradientColor(m.doseRate),
+        color       : getGradientColor(m.doseRate),
+        weight      : 1,
+        opacity     : getFillOpacity(m.speed) + 0.1,
+        fillOpacity : getFillOpacity(m.speed)
+      })
+      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
+      .bindPopup(getPopupContent(m));
+    }
+
+    marker.doseRate = m.doseRate;
+    marker.date = m.date;
+    marker.isRealtime = m.speed < 0;
+    const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
+    marker.markerKey = markerKey;
+    marker.layerGroupName = layerName;
+    circleMarkers[markerKey] = marker;
+    group.addLayer(marker);
+    if (m.speed >= 0 && markerRenderState.pruneOverlap) {
+      markerRenderState.pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
+    }
+  }
+
+  const tracks = new Set();
+  let minTs = Infinity;
+  let maxTs = -Infinity;
+  let summaryMin = Infinity;
+  let summaryMax = -Infinity;
+  let summaryTrackCount = 0;
+  let pendingStreams = 0;
+
+  function mergeSummary(summary, streamMin, streamMax) {
+    if (summary && Number.isFinite(summary.minTs)) {
+      summaryMin = Math.min(summaryMin, summary.minTs);
+    } else if (Number.isFinite(streamMin)) {
+      summaryMin = Math.min(summaryMin, streamMin);
+    }
+    if (summary && Number.isFinite(summary.maxTs)) {
+      summaryMax = Math.max(summaryMax, summary.maxTs);
+    } else if (Number.isFinite(streamMax)) {
+      summaryMax = Math.max(summaryMax, streamMax);
+    }
+    if (summary && Number.isFinite(summary.trackCount)) {
+      summaryTrackCount += summary.trackCount;
+    }
+  }
+
+  function finalizeStreams() {
+    if (pendingStreams > 0) {
+      return;
+    }
+    const summaryMinTs = Number.isFinite(summaryMin) ? summaryMin : minTs;
+    const summaryMaxTs = Number.isFinite(summaryMax) ? summaryMax : maxTs;
+    const trackCount = summaryTrackCount > 0 ? summaryTrackCount : tracks.size;
+    const needSlider = trackCount > 1 && isFinite(summaryMinTs) && isFinite(summaryMaxTs) && summaryMaxTs > summaryMinTs;
+    if (window.__setDateSliderVisibility){
+      window.__setDateSliderVisibility(needSlider);
+    }
+    if (needSlider && window.__initSliderOnce && isFinite(summaryMinTs) && isFinite(summaryMaxTs)){
+      window.__initSliderOnce(summaryMinTs, summaryMaxTs);
+      window.__initSliderOnce = null;
+    }
+    if (needSlider && window.__syncDateSliders && isFinite(summaryMinTs) && isFinite(summaryMaxTs)){
+      window.__syncDateSliders(summaryMinTs, summaryMaxTs);
+    }
+    if (waitForDangerFit && storedUserCenter) {
+      reframeAroundUser();
+    }
+    if (loadingEl) loadingEl.style.display = 'none';
+  }
+
+  function buildStreamParams(speedTag, includeRealtime, liveOnly) {
+    const params = new URLSearchParams({
+      zoom: zoom,
+      minLat: bounds.getSouthWest().lat,
+      minLon: bounds.getSouthWest().lng,
+      maxLat: bounds.getNorthEast().lat,
+      maxLon: bounds.getNorthEast().lng,
+    });
+    if (speedTag) {
+      params.set('speeds', speedTag);
+    }
+    if (includeRealtime) {
+      params.set('realtime', '1');
+    } else {
+      params.set('realtime', '0');
+    }
+    if (liveOnly) {
+      params.set('liveOnly', '1');
+    }
+    return params;
+  }
+
+  function requestLayerStream(layerName, params, trackSummaries) {
+    pendingStreams += 1;
+    startMarkerLayerStream(layerName, params, viewKey, {
+      onMarker: function(m) {
+        const isLive = m.speed < 0;
+        if (!isLive && m.trackID) {
+          tracks.add(m.trackID);
+        }
+        if (!isLive && typeof m.date === 'number') {
+          minTs = Math.min(minTs, m.date);
+          maxTs = Math.max(maxTs, m.date);
+        }
+        if (!isLive && savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) {
+          return;
+        }
+        enqueueMarker(m, layerName);
+      },
+      onDone: function(summary, streamMin, streamMax) {
+        if (trackSummaries) {
+          mergeSummary(summary, streamMin, streamMax);
+        }
+        pendingStreams -= 1;
+        finalizeStreams();
+      },
+      onError: function() {
+        pendingStreams -= 1;
+        finalizeStreams();
+      },
+    });
+  }
+
+  const liveEnabled = markerLayerEnabled(markerLiveLayerName, state);
+  const anyBaseEnabled = markerLayerNames.some(function(name) {
+    return markerLayerEnabled(name, state);
+  });
+
+  if (shouldReload) {
+    markerLayerNames.forEach(function(name) {
+      if (!markerLayerEnabled(name, state)) {
+        closeMarkerLayerStream(name);
+        return;
+      }
+      const layerState = markerLayerState[name];
+      const alreadyLoaded = layerState && layerState.loaded && layerState.viewKey === viewKey;
+      if (alreadyLoaded) {
+        return;
+      }
+      if (layerState && !layerState.loaded) {
+        // Clear partial data so a fresh stream doesn't duplicate markers.
+        clearMarkerLayerGroup(name);
+      }
+      const params = buildStreamParams(name, false, false);
+      requestLayerStream(name, params, true);
+    });
+  } else if (baseChanged) {
+    markerLayerNames.forEach(function(name) {
+      const prevEnabled = markerLayerEnabled(name, prevState || {});
+      const nextEnabled = markerLayerEnabled(name, state);
+      if (prevEnabled === nextEnabled) {
+        return;
+      }
+      if (!nextEnabled) {
+        closeMarkerLayerStream(name);
+        clearMarkerLayerGroup(name);
+        return;
+      }
+      const layerState = markerLayerState[name];
+      if (layerState && !layerState.loaded) {
+        // Clear partial data so a fresh stream doesn't duplicate markers.
+        clearMarkerLayerGroup(name);
+      }
+      const params = buildStreamParams(name, false, false);
+      requestLayerStream(name, params, true);
+    });
+  }
+
+  if (liveChanged || shouldReload) {
+    updateLiveLayerOnly(state);
+  }
+
+  markerFilterState = cloneMarkerFilterState(state);
+
+  if (pendingStreams > 0) {
+    if (loadingEl) loadingEl.style.display = 'block';
+  } else {
+    if (!anyBaseEnabled && window.__setDateSliderVisibility) {
+      window.__setDateSliderVisibility(false);
+    }
+    if (loadingEl) {
+      loadingEl.style.display = 'none';
+    }
+  }
+}
+
+
 /* Request markers for current bounds/zoom, render them,
  * and keep the date sliders in sync with the viewport.
  */
-function updateMarkers(){
+function updateMarkers(forceReload){
   const loadingEl = document.getElementById('loadingOverlay');
   if (trackPlaybackActive || trackViewPlaybackActive) {
     if (loadingEl) loadingEl.style.display='none';
+    return;
+  }
+  if (!isTrackView) {
+    updateMapMarkers(loadingEl, forceReload);
     return;
   }
   if (loadingEl) loadingEl.style.display='block';
@@ -5956,7 +6556,7 @@ function centerMapToLocation() {
         }
         let rounds = 0;
         backgroundRefreshTimer = setInterval(() => {
-          updateMarkers();
+          updateMarkers(true);
           rounds += 1;
           if (rounds >= 24) {
             clearInterval(backgroundRefreshTimer);
@@ -6045,7 +6645,7 @@ function centerMapToLocation() {
                   if (lastTrackURL) {
                     window.location.href = lastTrackURL;
                   } else {
-                    updateMarkers();   // keep the map open for background imports
+                    updateMarkers(true);   // keep the map open for background imports
                   }
               }, 700);
             }
