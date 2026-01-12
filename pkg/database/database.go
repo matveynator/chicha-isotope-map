@@ -1015,21 +1015,31 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 	worker := func() {
 		logf("⏳ background index build scheduled (engine=%s). Listeners are up; pages may be slower until indexes are ready.", cfg.DBType)
 
-		if err := db.backfillTracksTable(ctx, cfg.DBType); err != nil {
+		if err := db.backfillTracksTable(ctx, cfg.DBType, logf); err != nil {
 			logf("❌ track registry backfill failed: %v", err)
-		} else {
-			logf("✅ track registry ready for fast pagination")
+		}
+
+		catalog, catalogErr := db.loadIndexCatalog(ctx, cfg.DBType)
+		if catalogErr != nil {
+			logf("⚠️  index catalog read failed: %v", catalogErr)
 		}
 
 		for _, it := range indexes {
 			start := time.Now()
-			exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
-			if err != nil {
-				logf("⚠️  index %s existence check failed: %v", it.name, err)
-			}
-			if err == nil && exists {
-				logf("⏭️  index %s already exists; skipping creation.", it.name)
-				continue
+			if catalog != nil {
+				if catalog[it.name] {
+					logf("⏭️  index %s already exists; skipping creation.", it.name)
+					continue
+				}
+			} else {
+				exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
+				if err != nil {
+					logf("⚠️  index %s existence check failed: %v", it.name, err)
+				}
+				if err == nil && exists {
+					logf("⏭️  index %s already exists; skipping creation.", it.name)
+					continue
+				}
 			}
 			logf("▶️  start index %s", it.name)
 
@@ -1090,6 +1100,56 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 		worker()
 	}()
 	return done
+}
+
+// loadIndexCatalog fetches index names in one pass so we can skip work quickly
+// without issuing per-index queries. We keep the queries simple and portable.
+func (db *Database) loadIndexCatalog(ctx context.Context, dbType string) (map[string]bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var query string
+	switch strings.ToLower(dbType) {
+	case "pgx":
+		query = `
+SELECT c.relname
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind = 'i'
+  AND n.nspname = ANY (current_schemas(true))`
+	case "sqlite", "chai":
+		query = `SELECT name FROM sqlite_master WHERE type='index'`
+	case "duckdb":
+		query = `SELECT index_name FROM information_schema.indexes`
+	default:
+		return nil, nil
+	}
+
+	catalog := make(map[string]bool)
+	err := db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
+		rows, err := conn.QueryContext(ctx, query)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return err
+			}
+			catalog[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load index catalog: %w", err)
+	}
+	return catalog, nil
 }
 
 // desiredIndexesPortable declares the set of indexes we want to have for each engine.
@@ -1450,6 +1510,13 @@ CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
   ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
+
+CREATE TABLE IF NOT EXISTS maintenance_state (
+  task       TEXT PRIMARY KEY,
+  status     TEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  message    TEXT
+);
 `
 
 	case "sqlite", "chai":
@@ -1542,6 +1609,13 @@ CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
   ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
+
+CREATE TABLE IF NOT EXISTS maintenance_state (
+  task       TEXT PRIMARY KEY,
+  status     TEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  message    TEXT
+);
 `
 
 	case "duckdb":
@@ -1637,6 +1711,13 @@ CREATE INDEX IF NOT EXISTS idx_short_links_target_lookup
   ON short_links (target);
 CREATE INDEX IF NOT EXISTS idx_short_links_created
   ON short_links (created_at);
+
+CREATE TABLE IF NOT EXISTS maintenance_state (
+  task       TEXT PRIMARY KEY,
+  status     TEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  message    TEXT
+);
 `
 
 	case "clickhouse":
@@ -1713,6 +1794,13 @@ ORDER BY (device_id, measured_at);`,
   created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY (code);`,
+			`CREATE TABLE IF NOT EXISTS maintenance_state (
+  task       String,
+  status     String,
+  updated_at Int64,
+  message    String
+) ENGINE = MergeTree()
+ORDER BY (task);`,
 		}
 
 	default:
@@ -2034,6 +2122,75 @@ func isSchemaAlreadyExistsError(err error) bool {
 		strings.Contains(msg, "duplicate column") ||
 		strings.Contains(msg, "duplicate") ||
 		strings.Contains(msg, "sqlstate 42701")
+}
+
+// ---- Maintenance state helpers ---------------------------------------------
+// We store one-row task state to avoid repeating heavy startup work, keeping the
+// tracking portable and lightweight across supported engines.
+
+func (db *Database) getMaintenanceState(ctx context.Context, dbType, task string) (string, bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	query := fmt.Sprintf(`SELECT status FROM maintenance_state WHERE task = %s LIMIT 1`, placeholder(dbType, 1))
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	var status string
+	err := db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
+		row := conn.QueryRowContext(ctx, query, task)
+		if err := row.Scan(&status); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return "", false, fmt.Errorf("read maintenance state: %w", err)
+	}
+	if status == "" {
+		return "", false, nil
+	}
+	return status, true, nil
+}
+
+func (db *Database) setMaintenanceState(ctx context.Context, dbType, task, status, message string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	now := time.Now().Unix()
+	updateStmt := fmt.Sprintf(`UPDATE maintenance_state
+SET status = %s,
+    updated_at = %s,
+    message = %s
+WHERE task = %s`, placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4))
+	insertStmt := fmt.Sprintf(`INSERT INTO maintenance_state (task, status, updated_at, message)
+VALUES (%s, %s, %s, %s)`, placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4))
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	return db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
+		res, err := conn.ExecContext(ctx, updateStmt, status, now, message, task)
+		if err != nil {
+			return fmt.Errorf("update maintenance state: %w", err)
+		}
+		rows, err := res.RowsAffected()
+		if err == nil && rows > 0 {
+			return nil
+		}
+		if _, err := conn.ExecContext(ctx, insertStmt, task, status, now, message); err != nil {
+			if isSchemaAlreadyExistsError(err) {
+				return nil
+			}
+			return fmt.Errorf("insert maintenance state: %w", err)
+		}
+		return nil
+	})
 }
 
 // MarkerBatchProgress reports how many markers a bulk insert has flushed so operators can track
