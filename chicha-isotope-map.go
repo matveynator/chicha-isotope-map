@@ -6703,9 +6703,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("DB init: %v", err)
 	}
+	log.Printf("Waiting for schema initialization")
 	if err = db.InitSchema(dbCfg); err != nil {
 		log.Fatalf("DB schema: %v", err)
 	}
+	log.Printf("Schema initialization finished")
 
 	importers := parseImportSelection(*importSourcesFlag)
 	// Importers run independently, so we launch them in parallel to keep startup

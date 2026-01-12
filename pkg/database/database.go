@@ -1389,6 +1389,7 @@ func (db *Database) InitSchema(cfg Config) error {
 		schema     string
 		statements []string
 	)
+	log.Printf("Starting schema initialization for %s", strings.ToLower(cfg.DBType))
 
 	switch strings.ToLower(cfg.DBType) {
 	case "pgx":
@@ -1749,11 +1750,15 @@ ORDER BY (code);`,
 	}
 
 	if len(statements) > 0 {
-		if err := execStatements(db.DB, statements); err != nil {
+		if err := execStatements(db.DB, statements, log.Printf); err != nil {
 			return fmt.Errorf("init schema: %w", err)
 		}
 	} else {
-		if _, err := db.DB.Exec(schema); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		log.Printf("⏳ applying core schema (timeout=%s)", 30*time.Second)
+		_, err := db.DB.ExecContext(ctx, schema)
+		cancel()
+		if err != nil {
 			return fmt.Errorf("init schema: %w", err)
 		}
 	}
@@ -1766,19 +1771,27 @@ ORDER BY (code);`,
 		return fmt.Errorf("add realtime metadata column: %w", err)
 	}
 
+	log.Printf("Schema initialization complete")
 	return nil
 }
 
 // execStatements executes a slice of DDL statements sequentially so engines that
 // do not support multi-statement Exec calls (e.g. ClickHouse HTTP) still boot
 // correctly. We trim whitespace to stay tolerant of blank entries.
-func execStatements(db *sql.DB, stmts []string) error {
-	for _, raw := range stmts {
+func execStatements(db *sql.DB, stmts []string, logf func(string, ...any)) error {
+	if logf == nil {
+		logf = log.Printf
+	}
+	for i, raw := range stmts {
 		stmt := strings.TrimSpace(raw)
 		if stmt == "" {
 			continue
 		}
-		if _, err := db.Exec(stmt); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		logf("⏳ applying schema step %d/%d (timeout=%s)", i+1, len(stmts), 30*time.Second)
+		_, err := db.ExecContext(ctx, stmt)
+		cancel()
+		if err != nil {
 			return err
 		}
 	}
@@ -1808,11 +1821,15 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 		{name: "country", def: "country TEXT"},
 	}
 
+	log.Printf("⏳ ensuring marker metadata columns")
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
 		for _, col := range required {
 			stmt := fmt.Sprintf("ALTER TABLE markers ADD COLUMN IF NOT EXISTS %s", col.def)
-			if _, err := db.DB.Exec(stmt); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, err := db.DB.ExecContext(ctx, stmt)
+			cancel()
+			if err != nil {
 				return err
 			}
 		}
@@ -1823,7 +1840,9 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 		return nil
 
 	default:
-		rows, err := db.DB.Query(`PRAGMA table_info(markers);`)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		rows, err := db.DB.QueryContext(ctx, `PRAGMA table_info(markers);`)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("describe markers: %w", err)
 		}
@@ -1853,7 +1872,10 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 				continue
 			}
 			stmt := fmt.Sprintf("ALTER TABLE markers ADD COLUMN %s", col.def)
-			if _, err := db.DB.Exec(stmt); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, err := db.DB.ExecContext(ctx, stmt)
+			cancel()
+			if err != nil {
 				return err
 			}
 		}
@@ -1874,12 +1896,16 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 		{name: "extra", def: "extra TEXT"},
 	}
 
+	log.Printf("⏳ ensuring realtime metadata columns")
 	switch strings.ToLower(dbType) {
 	case "pgx", "duckdb":
 		// Engines with IF NOT EXISTS syntax can add columns individually without prior inspection.
 		for _, col := range required {
 			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN IF NOT EXISTS %s", col.def)
-			if _, err := db.DB.Exec(stmt); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, err := db.DB.ExecContext(ctx, stmt)
+			cancel()
+			if err != nil {
 				return err
 			}
 		}
@@ -1891,7 +1917,9 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 
 	default:
 		// SQLite-style engines require manual detection before issuing ALTER TABLE statements.
-		rows, err := db.DB.Query(`PRAGMA table_info(realtime_measurements);`)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		rows, err := db.DB.QueryContext(ctx, `PRAGMA table_info(realtime_measurements);`)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("describe realtime_measurements: %w", err)
 		}
@@ -1921,7 +1949,10 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 				continue
 			}
 			stmt := fmt.Sprintf("ALTER TABLE realtime_measurements ADD COLUMN %s", col.def)
-			if _, err := db.DB.Exec(stmt); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, err := db.DB.ExecContext(ctx, stmt)
+			cancel()
+			if err != nil {
 				return err
 			}
 		}
