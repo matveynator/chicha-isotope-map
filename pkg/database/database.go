@@ -263,6 +263,53 @@ func (db *Database) Close() error {
 	return db.DB.Close()
 }
 
+// logPostgresActivity emits a snapshot of active sessions to make blocking work visible.
+// It is best-effort and safe to call during timeouts so operators can see what is running.
+func logPostgresActivity(ctx context.Context, db *sql.DB, logf func(string, ...any), reason string) {
+	if db == nil {
+		return
+	}
+	if logf == nil {
+		logf = log.Printf
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	snapshotCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	const q = `
+SELECT pid, state, COALESCE(wait_event_type, ''), COALESCE(wait_event, ''), LEFT(query, 200)
+FROM pg_stat_activity
+WHERE datname = current_database() AND pid <> pg_backend_pid()
+ORDER BY pid`
+	rows, err := db.QueryContext(snapshotCtx, q)
+	if err != nil {
+		logf("⚠️  postgres activity snapshot failed (%s): %v", reason, err)
+		return
+	}
+	defer rows.Close()
+
+	logf("🔎 postgres activity snapshot (%s)", reason)
+	for rows.Next() {
+		var (
+			pid       int64
+			state     string
+			waitType  string
+			waitEvent string
+			query     string
+		)
+		if err := rows.Scan(&pid, &state, &waitType, &waitEvent, &query); err != nil {
+			logf("⚠️  postgres activity scan failed: %v", err)
+			return
+		}
+		logf("postgres pid=%d state=%s wait=%s/%s query=%s", pid, state, waitType, waitEvent, strings.TrimSpace(query))
+	}
+	if err := rows.Err(); err != nil {
+		logf("⚠️  postgres activity iteration failed: %v", err)
+	}
+}
+
 // serializedEnabled reports whether the database should route operations through the
 // single-owner pipeline.
 func (db *Database) serializedEnabled() bool {
@@ -1390,6 +1437,9 @@ func (db *Database) InitSchema(cfg Config) error {
 		statements []string
 	)
 	log.Printf("Starting schema initialization for %s", strings.ToLower(cfg.DBType))
+	if strings.EqualFold(cfg.DBType, "pgx") {
+		logPostgresActivity(context.Background(), db.DB, log.Printf, "startup schema init")
+	}
 
 	switch strings.ToLower(cfg.DBType) {
 	case "pgx":
@@ -1750,7 +1800,7 @@ ORDER BY (code);`,
 	}
 
 	if len(statements) > 0 {
-		if err := execStatements(db.DB, statements, log.Printf); err != nil {
+		if err := execStatements(db.DB, statements, strings.ToLower(cfg.DBType), log.Printf); err != nil {
 			return fmt.Errorf("init schema: %w", err)
 		}
 	} else {
@@ -1759,6 +1809,9 @@ ORDER BY (code);`,
 		_, err := db.DB.ExecContext(ctx, schema)
 		cancel()
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) && strings.EqualFold(cfg.DBType, "pgx") {
+				logPostgresActivity(context.Background(), db.DB, log.Printf, "core schema timeout")
+			}
 			return fmt.Errorf("init schema: %w", err)
 		}
 	}
@@ -1778,7 +1831,7 @@ ORDER BY (code);`,
 // execStatements executes a slice of DDL statements sequentially so engines that
 // do not support multi-statement Exec calls (e.g. ClickHouse HTTP) still boot
 // correctly. We trim whitespace to stay tolerant of blank entries.
-func execStatements(db *sql.DB, stmts []string, logf func(string, ...any)) error {
+func execStatements(db *sql.DB, stmts []string, dbType string, logf func(string, ...any)) error {
 	if logf == nil {
 		logf = log.Printf
 	}
@@ -1792,6 +1845,9 @@ func execStatements(db *sql.DB, stmts []string, logf func(string, ...any)) error
 		_, err := db.ExecContext(ctx, stmt)
 		cancel()
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) && strings.EqualFold(dbType, "pgx") {
+				logPostgresActivity(context.Background(), db, logf, fmt.Sprintf("schema step %d timeout", i+1))
+			}
 			return err
 		}
 	}
@@ -1830,6 +1886,9 @@ func (db *Database) ensureMarkerMetadataColumns(dbType string) error {
 			_, err := db.DB.ExecContext(ctx, stmt)
 			cancel()
 			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) && strings.EqualFold(dbType, "pgx") {
+					logPostgresActivity(context.Background(), db.DB, log.Printf, fmt.Sprintf("markers column %s timeout", col.name))
+				}
 				return err
 			}
 		}
@@ -1906,6 +1965,9 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string) error {
 			_, err := db.DB.ExecContext(ctx, stmt)
 			cancel()
 			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) && strings.EqualFold(dbType, "pgx") {
+					logPostgresActivity(context.Background(), db.DB, log.Printf, fmt.Sprintf("realtime column %s timeout", col.name))
+				}
 				return err
 			}
 		}
