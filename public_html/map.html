@@ -4585,7 +4585,7 @@ function updateMapMarkers(loadingEl, forceReload) {
   const liveChanged = liveFilterChanged(prevState, state);
   const viewKey = buildMarkerViewKey();
   const viewChanged = viewKey && viewKey !== markerViewKey;
-  const shouldReload = forceReload || viewChanged || baseChanged;
+  const shouldReload = forceReload || viewChanged;
   if (shouldReload) {
     markerViewKey = viewKey;
     clearMarkerLayerGroups();
@@ -4775,7 +4775,7 @@ function updateMapMarkers(loadingEl, forceReload) {
     return markerLayerEnabled(name, state);
   });
 
-  if (baseChanged || shouldReload) {
+  if (shouldReload) {
     markerLayerNames.forEach(function(name) {
       if (!markerLayerEnabled(name, state)) {
         closeMarkerLayerStream(name);
@@ -4793,11 +4793,25 @@ function updateMapMarkers(loadingEl, forceReload) {
       const params = buildStreamParams(name, false, false);
       requestLayerStream(name, params, true);
     });
-  } else {
+  } else if (baseChanged) {
     markerLayerNames.forEach(function(name) {
-      if (!markerLayerEnabled(name, state)) {
-        closeMarkerLayerStream(name);
+      const prevEnabled = markerLayerEnabled(name, prevState || {});
+      const nextEnabled = markerLayerEnabled(name, state);
+      if (prevEnabled === nextEnabled) {
+        return;
       }
+      if (!nextEnabled) {
+        closeMarkerLayerStream(name);
+        clearMarkerLayerGroup(name);
+        return;
+      }
+      const layerState = markerLayerState[name];
+      if (layerState && !layerState.loaded) {
+        // Clear partial data so a fresh stream doesn't duplicate markers.
+        clearMarkerLayerGroup(name);
+      }
+      const params = buildStreamParams(name, false, false);
+      requestLayerStream(name, params, true);
     });
   }
 
