@@ -2429,6 +2429,8 @@ var markerLayerState = null;
 var markerViewKey = '';
 // Keep shared render helpers per view so overlap pruning stays consistent.
 var markerRenderState = null;
+// Persist filter choices so we can avoid reloading base layers on live toggles.
+var markerFilterState = null;
 var isTrackView = false;
 var osmLayer, googleSatellite;
 var trackBounds;
@@ -4378,6 +4380,32 @@ function createMarkerRenderState(zoomLevel) {
   };
 }
 
+function cloneMarkerFilterState(state) {
+  if (!state) {
+    return null;
+  }
+  return {
+    ped: !!state.ped,
+    car: !!state.car,
+    plane: !!state.plane,
+    live: !!state.live,
+  };
+}
+
+function baseFiltersChanged(prev, next) {
+  if (!prev || !next) {
+    return true;
+  }
+  return !!prev.ped !== !!next.ped || !!prev.car !== !!next.car || !!prev.plane !== !!next.plane;
+}
+
+function liveFilterChanged(prev, next) {
+  if (!prev || !next) {
+    return true;
+  }
+  return !!prev.live !== !!next.live;
+}
+
 function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   if (!params) {
     return;
@@ -4451,9 +4479,12 @@ function updateMapMarkers(loadingEl, forceReload) {
   }
 
   const state = loadSpeedFilterState();
+  const prevState = markerFilterState;
+  const baseChanged = baseFiltersChanged(prevState, state);
+  const liveChanged = liveFilterChanged(prevState, state);
   const viewKey = buildMarkerViewKey();
   const viewChanged = viewKey && viewKey !== markerViewKey;
-  const shouldReload = forceReload || viewChanged;
+  const shouldReload = forceReload || viewChanged || baseChanged;
   if (shouldReload) {
     markerViewKey = viewKey;
     clearMarkerLayerGroups();
@@ -4643,33 +4674,45 @@ function updateMapMarkers(loadingEl, forceReload) {
     return markerLayerEnabled(name, state);
   });
 
-  markerLayerNames.forEach(function(name) {
-    if (!markerLayerEnabled(name, state)) {
-      closeMarkerLayerStream(name);
-      return;
-    }
-    const layerState = markerLayerState[name];
-    const alreadyLoaded = layerState && layerState.loaded && layerState.viewKey === viewKey;
-    if (alreadyLoaded) {
-      return;
-    }
-    if (layerState && !layerState.loaded) {
-      // Clear partial data so a fresh stream doesn't duplicate markers.
-      clearMarkerLayerGroup(name);
-    }
-    const params = buildStreamParams(name, false, false);
-    requestLayerStream(name, params, true);
-  });
-
-  if (liveEnabled && window.safecastRealtimeEnabled) {
-    closeMarkerLayerStream(markerLiveLayerName);
-    clearMarkerLayerGroup(markerLiveLayerName);
-    const params = buildStreamParams('', true, true);
-    requestLayerStream(markerLiveLayerName, params, false);
+  if (baseChanged || shouldReload) {
+    markerLayerNames.forEach(function(name) {
+      if (!markerLayerEnabled(name, state)) {
+        closeMarkerLayerStream(name);
+        return;
+      }
+      const layerState = markerLayerState[name];
+      const alreadyLoaded = layerState && layerState.loaded && layerState.viewKey === viewKey;
+      if (alreadyLoaded) {
+        return;
+      }
+      if (layerState && !layerState.loaded) {
+        // Clear partial data so a fresh stream doesn't duplicate markers.
+        clearMarkerLayerGroup(name);
+      }
+      const params = buildStreamParams(name, false, false);
+      requestLayerStream(name, params, true);
+    });
   } else {
-    closeMarkerLayerStream(markerLiveLayerName);
-    clearMarkerLayerGroup(markerLiveLayerName);
+    markerLayerNames.forEach(function(name) {
+      if (!markerLayerEnabled(name, state)) {
+        closeMarkerLayerStream(name);
+      }
+    });
   }
+
+  if (liveChanged || shouldReload) {
+    if (liveEnabled && window.safecastRealtimeEnabled) {
+      closeMarkerLayerStream(markerLiveLayerName);
+      clearMarkerLayerGroup(markerLiveLayerName);
+      const params = buildStreamParams('', true, true);
+      requestLayerStream(markerLiveLayerName, params, false);
+    } else {
+      closeMarkerLayerStream(markerLiveLayerName);
+      clearMarkerLayerGroup(markerLiveLayerName);
+    }
+  }
+
+  markerFilterState = cloneMarkerFilterState(state);
 
   if (pendingStreams > 0) {
     if (loadingEl) loadingEl.style.display = 'block';
