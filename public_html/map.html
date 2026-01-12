@@ -2585,7 +2585,7 @@ function createMarkerOverlapPruner(map) {
   // Keep a small per-bucket history so only nearly identical overlaps are pruned.
   const bucketSize = 12;
   const overlapBuckets = new Map();
-  const overlapThreshold = 0.1;
+  const overlapThreshold = 0.2;
   const maxLayers = 3;
 
   function bucketKey(point) {
