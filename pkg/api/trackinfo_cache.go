@@ -52,6 +52,9 @@ type TrackInfoCache struct {
 	retry   time.Duration
 	logf    func(string, ...any)
 	now     func() time.Time
+	// ctx cancels background refresh queries so shutdown can release DB locks promptly.
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	requests chan trackInfoRequest
 	quit     chan struct{}
@@ -59,9 +62,12 @@ type TrackInfoCache struct {
 
 // NewTrackInfoCache starts the cache goroutine. ttl controls how long results stay fresh, timeout bounds database calls and retry
 // decides how quickly we attempt to recover after failures. Passing nil db disables the cache so handlers can fall back to direct queries.
-func NewTrackInfoCache(db *database.Database, dbType string, ttl, timeout, retry time.Duration, logf func(string, ...any)) *TrackInfoCache {
+func NewTrackInfoCache(ctx context.Context, db *database.Database, dbType string, ttl, timeout, retry time.Duration, logf func(string, ...any)) *TrackInfoCache {
 	if db == nil || db.DB == nil {
 		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	if ttl <= 0 {
 		ttl = time.Hour
@@ -72,6 +78,7 @@ func NewTrackInfoCache(db *database.Database, dbType string, ttl, timeout, retry
 	if retry <= 0 {
 		retry = time.Minute
 	}
+	cacheCtx, cancel := context.WithCancel(ctx)
 	cache := &TrackInfoCache{
 		db:       db,
 		dbType:   dbType,
@@ -80,6 +87,8 @@ func NewTrackInfoCache(db *database.Database, dbType string, ttl, timeout, retry
 		retry:    retry,
 		logf:     logf,
 		now:      time.Now,
+		ctx:      cacheCtx,
+		cancel:   cancel,
 		requests: make(chan trackInfoRequest),
 		quit:     make(chan struct{}),
 	}
@@ -97,6 +106,9 @@ func (c *TrackInfoCache) Close() {
 		return
 	default:
 	}
+	if c.cancel != nil {
+		c.cancel()
+	}
 	close(c.quit)
 }
 
@@ -109,6 +121,8 @@ func (c *TrackInfoCache) Get(ctx context.Context) (int64, string, error) {
 	select {
 	case <-ctx.Done():
 		return 0, "", ctx.Err()
+	case <-c.ctx.Done():
+		return 0, "", errTrackInfoStopped
 	case <-c.quit:
 		return 0, "", errTrackInfoStopped
 	case c.requests <- req:
@@ -116,6 +130,8 @@ func (c *TrackInfoCache) Get(ctx context.Context) (int64, string, error) {
 	select {
 	case <-ctx.Done():
 		return 0, "", ctx.Err()
+	case <-c.ctx.Done():
+		return 0, "", errTrackInfoStopped
 	case <-c.quit:
 		return 0, "", errTrackInfoStopped
 	case resp := <-req.reply:
@@ -175,6 +191,11 @@ func (c *TrackInfoCache) loop() {
 			timerC = timer.C
 		}
 		select {
+		case <-c.ctx.Done():
+			if timer != nil {
+				timer.Stop()
+			}
+			return
 		case <-c.quit:
 			if timer != nil {
 				timer.Stop()
@@ -195,6 +216,9 @@ func (c *TrackInfoCache) loop() {
 			delivered := false
 			for !delivered {
 				select {
+				case <-c.ctx.Done():
+					req.reply <- trackInfoResponse{err: errTrackInfoStopped}
+					delivered = true
 				case <-c.quit:
 					req.reply <- trackInfoResponse{err: errTrackInfoStopped}
 					delivered = true
@@ -256,7 +280,7 @@ func (c *TrackInfoCache) loop() {
 func (c *TrackInfoCache) startRefresh(prev trackInfoSnapshot) <-chan refreshOutcome {
 	ch := make(chan refreshOutcome, 1)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+		ctx, cancel := context.WithTimeout(c.ctx, c.timeout)
 		defer cancel()
 		total, latest, err := c.loadTrackInfo(ctx)
 		if err != nil {

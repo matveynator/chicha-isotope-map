@@ -6812,7 +6812,7 @@ func main() {
 	// API endpoints ship JSON/archives. Keeping registration close to other
 	// routes avoids surprises for operators scanning main() for handlers.
 	limiter := api.NewRateLimiter(time.Minute)
-	apiHandler := api.NewHandler(db, *dbType, archiveGen, limiter, log.Printf, archiveFrequency)
+	apiHandler := api.NewHandler(appCtx, db, *dbType, archiveGen, limiter, log.Printf, archiveFrequency)
 	apiHandler.Register(http.DefaultServeMux)
 
 	// Selfupgrade runs in the background only when explicitly enabled so existing
@@ -6888,6 +6888,8 @@ func main() {
 		cancelShutdown()
 	}
 
+	log.Printf("closing api caches")
+	apiHandler.Close()
 	log.Printf("closing database connections")
 	if err := db.Close(); err != nil {
 		log.Printf("database close error: %v", err)

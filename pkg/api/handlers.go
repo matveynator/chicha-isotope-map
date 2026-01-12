@@ -40,7 +40,7 @@ type Handler struct {
 
 // NewHandler constructs a Handler with sane defaults.
 // Logf is optional; pass nil if logging is not required.
-func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Generator, limiter *RateLimiter, logf func(string, ...any), freq jsonarchive.Frequency) *Handler {
+func NewHandler(ctx context.Context, db *database.Database, dbType string, archive *jsonarchive.Generator, limiter *RateLimiter, logf func(string, ...any), freq jsonarchive.Frequency) *Handler {
 	return &Handler{
 		DB:               db,
 		DBType:           dbType,
@@ -49,7 +49,17 @@ func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Gener
 		Limiter:          limiter,
 		Logf:             logf,
 		Cache:            NewResponseCache(24 * time.Hour),
-		TrackInfo:        NewTrackInfoCache(db, dbType, 30*time.Minute, 5*time.Minute, 2*time.Minute, logf),
+		TrackInfo:        NewTrackInfoCache(ctx, db, dbType, 30*time.Minute, 5*time.Minute, 2*time.Minute, logf),
+	}
+}
+
+// Close releases background caches so shutdown does not leave long-running queries behind.
+func (h *Handler) Close() {
+	if h == nil {
+		return
+	}
+	if h.TrackInfo != nil {
+		h.TrackInfo.Close()
 	}
 }
 
