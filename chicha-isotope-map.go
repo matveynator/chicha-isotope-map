@@ -6871,6 +6871,11 @@ func main() {
 
 	// We cancel background DB work early so long-running index builds do not block shutdown.
 	cancelIdx()
+	if archiveCancel != nil {
+		log.Printf("cancelling archive generator")
+		archiveCancel()
+	}
+	log.Printf("cancelling application context")
 	cancelApp()
 
 	if shutdownHTTP != nil {
@@ -6881,15 +6886,15 @@ func main() {
 		cancelShutdown()
 	}
 
+	log.Printf("closing database connections")
+	if err := db.Close(); err != nil {
+		log.Printf("database close error: %v", err)
+	}
 	waitForShutdownTask("index builder", indexDone, 10*time.Second, log.Printf)
 	waitForShutdownTask("archive import", importDone, 10*time.Second, log.Printf)
 	select {
 	case forceSignal := <-signalCh:
 		log.Printf("forced shutdown signal received: %v", forceSignal)
 	default:
-	}
-	log.Printf("closing database connections")
-	if err := db.Close(); err != nil {
-		log.Printf("database close error: %v", err)
 	}
 }

@@ -616,7 +616,7 @@ func NewDatabase(config Config) (*Database, error) {
 		db.SetConnMaxIdleTime(2 * time.Minute)
 	}
 
-	// Cheap liveness probe with timeout so we don't hang at startup
+	// Cheap liveness probe with timeout so we don't hang at startup.
 	// DuckDB can spend noticeable time replaying its log when the file is large,
 	// so we extend the timeout and emit periodic progress derived from process
 	// read counters. The reporting goroutine stays channel-driven to avoid any
@@ -625,6 +625,7 @@ func NewDatabase(config Config) (*Database, error) {
 	if driverName == "duckdb" {
 		pingTimeout = 45 * time.Second
 	}
+	log.Printf("Waiting for database ping (timeout=%s)", pingTimeout)
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
 
