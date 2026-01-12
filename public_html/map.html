@@ -2581,37 +2581,57 @@ function renderTrackViewSnapshot() {
   });
 }
 
-function createMarkerOverlapPruner(map, zoom) {
-  // Keep a tiny per-bucket stack so older markers do not stay in memory.
-  const bucketSize = 8;
-  const buckets = new Map();
+function createMarkerOverlapPruner(map) {
+  // Keep a small per-bucket history so only nearly identical overlaps are pruned.
+  const bucketSize = 12;
+  const overlapBuckets = new Map();
+  const overlapThreshold = 0.1;
+  const maxLayers = 3;
 
-  function bucketKey(lat, lon) {
-    const point = map.latLngToLayerPoint([lat, lon]);
+  function bucketKey(point) {
     return `${Math.floor(point.x / bucketSize)}:${Math.floor(point.y / bucketSize)}`;
   }
 
-  return function prune(markerKey, lat, lon) {
+  function isNearOverlap(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxRadius = Math.max(a.r, b.r);
+    return maxRadius > 0 && dist <= maxRadius * overlapThreshold;
+  }
+
+  return function prune(markerKey, lat, lon, radius) {
     if (!markerKey || typeof lat !== 'number' || typeof lon !== 'number') {
       return;
     }
-    const key = bucketKey(lat, lon);
-    let stack = buckets.get(key);
-    if (!stack) {
-      stack = [];
-      buckets.set(key, stack);
-    }
-    stack.push(markerKey);
-    if (stack.length <= 2) {
+    if (typeof radius !== 'number' || radius <= 0) {
       return;
     }
-    const dropKey = stack.shift();
-    const dropLayer = circleMarkers[dropKey];
+    const point = map.latLngToLayerPoint([lat, lon]);
+    const entry = { key: markerKey, x: point.x, y: point.y, r: radius };
+    const key = bucketKey(point);
+    let stack = overlapBuckets.get(key);
+    if (!stack) {
+      stack = [];
+      overlapBuckets.set(key, stack);
+    }
+    stack.push(entry);
+    const overlaps = stack.filter(function(candidate) {
+      return candidate !== entry && isNearOverlap(candidate, entry);
+    });
+    if (overlaps.length < maxLayers) {
+      return;
+    }
+    const dropEntry = overlaps[0];
+    const dropLayer = circleMarkers[dropEntry.key];
     if (!dropLayer) {
       return;
     }
     map.removeLayer(dropLayer);
-    delete circleMarkers[dropKey];
+    delete circleMarkers[dropEntry.key];
+    overlapBuckets.set(key, stack.filter(function(candidate) {
+      return candidate.key !== dropEntry.key;
+    }));
   };
 }
 
@@ -4255,7 +4275,7 @@ function updateMarkers(){
   const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
   const livePlacement = createLivePlacementGrid(map, zoom);
-  const pruneOverlap = createMarkerOverlapPruner(map, zoom);
+  const pruneOverlap = createMarkerOverlapPruner(map);
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
   markerStreamSource = es;
@@ -4289,8 +4309,9 @@ function updateMarkers(){
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
     } else {
+      const radius = getRadius(m.doseRate, zoom);
       marker = L.circleMarker([m.lat, m.lon], {
-        radius      : getRadius(m.doseRate, zoom),
+        radius      : radius,
         fillColor   : getGradientColor(m.doseRate),
         color       : getGradientColor(m.doseRate),
         weight      : 1,
@@ -4309,7 +4330,7 @@ function updateMarkers(){
     const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
     circleMarkers[markerKey] = marker;
     if (!isLive) {
-      pruneOverlap(markerKey, m.lat, m.lon);
+      pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
     }
   };
 
