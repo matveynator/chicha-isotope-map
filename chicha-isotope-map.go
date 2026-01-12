@@ -237,6 +237,24 @@ func resolveCLIColorTheme(out io.Writer) cliColorTheme {
 	return theme
 }
 
+// waitForShutdownTask blocks until a background task finishes or the timeout expires.
+// Logging before the wait avoids a silent pause during shutdown.
+func waitForShutdownTask(name string, done <-chan struct{}, timeout time.Duration, logf func(string, ...any)) {
+	if done == nil {
+		return
+	}
+	if logf == nil {
+		logf = log.Printf
+	}
+	logf("⏳ waiting for %s (timeout=%s)", name, timeout)
+	select {
+	case <-done:
+		logf("✅ %s stopped", name)
+	case <-time.After(timeout):
+		logf("⚠️  %s still running after %s; proceeding with shutdown", name, timeout)
+	}
+}
+
 // selfUpgradeFlagSet keeps the flag pointers optional so unsupported platforms
 // never register a -selfupgrade flag, following the "Make the zero value useful"
 // proverb. We also carry the default URLs so runtime decisions can fall back to
@@ -6638,6 +6656,9 @@ func main() {
 		fmt.Printf("chicha-isotope-map version %s\n", CompileVersion)
 		return
 	}
+	// Root application context so all background work can be cancelled on shutdown.
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
 
 	// 2. Предупреждение о привилегиях (для :80 / :443)
 	if *domain != "" && runtime.GOOS != "windows" && os.Geteuid() != 0 {
@@ -6677,6 +6698,7 @@ func main() {
 		}
 	}
 	var err error
+	log.Printf("Connecting to database driver: %s", driverName)
 	db, err = database.NewDatabase(dbCfg)
 	if err != nil {
 		log.Fatalf("DB init: %v", err)
@@ -6689,10 +6711,10 @@ func main() {
 	// Importers run independently, so we launch them in parallel to keep startup
 	// responsive while each upstream source is polled sequentially.
 	if importers.AtomFast {
-		go startAtomFastLoader(context.Background(), db, driverName, log.Printf, true)
+		go startAtomFastLoader(appCtx, db, driverName, log.Printf, true)
 	}
 	if importers.Safecast {
-		go startSafecastAPILoader(context.Background(), db, driverName, log.Printf, true)
+		go startSafecastAPILoader(appCtx, db, driverName, log.Printf, true)
 	}
 
 	remoteURL := strings.TrimSpace(*importTGZURLFlag)
@@ -6705,14 +6727,14 @@ func main() {
 
 	if localArchive != "" {
 		fallback := GenerateSerialNumber()
-		importDone = startBackgroundArchiveImport(context.Background(), fmt.Sprintf("local file %s", localArchive), func(ctx context.Context) error {
+		importDone = startBackgroundArchiveImport(appCtx, fmt.Sprintf("local file %s", localArchive), func(ctx context.Context) error {
 			return importArchiveFromFile(ctx, localArchive, fallback, db, driverName, log.Printf)
 		}, log.Printf)
 	}
 
 	if remoteURL != "" {
 		fallback := GenerateSerialNumber()
-		importDone = startBackgroundArchiveImport(context.Background(), fmt.Sprintf("remote url %s", remoteURL), func(ctx context.Context) error {
+		importDone = startBackgroundArchiveImport(appCtx, fmt.Sprintf("remote url %s", remoteURL), func(ctx context.Context) error {
 			return importArchiveFromURL(ctx, remoteURL, fallback, db, driverName, log.Printf)
 		}, log.Printf)
 	}
@@ -6721,9 +6743,7 @@ func main() {
 		// Launch realtime Safecast polling under the dedicated flag so the
 		// feature stays opt-in.
 		database.SetRealtimeConverter(safecastrealtime.FromRealtime)
-		ctxRT, cancelRT := context.WithCancel(context.Background())
-		defer cancelRT()
-		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
+		safecastrealtime.Start(appCtx, db, *dbType, log.Printf)
 	}
 
 	// Build a JSON archive tgz with all known exported tracks only when
@@ -6797,7 +6817,7 @@ func main() {
 	// installations keep their manual release cadence. We assemble the config
 	// near main() so filesystem paths, database settings, and HTTP handlers stay
 	// consistent with the rest of the binary.
-	selfUpgradeCancel := startSelfUpgrade(context.Background(), dbCfg)
+	selfUpgradeCancel := startSelfUpgrade(appCtx, dbCfg)
 	if selfUpgradeCancel != nil {
 		defer selfUpgradeCancel()
 	}
@@ -6835,7 +6855,7 @@ func main() {
 	}
 
 	// асинхронные индексы в бд без блокирования основного процесса начало
-	ctxIdx, cancelIdx := context.WithCancel(context.Background())
+	ctxIdx, cancelIdx := context.WithCancel(appCtx)
 	defer cancelIdx()
 	// Запуск асинхронной индексации с прогрессом
 	indexDone := db.EnsureIndexesAsync(ctxIdx, dbCfg, func(format string, args ...any) {
@@ -6851,6 +6871,7 @@ func main() {
 
 	// We cancel background DB work early so long-running index builds do not block shutdown.
 	cancelIdx()
+	cancelApp()
 
 	if shutdownHTTP != nil {
 		ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
@@ -6860,13 +6881,15 @@ func main() {
 		cancelShutdown()
 	}
 
-	gracefulWait := 10 * time.Second
+	waitForShutdownTask("index builder", indexDone, 10*time.Second, log.Printf)
+	waitForShutdownTask("archive import", importDone, 10*time.Second, log.Printf)
 	select {
-	case <-indexDone:
-		log.Printf("background index tasks stopped; safe to exit")
 	case forceSignal := <-signalCh:
 		log.Printf("forced shutdown signal received: %v", forceSignal)
-	case <-time.After(gracefulWait):
-		log.Printf("background index tasks still running after %s; exiting", gracefulWait)
+	default:
+	}
+	log.Printf("closing database connections")
+	if err := db.Close(); err != nil {
+		log.Printf("database close error: %v", err)
 	}
 }

@@ -254,6 +254,15 @@ func (db *Database) ScheduleDuckDBMaintenance(ctx context.Context, logf func(str
 	return db.upkeep.enqueue(ctx, logf)
 }
 
+// Close releases the underlying SQL connections so database locks can clear on exit.
+// We keep it lightweight and idempotent so callers can defer it unconditionally.
+func (db *Database) Close() error {
+	if db == nil || db.DB == nil {
+		return nil
+	}
+	return db.DB.Close()
+}
+
 // serializedEnabled reports whether the database should route operations through the
 // single-owner pipeline.
 func (db *Database) serializedEnabled() bool {
@@ -1044,13 +1053,16 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 				return
 			default:
 			}
+			// Bound each index build so shutdown can complete without waiting on long DDL.
+			indexCtx, cancelIndex := context.WithTimeout(ctx, 2*time.Minute)
 			logf("🔎 checking index %s", it.name)
-			exists, err := db.indexExistsPortable(ctx, cfg.DBType, it.name)
+			exists, err := db.indexExistsPortable(indexCtx, cfg.DBType, it.name)
 			if err != nil {
 				logf("⚠️  index %s check failed; will still attempt creation if missing: %v", it.name, err)
 			}
 			if err == nil && exists {
 				logf("⏭️  index %s already exists. continue.", it.name)
+				cancelIndex()
 				continue
 			}
 			logf("▶️  start index %s", it.name)
@@ -1060,15 +1072,22 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 			for {
 				// respect outer context: if cancelled — stop gracefully
 				select {
-				case <-ctx.Done():
-					logf("⏹️  stop index builder due to context cancel: %v", ctx.Err())
-					return
+				case <-indexCtx.Done():
+					if ctx.Err() != nil {
+						logf("⏹️  stop index %s due to context cancel: %v", it.name, ctx.Err())
+						cancelIndex()
+						return
+					}
+					logf("⏭️  index %s build timed out after %s. continue.", it.name, time.Since(start).Truncate(time.Millisecond))
+					cancelIndex()
+					break
 				default:
 				}
 
-				_, err := db.DB.ExecContext(ctx, it.sql)
+				_, err := db.DB.ExecContext(indexCtx, it.sql)
 				if err == nil {
 					logf("✅ index %s ready in %s", it.name, time.Since(start).Truncate(time.Millisecond))
+					cancelIndex()
 					break
 				}
 
@@ -1078,6 +1097,7 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 					strings.Contains(msg, "duplicate key value") ||
 					strings.Contains(msg, "sqlstate 23505") {
 					logf("⏭️  index %s appears to exist. continue.", it.name)
+					cancelIndex()
 					break
 				}
 
@@ -1099,6 +1119,7 @@ func (db *Database) EnsureIndexesAsync(ctx context.Context, cfg Config, logf fun
 
 				// other errors: log and continue with next index
 				logf("❌ index %s failed after %s: %v", it.name, time.Since(start).Truncate(time.Millisecond), err)
+				cancelIndex()
 				break
 			}
 		}
