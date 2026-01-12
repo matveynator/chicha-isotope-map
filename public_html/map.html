@@ -4276,28 +4276,32 @@ function updateMarkers(){
   let minTs = Infinity, maxTs = -Infinity;
   const livePlacement = createLivePlacementGrid(map, zoom);
   const pruneOverlap = createMarkerOverlapPruner(map);
+  const renderQueue = [];
+  let renderScheduled = false;
 
-  const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
-  markerStreamSource = es;
-  let streamSummary = null;
-
-  es.onmessage = e => {
-    let m; try { m = JSON.parse(e.data); } catch { return; }
-    const isLive = m.speed < 0; // negative speed denotes realtime marker
-    if (!isLive && m.trackID) tracks.add(m.trackID);
-    minTs = Math.min(minTs, m.date);
-    maxTs = Math.max(maxTs, m.date);
-    // Keep realtime Safecast markers visible regardless of the date slider so live sensors are never filtered out.
-    if (!isLive && savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
-    if (!shouldDisplayBySpeed(m.speed)) return;
-    if (isTrackView) {
-      // Buffer track markers so we can render them in chronological order.
-      trackViewMarkers.push(m);
-      return;
+  function enqueueMarker(marker) {
+    renderQueue.push(marker);
+    if (!renderScheduled) {
+      renderScheduled = true;
+      requestAnimationFrame(drainRenderQueue);
     }
+  }
 
+  function drainRenderQueue() {
+    renderScheduled = false;
+    const start = performance.now();
+    while (renderQueue.length && performance.now() - start < 12) {
+      renderQueuedMarker(renderQueue.shift());
+    }
+    if (renderQueue.length) {
+      renderScheduled = true;
+      requestAnimationFrame(drainRenderQueue);
+    }
+  }
+
+  function renderQueuedMarker(m) {
     let marker;
-    if (isLive) { // realtime marker with value inside the circle
+    if (m.speed < 0) { // realtime marker with value inside the circle
       const nowSec = Date.now() / 1000;
       const icon = buildRealtimeIcon(m, zoom, nowSec);
       if (!icon) return; // device is older than 24 hours
@@ -4323,15 +4327,37 @@ function updateMarkers(){
       .bindPopup(getPopupContent(m));
     }
 
-    // Store dose rate and timestamp on marker for later size updates
+    // Store dose rate and timestamp on marker for later size updates.
     marker.doseRate  = m.doseRate;
     marker.date      = m.date;
-    marker.isRealtime = isLive;
+    marker.isRealtime = m.speed < 0;
     const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
     circleMarkers[markerKey] = marker;
-    if (!isLive) {
+    if (m.speed >= 0) {
       pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
     }
+  }
+
+  const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
+  markerStreamSource = es;
+  let streamSummary = null;
+
+  es.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    const isLive = m.speed < 0; // negative speed denotes realtime marker
+    if (!isLive && m.trackID) tracks.add(m.trackID);
+    minTs = Math.min(minTs, m.date);
+    maxTs = Math.max(maxTs, m.date);
+    // Keep realtime Safecast markers visible regardless of the date slider so live sensors are never filtered out.
+    if (!isLive && savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) return;
+    if (!shouldDisplayBySpeed(m.speed)) return;
+    if (isTrackView) {
+      // Buffer track markers so we can render them in chronological order.
+      trackViewMarkers.push(m);
+      return;
+    }
+
+    enqueueMarker(m);
   };
 
   es.addEventListener('meta', e => {
