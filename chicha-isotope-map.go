@@ -5833,7 +5833,7 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 }
 
 // streamMarkersHandler streams markers via Server-Sent Events.
-// Markers are emitted as soon as they are read and aggregated.
+// Markers are emitted in timestamp order so tracks render chronologically.
 func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	zoom, _ := strconv.Atoi(q.Get("zoom"))
@@ -5868,18 +5868,8 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
 
-	var summaryCh <-chan markerStreamSummary
-	var streamSrc <-chan database.Marker
-	if trackID != "" {
-		// For a single track we stream markers in timestamp order without aggregation.
-		// This keeps the visual trace moving forward in time instead of per-cell heat updates.
-		streamSrc, summaryCh = summarizeMarkerStream(ctx, baseSrc)
-	} else {
-		// For full map views keep aggregation so dense tiles stay responsive.
-		rawStream, rawSummary := summarizeMarkerStream(ctx, baseSrc)
-		streamSrc = aggregateMarkers(ctx, rawStream, nil, zoom)
-		summaryCh = rawSummary
-	}
+	// Stream raw markers so ordering stays intact for chronological rendering.
+	streamSrc, summaryCh := summarizeMarkerStream(ctx, baseSrc)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
