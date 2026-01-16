@@ -1517,6 +1517,49 @@ CREATE TABLE IF NOT EXISTS maintenance_state (
   updated_at BIGINT NOT NULL,
   message    TEXT
 );
+
+CREATE TABLE IF NOT EXISTS analytics_sessions (
+  session_id   TEXT PRIMARY KEY,
+  display_name TEXT,
+  created_at   BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
+  visit_count  INTEGER NOT NULL,
+  ip           TEXT,
+  user_agent   TEXT,
+  referer      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_sessions_seen
+  ON analytics_sessions (last_seen_at);
+
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id             BIGSERIAL PRIMARY KEY,
+  session_id     TEXT,
+  display_name   TEXT,
+  occurred_at    BIGINT NOT NULL,
+  kind           TEXT,
+  path           TEXT,
+  ip             TEXT,
+  referer        TEXT,
+  user_agent     TEXT,
+  region         TEXT,
+  map_theme      TEXT,
+  map_layer      TEXT,
+  map_zoom       INTEGER,
+  map_speed      TEXT,
+  map_center_lat DOUBLE PRECISION,
+  map_center_lon DOUBLE PRECISION,
+  dose_class     TEXT,
+  track_kind     TEXT,
+  track_id       TEXT,
+  detector       TEXT,
+  detail         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_time
+  ON analytics_events (occurred_at);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session
+  ON analytics_events (session_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_kind
+  ON analytics_events (kind);
 `
 
 	case "sqlite", "chai":
@@ -1616,6 +1659,49 @@ CREATE TABLE IF NOT EXISTS maintenance_state (
   updated_at BIGINT NOT NULL,
   message    TEXT
 );
+
+CREATE TABLE IF NOT EXISTS analytics_sessions (
+  session_id   TEXT PRIMARY KEY,
+  display_name TEXT,
+  created_at   BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
+  visit_count  INTEGER NOT NULL,
+  ip           TEXT,
+  user_agent   TEXT,
+  referer      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_sessions_seen
+  ON analytics_sessions (last_seen_at);
+
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id             INTEGER PRIMARY KEY,
+  session_id     TEXT,
+  display_name   TEXT,
+  occurred_at    BIGINT NOT NULL,
+  kind           TEXT,
+  path           TEXT,
+  ip             TEXT,
+  referer        TEXT,
+  user_agent     TEXT,
+  region         TEXT,
+  map_theme      TEXT,
+  map_layer      TEXT,
+  map_zoom       INTEGER,
+  map_speed      TEXT,
+  map_center_lat REAL,
+  map_center_lon REAL,
+  dose_class     TEXT,
+  track_kind     TEXT,
+  track_id       TEXT,
+  detector       TEXT,
+  detail         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_time
+  ON analytics_events (occurred_at);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session
+  ON analytics_events (session_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_kind
+  ON analytics_events (kind);
 `
 
 	case "duckdb":
@@ -1718,6 +1804,50 @@ CREATE TABLE IF NOT EXISTS maintenance_state (
   updated_at BIGINT NOT NULL,
   message    TEXT
 );
+
+CREATE TABLE IF NOT EXISTS analytics_sessions (
+  session_id   TEXT PRIMARY KEY,
+  display_name TEXT,
+  created_at   BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
+  visit_count  INTEGER NOT NULL,
+  ip           TEXT,
+  user_agent   TEXT,
+  referer      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_sessions_seen
+  ON analytics_sessions (last_seen_at);
+
+CREATE SEQUENCE IF NOT EXISTS analytics_events_id_seq START 1;
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id             BIGINT PRIMARY KEY DEFAULT nextval('analytics_events_id_seq'),
+  session_id     TEXT,
+  display_name   TEXT,
+  occurred_at    BIGINT NOT NULL,
+  kind           TEXT,
+  path           TEXT,
+  ip             TEXT,
+  referer        TEXT,
+  user_agent     TEXT,
+  region         TEXT,
+  map_theme      TEXT,
+  map_layer      TEXT,
+  map_zoom       INTEGER,
+  map_speed      TEXT,
+  map_center_lat DOUBLE,
+  map_center_lon DOUBLE,
+  dose_class     TEXT,
+  track_kind     TEXT,
+  track_id       TEXT,
+  detector       TEXT,
+  detail         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_time
+  ON analytics_events (occurred_at);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session
+  ON analytics_events (session_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_kind
+  ON analytics_events (kind);
 `
 
 	case "clickhouse":
@@ -1801,6 +1931,41 @@ ORDER BY (code);`,
   message    String
 ) ENGINE = MergeTree()
 ORDER BY (task);`,
+			`CREATE TABLE IF NOT EXISTS analytics_sessions (
+  session_id   String,
+  display_name String,
+  created_at   Int64,
+  last_seen_at Int64,
+  visit_count  Int64,
+  ip           String,
+  user_agent   String,
+  referer      String
+) ENGINE = ReplacingMergeTree()
+ORDER BY (session_id);`,
+			`CREATE TABLE IF NOT EXISTS analytics_events (
+  id             UInt64 DEFAULT 0,
+  session_id     String,
+  display_name   String,
+  occurred_at    Int64,
+  kind           String,
+  path           String,
+  ip             String,
+  referer        String,
+  user_agent     String,
+  region         String,
+  map_theme      String,
+  map_layer      String,
+  map_zoom       Int32,
+  map_speed      String,
+  map_center_lat Float64,
+  map_center_lon Float64,
+  dose_class     String,
+  track_kind     String,
+  track_id       String,
+  detector       String,
+  detail         String
+) ENGINE = MergeTree()
+ORDER BY (occurred_at, session_id);`,
 		}
 
 	default:

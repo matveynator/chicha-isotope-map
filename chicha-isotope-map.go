@@ -48,6 +48,7 @@ import (
 	"syscall"
 	"time"
 
+	"chicha-isotope-map/pkg/analytics"
 	"chicha-isotope-map/pkg/api"
 	"chicha-isotope-map/pkg/atomfastimport"
 	"chicha-isotope-map/pkg/cimimport"
@@ -120,6 +121,7 @@ type logoConfig struct {
 var (
 	activeLogoConfig logoConfig
 	customLogoAsset  *logoAsset
+	analyticsService *analytics.Service
 )
 
 // usageSection groups CLI flags so operators can scan help output quickly. This keeps
@@ -4758,6 +4760,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	global := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
 	hasBounds := false
 	backgroundImport := false
+	fileTypes := map[string]int{}
 
 	for _, fh := range files {
 		logT(trackID, "Upload", "file received: %s", fh.Filename)
@@ -4770,6 +4773,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			err  error
 		)
 		ext := strings.ToLower(filepath.Ext(fh.Filename))
+		if strings.HasSuffix(strings.ToLower(fh.Filename), ".tar.gz") {
+			ext = ".tar.gz"
+		}
+		if ext == "" {
+			ext = "unknown"
+		}
+		fileTypes[ext]++
 		switch ext {
 		case ".kml":
 			bbox, trackID, err = processKMLFile(f, trackID, db, *dbType)
@@ -4891,6 +4901,41 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logT(trackID, "Upload", "redirecting browser to: %s", trackURL)
 	}
+
+	deviceSummary := database.DeviceSummary{}
+	if !backgroundImport && trackID != "" && db != nil {
+		if summary, err := db.GetTrackDeviceSummary(r.Context(), trackID, *dbType); err == nil {
+			deviceSummary = summary
+		} else {
+			logT(trackID, "Upload", "device summary lookup failed: %v", err)
+		}
+	}
+
+	detail := map[string]any{
+		"track_id":          trackID,
+		"track_url":         trackURL,
+		"file_types":        fileTypes,
+		"background_import": backgroundImport,
+		"status":            status,
+	}
+	if deviceSummary.Detector != "" {
+		detail["detector"] = deviceSummary.Detector
+	}
+	if deviceSummary.DeviceName != "" {
+		detail["device_name"] = deviceSummary.DeviceName
+	}
+	if deviceSummary.Tube != "" {
+		detail["tube"] = deviceSummary.Tube
+	}
+	if deviceSummary.Transport != "" {
+		detail["transport"] = deviceSummary.Transport
+	}
+	recordActivity(r, database.AnalyticsEvent{
+		Kind:     "track_upload",
+		TrackID:  trackID,
+		Detector: deviceSummary.Detector,
+		Detail:   encodeActivityDetail(detail),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{
@@ -5024,6 +5069,121 @@ func requestClientIP(r *http.Request) string {
 		return trimmed
 	}
 	return ""
+}
+
+// recordActivity captures a single user action with session context so logs can
+// attribute behavior to a stable human-readable name without blocking handlers.
+func recordActivity(r *http.Request, event database.AnalyticsEvent) {
+	if analyticsService == nil || r == nil {
+		return
+	}
+	session, ok := analytics.SessionFromContext(r.Context())
+	if !ok {
+		return
+	}
+	event.SessionID = session.ID
+	event.DisplayName = session.Name
+	if event.OccurredAt == 0 {
+		event.OccurredAt = time.Now().UTC().Unix()
+	}
+	if strings.TrimSpace(event.Path) == "" {
+		event.Path = r.URL.Path
+	}
+	if strings.TrimSpace(event.IP) == "" {
+		event.IP = requestClientIP(r)
+	}
+	if strings.TrimSpace(event.Referer) == "" {
+		event.Referer = strings.TrimSpace(r.Referer())
+	}
+	if strings.TrimSpace(event.UserAgent) == "" {
+		event.UserAgent = strings.TrimSpace(r.UserAgent())
+	}
+	analyticsService.RecordEvent(event)
+}
+
+// encodeActivityDetail keeps JSON payloads consistent for logging without
+// forcing callers to repeat error handling boilerplate.
+func encodeActivityDetail(detail map[string]any) string {
+	if detail == nil {
+		return ""
+	}
+	payload, err := json.Marshal(detail)
+	if err != nil {
+		return ""
+	}
+	return string(payload)
+}
+
+// logMapQueryActivity captures map query parameters plus a coarse dose summary
+// so hourly reports show which regions and exposure bands were popular.
+func logMapQueryActivity(r *http.Request, trackID string, zoom int, minLat, minLon, maxLat, maxLon float64, speeds string, dateFrom, dateTo int64, markers []database.Marker) {
+	if analyticsService == nil {
+		return
+	}
+	centerLat := (minLat + maxLat) / 2
+	centerLon := (minLon + maxLon) / 2
+	doseClass, maxDose := analytics.ClassifyDose(markers)
+	region := analytics.ApproximateRegion(centerLat, centerLon)
+	detail := map[string]any{
+		"bounds": map[string]float64{
+			"min_lat": minLat,
+			"min_lon": minLon,
+			"max_lat": maxLat,
+			"max_lon": maxLon,
+		},
+		"speed":        speeds,
+		"date_from":    dateFrom,
+		"date_to":      dateTo,
+		"marker_count": len(markers),
+		"max_dose":     maxDose,
+	}
+	if trackID != "" {
+		detail["track_id"] = trackID
+	}
+	recordActivity(r, database.AnalyticsEvent{
+		Kind:      "map_query",
+		Region:    region,
+		Theme:     "",
+		Layer:     "",
+		Speed:     speeds,
+		MapZoom:   zoom,
+		CenterLat: centerLat,
+		CenterLon: centerLon,
+		DoseClass: doseClass,
+		TrackKind: speeds,
+		TrackID:   trackID,
+		Detail:    encodeActivityDetail(detail),
+	})
+}
+
+// logStreamActivity tracks streaming endpoints so playback usage appears in logs.
+func logStreamActivity(r *http.Request, kind string, zoom int, minLat, minLon, maxLat, maxLon float64, speeds string, dateFrom, dateTo int64) {
+	if analyticsService == nil {
+		return
+	}
+	centerLat := (minLat + maxLat) / 2
+	centerLon := (minLon + maxLon) / 2
+	region := analytics.ApproximateRegion(centerLat, centerLon)
+	detail := map[string]any{
+		"bounds": map[string]float64{
+			"min_lat": minLat,
+			"min_lon": minLon,
+			"max_lat": maxLat,
+			"max_lon": maxLon,
+		},
+		"speed":     speeds,
+		"date_from": dateFrom,
+		"date_to":   dateTo,
+	}
+	recordActivity(r, database.AnalyticsEvent{
+		Kind:      kind,
+		Region:    region,
+		Speed:     speeds,
+		MapZoom:   zoom,
+		CenterLat: centerLat,
+		CenterLon: centerLon,
+		Detail:    encodeActivityDetail(detail),
+	})
 }
 
 // geoIPLookup asks an external service for approximate coordinates of the
@@ -5325,6 +5485,11 @@ func shortRedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	recordActivity(r, database.AnalyticsEvent{
+		Kind:   "short_link_redirect",
+		Detail: encodeActivityDetail(map[string]any{"code": code}),
+	})
+
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
@@ -5345,6 +5510,11 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	trackID := parts[2] // всё равно понадобится в JS
+	recordActivity(r, database.AnalyticsEvent{
+		Kind:    "track_page_view",
+		TrackID: trackID,
+		Detail:  encodeActivityDetail(map[string]any{"track_id": trackID}),
+	})
 
 	// --- шаблон ----------------------------------------------------------------
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
@@ -5460,6 +5630,15 @@ func qrPngHandler(w http.ResponseWriter, r *http.Request) {
 		u = u[:4096]
 	}
 
+	truncated := u
+	if len(truncated) > 256 {
+		truncated = truncated[:256]
+	}
+	recordActivity(r, database.AnalyticsEvent{
+		Kind:   "qr_request",
+		Detail: encodeActivityDetail(map[string]any{"target": truncated}),
+	})
+
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Disposition", "inline; filename=\"qr.png\"")
@@ -5562,6 +5741,8 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	logMapQueryActivity(r, trackID, zoom, minLat, minLon, maxLat, maxLon, q.Get("speeds"), dateFrom, dateTo, markers)
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(markers)
 }
@@ -5608,6 +5789,8 @@ func streamPlaybackHandler(w http.ResponseWriter, r *http.Request) {
 	if s := q.Get("dateTo"); s != "" {
 		dateTo, _ = strconv.ParseInt(s, 10, 64)
 	}
+
+	logStreamActivity(r, "playback_stream", zoom, minLat, minLon, maxLat, maxLon, q.Get("speeds"), dateFrom, dateTo)
 
 	stream, errCh := db.StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 		ctx,
@@ -5810,6 +5993,9 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "event: done\ndata: end\n\n")
 		return
 	}
+
+	logStreamActivity(r, "marker_stream", zoom, minLat, minLon, maxLat, maxLon, q.Get("speeds"), 0, 0)
+
 	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
 	var (
@@ -6585,6 +6771,11 @@ func main() {
 		log.Fatalf("DB schema: %v", err)
 	}
 
+	analyticsCtx, analyticsCancel := context.WithCancel(context.Background())
+	defer analyticsCancel()
+	analyticsService = analytics.NewService(db, *dbType, log.Printf)
+	analyticsService.Start(analyticsCtx)
+
 	importers := parseImportSelection(*importSourcesFlag)
 	// Importers run independently, so we launch them in parallel to keep startup
 	// responsive while each upstream source is polled sequentially.
@@ -6700,6 +6891,9 @@ func main() {
 		// so multi-user databases remain fully live during imports.
 		rootHandler = shield(rootHandler)
 	}
+	if analyticsService != nil {
+		rootHandler = analyticsService.Middleware(rootHandler)
+	}
 	rootHandler = withServerHeader(rootHandler)
 
 	// 5. HTTP/HTTPS-серверы
@@ -6738,6 +6932,9 @@ func main() {
 		select {
 		case sig := <-stopSignals:
 			log.Printf("🛑 shutdown signal received: %v", sig)
+			if analyticsCancel != nil {
+				analyticsCancel()
+			}
 			if indexDone != nil {
 				log.Printf("⏳ waiting for background index operations to finish...")
 				<-indexDone
