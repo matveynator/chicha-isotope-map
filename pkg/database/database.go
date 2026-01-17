@@ -1522,6 +1522,7 @@ CREATE TABLE IF NOT EXISTS analytics_sessions (
   session_id   TEXT PRIMARY KEY,
   display_name TEXT,
   visitor_number BIGINT NOT NULL DEFAULT 0,
+  fingerprint TEXT,
   created_at   BIGINT NOT NULL,
   last_seen_at BIGINT NOT NULL,
   visit_count  INTEGER NOT NULL,
@@ -1665,6 +1666,7 @@ CREATE TABLE IF NOT EXISTS analytics_sessions (
   session_id   TEXT PRIMARY KEY,
   display_name TEXT,
   visitor_number INTEGER NOT NULL DEFAULT 0,
+  fingerprint TEXT,
   created_at   BIGINT NOT NULL,
   last_seen_at BIGINT NOT NULL,
   visit_count  INTEGER NOT NULL,
@@ -1811,6 +1813,7 @@ CREATE TABLE IF NOT EXISTS analytics_sessions (
   session_id   TEXT PRIMARY KEY,
   display_name TEXT,
   visitor_number BIGINT NOT NULL DEFAULT 0,
+  fingerprint TEXT,
   created_at   BIGINT NOT NULL,
   last_seen_at BIGINT NOT NULL,
   visit_count  INTEGER NOT NULL,
@@ -1938,6 +1941,7 @@ ORDER BY (task);`,
   session_id   String,
   display_name String,
   visitor_number Int64,
+  fingerprint String,
   created_at   Int64,
   last_seen_at Int64,
   visit_count  Int64,
@@ -2219,6 +2223,7 @@ func (db *Database) ensureAnalyticsSessionColumns(dbType string, logf func(strin
 	}
 	required := []column{
 		{name: "visitor_number", def: "visitor_number BIGINT NOT NULL DEFAULT 0"},
+		{name: "fingerprint", def: "fingerprint TEXT"},
 	}
 
 	if logf == nil {
@@ -2249,6 +2254,10 @@ func (db *Database) ensureAnalyticsSessionColumns(dbType string, logf func(strin
 		return nil
 
 	case "clickhouse":
+		required = []column{
+			{name: "visitor_number", def: "visitor_number Int64"},
+			{name: "fingerprint", def: "fingerprint String"},
+		}
 		// ClickHouse needs explicit schema upgrades, so we issue the ALTER directly.
 		for _, col := range required {
 			stmt := fmt.Sprintf("ALTER TABLE analytics_sessions ADD COLUMN %s", col.def)

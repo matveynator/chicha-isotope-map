@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -65,9 +66,10 @@ type numberResponse struct {
 }
 
 const (
-	sessionCookieName = "cim_session"
-	nameCookieName    = "cim_session_name"
-	cookieMaxAge      = 365 * 24 * 60 * 60
+	sessionCookieName     = "cim_session"
+	nameCookieName        = "cim_session_name"
+	fingerprintCookieName = "cim_session_fp"
+	cookieMaxAge          = 365 * 24 * 60 * 60
 )
 
 var sessionContextKey = &struct{}{}
@@ -260,6 +262,23 @@ func (s *Service) loadVisitorSeed(ctx context.Context) (int, error) {
 	return seed, nil
 }
 
+// resolveSessionByFingerprint reuses existing session identity for browsers
+// that lost cookies, keeping the visitor name stable across IP changes.
+func (s *Service) resolveSessionByFingerprint(ctx context.Context, fingerprint string) (database.AnalyticsSession, bool) {
+	if s == nil || s.db == nil {
+		return database.AnalyticsSession{}, false
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	session, ok, err := s.db.AnalyticsSessionByFingerprint(ctx, fingerprint, s.dbType)
+	if err != nil {
+		s.logf("activity: fingerprint lookup failed: %v", err)
+		return database.AnalyticsSession{}, false
+	}
+	return session, ok
+}
+
 func (s *Service) run(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -314,10 +333,26 @@ func (s *Service) ensureSession(w http.ResponseWriter, r *http.Request) Session 
 	sessionID := readCookieValue(r, sessionCookieName)
 	name := readCookieValue(r, nameCookieName)
 	visitorNumber := parseVisitorNumber(name)
+	fingerprint := readCookieValue(r, fingerprintCookieName)
+	shouldWriteCookie := false
 	newSession := false
+
+	if sessionID == "" && fingerprint != "" {
+		if resolved, ok := s.resolveSessionByFingerprint(r.Context(), fingerprint); ok {
+			sessionID = resolved.SessionID
+			if name == "" {
+				name = resolved.DisplayName
+				if visitorNumber == 0 {
+					visitorNumber = resolved.VisitorNumber
+				}
+			}
+			shouldWriteCookie = true
+		}
+	}
 
 	if sessionID == "" {
 		sessionID = newSessionID()
+		shouldWriteCookie = true
 		newSession = true
 	}
 	if name == "" {
@@ -328,12 +363,17 @@ func (s *Service) ensureSession(w http.ResponseWriter, r *http.Request) Session 
 		}
 		visitorNumber = number
 		name = newSessionName(number)
-		newSession = true
+		shouldWriteCookie = true
+	}
+	if fingerprint == "" {
+		fingerprint = newSessionFingerprint(r)
+		shouldWriteCookie = true
 	}
 
-	if newSession {
+	if shouldWriteCookie {
 		writeCookie(w, r, sessionCookieName, sessionID)
 		writeCookie(w, r, nameCookieName, url.QueryEscape(name))
+		writeCookie(w, r, fingerprintCookieName, fingerprint)
 	}
 
 	session := Session{ID: sessionID, Name: name}
@@ -342,6 +382,7 @@ func (s *Service) ensureSession(w http.ResponseWriter, r *http.Request) Session 
 		SessionID:     sessionID,
 		DisplayName:   name,
 		VisitorNumber: visitorNumber,
+		Fingerprint:   fingerprint,
 		IP:            clientIP(r),
 		UserAgent:     strings.TrimSpace(r.UserAgent()),
 		Referer:       strings.TrimSpace(r.Referer()),
@@ -501,6 +542,21 @@ func newSessionID() string {
 		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(payload)
+}
+
+// newSessionFingerprint builds a stable identifier for a browser so repeated
+// visits reuse the same session name even when IP addresses change.
+func newSessionFingerprint(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	ua := strings.TrimSpace(r.UserAgent())
+	accept := strings.TrimSpace(r.Header.Get("Accept"))
+	lang := strings.TrimSpace(r.Header.Get("Accept-Language"))
+	encoding := strings.TrimSpace(r.Header.Get("Accept-Encoding"))
+	payload := fmt.Sprintf("%s|%s|%s|%s", ua, accept, lang, encoding)
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
 }
 
 func newSessionName(number int) string {

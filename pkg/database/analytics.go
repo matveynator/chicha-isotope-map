@@ -14,6 +14,7 @@ type AnalyticsSession struct {
 	SessionID     string
 	DisplayName   string
 	VisitorNumber int
+	Fingerprint   string
 	IP            string
 	UserAgent     string
 	Referer       string
@@ -119,8 +120,8 @@ func (db *Database) UpsertAnalyticsSession(ctx context.Context, session Analytic
 		}
 
 		if strings.EqualFold(dbType, "clickhouse") {
-			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, created_at, last_seen_at, visit_count, ip, user_agent, referer)
-VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
+			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, fingerprint, created_at, last_seen_at, visit_count, ip, user_agent, referer)
+VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 1),
 				placeholder(dbType, 2),
 				placeholder(dbType, 3),
@@ -129,11 +130,13 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 6),
 				placeholder(dbType, 7),
 				placeholder(dbType, 8),
-				placeholder(dbType, 9))
+				placeholder(dbType, 9),
+				placeholder(dbType, 10))
 			_, execErr := conn.ExecContext(ctx, insert,
 				session.SessionID,
 				name,
 				number,
+				session.Fingerprint,
 				session.CreatedAt,
 				now,
 				visits,
@@ -145,8 +148,8 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 		}
 
 		if err == sql.ErrNoRows {
-			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, created_at, last_seen_at, visit_count, ip, user_agent, referer)
-VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
+			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, fingerprint, created_at, last_seen_at, visit_count, ip, user_agent, referer)
+VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 1),
 				placeholder(dbType, 2),
 				placeholder(dbType, 3),
@@ -155,11 +158,13 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 6),
 				placeholder(dbType, 7),
 				placeholder(dbType, 8),
-				placeholder(dbType, 9))
+				placeholder(dbType, 9),
+				placeholder(dbType, 10))
 			_, execErr := conn.ExecContext(ctx, insert,
 				session.SessionID,
 				name,
 				number,
+				session.Fingerprint,
 				session.CreatedAt,
 				now,
 				visits,
@@ -170,7 +175,7 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 			return execErr
 		}
 
-		update := fmt.Sprintf(`UPDATE analytics_sessions SET display_name = %s, visitor_number = CASE WHEN %s > 0 THEN %s ELSE visitor_number END, last_seen_at = %s, visit_count = %s, ip = %s, user_agent = %s, referer = %s WHERE session_id = %s`,
+		update := fmt.Sprintf(`UPDATE analytics_sessions SET display_name = %s, visitor_number = CASE WHEN %s > 0 THEN %s ELSE visitor_number END, fingerprint = CASE WHEN %s != '' THEN %s ELSE fingerprint END, last_seen_at = %s, visit_count = %s, ip = %s, user_agent = %s, referer = %s WHERE session_id = %s`,
 			placeholder(dbType, 1),
 			placeholder(dbType, 2),
 			placeholder(dbType, 3),
@@ -179,11 +184,15 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 			placeholder(dbType, 6),
 			placeholder(dbType, 7),
 			placeholder(dbType, 8),
-			placeholder(dbType, 9))
+			placeholder(dbType, 9),
+			placeholder(dbType, 10),
+			placeholder(dbType, 11))
 		_, execErr := conn.ExecContext(ctx, update,
 			name,
 			number,
 			number,
+			session.Fingerprint,
+			session.Fingerprint,
 			now,
 			visits,
 			session.IP,
@@ -193,6 +202,41 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 		)
 		return execErr
 	})
+}
+
+// AnalyticsSessionByFingerprint resolves a session using the stable fingerprint
+// so repeat visitors can be recognized even when their IP changes.
+func (db *Database) AnalyticsSessionByFingerprint(ctx context.Context, fingerprint string, dbType string) (AnalyticsSession, bool, error) {
+	if db == nil {
+		return AnalyticsSession{}, false, fmt.Errorf("nil database")
+	}
+	fingerprint = strings.TrimSpace(fingerprint)
+	if fingerprint == "" {
+		return AnalyticsSession{}, false, nil
+	}
+	var result AnalyticsSession
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		query := fmt.Sprintf(`SELECT session_id, display_name, visitor_number FROM analytics_sessions WHERE fingerprint = %s ORDER BY last_seen_at DESC LIMIT 1`, placeholder(dbType, 1))
+		var number sql.NullInt64
+		err := conn.QueryRowContext(ctx, query, fingerprint).Scan(&result.SessionID, &result.DisplayName, &number)
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if number.Valid {
+			result.VisitorNumber = int(number.Int64)
+		}
+		return nil
+	})
+	if err != nil {
+		return AnalyticsSession{}, false, err
+	}
+	if result.SessionID == "" {
+		return AnalyticsSession{}, false, nil
+	}
+	return result, true, nil
 }
 
 // AnalyticsVisitorSeed returns the highest known visitor index so new sessions
