@@ -2769,6 +2769,18 @@ function toggleTrackViewPlayback() {
   startTrackViewPlayback();
 }
 
+function resetTrackViewPlaybackForZoom() {
+  if (!isTrackView || !currentTrackID) {
+    return;
+  }
+  // Zooming changes marker scale, so restart playback to match the new view.
+  if (trackViewPlaybackActive || trackViewPlaybackPaused) {
+    stopTrackViewPlayback(false);
+  }
+  trackViewAutoplayRequested = true;
+  trackViewAutoplayDone = false;
+}
+
 function maybeAutoplayTrackViewPlayback() {
   if (!trackViewAutoplayRequested || trackViewAutoplayDone) {
     return;
@@ -3209,6 +3221,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Adjust marker size on zoom
     map.on('zoomend', function() {
       adjustMarkerRadius();
+      resetTrackViewPlaybackForZoom();
       debounceUpdateMarkers();
     });
     map.on('moveend', debounceUpdateMarkers);
