@@ -4040,6 +4040,9 @@ function createDateRangeSlider(){
   // Reset button → drop custom filter and show full bounds of the *current* viewport
   btnReset.onclick = ()=>{
     stopPlayback(false);
+    // Clear playback-only layers and cached groups so reset always reflects the current viewport.
+    clearPlaybackMarkers();
+    clearMarkerLayerGroups();
     sessionStorage.removeItem('dateRangeState');
     if (initY && initM){
       const rY = yearSlider.noUiSlider.options.range;
@@ -4052,7 +4055,7 @@ function createDateRangeSlider(){
 
       // remember "no filter" == full range of the viewport
       saveDateRangeState([rM.min, rM.max]);
-      debounceUpdateMarkers();
+      updateMarkers(true);
       updateUrl(); // keep reset reflected in shared links
     }
   };
