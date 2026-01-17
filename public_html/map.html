@@ -2667,6 +2667,7 @@ function waitTrackViewWhilePaused() {
 function createTrackViewPlaybackState() {
   return {
     pointIndex: 0,
+    generation: trackViewPlaybackGeneration,
   };
 }
 
@@ -2688,15 +2689,24 @@ async function playTrackViewPoints(state, points) {
     if (!trackViewPlaybackActive) {
       return;
     }
+    if (state.generation !== trackViewPlaybackGeneration) {
+      return;
+    }
     if (trackViewPlaybackPaused) {
       await waitTrackViewWhilePaused();
       if (!trackViewPlaybackActive) {
+        return;
+      }
+      if (state.generation !== trackViewPlaybackGeneration) {
         return;
       }
     }
     renderTrackViewMarker(points[i], map.getZoom(), i);
     state.pointIndex = i + 1;
     await trackViewDelay(trackViewPlaybackConfig.pointDelayMs);
+    if (state.generation !== trackViewPlaybackGeneration) {
+      return;
+    }
   }
 }
 
@@ -2723,6 +2733,7 @@ async function startTrackViewPlayback() {
   if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
     return;
   }
+  trackViewPlaybackGeneration += 1;
   trackViewPlaybackActive = true;
   trackViewPlaybackPaused = false;
   setTrackViewPlaybackButtonState('playing');
@@ -2733,6 +2744,7 @@ async function startTrackViewPlayback() {
   clearTrackViewPlaybackMarkers();
 
   trackViewPlaybackState = createTrackViewPlaybackState();
+  const playbackGeneration = trackViewPlaybackState.generation;
   try {
     // Sort by timestamp so playback always runs from the first marker to the last.
     const normalized = trackViewMarkers
@@ -2747,7 +2759,9 @@ async function startTrackViewPlayback() {
   } catch (err) {
     return;
   } finally {
-    stopTrackViewPlayback(true);
+    if (playbackGeneration === trackViewPlaybackGeneration) {
+      stopTrackViewPlayback(true);
+    }
   }
 }
 
@@ -2774,6 +2788,7 @@ function resetTrackViewPlaybackForZoom() {
     return;
   }
   // Zooming changes the visible bounds, so clear state before re-streaming.
+  trackViewPlaybackGeneration += 1;
   stopTrackViewPlayback(false);
   trackViewAutoplayRequested = true;
   trackViewAutoplayDone = false;
@@ -2827,6 +2842,8 @@ let trackViewAutoplayDone = false;
 let trackViewPlaybackPaused = false;
 let trackViewPlaybackResume = null;
 let trackViewPlaybackActive = false;
+// Generation guards stop in-flight playback loops when a new viewport starts.
+let trackViewPlaybackGeneration = 0;
 const trackViewPlaybackConfig = { pointDelayMs: 70 };
 let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
