@@ -866,6 +866,11 @@ body, html {
           border-color:#1e88e5;
         }
 
+        /* Track view reset sits under play so both buttons remain aligned. */
+        .track-reset-btn{
+          margin-top:4px;
+        }
+
         .loading-overlay{
           position:absolute;
           top:50%;left:50%;
@@ -2520,6 +2525,9 @@ function createTrackViewPlaybackControl() {
         <button id="trackPlaybackButton" class="slider-play-btn" type="button">
           ▶
         </button>
+        <button id="trackPlaybackResetButton" class="slider-play-btn track-reset-btn" type="button">
+          ↺
+        </button>
       `;
       L.DomEvent.disableClickPropagation(div);
       return div;
@@ -2529,9 +2537,18 @@ function createTrackViewPlaybackControl() {
   control.addTo(map);
   trackViewPlaybackContainer = control.getContainer();
   trackViewPlaybackButton = trackViewPlaybackContainer.querySelector('#trackPlaybackButton');
+  const trackViewResetButton = trackViewPlaybackContainer.querySelector('#trackPlaybackResetButton');
   if (trackViewPlaybackButton) {
     trackViewPlaybackButton.addEventListener('click', function () {
       toggleTrackViewPlayback();
+    });
+  }
+  if (trackViewResetButton) {
+    trackViewResetButton.setAttribute('title', 'Reset track playback');
+    trackViewResetButton.setAttribute('aria-label', 'Reset track playback');
+    trackViewResetButton.addEventListener('click', function () {
+      resetTrackViewPlaybackForZoom();
+      updateMarkers(true);
     });
   }
   refreshTrackViewPlaybackControl();
