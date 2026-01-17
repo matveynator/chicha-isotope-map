@@ -2782,6 +2782,19 @@ function resetTrackViewPlaybackForZoom() {
   clearTrackViewPlaybackMarkers();
 }
 
+function startTrackViewAutoplayAfterReload() {
+  if (!isTrackView || !currentTrackID) {
+    return;
+  }
+  if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
+    return;
+  }
+  // After a reload, always auto-play so the refreshed viewport is visible.
+  trackViewAutoplayRequested = true;
+  trackViewAutoplayDone = true;
+  startTrackViewPlayback();
+}
+
 function maybeAutoplayTrackViewPlayback() {
   if (!trackViewAutoplayRequested || trackViewAutoplayDone) {
     return;
@@ -5023,7 +5036,7 @@ function updateMarkers(forceReload){
       if (!trackViewAutoplayRequested) {
         renderTrackViewSnapshot();
       }
-      maybeAutoplayTrackViewPlayback();
+      startTrackViewAutoplayAfterReload();
     }
   });
 
