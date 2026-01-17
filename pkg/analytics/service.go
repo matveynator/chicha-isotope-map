@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,11 +23,17 @@ import (
 // Service wires session tracking, event ingestion, and hourly summaries together
 // using channels so request handlers never block on IO-heavy operations.
 type Service struct {
-	db       *database.Database
-	dbType   string
-	logf     func(string, ...any)
-	messages chan message
-	clock    func() time.Time
+	db               *database.Database
+	dbType           string
+	logf             func(string, ...any)
+	messages         chan message
+	numbers          chan numberRequest
+	fingerprints     chan fingerprintRequest
+	clock            func() time.Time
+	visitorCounter   int
+	counterLoaded    bool
+	fingerprintCache map[string]fingerprintEntry
+	fingerprintTTL   time.Duration
 }
 
 // Session keeps the resolved visitor identity handy for handlers that want to
@@ -48,10 +56,43 @@ type message struct {
 	event   database.AnalyticsEvent
 }
 
+// numberRequest serializes visitor numbering so handler goroutines avoid races
+// without sharing mutable counters directly.
+type numberRequest struct {
+	ctx  context.Context
+	resp chan numberResponse
+}
+
+type numberResponse struct {
+	number int
+	err    error
+}
+
+type fingerprintRequestKind int
+
 const (
-	sessionCookieName = "cim_session"
-	nameCookieName    = "cim_session_name"
-	cookieMaxAge      = 365 * 24 * 60 * 60
+	fingerprintLookup fingerprintRequestKind = iota
+	fingerprintStore
+)
+
+type fingerprintRequest struct {
+	kind        fingerprintRequestKind
+	fingerprint string
+	session     database.AnalyticsSession
+	now         time.Time
+	resp        chan fingerprintResponse
+}
+
+type fingerprintResponse struct {
+	session database.AnalyticsSession
+	ok      bool
+}
+
+const (
+	sessionCookieName     = "cim_session"
+	nameCookieName        = "cim_session_name"
+	fingerprintCookieName = "cim_session_fp"
+	cookieMaxAge          = 365 * 24 * 60 * 60
 )
 
 var sessionContextKey = &struct{}{}
@@ -63,11 +104,15 @@ func NewService(db *database.Database, dbType string, logf func(string, ...any))
 		logf = log.Printf
 	}
 	return &Service{
-		db:       db,
-		dbType:   strings.ToLower(strings.TrimSpace(dbType)),
-		logf:     logf,
-		messages: make(chan message, 256),
-		clock:    time.Now,
+		db:               db,
+		dbType:           strings.ToLower(strings.TrimSpace(dbType)),
+		logf:             logf,
+		messages:         make(chan message, 256),
+		numbers:          make(chan numberRequest, 32),
+		fingerprints:     make(chan fingerprintRequest, 64),
+		clock:            time.Now,
+		fingerprintCache: make(map[string]fingerprintEntry),
+		fingerprintTTL:   10 * time.Second,
 	}
 }
 
@@ -180,6 +225,204 @@ func ClassifyDose(markers []database.Marker) (string, float64) {
 // Internal helpers
 // -------------------------
 
+// nextVisitorNumber asks the background worker for a sequential visitor counter
+// so cookies remain stable without racing on shared state.
+func (s *Service) nextVisitorNumber(ctx context.Context) (int, error) {
+	if s == nil {
+		return 0, fmt.Errorf("analytics service unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req := numberRequest{
+		ctx:  ctx,
+		resp: make(chan numberResponse, 1),
+	}
+
+	select {
+	case s.numbers <- req:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+
+	select {
+	case res := <-req.resp:
+		return res.number, res.err
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+}
+
+// handleNumberRequest keeps the counter update on the run goroutine so only
+// channels coordinate access, following "Don't communicate by sharing memory."
+func (s *Service) handleNumberRequest(ctx context.Context, req numberRequest) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !s.counterLoaded {
+		seed, err := s.loadVisitorSeed(ctx)
+		if err != nil {
+			s.logf("activity: visitor seed load failed: %v", err)
+		}
+		s.visitorCounter = seed
+		s.counterLoaded = true
+	}
+	s.visitorCounter++
+	response := numberResponse{number: s.visitorCounter}
+	select {
+	case req.resp <- response:
+	case <-req.ctx.Done():
+	}
+}
+
+// loadVisitorSeed reads the current maximum visitor number so counters continue
+// across restarts without reusing IDs.
+func (s *Service) loadVisitorSeed(ctx context.Context) (int, error) {
+	if s.db == nil {
+		return 0, nil
+	}
+	seed, err := s.db.AnalyticsVisitorSeed(ctx, s.dbType)
+	if err != nil {
+		return 0, err
+	}
+	return seed, nil
+}
+
+// fingerprintEntry keeps a short-lived mapping so concurrent first requests
+// from the same browser share a single session before cookies land.
+type fingerprintEntry struct {
+	sessionID     string
+	displayName   string
+	visitorNumber int
+	expiresAt     time.Time
+}
+
+// lookupFingerprint checks the in-memory cache first so parallel requests can
+// reuse the same session while the database write is still pending.
+func (s *Service) lookupFingerprint(ctx context.Context, fingerprint string) (database.AnalyticsSession, bool) {
+	if s == nil || fingerprint == "" {
+		return database.AnalyticsSession{}, false
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req := fingerprintRequest{
+		kind:        fingerprintLookup,
+		fingerprint: fingerprint,
+		now:         s.clock().UTC(),
+		resp:        make(chan fingerprintResponse, 1),
+	}
+	select {
+	case s.fingerprints <- req:
+	case <-ctx.Done():
+		return database.AnalyticsSession{}, false
+	}
+	select {
+	case res := <-req.resp:
+		return res.session, res.ok
+	case <-ctx.Done():
+		return database.AnalyticsSession{}, false
+	}
+}
+
+// storeFingerprint updates the in-memory cache so newly created sessions can be
+// reused immediately by concurrent requests.
+func (s *Service) storeFingerprint(ctx context.Context, session database.AnalyticsSession) {
+	if s == nil || session.Fingerprint == "" {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req := fingerprintRequest{
+		kind:        fingerprintStore,
+		fingerprint: session.Fingerprint,
+		session:     session,
+		now:         s.clock().UTC(),
+		resp:        make(chan fingerprintResponse, 1),
+	}
+	select {
+	case s.fingerprints <- req:
+	case <-ctx.Done():
+		return
+	}
+	select {
+	case <-req.resp:
+	case <-ctx.Done():
+	}
+}
+
+// handleFingerprintRequest keeps cache updates serialized on the run goroutine
+// so handlers do not share mutable maps directly.
+func (s *Service) handleFingerprintRequest(req fingerprintRequest) {
+	if s == nil {
+		return
+	}
+	now := req.now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	for key, entry := range s.fingerprintCache {
+		if now.After(entry.expiresAt) {
+			delete(s.fingerprintCache, key)
+		}
+	}
+	switch req.kind {
+	case fingerprintLookup:
+		entry, ok := s.fingerprintCache[req.fingerprint]
+		if !ok || now.After(entry.expiresAt) {
+			resp := fingerprintResponse{}
+			select {
+			case req.resp <- resp:
+			default:
+			}
+			return
+		}
+		resp := fingerprintResponse{
+			ok: true,
+			session: database.AnalyticsSession{
+				SessionID:     entry.sessionID,
+				DisplayName:   entry.displayName,
+				VisitorNumber: entry.visitorNumber,
+				Fingerprint:   req.fingerprint,
+			},
+		}
+		select {
+		case req.resp <- resp:
+		default:
+		}
+	case fingerprintStore:
+		entry := fingerprintEntry{
+			sessionID:     req.session.SessionID,
+			displayName:   req.session.DisplayName,
+			visitorNumber: req.session.VisitorNumber,
+			expiresAt:     now.Add(s.fingerprintTTL),
+		}
+		s.fingerprintCache[req.fingerprint] = entry
+		select {
+		case req.resp <- fingerprintResponse{ok: true}:
+		default:
+		}
+	}
+}
+
+// resolveSessionByFingerprint reuses existing session identity for browsers
+// that lost cookies, keeping the visitor name stable across IP changes.
+func (s *Service) resolveSessionByFingerprint(ctx context.Context, fingerprint string) (database.AnalyticsSession, bool) {
+	if s == nil || s.db == nil {
+		return database.AnalyticsSession{}, false
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	session, ok, err := s.db.AnalyticsSessionByFingerprint(ctx, fingerprint, s.dbType)
+	if err != nil {
+		s.logf("activity: fingerprint lookup failed: %v", err)
+		return database.AnalyticsSession{}, false
+	}
+	return session, ok
+}
+
 func (s *Service) run(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -194,6 +437,10 @@ func (s *Service) run(ctx context.Context) {
 			return
 		case msg := <-s.messages:
 			s.handleMessage(ctx, msg)
+		case req := <-s.numbers:
+			s.handleNumberRequest(ctx, req)
+		case req := <-s.fingerprints:
+			s.handleFingerprintRequest(req)
 		case tick := <-ticker.C:
 			s.emitSummary(ctx, tick)
 		}
@@ -231,33 +478,70 @@ func (s *Service) handleMessage(ctx context.Context, msg message) {
 func (s *Service) ensureSession(w http.ResponseWriter, r *http.Request) Session {
 	sessionID := readCookieValue(r, sessionCookieName)
 	name := readCookieValue(r, nameCookieName)
+	visitorNumber := parseVisitorNumber(name)
+	fingerprint := readCookieValue(r, fingerprintCookieName)
+	shouldWriteCookie := false
 	newSession := false
+
+	if fingerprint == "" {
+		fingerprint = newSessionFingerprint(r)
+	}
+
+	if sessionID == "" && fingerprint != "" {
+		if cached, ok := s.lookupFingerprint(r.Context(), fingerprint); ok {
+			sessionID = cached.SessionID
+			name = cached.DisplayName
+			visitorNumber = cached.VisitorNumber
+			shouldWriteCookie = true
+		} else if resolved, ok := s.resolveSessionByFingerprint(r.Context(), fingerprint); ok {
+			sessionID = resolved.SessionID
+			name = resolved.DisplayName
+			visitorNumber = resolved.VisitorNumber
+			shouldWriteCookie = true
+		}
+	}
 
 	if sessionID == "" {
 		sessionID = newSessionID()
+		shouldWriteCookie = true
 		newSession = true
 	}
 	if name == "" {
-		name = newSessionName()
-		newSession = true
+		number, err := s.nextVisitorNumber(r.Context())
+		if err != nil {
+			s.logf("activity: visitor number fallback: %v", err)
+			number = pickNumber(100, 999)
+		}
+		visitorNumber = number
+		name = newSessionName(number)
+		shouldWriteCookie = true
+	}
+	if fingerprint == "" {
+		fingerprint = newSessionFingerprint(r)
+		shouldWriteCookie = true
 	}
 
-	if newSession {
+	if shouldWriteCookie {
 		writeCookie(w, r, sessionCookieName, sessionID)
 		writeCookie(w, r, nameCookieName, url.QueryEscape(name))
+		writeCookie(w, r, fingerprintCookieName, fingerprint)
 	}
 
 	session := Session{ID: sessionID, Name: name}
+	stored := database.AnalyticsSession{
+		SessionID:     sessionID,
+		DisplayName:   name,
+		VisitorNumber: visitorNumber,
+		Fingerprint:   fingerprint,
+		IP:            clientIP(r),
+		UserAgent:     strings.TrimSpace(r.UserAgent()),
+		Referer:       strings.TrimSpace(r.Referer()),
+		CreatedAt:     createdAtValue(newSession, s.clock().UTC()),
+		LastSeenAt:    s.clock().UTC().Unix(),
+	}
 
-	s.enqueueSession(database.AnalyticsSession{
-		SessionID:   sessionID,
-		DisplayName: name,
-		IP:          clientIP(r),
-		UserAgent:   strings.TrimSpace(r.UserAgent()),
-		Referer:     strings.TrimSpace(r.Referer()),
-		CreatedAt:   createdAtValue(newSession, s.clock().UTC()),
-		LastSeenAt:  s.clock().UTC().Unix(),
-	})
+	s.storeFingerprint(r.Context(), stored)
+	s.enqueueSession(stored)
 
 	return session
 }
@@ -413,11 +697,46 @@ func newSessionID() string {
 	return hex.EncodeToString(payload)
 }
 
-func newSessionName() string {
+// newSessionFingerprint builds a stable identifier for a browser so repeated
+// visits reuse the same session name even when IP addresses change.
+func newSessionFingerprint(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	ua := strings.TrimSpace(r.UserAgent())
+	accept := strings.TrimSpace(r.Header.Get("Accept"))
+	lang := strings.TrimSpace(r.Header.Get("Accept-Language"))
+	encoding := strings.TrimSpace(r.Header.Get("Accept-Encoding"))
+	payload := fmt.Sprintf("%s|%s|%s|%s", ua, accept, lang, encoding)
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
+}
+
+func newSessionName(number int) string {
 	adjective := pickOne(sessionAdjectives)
 	noun := pickOne(sessionNouns)
-	number := pickNumber(100, 999)
-	return fmt.Sprintf("%s %s %d", adjective, noun, number)
+	if number <= 0 {
+		number = pickNumber(100, 999)
+	}
+	return fmt.Sprintf("%s%s-%d", adjective, noun, number)
+}
+
+// parseVisitorNumber extracts the numeric suffix so existing cookies can
+// populate the session record without extra database reads.
+func parseVisitorNumber(name string) int {
+	if name == "" {
+		return 0
+	}
+	idx := strings.LastIndex(name, "-")
+	if idx < 0 || idx+1 >= len(name) {
+		return 0
+	}
+	value := strings.TrimSpace(name[idx+1:])
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 func pickOne(values []string) string {
