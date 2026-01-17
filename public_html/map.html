@@ -866,6 +866,11 @@ body, html {
           border-color:#1e88e5;
         }
 
+        /* Track view reset sits under play so both buttons remain aligned. */
+        .track-reset-btn{
+          margin-top:4px;
+        }
+
         .loading-overlay{
           position:absolute;
           top:50%;left:50%;
@@ -2520,6 +2525,9 @@ function createTrackViewPlaybackControl() {
         <button id="trackPlaybackButton" class="slider-play-btn" type="button">
           ▶
         </button>
+        <button id="trackPlaybackResetButton" class="slider-play-btn track-reset-btn" type="button">
+          ↺
+        </button>
       `;
       L.DomEvent.disableClickPropagation(div);
       return div;
@@ -2529,9 +2537,18 @@ function createTrackViewPlaybackControl() {
   control.addTo(map);
   trackViewPlaybackContainer = control.getContainer();
   trackViewPlaybackButton = trackViewPlaybackContainer.querySelector('#trackPlaybackButton');
+  const trackViewResetButton = trackViewPlaybackContainer.querySelector('#trackPlaybackResetButton');
   if (trackViewPlaybackButton) {
     trackViewPlaybackButton.addEventListener('click', function () {
       toggleTrackViewPlayback();
+    });
+  }
+  if (trackViewResetButton) {
+    trackViewResetButton.setAttribute('title', 'Reset track playback');
+    trackViewResetButton.setAttribute('aria-label', 'Reset track playback');
+    trackViewResetButton.addEventListener('click', function () {
+      resetTrackViewPlaybackForZoom();
+      updateMarkers(true);
     });
   }
   refreshTrackViewPlaybackControl();
@@ -2667,6 +2684,7 @@ function waitTrackViewWhilePaused() {
 function createTrackViewPlaybackState() {
   return {
     pointIndex: 0,
+    generation: trackViewPlaybackGeneration,
   };
 }
 
@@ -2688,15 +2706,24 @@ async function playTrackViewPoints(state, points) {
     if (!trackViewPlaybackActive) {
       return;
     }
+    if (state.generation !== trackViewPlaybackGeneration) {
+      return;
+    }
     if (trackViewPlaybackPaused) {
       await waitTrackViewWhilePaused();
       if (!trackViewPlaybackActive) {
+        return;
+      }
+      if (state.generation !== trackViewPlaybackGeneration) {
         return;
       }
     }
     renderTrackViewMarker(points[i], map.getZoom(), i);
     state.pointIndex = i + 1;
     await trackViewDelay(trackViewPlaybackConfig.pointDelayMs);
+    if (state.generation !== trackViewPlaybackGeneration) {
+      return;
+    }
   }
 }
 
@@ -2723,6 +2750,7 @@ async function startTrackViewPlayback() {
   if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
     return;
   }
+  trackViewPlaybackGeneration += 1;
   trackViewPlaybackActive = true;
   trackViewPlaybackPaused = false;
   setTrackViewPlaybackButtonState('playing');
@@ -2733,6 +2761,7 @@ async function startTrackViewPlayback() {
   clearTrackViewPlaybackMarkers();
 
   trackViewPlaybackState = createTrackViewPlaybackState();
+  const playbackGeneration = trackViewPlaybackState.generation;
   try {
     // Sort by timestamp so playback always runs from the first marker to the last.
     const normalized = trackViewMarkers
@@ -2747,7 +2776,9 @@ async function startTrackViewPlayback() {
   } catch (err) {
     return;
   } finally {
-    stopTrackViewPlayback(true);
+    if (playbackGeneration === trackViewPlaybackGeneration) {
+      stopTrackViewPlayback(true);
+    }
   }
 }
 
@@ -2766,6 +2797,33 @@ function toggleTrackViewPlayback() {
     }
     return;
   }
+  startTrackViewPlayback();
+}
+
+function resetTrackViewPlaybackForZoom() {
+  if (!isTrackView || !currentTrackID) {
+    return;
+  }
+  // Zooming changes the visible bounds, so clear state before re-streaming.
+  trackViewPlaybackGeneration += 1;
+  stopTrackViewPlayback(false);
+  trackViewAutoplayRequested = true;
+  trackViewAutoplayDone = false;
+  trackViewMarkers = [];
+  trackViewMarkersReady = false;
+  clearTrackViewPlaybackMarkers();
+}
+
+function startTrackViewAutoplayAfterReload() {
+  if (!isTrackView || !currentTrackID) {
+    return;
+  }
+  if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
+    return;
+  }
+  // After a reload, always auto-play so the refreshed viewport is visible.
+  trackViewAutoplayRequested = true;
+  trackViewAutoplayDone = true;
   startTrackViewPlayback();
 }
 
@@ -2801,11 +2859,14 @@ let trackViewAutoplayDone = false;
 let trackViewPlaybackPaused = false;
 let trackViewPlaybackResume = null;
 let trackViewPlaybackActive = false;
+// Generation guards stop in-flight playback loops when a new viewport starts.
+let trackViewPlaybackGeneration = 0;
 const trackViewPlaybackConfig = { pointDelayMs: 70 };
 let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
 let trackViewMarkers = [];
 let trackViewMarkersReady = false;
+let trackViewReloadTimer = null;
 
 var liveHistoryCache = new Map();
 
@@ -3209,9 +3270,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // Adjust marker size on zoom
     map.on('zoomend', function() {
       adjustMarkerRadius();
-      debounceUpdateMarkers();
+      scheduleTrackViewReload();
     });
-    map.on('moveend', debounceUpdateMarkers);
+    map.on('moveend', scheduleTrackViewReload);
   } else {
     // Dynamic marker updates in global mode
     map.on('load', debounceUpdateMarkers);
@@ -4843,8 +4904,12 @@ function updateMapMarkers(loadingEl, forceReload) {
 function updateMarkers(forceReload){
   const loadingEl = document.getElementById('loadingOverlay');
   if (trackPlaybackActive || trackViewPlaybackActive) {
-    if (loadingEl) loadingEl.style.display='none';
-    return;
+    if (forceReload && trackViewPlaybackActive) {
+      stopTrackViewPlayback(false);
+    } else {
+      if (loadingEl) loadingEl.style.display='none';
+      return;
+    }
   }
   if (!isTrackView) {
     updateMapMarkers(loadingEl, forceReload);
@@ -5005,7 +5070,7 @@ function updateMarkers(forceReload){
       if (!trackViewAutoplayRequested) {
         renderTrackViewSnapshot();
       }
-      maybeAutoplayTrackViewPlayback();
+      startTrackViewAutoplayAfterReload();
     }
   });
 
@@ -5904,6 +5969,20 @@ let debounceTimeout;
 function debounceUpdateMarkers() {
   clearTimeout(debounceTimeout);
   debounceTimeout = setTimeout(updateMarkers, 300);
+}
+
+function scheduleTrackViewReload() {
+  if (!isTrackView) {
+    return;
+  }
+  if (trackViewReloadTimer) {
+    clearTimeout(trackViewReloadTimer);
+  }
+  trackViewReloadTimer = setTimeout(function() {
+    trackViewReloadTimer = null;
+    resetTrackViewPlaybackForZoom();
+    updateMarkers(true);
+  }, 200);
 }
 
 function adjustMarkerRadius() {
