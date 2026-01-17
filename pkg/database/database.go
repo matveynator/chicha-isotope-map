@@ -1521,6 +1521,7 @@ CREATE TABLE IF NOT EXISTS maintenance_state (
 CREATE TABLE IF NOT EXISTS analytics_sessions (
   session_id   TEXT PRIMARY KEY,
   display_name TEXT,
+  visitor_number BIGINT NOT NULL DEFAULT 0,
   created_at   BIGINT NOT NULL,
   last_seen_at BIGINT NOT NULL,
   visit_count  INTEGER NOT NULL,
@@ -1663,6 +1664,7 @@ CREATE TABLE IF NOT EXISTS maintenance_state (
 CREATE TABLE IF NOT EXISTS analytics_sessions (
   session_id   TEXT PRIMARY KEY,
   display_name TEXT,
+  visitor_number INTEGER NOT NULL DEFAULT 0,
   created_at   BIGINT NOT NULL,
   last_seen_at BIGINT NOT NULL,
   visit_count  INTEGER NOT NULL,
@@ -1808,6 +1810,7 @@ CREATE TABLE IF NOT EXISTS maintenance_state (
 CREATE TABLE IF NOT EXISTS analytics_sessions (
   session_id   TEXT PRIMARY KEY,
   display_name TEXT,
+  visitor_number BIGINT NOT NULL DEFAULT 0,
   created_at   BIGINT NOT NULL,
   last_seen_at BIGINT NOT NULL,
   visit_count  INTEGER NOT NULL,
@@ -1934,6 +1937,7 @@ ORDER BY (task);`,
 			`CREATE TABLE IF NOT EXISTS analytics_sessions (
   session_id   String,
   display_name String,
+  visitor_number Int64,
   created_at   Int64,
   last_seen_at Int64,
   visit_count  Int64,
@@ -1988,6 +1992,9 @@ ORDER BY (occurred_at, session_id);`,
 	}
 	if err := db.ensureRealtimeMetadataColumns(cfg.DBType, logf); err != nil {
 		return fmt.Errorf("add realtime metadata column: %w", err)
+	}
+	if err := db.ensureAnalyticsSessionColumns(cfg.DBType, logf); err != nil {
+		return fmt.Errorf("add analytics session column: %w", err)
 	}
 
 	return nil
@@ -2194,6 +2201,104 @@ func (db *Database) ensureRealtimeMetadataColumns(dbType string, logf func(strin
 			if _, err := db.DB.Exec(stmt); err != nil {
 				if isSchemaAlreadyExistsError(err) {
 					logf("⏭️  realtime_measurements.%s already exists; skipping.", col.name)
+					continue
+				}
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// ensureAnalyticsSessionColumns upgrades analytics_sessions with optional columns
+// so sequential visitor numbering works on older databases without manual SQL.
+func (db *Database) ensureAnalyticsSessionColumns(dbType string, logf func(string, ...any)) error {
+	type column struct {
+		name string
+		def  string
+	}
+	required := []column{
+		{name: "visitor_number", def: "visitor_number BIGINT NOT NULL DEFAULT 0"},
+	}
+
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+
+	switch strings.ToLower(dbType) {
+	case "pgx", "duckdb":
+		present, err := db.loadColumnPresence(context.Background(), dbType, "analytics_sessions")
+		if err != nil {
+			return err
+		}
+		for _, col := range required {
+			if present[col.name] {
+				logf("⏭️  analytics_sessions.%s already exists; skipping.", col.name)
+				continue
+			}
+			stmt := fmt.Sprintf("ALTER TABLE analytics_sessions ADD COLUMN %s", col.def)
+			logf("🧩 adding analytics_sessions.%s", col.name)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				if isSchemaAlreadyExistsError(err) {
+					logf("⏭️  analytics_sessions.%s already exists; skipping.", col.name)
+					continue
+				}
+				return err
+			}
+		}
+		return nil
+
+	case "clickhouse":
+		// ClickHouse needs explicit schema upgrades, so we issue the ALTER directly.
+		for _, col := range required {
+			stmt := fmt.Sprintf("ALTER TABLE analytics_sessions ADD COLUMN %s", col.def)
+			logf("🧩 adding analytics_sessions.%s", col.name)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				if isSchemaAlreadyExistsError(err) {
+					logf("⏭️  analytics_sessions.%s already exists; skipping.", col.name)
+					continue
+				}
+				return err
+			}
+		}
+		return nil
+
+	default:
+		rows, err := db.DB.Query(`PRAGMA table_info(analytics_sessions);`)
+		if err != nil {
+			return fmt.Errorf("describe analytics_sessions: %w", err)
+		}
+		defer rows.Close()
+
+		present := make(map[string]bool)
+		for rows.Next() {
+			var (
+				cid     int
+				name    string
+				ctype   string
+				notnull int
+				dflt    sql.NullString
+				pk      int
+			)
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+				return fmt.Errorf("scan analytics_sessions pragma: %w", err)
+			}
+			present[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate analytics_sessions pragma: %w", err)
+		}
+
+		for _, col := range required {
+			if present[col.name] {
+				logf("⏭️  analytics_sessions.%s already exists; skipping.", col.name)
+				continue
+			}
+			stmt := fmt.Sprintf("ALTER TABLE analytics_sessions ADD COLUMN %s", col.def)
+			logf("🧩 adding analytics_sessions.%s", col.name)
+			if _, err := db.DB.Exec(stmt); err != nil {
+				if isSchemaAlreadyExistsError(err) {
+					logf("⏭️  analytics_sessions.%s already exists; skipping.", col.name)
 					continue
 				}
 				return err

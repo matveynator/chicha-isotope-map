@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,11 +22,14 @@ import (
 // Service wires session tracking, event ingestion, and hourly summaries together
 // using channels so request handlers never block on IO-heavy operations.
 type Service struct {
-	db       *database.Database
-	dbType   string
-	logf     func(string, ...any)
-	messages chan message
-	clock    func() time.Time
+	db             *database.Database
+	dbType         string
+	logf           func(string, ...any)
+	messages       chan message
+	numbers        chan numberRequest
+	clock          func() time.Time
+	visitorCounter int
+	counterLoaded  bool
 }
 
 // Session keeps the resolved visitor identity handy for handlers that want to
@@ -48,6 +52,18 @@ type message struct {
 	event   database.AnalyticsEvent
 }
 
+// numberRequest serializes visitor numbering so handler goroutines avoid races
+// without sharing mutable counters directly.
+type numberRequest struct {
+	ctx  context.Context
+	resp chan numberResponse
+}
+
+type numberResponse struct {
+	number int
+	err    error
+}
+
 const (
 	sessionCookieName = "cim_session"
 	nameCookieName    = "cim_session_name"
@@ -67,6 +83,7 @@ func NewService(db *database.Database, dbType string, logf func(string, ...any))
 		dbType:   strings.ToLower(strings.TrimSpace(dbType)),
 		logf:     logf,
 		messages: make(chan message, 256),
+		numbers:  make(chan numberRequest, 32),
 		clock:    time.Now,
 	}
 }
@@ -180,6 +197,69 @@ func ClassifyDose(markers []database.Marker) (string, float64) {
 // Internal helpers
 // -------------------------
 
+// nextVisitorNumber asks the background worker for a sequential visitor counter
+// so cookies remain stable without racing on shared state.
+func (s *Service) nextVisitorNumber(ctx context.Context) (int, error) {
+	if s == nil {
+		return 0, fmt.Errorf("analytics service unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req := numberRequest{
+		ctx:  ctx,
+		resp: make(chan numberResponse, 1),
+	}
+
+	select {
+	case s.numbers <- req:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+
+	select {
+	case res := <-req.resp:
+		return res.number, res.err
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+}
+
+// handleNumberRequest keeps the counter update on the run goroutine so only
+// channels coordinate access, following "Don't communicate by sharing memory."
+func (s *Service) handleNumberRequest(ctx context.Context, req numberRequest) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !s.counterLoaded {
+		seed, err := s.loadVisitorSeed(ctx)
+		if err != nil {
+			s.logf("activity: visitor seed load failed: %v", err)
+		}
+		s.visitorCounter = seed
+		s.counterLoaded = true
+	}
+	s.visitorCounter++
+	response := numberResponse{number: s.visitorCounter}
+	select {
+	case req.resp <- response:
+	case <-req.ctx.Done():
+	}
+}
+
+// loadVisitorSeed reads the current maximum visitor number so counters continue
+// across restarts without reusing IDs.
+func (s *Service) loadVisitorSeed(ctx context.Context) (int, error) {
+	if s.db == nil {
+		return 0, nil
+	}
+	seed, err := s.db.AnalyticsVisitorSeed(ctx, s.dbType)
+	if err != nil {
+		return 0, err
+	}
+	return seed, nil
+}
+
 func (s *Service) run(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -194,6 +274,8 @@ func (s *Service) run(ctx context.Context) {
 			return
 		case msg := <-s.messages:
 			s.handleMessage(ctx, msg)
+		case req := <-s.numbers:
+			s.handleNumberRequest(ctx, req)
 		case tick := <-ticker.C:
 			s.emitSummary(ctx, tick)
 		}
@@ -231,6 +313,7 @@ func (s *Service) handleMessage(ctx context.Context, msg message) {
 func (s *Service) ensureSession(w http.ResponseWriter, r *http.Request) Session {
 	sessionID := readCookieValue(r, sessionCookieName)
 	name := readCookieValue(r, nameCookieName)
+	visitorNumber := parseVisitorNumber(name)
 	newSession := false
 
 	if sessionID == "" {
@@ -238,7 +321,13 @@ func (s *Service) ensureSession(w http.ResponseWriter, r *http.Request) Session 
 		newSession = true
 	}
 	if name == "" {
-		name = newSessionName()
+		number, err := s.nextVisitorNumber(r.Context())
+		if err != nil {
+			s.logf("activity: visitor number fallback: %v", err)
+			number = pickNumber(100, 999)
+		}
+		visitorNumber = number
+		name = newSessionName(number)
 		newSession = true
 	}
 
@@ -250,13 +339,14 @@ func (s *Service) ensureSession(w http.ResponseWriter, r *http.Request) Session 
 	session := Session{ID: sessionID, Name: name}
 
 	s.enqueueSession(database.AnalyticsSession{
-		SessionID:   sessionID,
-		DisplayName: name,
-		IP:          clientIP(r),
-		UserAgent:   strings.TrimSpace(r.UserAgent()),
-		Referer:     strings.TrimSpace(r.Referer()),
-		CreatedAt:   createdAtValue(newSession, s.clock().UTC()),
-		LastSeenAt:  s.clock().UTC().Unix(),
+		SessionID:     sessionID,
+		DisplayName:   name,
+		VisitorNumber: visitorNumber,
+		IP:            clientIP(r),
+		UserAgent:     strings.TrimSpace(r.UserAgent()),
+		Referer:       strings.TrimSpace(r.Referer()),
+		CreatedAt:     createdAtValue(newSession, s.clock().UTC()),
+		LastSeenAt:    s.clock().UTC().Unix(),
 	})
 
 	return session
@@ -413,11 +503,31 @@ func newSessionID() string {
 	return hex.EncodeToString(payload)
 }
 
-func newSessionName() string {
+func newSessionName(number int) string {
 	adjective := pickOne(sessionAdjectives)
 	noun := pickOne(sessionNouns)
-	number := pickNumber(100, 999)
-	return fmt.Sprintf("%s %s %d", adjective, noun, number)
+	if number <= 0 {
+		number = pickNumber(100, 999)
+	}
+	return fmt.Sprintf("%s%s-%d", adjective, noun, number)
+}
+
+// parseVisitorNumber extracts the numeric suffix so existing cookies can
+// populate the session record without extra database reads.
+func parseVisitorNumber(name string) int {
+	if name == "" {
+		return 0
+	}
+	idx := strings.LastIndex(name, "-")
+	if idx < 0 || idx+1 >= len(name) {
+		return 0
+	}
+	value := strings.TrimSpace(name[idx+1:])
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 func pickOne(values []string) string {

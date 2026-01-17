@@ -11,14 +11,15 @@ import (
 // AnalyticsSession stores durable, human-readable visitor identity metadata so
 // logs can tell real people apart across requests.
 type AnalyticsSession struct {
-	SessionID   string
-	DisplayName string
-	IP          string
-	UserAgent   string
-	Referer     string
-	CreatedAt   int64
-	LastSeenAt  int64
-	VisitCount  int
+	SessionID     string
+	DisplayName   string
+	VisitorNumber int
+	IP            string
+	UserAgent     string
+	Referer       string
+	CreatedAt     int64
+	LastSeenAt    int64
+	VisitCount    int
 }
 
 // AnalyticsEvent captures a single user action or request with lightweight
@@ -80,13 +81,14 @@ func (db *Database) UpsertAnalyticsSession(ctx context.Context, session Analytic
 		return fmt.Errorf("nil database")
 	}
 	return db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
-		query := fmt.Sprintf(`SELECT display_name, last_seen_at, visit_count FROM analytics_sessions WHERE session_id = %s ORDER BY last_seen_at DESC LIMIT 1`, placeholder(dbType, 1))
+		query := fmt.Sprintf(`SELECT display_name, last_seen_at, visit_count, visitor_number FROM analytics_sessions WHERE session_id = %s ORDER BY last_seen_at DESC LIMIT 1`, placeholder(dbType, 1))
 		var (
-			existingName string
-			lastSeen     sql.NullInt64
-			visitCount   sql.NullInt64
+			existingName  string
+			lastSeen      sql.NullInt64
+			visitCount    sql.NullInt64
+			visitorNumber sql.NullInt64
 		)
-		err := conn.QueryRowContext(ctx, query, session.SessionID).Scan(&existingName, &lastSeen, &visitCount)
+		err := conn.QueryRowContext(ctx, query, session.SessionID).Scan(&existingName, &lastSeen, &visitCount, &visitorNumber)
 		if err != nil && err != sql.ErrNoRows {
 			return err
 		}
@@ -99,6 +101,10 @@ func (db *Database) UpsertAnalyticsSession(ctx context.Context, session Analytic
 		name := strings.TrimSpace(session.DisplayName)
 		if name == "" {
 			name = existingName
+		}
+		number := session.VisitorNumber
+		if number == 0 && visitorNumber.Valid {
+			number = int(visitorNumber.Int64)
 		}
 
 		visits := int(visitCount.Int64)
@@ -113,8 +119,8 @@ func (db *Database) UpsertAnalyticsSession(ctx context.Context, session Analytic
 		}
 
 		if strings.EqualFold(dbType, "clickhouse") {
-			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, created_at, last_seen_at, visit_count, ip, user_agent, referer)
-VALUES (%s,%s,%s,%s,%s,%s,%s,%s)`,
+			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, created_at, last_seen_at, visit_count, ip, user_agent, referer)
+VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 1),
 				placeholder(dbType, 2),
 				placeholder(dbType, 3),
@@ -122,10 +128,12 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 5),
 				placeholder(dbType, 6),
 				placeholder(dbType, 7),
-				placeholder(dbType, 8))
+				placeholder(dbType, 8),
+				placeholder(dbType, 9))
 			_, execErr := conn.ExecContext(ctx, insert,
 				session.SessionID,
 				name,
+				number,
 				session.CreatedAt,
 				now,
 				visits,
@@ -137,8 +145,8 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s)`,
 		}
 
 		if err == sql.ErrNoRows {
-			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, created_at, last_seen_at, visit_count, ip, user_agent, referer)
-VALUES (%s,%s,%s,%s,%s,%s,%s,%s)`,
+			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, created_at, last_seen_at, visit_count, ip, user_agent, referer)
+VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 1),
 				placeholder(dbType, 2),
 				placeholder(dbType, 3),
@@ -146,10 +154,12 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 5),
 				placeholder(dbType, 6),
 				placeholder(dbType, 7),
-				placeholder(dbType, 8))
+				placeholder(dbType, 8),
+				placeholder(dbType, 9))
 			_, execErr := conn.ExecContext(ctx, insert,
 				session.SessionID,
 				name,
+				number,
 				session.CreatedAt,
 				now,
 				visits,
@@ -160,16 +170,20 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s)`,
 			return execErr
 		}
 
-		update := fmt.Sprintf(`UPDATE analytics_sessions SET display_name = %s, last_seen_at = %s, visit_count = %s, ip = %s, user_agent = %s, referer = %s WHERE session_id = %s`,
+		update := fmt.Sprintf(`UPDATE analytics_sessions SET display_name = %s, visitor_number = CASE WHEN %s > 0 THEN %s ELSE visitor_number END, last_seen_at = %s, visit_count = %s, ip = %s, user_agent = %s, referer = %s WHERE session_id = %s`,
 			placeholder(dbType, 1),
 			placeholder(dbType, 2),
 			placeholder(dbType, 3),
 			placeholder(dbType, 4),
 			placeholder(dbType, 5),
 			placeholder(dbType, 6),
-			placeholder(dbType, 7))
+			placeholder(dbType, 7),
+			placeholder(dbType, 8),
+			placeholder(dbType, 9))
 		_, execErr := conn.ExecContext(ctx, update,
 			name,
+			number,
+			number,
 			now,
 			visits,
 			session.IP,
@@ -179,6 +193,34 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s)`,
 		)
 		return execErr
 	})
+}
+
+// AnalyticsVisitorSeed returns the highest known visitor index so new sessions
+// can continue the sequential counter without reusing numbers after restarts.
+func (db *Database) AnalyticsVisitorSeed(ctx context.Context, dbType string) (int, error) {
+	if db == nil {
+		return 0, fmt.Errorf("nil database")
+	}
+	var seed int
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		query := `SELECT COALESCE(MAX(visitor_number), 0), COUNT(*) FROM analytics_sessions`
+		var maxNumber sql.NullInt64
+		var count sql.NullInt64
+		if err := conn.QueryRowContext(ctx, query).Scan(&maxNumber, &count); err != nil {
+			return err
+		}
+		maxValue := maxNumber.Int64
+		countValue := count.Int64
+		if countValue > maxValue {
+			maxValue = countValue
+		}
+		seed = int(maxValue)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return seed, nil
 }
 
 // InsertAnalyticsEvent records an activity event without blocking the caller.
