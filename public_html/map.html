@@ -2819,6 +2819,7 @@ let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
 let trackViewMarkers = [];
 let trackViewMarkersReady = false;
+let trackViewReloadTimer = null;
 
 var liveHistoryCache = new Map();
 
@@ -3222,10 +3223,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // Adjust marker size on zoom
     map.on('zoomend', function() {
       adjustMarkerRadius();
-      resetTrackViewPlaybackForZoom();
-      updateMarkers(true);
+      scheduleTrackViewReload();
     });
-    map.on('moveend', debounceUpdateMarkers);
+    map.on('moveend', scheduleTrackViewReload);
   } else {
     // Dynamic marker updates in global mode
     map.on('load', debounceUpdateMarkers);
@@ -4857,8 +4857,12 @@ function updateMapMarkers(loadingEl, forceReload) {
 function updateMarkers(forceReload){
   const loadingEl = document.getElementById('loadingOverlay');
   if (trackPlaybackActive || trackViewPlaybackActive) {
-    if (loadingEl) loadingEl.style.display='none';
-    return;
+    if (forceReload && trackViewPlaybackActive) {
+      stopTrackViewPlayback(false);
+    } else {
+      if (loadingEl) loadingEl.style.display='none';
+      return;
+    }
   }
   if (!isTrackView) {
     updateMapMarkers(loadingEl, forceReload);
@@ -5918,6 +5922,20 @@ let debounceTimeout;
 function debounceUpdateMarkers() {
   clearTimeout(debounceTimeout);
   debounceTimeout = setTimeout(updateMarkers, 300);
+}
+
+function scheduleTrackViewReload() {
+  if (!isTrackView) {
+    return;
+  }
+  if (trackViewReloadTimer) {
+    clearTimeout(trackViewReloadTimer);
+  }
+  trackViewReloadTimer = setTimeout(function() {
+    trackViewReloadTimer = null;
+    resetTrackViewPlaybackForZoom();
+    updateMarkers(true);
+  }, 200);
 }
 
 function adjustMarkerRadius() {
