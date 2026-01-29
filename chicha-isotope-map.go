@@ -81,7 +81,9 @@ var version = flag.Bool("version", false, "Show the application version")
 var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
-var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap" or "Google Satellite"`)
+// mapboxToken lets operators wire in Mapbox tiles without hardcoding secrets into HTML.
+var mapboxToken = flag.String("mapbox-token", "", "Mapbox access token used for the optional Mapbox Satellite base layer")
+var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap", "Google Satellite", or "Mapbox Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
 
@@ -5225,6 +5227,13 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 	displayVersion := resolveDisplayVersion()
 	metaGenerator := buildMetaGenerator(lang, displayVersion, chichaGitHubURL, translations)
+	// Mapbox requires a token, so we fall back early if the default layer cannot load.
+	resolvedDefaultLayer := strings.TrimSpace(*defaultLayer)
+	resolvedMapboxToken := strings.TrimSpace(*mapboxToken)
+	if strings.EqualFold(resolvedDefaultLayer, "Mapbox Satellite") && resolvedMapboxToken == "" {
+		log.Printf("map handler: default layer is Mapbox Satellite but no mapbox-token provided, falling back to OpenStreetMap")
+		resolvedDefaultLayer = "OpenStreetMap"
+	}
 
 	// Готовим шаблон
 	tmpl := template.Must(template.New("map.html").Funcs(template.FuncMap{
@@ -5266,6 +5275,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLon         float64
 		DefaultZoom        int
 		DefaultLayer       string
+		MapboxToken        string
 		AutoLocateDefault  bool
 		RealtimeAvailable  bool
 		RealtimeDefault    bool
@@ -5287,7 +5297,8 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLat:        *defaultLat,
 		DefaultLon:        *defaultLon,
 		DefaultZoom:       *defaultZoom,
-		DefaultLayer:      *defaultLayer,
+		DefaultLayer:      resolvedDefaultLayer,
+		MapboxToken:       resolvedMapboxToken,
 		AutoLocateDefault: *autoLocateDefault,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.

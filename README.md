@@ -66,7 +66,8 @@ chmod +x ./chicha-isotope-map
 Optional knobs:
 - `-port 8765` — local port.
 - `-domain maps.example.org` — HTTPS with Let’s Encrypt (needs 80/443).
-- `-default-lat` / `-default-lon` / `-default-zoom` / `-default-layer` — opening map view.
+- `-default-lat` / `-default-lon` / `-default-zoom` / `-default-layer` — opening map view (OpenStreetMap, Google Satellite, or Mapbox Satellite).
+- `-mapbox-token` — Mapbox access token to enable the optional Mapbox Satellite base layer (Mapbox requires a token, so without it the layer is hidden).
 - Storage: `-db-type sqlite|duckdb|chai|clickhouse|pgx`, `-db-path` for file databases, `-db-conn` for network ones.
 
 ### Option 2. Public node with a domain

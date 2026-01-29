@@ -73,6 +73,8 @@ ARGS=(
   -default-lon   "${DEFAULT_LON:-30.099}"
   -default-zoom  "${DEFAULT_ZOOM:-4}"
   -default-layer "${DEFAULT_LAYER:-Google Satellite}"
+  # Pass through the token so Mapbox tiles stay optional for Docker users.
+  -mapbox-token  "${MAPBOX_TOKEN:-}"
 )
 
 # ----------- запуск приложения -----------------
@@ -86,4 +88,3 @@ else
   echo ">>> starting chicha-isotope-map on port ${PORT} using: ${RUN_BIN}"
   exec gosu postgres "${RUN_BIN}" "${ARGS[@]}"
 fi
-

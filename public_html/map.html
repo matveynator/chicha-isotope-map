@@ -9,7 +9,7 @@
     <meta name="ai:purpose" content="global environmental radiation map">
     <!-- Provide explicit query parameters so AI agents and crawlers can reconstruct map views. -->
     <meta name="ai:query-parameters" content="minLat,minLon,maxLat,maxLon,zoom,layer,theme,speed,from,to,dateMode,trackID">
-    <meta name="ai:query-parameter-notes" content="Bounds use WGS84 degrees. theme=light|dark. layer=OpenStreetMap|Google Satellite. speed=live,plane,car,ped. from/to are UNIX seconds. dateMode=month|year. trackID focuses a single uploaded track.">
+    <meta name="ai:query-parameter-notes" content="Bounds use WGS84 degrees. theme=light|dark. layer=OpenStreetMap|Google Satellite|Mapbox Satellite (requires mapbox token). speed=live,plane,car,ped. from/to are UNIX seconds. dateMode=month|year. trackID focuses a single uploaded track.">
     <meta name="description" content="{{translate "meta_description"}}">
     <!-- Preserve upstream attribution in metadata for downstream crawlers. -->
     <meta name="generator" content="{{ .MetaGenerator }}">
@@ -26,7 +26,7 @@
         "featureList": [
           "Bounds: minLat,minLon,maxLat,maxLon",
           "Zoom: zoom",
-          "Base layer: layer (OpenStreetMap or Google Satellite)",
+          "Base layer: layer (OpenStreetMap, Google Satellite, or Mapbox Satellite with token)",
           "Theme: theme (light or dark)",
           "Date range: from/to UNIX seconds with dateMode month or year",
           "Speed filters: speed (live, plane, car, ped)",
@@ -1344,6 +1344,10 @@ body, html {
       window.supportEmail = {{if .SupportEmail}}{{printf "%q" .SupportEmail}}{{else}}""{{end}};
     </script>
     <script>
+      // Mapbox layers stay optional so deployments can omit the access token entirely.
+      window.mapboxToken = {{if .MapboxToken}}{{printf "%q" .MapboxToken}}{{else}}""{{end}};
+    </script>
+    <script>
       // Expose upstream attribution ingredients so sources remain localized.
       window.chichaVersion = {{ printf "%q" .Version }};
       window.chichaGitHubURL = {{ printf "%q" .ChichaGitHubURL }};
@@ -2325,11 +2329,22 @@ function parsePlaybackParam(raw) {
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'play';
 }
 
+// Helper keeps URL state in sync with the currently active base layer.
+function getActiveBaseLayerName() {
+  if (mapboxSatellite && map.hasLayer(mapboxSatellite)) {
+    return 'Mapbox Satellite';
+  }
+  if (map.hasLayer(googleSatellite)) {
+    return 'Google Satellite';
+  }
+  return 'OpenStreetMap';
+}
+
 // Build the full map state query so every share link mirrors the UI.
 function buildMapStateParams() {
   const params = new URLSearchParams();
   const bounds = map.getBounds();
-  const layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
+  const layer = getActiveBaseLayerName();
   const minLat = bounds.getSouthWest().lat.toFixed(5);
   const minLon = bounds.getSouthWest().lng.toFixed(5);
   const maxLat = bounds.getNorthEast().lat.toFixed(5);
@@ -2384,7 +2399,7 @@ function saveMapViewState() {
   if (!map) return;
   try {
     const center = map.getCenter();
-    const layer = map.hasLayer(googleSatellite) ? 'Google Satellite' : 'OpenStreetMap';
+    const layer = getActiveBaseLayerName();
     const state = {
       lat: center.lat,
       lon: center.lng,
@@ -2437,7 +2452,7 @@ var markerRenderState = null;
 // Persist filter choices so we can avoid reloading base layers on live toggles.
 var markerFilterState = null;
 var isTrackView = false;
-var osmLayer, googleSatellite;
+var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
 var currentTrackID = null;
 const shortLinkBox = document.getElementById('shortLinkDisplay');
@@ -3204,6 +3219,11 @@ document.addEventListener('DOMContentLoaded', function () {
   window.osmDark  = osmDark;  // expose for theme toggle
   // Google tiles always use satellite imagery for consistent look
   const googleSat   = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
+  // Mapbox tiles require an access token, so we build the URL only when provided.
+  const mapboxToken = (window.mapboxToken || '').trim();
+  const mapboxSat   = mapboxToken
+    ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
+    : '';
 
   osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
     maxZoom: 18,
@@ -3216,11 +3236,22 @@ document.addEventListener('DOMContentLoaded', function () {
     attribution: '&copy; Google',
     className: 'google-satellite-layer' // Apply theme-aware styling to satellite tiles.
   });
+  // Mapbox Satellite is optional because the tiles require a token.
+  mapboxSatellite = mapboxSat ? L.tileLayer(mapboxSat, {
+    maxZoom: 20,
+    attribution: '&copy; Mapbox',
+    className: 'google-satellite-layer' // Reuse the satellite styling so it matches our theme tweaks.
+  }) : null;
 
   // right after creating osmLayer and googleSatellite
   const urlParams       = new URLSearchParams(window.location.search);
   const startLayerName  = decodeURIComponent(urlParams.get('layer') || defaultCfg.layer);
-  const startLayer      = startLayerName === 'Google Satellite' ? googleSatellite : osmLayer;
+  let startLayer        = osmLayer;
+  if (startLayerName === 'Google Satellite') {
+    startLayer = googleSatellite;
+  } else if (startLayerName === 'Mapbox Satellite' && mapboxSatellite) {
+    startLayer = mapboxSatellite;
+  }
 
   map = L.map('map', {
     center: [defaultCfg.lat, defaultCfg.lon],
@@ -3243,6 +3274,9 @@ document.addEventListener('DOMContentLoaded', function () {
     "OpenStreetMap": osmLayer,
     "Google Satellite": googleSatellite
   };
+  if (mapboxSatellite) {
+    baseLayers["Mapbox Satellite"] = mapboxSatellite;
+  }
 
   L.control.layers(baseLayers, null, {
     position: 'topleft',
@@ -6024,13 +6058,24 @@ function viewTrack(trackID) {
 
 
 function setBaseLayer(layerName) {
-  if (layerName === 'Google Satellite') {
-    if (map.hasLayer(osmLayer))            map.removeLayer(osmLayer);
-    if (!map.hasLayer(googleSatellite))    googleSatellite.addTo(map);
-  } else {
-    if (map.hasLayer(googleSatellite))     map.removeLayer(googleSatellite);
-    if (!map.hasLayer(osmLayer))           osmLayer.addTo(map);
+  if (mapboxSatellite && map.hasLayer(mapboxSatellite)) {
+    map.removeLayer(mapboxSatellite);
   }
+  if (map.hasLayer(googleSatellite)) {
+    map.removeLayer(googleSatellite);
+  }
+  if (map.hasLayer(osmLayer)) {
+    map.removeLayer(osmLayer);
+  }
+  if (layerName === 'Mapbox Satellite' && mapboxSatellite) {
+    mapboxSatellite.addTo(map);
+    return;
+  }
+  if (layerName === 'Google Satellite') {
+    googleSatellite.addTo(map);
+    return;
+  }
+  osmLayer.addTo(map);
 }
 
 // markShortLinkFocusReady flips the readiness flag once the user keeps the
@@ -7167,7 +7212,7 @@ Purpose: provide URL parameters so crawlers and AI agents can reconstruct map vi
 Parameters:
 - minLat, minLon, maxLat, maxLon: WGS84 bounds (floats).
 - zoom: map zoom level (integer).
-- layer: OpenStreetMap | Google Satellite.
+- layer: OpenStreetMap | Google Satellite | Mapbox Satellite (requires mapbox token).
 - theme: light | dark.
 - speed: comma list from [live, plane, car, ped].
 - from, to: UNIX seconds date range.
