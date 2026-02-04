@@ -6875,8 +6875,10 @@ func main() {
 		// Start the WHO cancer overlay fetch loop so API requests stay fast.
 		ctxCancer, cancelCancer := context.WithCancel(context.Background())
 		defer cancelCancer()
+		sourceURL := resolveCancerSourceURL()
+		log.Printf("cancerstats: using source %s", sourceURL)
 		cancerService = cancerstats.Start(ctxCancer, cancerstats.Config{
-			SourceURL: resolveCancerSourceURL(),
+			SourceURL: sourceURL,
 		}, log.Printf)
 	}
 

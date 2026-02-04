@@ -175,7 +175,7 @@ func fetchLoop(ctx context.Context, client *http.Client, cfg Config, updates cha
 	fetchOnce := func() {
 		snapshot, err := fetchSnapshot(ctx, client, cfg.SourceURL)
 		if err != nil {
-			logf("cancerstats: fetch failed: %v", err)
+			logf("cancerstats: fetch failed for %s: %v", cfg.SourceURL, err)
 		}
 		select {
 		case updates <- fetchResult{snapshot: snapshot, err: err}:

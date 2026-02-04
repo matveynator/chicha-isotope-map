@@ -24,3 +24,4 @@ If the indicator or filter needs adjustment for a newer WHO schema, set a custom
 ## Notes
 - The service refreshes the dataset once every 24 hours.
 - The overlay is not enabled by default; it appears as a toggle in the Leaflet layer control.
+- Startup logs include the exact WHO source URL for quick verification in a browser.
