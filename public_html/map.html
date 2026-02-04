@@ -930,6 +930,37 @@ body, html {
           box-shadow: none;
         }
 
+        /* Cancer overlay legend uses theme colors so the helper stays readable. */
+        .cancer-legend {
+          background: var(--control-bg);
+          border: var(--legend-border);
+          border-radius: 6px;
+          padding: 8px 10px;
+          color: var(--modal-text);
+          font-size: 12px;
+          line-height: 1.3;
+          box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+          min-width: 160px;
+        }
+
+        .cancer-legend__title {
+          font-weight: 600;
+          margin-bottom: 6px;
+        }
+
+        .cancer-legend__bar {
+          height: 10px;
+          border-radius: 4px;
+          background: linear-gradient(90deg, #2ecc71 0%, #f1c40f 50%, #e74c3c 100%);
+          margin-bottom: 6px;
+        }
+
+        .cancer-legend__labels {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
         /* Removed old collapsible legend styles (legend-control, legend-header, legend-title, legend-toggle, legend-body, legend-row, legend-swatch, legend-label)
            to avoid duplicate legends. Only the compact legend + modal remain. */
 
@@ -1359,6 +1390,9 @@ body, html {
       window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
       // Keep the default toggle server-driven so operators can require explicit opt-in.
       window.safecastRealtimeDefault = {{if .RealtimeDefault}}true{{else}}false{{end}};
+      // Surface the WHO overlay flags so the map can attach the country tiles lazily.
+      window.cancerUnder50Enabled = {{if .CancerUnder50}}true{{else}}false{{end}};
+      window.cancerUnder50Source = {{printf "%q" .CancerUnder50URL}};
     </script>
 
   </head>
@@ -3278,7 +3312,10 @@ document.addEventListener('DOMContentLoaded', function () {
     baseLayers["Mapbox Satellite"] = mapboxSatellite;
   }
 
-  L.control.layers(baseLayers, null, {
+  var overlayLayers = {};
+  initCancerUnder50Overlay(overlayLayers);
+
+  L.control.layers(baseLayers, overlayLayers, {
     position: 'topleft',
     collapsed: false
   }).addTo(map);
@@ -3331,6 +3368,193 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Periodically refresh realtime styling so markers fade without map motion.
   setInterval(adjustMarkerRadius, 60 * 1000);
+
+  // ===== Country-level cancer overlay =====
+  var cancerUnder50Layer = null;
+  var cancerUnder50Legend = null;
+  var cancerUnder50Snapshot = null;
+
+  function initCancerUnder50Overlay(layerCollection) {
+    if (!window.cancerUnder50Enabled) {
+      return;
+    }
+    cancerUnder50Layer = L.layerGroup();
+    layerCollection[translate('cancer_under_50_layer')] = cancerUnder50Layer;
+
+    cancerUnder50Legend = L.control({ position: 'bottomleft' });
+    cancerUnder50Legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'cancer-legend');
+      div.innerHTML = buildCancerLegendHTML();
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    };
+
+    map.on('overlayadd', function (evt) {
+      if (evt.layer === cancerUnder50Layer && cancerUnder50Legend) {
+        cancerUnder50Legend.addTo(map);
+      }
+    });
+    map.on('overlayremove', function (evt) {
+      if (evt.layer === cancerUnder50Layer && cancerUnder50Legend) {
+        map.removeControl(cancerUnder50Legend);
+      }
+    });
+
+    loadCancerUnder50Overlay();
+  }
+
+  function loadCancerUnder50Overlay() {
+    if (!cancerUnder50Layer) {
+      return;
+    }
+    Promise.all([
+      fetch('/api/cancer_under_50').then(function (resp) {
+        if (!resp.ok) {
+          throw new Error('cancer_stats_fetch_failed');
+        }
+        return resp.json();
+      }),
+      fetch('/static/geojson/ne_10m_admin_0_countries.geojson').then(function (resp) {
+        if (!resp.ok) {
+          throw new Error('cancer_geojson_fetch_failed');
+        }
+        return resp.json();
+      })
+    ]).then(function (results) {
+      cancerUnder50Snapshot = results[0];
+      renderCancerUnder50Layer(results[0], results[1]);
+      refreshCancerLegend();
+    }).catch(function (err) {
+      console.warn('Cancer overlay load failed', err);
+    });
+  }
+
+  function renderCancerUnder50Layer(snapshot, geojson) {
+    if (!cancerUnder50Layer) {
+      return;
+    }
+    cancerUnder50Layer.clearLayers();
+    if (!snapshot || !geojson) {
+      return;
+    }
+    const stats = snapshot.countries || {};
+    const min = Number(snapshot.minDeaths || 0);
+    const max = Number(snapshot.maxDeaths || 0);
+
+    L.geoJSON(geojson, {
+      style: function (feature) {
+        const code = resolveCountryCode(feature);
+        const entry = code ? stats[code] : null;
+        const color = entry ? cancerGradientColor(entry.deaths, min, max) : '#9aa0a6';
+        return {
+          color: '#2f3640',
+          weight: 0.6,
+          fillColor: color,
+          fillOpacity: entry ? 0.45 : 0.15
+        };
+      },
+      onEachFeature: function (feature, layer) {
+        const code = resolveCountryCode(feature);
+        const entry = code ? stats[code] : null;
+        const label = resolveCountryLabel(feature);
+        const tooltip = buildCancerTooltip(label, entry);
+        if (tooltip) {
+          layer.bindTooltip(tooltip, { sticky: true, className: 'custom-tooltip' });
+        }
+      }
+    }).addTo(cancerUnder50Layer);
+  }
+
+  function resolveCountryCode(feature) {
+    if (!feature || !feature.properties) {
+      return '';
+    }
+    const props = feature.properties;
+    return (props.iso_a3 || props.adm0_a3 || '').toUpperCase();
+  }
+
+  function resolveCountryLabel(feature) {
+    if (!feature || !feature.properties) {
+      return '';
+    }
+    const props = feature.properties;
+    const iso2 = (props.iso_a2 || '').toUpperCase();
+    const localized = iso2 && iso2 !== '-99' ? localizeCountry(iso2) : '';
+    if (localized) {
+      return localized;
+    }
+    return props.name_en || props.name || iso2 || '';
+  }
+
+  function buildCancerTooltip(label, entry) {
+    if (!label) {
+      return '';
+    }
+    if (!entry) {
+      return '<strong>' + escapeHtml(label) + '</strong><br>' + translate('cancer_under_50_no_data');
+    }
+    const value = formatCancerNumber(entry.deaths);
+    let line = translate('cancer_under_50_tooltip_value').replace('[[value]]', value);
+    if (entry.year) {
+      line = line.replace('[[year]]', String(entry.year));
+    }
+    return '<strong>' + escapeHtml(label) + '</strong><br>' + line;
+  }
+
+  function formatCancerNumber(value) {
+    const number = Number(value);
+    if (!isFinite(number)) {
+      return translate('cancer_under_50_no_data');
+    }
+    return new Intl.NumberFormat(currentLang || 'en', { maximumFractionDigits: 0 }).format(number);
+  }
+
+  function cancerGradientColor(value, min, max) {
+    if (!isFinite(value) || !isFinite(min) || !isFinite(max) || max <= min) {
+      return '#9aa0a6';
+    }
+    const ratio = Math.max(0, Math.min(1, (value - min) / (max - min)));
+    const green = [46, 204, 113];
+    const yellow = [241, 196, 15];
+    const red = [231, 76, 60];
+    if (ratio <= 0.5) {
+      return blendColor(green, yellow, ratio / 0.5);
+    }
+    return blendColor(yellow, red, (ratio - 0.5) / 0.5);
+  }
+
+  function blendColor(start, end, t) {
+    const clamp = function (v) { return Math.max(0, Math.min(255, Math.round(v))); };
+    const r = clamp(start[0] + (end[0] - start[0]) * t);
+    const g = clamp(start[1] + (end[1] - start[1]) * t);
+    const b = clamp(start[2] + (end[2] - start[2]) * t);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  function buildCancerLegendHTML() {
+    const title = translate('cancer_under_50_legend_title');
+    if (!cancerUnder50Snapshot || !cancerUnder50Snapshot.countries) {
+      return '<div class="cancer-legend__title">' + title + '</div>' +
+        '<div>' + translate('cancer_under_50_no_data') + '</div>';
+    }
+    const min = formatCancerNumber(cancerUnder50Snapshot.minDeaths);
+    const max = formatCancerNumber(cancerUnder50Snapshot.maxDeaths);
+    const yearLine = cancerUnder50Snapshot.latestYear
+      ? translate('cancer_under_50_legend_year').replace('[[year]]', String(cancerUnder50Snapshot.latestYear))
+      : '';
+    return '<div class="cancer-legend__title">' + title + '</div>' +
+      '<div class="cancer-legend__bar"></div>' +
+      '<div class="cancer-legend__labels"><span>' + min + '</span><span>' + max + '</span></div>' +
+      (yearLine ? '<div>' + yearLine + '</div>' : '');
+  }
+
+  function refreshCancerLegend() {
+    if (!cancerUnder50Legend || !cancerUnder50Layer || !map.hasLayer(cancerUnder50Layer)) {
+      return;
+    }
+    cancerUnder50Legend.remove();
+    cancerUnder50Legend.addTo(map);
+  }
 
   /**
    * Build a Leaflet control with three check-boxes that filter markers

@@ -828,7 +828,12 @@
     "upload_button_tooltip": "Add your measurement track to the map. Supported formats: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. You can upload multiple files, and after uploading you'll be taken to the track page.",
     "upload_error": "Error",
     "waiting_for_server": "Waiting for server...",
-    "your_location": "Your location"
+    "your_location": "Your location",
+    "cancer_under_50_layer": "Cancer deaths under 50",
+    "cancer_under_50_legend_title": "Cancer deaths under 50 (WHO)",
+    "cancer_under_50_legend_year": "Latest year: [[year]]",
+    "cancer_under_50_tooltip_value": "Deaths under 50: [[value]] (year [[year]])",
+    "cancer_under_50_no_data": "No data"
   },
   "es": {
     "api_example_archive_desc": "Descarga un paquete tgz con todos los archivos .json publicados cuando el archivo JSON está activado.",
@@ -3174,7 +3179,12 @@
     "upload_button_tooltip": "Добавьте свой трек замеров на карту. Поддерживаются форматы: .kml, .kmz, .gpx, .csv, .rctrk, .json, .log. Можно загрузить несколько файлов, после чего откроется страница трека.",
     "upload_error": "Ошибка",
     "waiting_for_server": "Ожидание сервера...",
-    "your_location": "Ваше местоположение"
+    "your_location": "Ваше местоположение",
+    "cancer_under_50_layer": "Смертность от рака до 50 лет",
+    "cancer_under_50_legend_title": "Смертность от рака до 50 лет (ВОЗ)",
+    "cancer_under_50_legend_year": "Последний год: [[year]]",
+    "cancer_under_50_tooltip_value": "Смертей до 50 лет: [[value]] (год [[year]])",
+    "cancer_under_50_no_data": "Нет данных"
   },
   "sv": {
     "api_example_archive_desc": "Hämtar ett tgz-paket med alla publicerade .json-filer när JSON-arkivet är aktiverat.",

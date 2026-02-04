@@ -51,6 +51,7 @@ import (
 	"chicha-isotope-map/pkg/analytics"
 	"chicha-isotope-map/pkg/api"
 	"chicha-isotope-map/pkg/atomfastimport"
+	"chicha-isotope-map/pkg/cancerstats"
 	"chicha-isotope-map/pkg/cimimport"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
@@ -81,6 +82,7 @@ var version = flag.Bool("version", false, "Show the application version")
 var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
+
 // mapboxToken lets operators wire in Mapbox tiles without hardcoding secrets into HTML.
 var mapboxToken = flag.String("mapbox-token", "", "Mapbox access token used for the optional Mapbox Satellite base layer")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap", "Google Satellite", or "Mapbox Satellite"`)
@@ -89,6 +91,8 @@ var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable poll
 
 // Keep the default UI toggle explicit so operators can expose realtime data without auto-enabling it.
 var safecastRealtimeDefault = flag.Bool("safecast-realtime-default", false, "Show Safecast realtime markers by default when realtime polling is enabled")
+var cancerUnder50Enabled = flag.Bool("cancer-under-50", false, "Enable country tiles for cancer deaths under age 50 (WHO data overlay)")
+var cancerUnder50SourceURL = flag.String("cancer-under-50-source", "", "Override the WHO data source URL for cancer deaths under age 50")
 var importSourcesFlag = flag.String("import", "", "Enable importers: safecast, atomfast, safecast,atomfast, or all")
 var jsonArchivePathFlag = flag.String("json-archive-path", "", "Filesystem destination for the generated JSON archive tgz bundle")
 var jsonArchiveFrequencyFlag = flag.String("json-archive-frequency", "weekly", "How often to rebuild the JSON archive: daily, weekly, monthly, or yearly")
@@ -124,6 +128,7 @@ var (
 	activeLogoConfig logoConfig
 	customLogoAsset  *logoAsset
 	analyticsService *analytics.Service
+	cancerService    *cancerstats.Service
 )
 
 // usageSection groups CLI flags so operators can scan help output quickly. This keeps
@@ -146,7 +151,7 @@ var cliUsageSections = []usageSection{
 	{Key: cliSectionGeneral, Flags: []string{"version", "domain", "port", "setup"}},
 	{Key: cliSectionDatabase, Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Key: cliSectionAppearance, Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default", "support-email", "logo-path", "logo-link"}},
-	{Key: cliSectionPlugins, Flags: []string{"safecast-realtime", "safecast-realtime-default"}},
+	{Key: cliSectionPlugins, Flags: []string{"safecast-realtime", "safecast-realtime-default", "cancer-under-50", "cancer-under-50-source"}},
 	{Key: cliSectionImport, Flags: []string{"import", "import-tgz-url", "import-tgz-file"}},
 	{Key: cliSectionExport, Flags: []string{"json-archive-path", "json-archive-frequency"}},
 }
@@ -5279,6 +5284,8 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		AutoLocateDefault  bool
 		RealtimeAvailable  bool
 		RealtimeDefault    bool
+		CancerUnder50      bool
+		CancerUnder50URL   string
 		SupportEmail       string
 		TranslationsJSON   template.JS
 		MarkersJSON        template.JS
@@ -5303,6 +5310,8 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
 		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
+		CancerUnder50:      *cancerUnder50Enabled,
+		CancerUnder50URL:   resolveCancerSourceURL(),
 		SupportEmail:       strings.TrimSpace(*supportEmail),
 		TranslationsJSON:   translationsJSON,
 		MarkersJSON:        markersJSON,
@@ -5332,6 +5341,15 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error writing response: %v", err)
 		}
 	}
+}
+
+// resolveCancerSourceURL keeps template rendering and background fetches aligned
+// by centralizing the WHO endpoint selection.
+func resolveCancerSourceURL() string {
+	if override := strings.TrimSpace(*cancerUnder50SourceURL); override != "" {
+		return override
+	}
+	return cancerstats.DefaultSourceURL()
 }
 
 // resolveCurrentURL rebuilds the full request URL so OpenGraph tags match the active page.
@@ -5567,6 +5585,8 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		AutoLocateDefault  bool
 		RealtimeAvailable  bool
 		RealtimeDefault    bool
+		CancerUnder50      bool
+		CancerUnder50URL   string
 		SupportEmail       string
 		TranslationsJSON   template.JS
 		MarkersJSON        template.JS
@@ -5590,6 +5610,8 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
 		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
+		CancerUnder50:      *cancerUnder50Enabled,
+		CancerUnder50URL:   resolveCancerSourceURL(),
 		SupportEmail:       strings.TrimSpace(*supportEmail),
 		TranslationsJSON:   translationsJSON,
 		MarkersJSON:        markersJSON,
@@ -6609,6 +6631,28 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 	return agg
 }
 
+// cancerUnder50Handler exposes the cached WHO-derived statistics for the map overlay.
+func cancerUnder50Handler(w http.ResponseWriter, r *http.Request) {
+	if !*cancerUnder50Enabled || cancerService == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	snapshot, err := cancerService.Snapshot(ctx)
+	if err != nil {
+		http.Error(w, "cancer stats unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+		log.Printf("cancer stats response failed: %v", err)
+	}
+}
+
 // realtimeHistoryHandler returns one year of realtime measurements for a device.
 // The handler keeps the response lightweight so the frontend can draw Grafana-style
 // charts without shipping a dedicated dashboard backend.
@@ -6827,6 +6871,14 @@ func main() {
 		defer cancelRT()
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
 	}
+	if *cancerUnder50Enabled {
+		// Start the WHO cancer overlay fetch loop so API requests stay fast.
+		ctxCancer, cancelCancer := context.WithCancel(context.Background())
+		defer cancelCancer()
+		cancerService = cancerstats.Start(ctxCancer, cancerstats.Config{
+			SourceURL: resolveCancerSourceURL(),
+		}, log.Printf)
+	}
 
 	// Build a JSON archive tgz with all known exported tracks only when
 	// operators explicitly opt in via -json-archive-path. The cadence flag
@@ -6882,6 +6934,7 @@ func main() {
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_playback", streamPlaybackHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)
+	http.HandleFunc("/api/cancer_under_50", cancerUnder50Handler)
 	http.HandleFunc("/realtime_history", realtimeHistoryHandler)
 	http.HandleFunc("/trackid/", trackHandler)
 	http.HandleFunc("/qrpng", qrPngHandler)
