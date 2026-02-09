@@ -5513,6 +5513,13 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 	displayVersion := resolveDisplayVersion()
 	metaGenerator := buildMetaGenerator(lang, displayVersion, chichaGitHubURL, translations)
+	// Mapbox requires a token, so fall back when the default layer cannot load.
+	resolvedDefaultLayer := strings.TrimSpace(*defaultLayer)
+	resolvedMapboxToken := strings.TrimSpace(*mapboxToken)
+	if strings.EqualFold(resolvedDefaultLayer, "Mapbox Satellite") && resolvedMapboxToken == "" {
+		log.Printf("track handler: default layer is Mapbox Satellite but no mapbox-token provided, falling back to OpenStreetMap")
+		resolvedDefaultLayer = "OpenStreetMap"
+	}
 
 	// /trackid/<ID>
 	parts := strings.Split(r.URL.Path, "/")
@@ -5564,6 +5571,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLon         float64
 		DefaultZoom        int
 		DefaultLayer       string
+		MapboxToken        string
 		AutoLocateDefault  bool
 		RealtimeAvailable  bool
 		RealtimeDefault    bool
@@ -5585,7 +5593,8 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLat:        *defaultLat,
 		DefaultLon:        *defaultLon,
 		DefaultZoom:       *defaultZoom,
-		DefaultLayer:      *defaultLayer,
+		DefaultLayer:      resolvedDefaultLayer,
+		MapboxToken:       resolvedMapboxToken,
 		AutoLocateDefault: *autoLocateDefault,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
