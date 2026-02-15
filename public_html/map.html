@@ -4216,7 +4216,7 @@ function createDateRangeSlider(){
     } else {
       saveDateRangeState(monthSlider.noUiSlider.get().map(Number));
     }
-    debounceUpdateMarkers();
+    debounceUpdateMarkers(true);
     updateUrl(); // reflect date filters in the shareable URL
   }
 }
@@ -6002,7 +6002,10 @@ let debounceTimeout;
 
 function debounceUpdateMarkers() {
   clearTimeout(debounceTimeout);
-  debounceTimeout = setTimeout(updateMarkers, 300);
+  const forceReload = arguments.length > 0 ? Boolean(arguments[0]) : false;
+  debounceTimeout = setTimeout(function() {
+    updateMarkers(forceReload);
+  }, 300);
 }
 
 function scheduleTrackViewReload() {
