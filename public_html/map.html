@@ -3461,7 +3461,7 @@ document.addEventListener('DOMContentLoaded', function () {
 /**
  * Date-range control with two modes:
  *  - YEAR (single handle): labels show full [minYear..maxYear] when NO user filter is active,
- *    otherwise they show the chosen year.
+ *    otherwise they show [chosenYear..maxYear].
  *  - MONTH (double handle): classic [from..to] range.
  *
  * Key ideas:
@@ -3518,7 +3518,7 @@ function createDateRangeSlider(){
       }
     }
     if (yearSlider && yearSlider.noUiSlider) {
-      const year = new Date(normalized[1] * 1000).getUTCFullYear();
+      const year = new Date(normalized[0] * 1000).getUTCFullYear();
       const currentYear = Number(yearSlider.noUiSlider.get());
       if (!isFinite(currentYear) || currentYear !== year) {
         yearSlider.noUiSlider.set(year);
@@ -4025,7 +4025,7 @@ function createDateRangeSlider(){
 
       // Update labels:
       //  - If NO user filter or filter equals fullRange → show full year bounds.
-      //  - Else → show the chosen year.
+      //  - Else → show [chosen year..max year].
       yearSlider.noUiSlider.on('update', ([y])=>{
         if (mode !== 'year') return;
         const saved = loadDateRangeState();
@@ -4037,8 +4037,8 @@ function createDateRangeSlider(){
           lblMax().textContent = r.max;
         } else {
           const r = yearSlider.noUiSlider.options.range;
-          lblMin().textContent = r.min;
-          lblMax().textContent = y;
+          lblMin().textContent = y;
+          lblMax().textContent = r.max;
         }
       });
       yearSlider.noUiSlider.on('change', updateDateFilter);
@@ -4142,7 +4142,7 @@ function createDateRangeSlider(){
     if (initY && initM){
       const rY = yearSlider.noUiSlider.options.range;
       const rM = monthSlider.noUiSlider.options.range;
-      yearSlider.noUiSlider.set(rY.min);      // handle position is cosmetic
+      yearSlider.noUiSlider.set(rY.max);      // handle position is cosmetic
       monthSlider.noUiSlider.set([rM.min, rM.max]);
 
       lblMin().textContent = (mode==='year') ? rY.min : tsToNiceStr(rM.min);
@@ -4182,8 +4182,8 @@ function createDateRangeSlider(){
         lblMax().textContent = r.max;
       } else {
         const y = +yearSlider.noUiSlider.get();
-        lblMin().textContent = r.min;
-        lblMax().textContent = y;
+        lblMin().textContent = y;
+        lblMax().textContent = r.max;
       }
     } else {
       const r = monthSlider.noUiSlider.options.range;
@@ -4204,19 +4204,19 @@ function createDateRangeSlider(){
 
   function updateDateFilter(){
     stopPlayback(false);
-    // YEAR mode → make a full [year..year] month span
+    // YEAR mode → include data from selected year start up to the viewport max date
     if (mode==='year'){
       const y = +yearSlider.noUiSlider.get();
-      // We include all prior years so the year slider acts cumulatively.
-      const rangeMin = monthSlider?.noUiSlider?.options?.range?.min ?? (fullRange ? fullRange[0] : Date.UTC(y, 0, 1) / 1000);
-      const yearEnd = Date.UTC(y + 1, 0, 1) / 1000 - 1;
-      const rangeMax = fullRange ? fullRange[1] : yearEnd;
-      const to = Math.min(yearEnd, rangeMax);
-      saveDateRangeState([rangeMin, to]);
+      // The year slider works as [selected year..latest available data].
+      const rangeMax = monthSlider?.noUiSlider?.options?.range?.max ?? (fullRange ? fullRange[1] : Date.UTC(y + 1, 0, 1) / 1000 - 1);
+      const yearStart = Date.UTC(y, 0, 1) / 1000;
+      const rangeMin = fullRange ? fullRange[0] : yearStart;
+      const from = Math.max(yearStart, rangeMin);
+      saveDateRangeState([from, rangeMax]);
     } else {
       saveDateRangeState(monthSlider.noUiSlider.get().map(Number));
     }
-    debounceUpdateMarkers();
+    debounceUpdateMarkers(true);
     updateUrl(); // reflect date filters in the shareable URL
   }
 }
@@ -6002,7 +6002,10 @@ let debounceTimeout;
 
 function debounceUpdateMarkers() {
   clearTimeout(debounceTimeout);
-  debounceTimeout = setTimeout(updateMarkers, 300);
+  const forceReload = arguments.length > 0 ? Boolean(arguments[0]) : false;
+  debounceTimeout = setTimeout(function() {
+    updateMarkers(forceReload);
+  }, 300);
 }
 
 function scheduleTrackViewReload() {
