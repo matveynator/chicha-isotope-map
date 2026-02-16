@@ -3765,6 +3765,13 @@ function createDateRangeSlider(){
   }
 
   function addPlaybackMarker(marker, zoomLevel, index) {
+    const markerKey = marker.id || [
+      marker.trackID || 'track',
+      marker.date,
+      marker.lat,
+      marker.lon,
+      index,
+    ].join(':');
     const circle = L.circleMarker([marker.lat, marker.lon], {
       radius: getRadius(marker.doseRate, zoomLevel),
       fillColor: getGradientColor(marker.doseRate),
@@ -3780,7 +3787,8 @@ function createDateRangeSlider(){
     circle.doseRate = marker.doseRate;
     circle.date = marker.date;
     circle.isRealtime = false;
-    circleMarkers[marker.id || marker.trackID + ':' + marker.date + ':' + index] = circle;
+    circle.markerKey = markerKey;
+    circleMarkers[markerKey] = circle;
   }
 
   function delay(ms) {
