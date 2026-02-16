@@ -2863,6 +2863,7 @@ function maybeAutoplayTrackViewPlayback() {
 // New controller to cancel previous request
 var markerStreamSource = null;
 var trackPlaybackActive = false;
+var playbackMarkersRendered = false;
 // Playback sharing flags keep URL state aligned with the active play button.
 let playbackShareActive = false;
 // Autoplay flags capture URL intent and ensure we trigger playback only once.
@@ -3312,14 +3313,16 @@ document.addEventListener('DOMContentLoaded', function () {
     map.on('load', debounceUpdateMarkers);
     map.on('zoomend', function() {
       adjustMarkerRadius();
-      if (trackPlaybackActive) {
+      if (trackPlaybackActive || playbackMarkersRendered) {
+        // Playback dots are transient; after viewport changes we must restore canonical marker rendering.
         stopPlayback(true);
         return;
       }
       debounceUpdateMarkers();
     });
     map.on('moveend', function() {
-      if (trackPlaybackActive) {
+      if (trackPlaybackActive || playbackMarkersRendered) {
+        // Panning changes visible bounds, so replay overlays must be discarded before reloading markers.
         stopPlayback(true);
         return;
       }
@@ -3645,6 +3648,7 @@ function createDateRangeSlider(){
       map.removeLayer(circleMarkers[key]);
       delete circleMarkers[key];
     });
+    playbackMarkersRendered = false;
   }
 
   function resolvePlaybackRange() {
@@ -3805,6 +3809,7 @@ function createDateRangeSlider(){
     circle.isRealtime = false;
     circle.markerKey = markerKey;
     circleMarkers[markerKey] = circle;
+    playbackMarkersRendered = true;
   }
 
   function delay(ms) {
@@ -3896,7 +3901,8 @@ function createDateRangeSlider(){
   }
 
   function stopPlayback(refreshMarkers) {
-    if (!trackPlaybackActive) {
+    const hasPlaybackState = trackPlaybackActive || playbackPaused || playbackMarkersRendered;
+    if (!hasPlaybackState) {
       return;
     }
     trackPlaybackActive = false;
@@ -3913,8 +3919,9 @@ function createDateRangeSlider(){
       playbackAbortController.abort();
       playbackAbortController = null;
     }
+    clearPlaybackMarkers();
     if (refreshMarkers) {
-      debounceUpdateMarkers();
+      debounceUpdateMarkers(true);
     }
   }
 
