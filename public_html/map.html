@@ -2863,6 +2863,7 @@ function maybeAutoplayTrackViewPlayback() {
 // New controller to cancel previous request
 var markerStreamSource = null;
 var trackPlaybackActive = false;
+var playbackMarkersRendered = false;
 // Playback sharing flags keep URL state aligned with the active play button.
 let playbackShareActive = false;
 // Autoplay flags capture URL intent and ensure we trigger playback only once.
@@ -3312,9 +3313,21 @@ document.addEventListener('DOMContentLoaded', function () {
     map.on('load', debounceUpdateMarkers);
     map.on('zoomend', function() {
       adjustMarkerRadius();
+      if (trackPlaybackActive || playbackMarkersRendered) {
+        // Playback dots are transient; after viewport changes we must restore canonical marker rendering.
+        stopPlayback(true);
+        return;
+      }
       debounceUpdateMarkers();
     });
-    map.on('moveend', debounceUpdateMarkers);
+    map.on('moveend', function() {
+      if (trackPlaybackActive || playbackMarkersRendered) {
+        // Panning changes visible bounds, so replay overlays must be discarded before reloading markers.
+        stopPlayback(true);
+        return;
+      }
+      debounceUpdateMarkers();
+    });
     debounceUpdateMarkers;
   }
 
@@ -3635,6 +3648,7 @@ function createDateRangeSlider(){
       map.removeLayer(circleMarkers[key]);
       delete circleMarkers[key];
     });
+    playbackMarkersRendered = false;
   }
 
   function resolvePlaybackRange() {
@@ -3765,6 +3779,19 @@ function createDateRangeSlider(){
   }
 
   function addPlaybackMarker(marker, zoomLevel, index) {
+    const markerKey = marker.id || [
+      marker.trackID || 'track',
+      marker.date,
+      marker.lat,
+      marker.lon,
+      index,
+    ].join(':');
+    const prevLayer = circleMarkers[markerKey];
+    if (prevLayer) {
+      // Drop stale layers with the same key so reset/cleanup can always remove every playback marker.
+      map.removeLayer(prevLayer);
+      delete circleMarkers[markerKey];
+    }
     const circle = L.circleMarker([marker.lat, marker.lon], {
       radius: getRadius(marker.doseRate, zoomLevel),
       fillColor: getGradientColor(marker.doseRate),
@@ -3780,7 +3807,9 @@ function createDateRangeSlider(){
     circle.doseRate = marker.doseRate;
     circle.date = marker.date;
     circle.isRealtime = false;
-    circleMarkers[marker.id || marker.trackID + ':' + marker.date + ':' + index] = circle;
+    circle.markerKey = markerKey;
+    circleMarkers[markerKey] = circle;
+    playbackMarkersRendered = true;
   }
 
   function delay(ms) {
@@ -3836,7 +3865,6 @@ function createDateRangeSlider(){
   }
 
   async function playTracksSequentially(state) {
-    const zoom = map.getZoom();
     while (trackPlaybackActive) {
       if (!state.currentTrack) {
         if (!state.queue.length) {
@@ -3860,7 +3888,7 @@ function createDateRangeSlider(){
             return;
           }
         }
-        addPlaybackMarker(points[i], zoom, i);
+        addPlaybackMarker(points[i], map.getZoom(), i);
         state.pointIndex = i + 1;
         await delay(playbackConfig.pointDelayMs);
       }
@@ -3873,7 +3901,8 @@ function createDateRangeSlider(){
   }
 
   function stopPlayback(refreshMarkers) {
-    if (!trackPlaybackActive) {
+    const hasPlaybackState = trackPlaybackActive || playbackPaused || playbackMarkersRendered;
+    if (!hasPlaybackState) {
       return;
     }
     trackPlaybackActive = false;
@@ -3890,8 +3919,9 @@ function createDateRangeSlider(){
       playbackAbortController.abort();
       playbackAbortController = null;
     }
+    clearPlaybackMarkers();
     if (refreshMarkers) {
-      debounceUpdateMarkers();
+      debounceUpdateMarkers(true);
     }
   }
 
@@ -3946,8 +3976,8 @@ function createDateRangeSlider(){
         return;
       }
     } finally {
-      // Avoid reloading the map after playback ends because markers are already visible.
-      stopPlayback(false);
+      // Restore regular viewport markers after playback so zoomed-out views use merged radii again.
+      stopPlayback(true);
     }
   }
 
