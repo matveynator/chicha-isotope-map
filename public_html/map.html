@@ -4730,9 +4730,12 @@ function updateMapMarkers(loadingEl, forceReload) {
 
   const renderQueue = [];
   let renderScheduled = false;
+  let pendingRenderItems = 0;
+  let streamsFinalized = false;
 
   function enqueueMarker(marker, layerName) {
     renderQueue.push({ marker: marker, layerName: layerName });
+    pendingRenderItems += 1;
     if (!renderScheduled) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
@@ -4745,11 +4748,14 @@ function updateMapMarkers(loadingEl, forceReload) {
     while (renderQueue.length && performance.now() - start < 12) {
       const entry = renderQueue.shift();
       renderQueuedMarker(entry.marker, entry.layerName);
+      pendingRenderItems -= 1;
     }
     if (renderQueue.length) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
+      return;
     }
+    finalizeStreams();
   }
 
   function renderQueuedMarker(m, layerName) {
@@ -4822,9 +4828,10 @@ function updateMapMarkers(loadingEl, forceReload) {
   }
 
   function finalizeStreams() {
-    if (pendingStreams > 0) {
+    if (streamsFinalized || pendingStreams > 0 || pendingRenderItems > 0) {
       return;
     }
+    streamsFinalized = true;
     const summaryMinTs = Number.isFinite(summaryMin) ? summaryMin : minTs;
     const summaryMaxTs = Number.isFinite(summaryMax) ? summaryMax : maxTs;
     const trackCount = summaryTrackCount > 0 ? summaryTrackCount : tracks.size;
@@ -4952,11 +4959,15 @@ function updateMapMarkers(loadingEl, forceReload) {
   if (pendingStreams > 0) {
     if (loadingEl) loadingEl.style.display = 'block';
   } else {
-    if (!anyBaseEnabled && window.__setDateSliderVisibility) {
-      window.__setDateSliderVisibility(false);
-    }
-    if (loadingEl) {
-      loadingEl.style.display = 'none';
+    if (!anyBaseEnabled && pendingRenderItems === 0) {
+      if (window.__setDateSliderVisibility) {
+        window.__setDateSliderVisibility(false);
+      }
+      if (loadingEl) {
+        loadingEl.style.display = 'none';
+      }
+    } else {
+      finalizeStreams();
     }
   }
 }
@@ -5010,9 +5021,19 @@ function updateMarkers(forceReload){
   const pruneOverlap = createMarkerOverlapPruner(map);
   const renderQueue = [];
   let renderScheduled = false;
+  let pendingRenderItems = 0;
+  let streamDone = false;
+
+  function finalizeTrackStream() {
+    if (!streamDone || pendingRenderItems > 0) {
+      return;
+    }
+    if (loadingEl) loadingEl.style.display='none';
+  }
 
   function enqueueMarker(marker) {
     renderQueue.push(marker);
+    pendingRenderItems += 1;
     if (!renderScheduled) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
@@ -5024,11 +5045,14 @@ function updateMarkers(forceReload){
     const start = performance.now();
     while (renderQueue.length && performance.now() - start < 12) {
       renderQueuedMarker(renderQueue.shift());
+      pendingRenderItems -= 1;
     }
     if (renderQueue.length) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
+      return;
     }
+    finalizeTrackStream();
   }
 
   function renderQueuedMarker(m) {
@@ -5103,6 +5127,7 @@ function updateMarkers(forceReload){
   });
 
   es.addEventListener('done', () => {
+    streamDone = true;
     const summaryMin = streamSummary && Number.isFinite(streamSummary.minTs) ? streamSummary.minTs : minTs;
     const summaryMax = streamSummary && Number.isFinite(streamSummary.maxTs) ? streamSummary.maxTs : maxTs;
     const trackCount = streamSummary && Number.isFinite(streamSummary.trackCount) ? streamSummary.trackCount : tracks.size;
@@ -5122,7 +5147,7 @@ function updateMarkers(forceReload){
     if (waitForDangerFit && storedUserCenter) {
       reframeAroundUser();
     }
-    if (loadingEl) loadingEl.style.display='none';
+    finalizeTrackStream();
     es.close();
     if (isTrackView) {
       trackViewMarkers.sort(function(a, b) {
