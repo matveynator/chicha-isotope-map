@@ -4614,7 +4614,9 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   };
 }
 
-function updateLiveLayerOnly(state) {
+function updateLiveLayerOnly(state, options) {
+  const opts = options || {};
+  const manageLoadingOverlay = opts.manageLoadingOverlay !== false;
   initMarkerLayers();
   if (!map || !markerLayerGroups) {
     return;
@@ -4632,7 +4634,7 @@ function updateLiveLayerOnly(state) {
   const liveEnabled = markerLayerEnabled(markerLiveLayerName, state);
 
   if (liveEnabled && window.safecastRealtimeEnabled) {
-    if (loadingEl) {
+    if (manageLoadingOverlay && loadingEl) {
       loadingEl.style.display = 'block';
     }
     closeMarkerLayerStream(markerLiveLayerName);
@@ -4679,12 +4681,12 @@ function updateLiveLayerOnly(state) {
         }
       },
       onDone: function() {
-        if (loadingEl) {
+        if (manageLoadingOverlay && loadingEl) {
           loadingEl.style.display = 'none';
         }
       },
       onError: function() {
-        if (loadingEl) {
+        if (manageLoadingOverlay && loadingEl) {
           loadingEl.style.display = 'none';
         }
       },
@@ -4692,7 +4694,7 @@ function updateLiveLayerOnly(state) {
   } else {
     closeMarkerLayerStream(markerLiveLayerName);
     clearMarkerLayerGroup(markerLiveLayerName);
-    if (loadingEl) {
+    if (manageLoadingOverlay && loadingEl) {
       loadingEl.style.display = 'none';
     }
   }
@@ -4951,7 +4953,7 @@ function updateMapMarkers(loadingEl, forceReload) {
   }
 
   if (liveChanged || shouldReload) {
-    updateLiveLayerOnly(state);
+    updateLiveLayerOnly(state, { manageLoadingOverlay: false });
   }
 
   markerFilterState = cloneMarkerFilterState(state);
