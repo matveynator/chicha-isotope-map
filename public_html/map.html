@@ -2451,6 +2451,8 @@ var markerViewKey = '';
 var markerRenderState = null;
 // Persist filter choices so we can avoid reloading base layers on live toggles.
 var markerFilterState = null;
+// Guard async callbacks so stale marker loads cannot mutate shared loading UI.
+var markerLoadToken = 0;
 var isTrackView = false;
 var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
@@ -4614,7 +4616,9 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   };
 }
 
-function updateLiveLayerOnly(state) {
+function updateLiveLayerOnly(state, options) {
+  const opts = options || {};
+  const manageLoadingOverlay = opts.manageLoadingOverlay !== false;
   initMarkerLayers();
   if (!map || !markerLayerGroups) {
     return;
@@ -4632,7 +4636,7 @@ function updateLiveLayerOnly(state) {
   const liveEnabled = markerLayerEnabled(markerLiveLayerName, state);
 
   if (liveEnabled && window.safecastRealtimeEnabled) {
-    if (loadingEl) {
+    if (manageLoadingOverlay && loadingEl) {
       loadingEl.style.display = 'block';
     }
     closeMarkerLayerStream(markerLiveLayerName);
@@ -4679,12 +4683,12 @@ function updateLiveLayerOnly(state) {
         }
       },
       onDone: function() {
-        if (loadingEl) {
+        if (manageLoadingOverlay && loadingEl) {
           loadingEl.style.display = 'none';
         }
       },
       onError: function() {
-        if (loadingEl) {
+        if (manageLoadingOverlay && loadingEl) {
           loadingEl.style.display = 'none';
         }
       },
@@ -4692,7 +4696,7 @@ function updateLiveLayerOnly(state) {
   } else {
     closeMarkerLayerStream(markerLiveLayerName);
     clearMarkerLayerGroup(markerLiveLayerName);
-    if (loadingEl) {
+    if (manageLoadingOverlay && loadingEl) {
       loadingEl.style.display = 'none';
     }
   }
@@ -4700,7 +4704,7 @@ function updateLiveLayerOnly(state) {
   markerFilterState = cloneMarkerFilterState(state);
 }
 
-function updateMapMarkers(loadingEl, forceReload) {
+function updateMapMarkers(loadingEl, forceReload, loadToken) {
   initMarkerLayers();
   if (!map || !markerLayerGroups) {
     if (loadingEl) loadingEl.style.display = 'none';
@@ -4730,9 +4734,19 @@ function updateMapMarkers(loadingEl, forceReload) {
 
   const renderQueue = [];
   let renderScheduled = false;
+  let pendingRenderItems = 0;
+  let streamsFinalized = false;
+
+  function isActiveLoad() {
+    return loadToken === markerLoadToken;
+  }
 
   function enqueueMarker(marker, layerName) {
+    if (!isActiveLoad()) {
+      return;
+    }
     renderQueue.push({ marker: marker, layerName: layerName });
+    pendingRenderItems += 1;
     if (!renderScheduled) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
@@ -4741,15 +4755,23 @@ function updateMapMarkers(loadingEl, forceReload) {
 
   function drainRenderQueue() {
     renderScheduled = false;
+    if (!isActiveLoad()) {
+      renderQueue.length = 0;
+      pendingRenderItems = 0;
+      return;
+    }
     const start = performance.now();
     while (renderQueue.length && performance.now() - start < 12) {
       const entry = renderQueue.shift();
       renderQueuedMarker(entry.marker, entry.layerName);
+      pendingRenderItems -= 1;
     }
     if (renderQueue.length) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
+      return;
     }
+    finalizeStreams();
   }
 
   function renderQueuedMarker(m, layerName) {
@@ -4822,9 +4844,10 @@ function updateMapMarkers(loadingEl, forceReload) {
   }
 
   function finalizeStreams() {
-    if (pendingStreams > 0) {
+    if (!isActiveLoad() || streamsFinalized || pendingStreams > 0 || pendingRenderItems > 0) {
       return;
     }
+    streamsFinalized = true;
     const summaryMinTs = Number.isFinite(summaryMin) ? summaryMin : minTs;
     const summaryMaxTs = Number.isFinite(summaryMax) ? summaryMax : maxTs;
     const trackCount = summaryTrackCount > 0 ? summaryTrackCount : tracks.size;
@@ -4871,6 +4894,9 @@ function updateMapMarkers(loadingEl, forceReload) {
     pendingStreams += 1;
     startMarkerLayerStream(layerName, params, viewKey, {
       onMarker: function(m) {
+        if (!isActiveLoad()) {
+          return;
+        }
         const isLive = m.speed < 0;
         if (!isLive && m.trackID) {
           tracks.add(m.trackID);
@@ -4885,6 +4911,9 @@ function updateMapMarkers(loadingEl, forceReload) {
         enqueueMarker(m, layerName);
       },
       onDone: function(summary, streamMin, streamMax) {
+        if (!isActiveLoad()) {
+          return;
+        }
         if (trackSummaries) {
           mergeSummary(summary, streamMin, streamMax);
         }
@@ -4892,6 +4921,9 @@ function updateMapMarkers(loadingEl, forceReload) {
         finalizeStreams();
       },
       onError: function() {
+        if (!isActiveLoad()) {
+          return;
+        }
         pendingStreams -= 1;
         finalizeStreams();
       },
@@ -4944,7 +4976,7 @@ function updateMapMarkers(loadingEl, forceReload) {
   }
 
   if (liveChanged || shouldReload) {
-    updateLiveLayerOnly(state);
+    updateLiveLayerOnly(state, { manageLoadingOverlay: false });
   }
 
   markerFilterState = cloneMarkerFilterState(state);
@@ -4952,11 +4984,15 @@ function updateMapMarkers(loadingEl, forceReload) {
   if (pendingStreams > 0) {
     if (loadingEl) loadingEl.style.display = 'block';
   } else {
-    if (!anyBaseEnabled && window.__setDateSliderVisibility) {
-      window.__setDateSliderVisibility(false);
-    }
-    if (loadingEl) {
-      loadingEl.style.display = 'none';
+    if (!anyBaseEnabled && pendingRenderItems === 0) {
+      if (window.__setDateSliderVisibility) {
+        window.__setDateSliderVisibility(false);
+      }
+      if (loadingEl) {
+        loadingEl.style.display = 'none';
+      }
+    } else {
+      finalizeStreams();
     }
   }
 }
@@ -4966,6 +5002,7 @@ function updateMapMarkers(loadingEl, forceReload) {
  * and keep the date sliders in sync with the viewport.
  */
 function updateMarkers(forceReload){
+  const loadToken = ++markerLoadToken;
   const loadingEl = document.getElementById('loadingOverlay');
   if (trackPlaybackActive || trackViewPlaybackActive) {
     if (forceReload && trackViewPlaybackActive) {
@@ -4976,7 +5013,7 @@ function updateMarkers(forceReload){
     }
   }
   if (!isTrackView) {
-    updateMapMarkers(loadingEl, forceReload);
+    updateMapMarkers(loadingEl, forceReload, loadToken);
     return;
   }
   if (loadingEl) loadingEl.style.display='block';
@@ -5010,9 +5047,26 @@ function updateMarkers(forceReload){
   const pruneOverlap = createMarkerOverlapPruner(map);
   const renderQueue = [];
   let renderScheduled = false;
+  let pendingRenderItems = 0;
+  let streamDone = false;
+
+  function isActiveLoad() {
+    return loadToken === markerLoadToken;
+  }
+
+  function finalizeTrackStream() {
+    if (!isActiveLoad() || !streamDone || pendingRenderItems > 0) {
+      return;
+    }
+    if (loadingEl) loadingEl.style.display='none';
+  }
 
   function enqueueMarker(marker) {
+    if (!isActiveLoad()) {
+      return;
+    }
     renderQueue.push(marker);
+    pendingRenderItems += 1;
     if (!renderScheduled) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
@@ -5021,14 +5075,22 @@ function updateMarkers(forceReload){
 
   function drainRenderQueue() {
     renderScheduled = false;
+    if (!isActiveLoad()) {
+      renderQueue.length = 0;
+      pendingRenderItems = 0;
+      return;
+    }
     const start = performance.now();
     while (renderQueue.length && performance.now() - start < 12) {
       renderQueuedMarker(renderQueue.shift());
+      pendingRenderItems -= 1;
     }
     if (renderQueue.length) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
+      return;
     }
+    finalizeTrackStream();
   }
 
   function renderQueuedMarker(m) {
@@ -5075,6 +5137,9 @@ function updateMarkers(forceReload){
   let streamSummary = null;
 
   es.onmessage = e => {
+    if (!isActiveLoad()) {
+      return;
+    }
     let m; try { m = JSON.parse(e.data); } catch { return; }
     const isLive = m.speed < 0; // negative speed denotes realtime marker
     if (!isLive && m.trackID) tracks.add(m.trackID);
@@ -5103,6 +5168,10 @@ function updateMarkers(forceReload){
   });
 
   es.addEventListener('done', () => {
+    if (!isActiveLoad()) {
+      return;
+    }
+    streamDone = true;
     const summaryMin = streamSummary && Number.isFinite(streamSummary.minTs) ? streamSummary.minTs : minTs;
     const summaryMax = streamSummary && Number.isFinite(streamSummary.maxTs) ? streamSummary.maxTs : maxTs;
     const trackCount = streamSummary && Number.isFinite(streamSummary.trackCount) ? streamSummary.trackCount : tracks.size;
@@ -5122,7 +5191,7 @@ function updateMarkers(forceReload){
     if (waitForDangerFit && storedUserCenter) {
       reframeAroundUser();
     }
-    if (loadingEl) loadingEl.style.display='none';
+    finalizeTrackStream();
     es.close();
     if (isTrackView) {
       trackViewMarkers.sort(function(a, b) {
@@ -5139,6 +5208,10 @@ function updateMarkers(forceReload){
   });
 
   es.onerror = () => {
+    if (!isActiveLoad()) {
+      es.close();
+      return;
+    }
     if (loadingEl) loadingEl.style.display='none';
     es.close();
   };
