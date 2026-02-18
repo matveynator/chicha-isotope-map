@@ -328,8 +328,14 @@ func decodeStations(b []byte) ([]stationPayload, error) {
 		s.ID = firstString(m, "id", "stationId", "station_id", "code")
 		s.Name = firstString(m, "name", "stationName", "station_name", "label")
 		s.Country = firstString(m, "country", "countryCode", "country_code")
-		s.Lat = firstFloat(m, "lat", "latitude", "Latitude", "y", "loc_lat", "Lat")
-		s.Lon = firstFloat(m, "lon", "lng", "longitude", "Longitude", "x", "loc_lon", "Lon")
+		s.Lat = firstFloat(m, "lat", "latitude", "Latitude", "y", "loc_lat", "Lat", "station_lat", "station_latitude")
+		s.Lon = firstFloat(m, "lon", "lng", "longitude", "Longitude", "x", "loc_lon", "Lon", "station_lon", "station_longitude")
+		if s.Lat == 0 || s.Lon == 0 {
+			if gLat, gLon, ok := coordinatesFromGeometry(m); ok {
+				s.Lat = gLat
+				s.Lon = gLon
+			}
+		}
 		s.ValueNSvH = firstFloat(m, "nsv", "nSv", "doseRate", "dose_rate", "value")
 		s.MeasuredAt = parseTimestamp(firstString(m, "date", "timestamp", "time", "lastUpdate", "measuredAt"))
 		if s.MeasuredAt == 0 {
@@ -368,8 +374,21 @@ func firstFloat(m map[string]any, keys ...string) float64 {
 			switch x := v.(type) {
 			case float64:
 				return x
+			case int:
+				return float64(x)
+			case int64:
+				return float64(x)
+			case json.Number:
+				if f, err := x.Float64(); err == nil {
+					return f
+				}
 			case string:
-				f, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
+				raw := strings.TrimSpace(x)
+				if raw == "" {
+					continue
+				}
+				raw = strings.ReplaceAll(raw, ",", ".")
+				f, err := strconv.ParseFloat(raw, 64)
 				if err == nil {
 					return f
 				}
@@ -377,6 +396,53 @@ func firstFloat(m map[string]any, keys ...string) float64 {
 		}
 	}
 	return 0
+}
+
+func coordinatesFromGeometry(m map[string]any) (float64, float64, bool) {
+	geometry, ok := m["geometry"].(map[string]any)
+	if !ok {
+		return 0, 0, false
+	}
+	rawCoords, ok := geometry["coordinates"].([]any)
+	if !ok || len(rawCoords) < 2 {
+		return 0, 0, false
+	}
+	lon, okLon := numericAny(rawCoords[0])
+	lat, okLat := numericAny(rawCoords[1])
+	if !okLon || !okLat {
+		return 0, 0, false
+	}
+	return lat, lon, true
+}
+
+func numericAny(v any) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, true
+	case int:
+		return float64(x), true
+	case int64:
+		return float64(x), true
+	case json.Number:
+		f, err := x.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	case string:
+		raw := strings.TrimSpace(x)
+		if raw == "" {
+			return 0, false
+		}
+		raw = strings.ReplaceAll(raw, ",", ".")
+		f, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
 }
 
 func parseTimestamp(raw string) int64 {

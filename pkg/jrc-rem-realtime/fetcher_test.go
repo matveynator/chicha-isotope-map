@@ -61,3 +61,23 @@ func TestNormalizeCoordinatesScaled(t *testing.T) {
 		t.Fatalf("unexpected scaled normalization result: %f,%f", lat, lon)
 	}
 }
+
+func TestDecodeStationsGeometryCoordinates(t *testing.T) {
+	payload := []byte(`[{"id":"G1","name":"Geo","geometry":{"coordinates":["14.42","50.08"]},"nsv":"122,5","date":"20260218110517"}]`)
+	stations, err := decodeStations(payload)
+	if err != nil {
+		t.Fatalf("decode geometry failed: %v", err)
+	}
+	if len(stations) != 1 {
+		t.Fatalf("unexpected station count: %d", len(stations))
+	}
+	if stations[0].Lat == 0 || stations[0].Lon == 0 {
+		t.Fatalf("expected geometry coordinates, got: %+v", stations[0])
+	}
+	if stations[0].MeasuredAt == 0 {
+		t.Fatalf("expected compact timestamp parse, got: %+v", stations[0])
+	}
+	if stations[0].ValueNSvH <= 0 {
+		t.Fatalf("expected nsv value from comma decimal, got: %+v", stations[0])
+	}
+}
