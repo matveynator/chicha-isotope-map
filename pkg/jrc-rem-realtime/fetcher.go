@@ -55,6 +55,40 @@ func normalizeUnit(unit string) string {
 	return strings.ToLower(replacer.Replace(strings.TrimSpace(unit)))
 }
 
+func resolveCountryCode(lat, lon float64, payloadCode string) string {
+	if resolved, _ := countryresolver.Resolve(lat, lon); isISOAlpha2(resolved) {
+		return strings.ToUpper(strings.TrimSpace(resolved))
+	}
+	if isISOAlpha2(payloadCode) {
+		return strings.ToUpper(strings.TrimSpace(payloadCode))
+	}
+	return ""
+}
+
+func isISOAlpha2(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) != 2 {
+		return false
+	}
+	for _, r := range trimmed {
+		if r < 'A' || (r > 'Z' && r < 'a') || r > 'z' {
+			return false
+		}
+	}
+	return true
+}
+
+func countryLabel(code string) string {
+	if strings.TrimSpace(code) == "" {
+		return "Unknown"
+	}
+	upper := strings.ToUpper(strings.TrimSpace(code))
+	if name := countryresolver.NameFor(upper); name != "" {
+		return fmt.Sprintf("%s (%s)", name, upper)
+	}
+	return upper
+}
+
 func Start(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
 	if logf == nil {
 		logf = log.Printf
@@ -126,10 +160,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						continue
 					}
 
-					country := strings.ToUpper(strings.TrimSpace(s.Country))
-					if resolved, _ := countryresolver.Resolve(s.Lat, s.Lon); resolved != "" {
-						country = resolved
-					}
+					country := resolveCountryCode(s.Lat, s.Lon, s.Country)
 
 					m := database.RealtimeMeasurement{
 						DeviceID:   "jrc-rem:" + s.ID,
@@ -180,10 +211,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				parts := make([]string, 0, len(stats))
 				for countryCode, summary := range stats {
 					avg := summary.sum / float64(summary.count)
-					label := countryCode
-					if name := countryresolver.NameFor(countryCode); name != "" {
-						label = fmt.Sprintf("%s (%s)", name, countryCode)
-					}
+					label := countryLabel(countryCode)
 					parts = append(parts, fmt.Sprintf("%s:%d avg=%.2f", label, summary.count, avg))
 				}
 				sort.Strings(parts)

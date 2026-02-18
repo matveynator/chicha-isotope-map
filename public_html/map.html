@@ -1356,9 +1356,9 @@ body, html {
     </script>
     <script>
       // Expose the realtime flag so the UI can hide controls when the backend keeps the feature off.
-      window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
+      window.realtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
       // Keep the default toggle server-driven so operators can require explicit opt-in.
-      window.safecastRealtimeDefault = {{if .RealtimeDefault}}true{{else}}false{{end}};
+      window.realtimeDefault = {{if .RealtimeDefault}}true{{else}}false{{end}};
     </script>
 
   </head>
@@ -1644,12 +1644,12 @@ body, html {
 </div>
 
 
-<!-- Modal with Grafana-style stacked charts for Safecast realtime sensors -->
+<!-- Modal with Grafana-style stacked charts for realtime sensors -->
 
 <div id="liveModal">
   <div class="live-modal-content">
     <div class="live-modal-header">
-      <img src="/static/images/safecast-heart-logo.png" alt="Safecast realtime sensor" class="live-modal-heart">
+      <img src="/static/images/safecast-heart-logo.png" alt="Realtime sensor" class="live-modal-heart">
       <div>
         <h3 id="liveModalTitle" class="live-modal-title"></h3>
         <p id="liveModalDescription" class="live-modal-description"></p>
@@ -2202,7 +2202,7 @@ function shouldDisplayBySpeed(speed) {
 
   const st = loadSpeedFilterState();   // global mode
   if (speed < 0) {                     // Safecast heart markers use negative speed to signal realtime data
-    if (!window.safecastRealtimeEnabled) {
+    if (!window.realtimeEnabled) {
       // Safety net: when realtime is disabled we never show synthetic negative speeds.
       return false;
     }
@@ -2266,7 +2266,7 @@ function getThemePreference() {
 function serializeSpeedFilterState(state) {
   if (!state) return '';
   const tags = [];
-  if (state.live && window.safecastRealtimeEnabled) tags.push('live');
+  if (state.live && window.realtimeEnabled) tags.push('live');
   if (state.plane) tags.push('plane');
   if (state.car) tags.push('car');
   if (state.ped) tags.push('ped');
@@ -2277,12 +2277,12 @@ function serializeSpeedFilterState(state) {
 // Ensure the speed filter payload is complete even if some toggles are missing.
 function normalizeSpeedFilterState(state) {
   const base = { plane: false, car: false, ped: false };
-  if (window.safecastRealtimeEnabled) {
+  if (window.realtimeEnabled) {
     base.live = false;
   }
   if (!state || typeof state !== 'object') return base;
   const merged = Object.assign({}, base, state);
-  if (!window.safecastRealtimeEnabled) {
+  if (!window.realtimeEnabled) {
     delete merged.live;
   }
   return merged;
@@ -2303,7 +2303,7 @@ function parseSpeedFilterParam(raw) {
     car: parts.includes('car'),
     ped: parts.includes('ped')
   };
-  if (window.safecastRealtimeEnabled) {
+  if (window.realtimeEnabled) {
     state.live = parts.includes('live');
   }
   return state;
@@ -2892,21 +2892,21 @@ var liveHistoryCache = new Map();
 /**
  * Load previously saved speed-filter state from sessionStorage.
  * If nothing is stored yet, return defaults that reflect backend capabilities.
- *   Realtime on:  Safecast heart on, ✈️ off, 🚗 on, 🚶 on  (as requested).
+ *   Realtime on:  live icon on, ✈️ off, 🚗 on, 🚶 on  (as requested).
  *   Realtime off: ✈️ off, 🚗 on, 🚶 on  (heart absent).
  */
 function loadSpeedFilterState() {
   // We derive defaults from the realtime flag so the UI matches backend capabilities.
   const base = { plane: false, car: true, ped: true };
   // Only enable live markers by default when the server explicitly allows it.
-  if (window.safecastRealtimeEnabled && window.safecastRealtimeDefault) {
+  if (window.realtimeEnabled && window.realtimeDefault) {
     base.live = true;
   }
   try {
     const raw = sessionStorage.getItem('speedFilterState');
     const st = raw ? JSON.parse(raw) : {};
     const merged = Object.assign({}, base, st);
-    if (!window.safecastRealtimeEnabled) {
+    if (!window.realtimeEnabled) {
       delete merged.live;
     }
     return merged;
@@ -2960,7 +2960,7 @@ function monthsApart(ts0, ts1){
 function saveSpeedFilterState(state) {
   // Persist only supported options so stale realtime toggles do not leak between sessions.
   const toSave = Object.assign({}, state);
-  if (!window.safecastRealtimeEnabled) {
+  if (!window.realtimeEnabled) {
     delete toSave.live;
   }
   sessionStorage.setItem('speedFilterState', JSON.stringify(toSave));
@@ -3350,7 +3350,7 @@ document.addEventListener('DOMContentLoaded', function () {
   /**
    * Build a Leaflet control with three check-boxes that filter markers
    * by recorded speed. Labels now show speed in km/h instead of m/s.
-   * Default state (when realtime exists): Safecast heart on, ✈️ off, 🚗 on, 🚶 on.
+   * Default state (when realtime exists): live icon on, ✈️ off, 🚗 on, 🚶 on.
    */
   function createSpeedFilterControls() {
 
@@ -3374,9 +3374,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Build rows dynamically so the realtime checkbox only appears when supported server-side.
         const pieces = [];
-        if (window.safecastRealtimeEnabled) {
+        if (window.realtimeEnabled) {
           // Use the Safecast heart artwork so the live toggle reflects the new branding.
-          const liveIconMarkup = '<img src="/static/images/safecast-heart-logo.png" alt="Realtime measurements from safecast.org" style="width:1em; height:1em; vertical-align:middle;"/>';
+          const liveIconMarkup = '<img src="/static/images/safecast-heart-logo.png" alt="Realtime measurements" style="width:1em; height:1em; vertical-align:middle;"/> realtime';
           pieces.push(row('sfLive', liveIconMarkup, state.live));
           pieces.push('<div class="leaflet-control-layers-separator"></div>');
         }
@@ -3400,8 +3400,8 @@ document.addEventListener('DOMContentLoaded', function () {
             const intro = translate('speed_filter_tooltip_intro');
             const accuracy = translate('speed_filter_tooltip_accuracy');
             const lines = [];
-            if (window.safecastRealtimeEnabled) {
-              lines.push(translate('speed_filter_tooltip_live'));
+            if (window.realtimeEnabled) {
+              lines.push('Realtime: live radiation data stream. Toggle to show or hide live readings.');
             }
             lines.push(translate('speed_filter_tooltip_plane'));
             lines.push(translate('speed_filter_tooltip_car'));
@@ -3437,7 +3437,7 @@ document.addEventListener('DOMContentLoaded', function () {
         checkboxes.forEach(cb => {
           cb.addEventListener('change', () => {
             const prevState = cloneMarkerFilterState(state);
-            if (window.safecastRealtimeEnabled) {
+            if (window.realtimeEnabled) {
               state.live = div.querySelector('#sfLive').checked;
             } else {
               delete state.live;
@@ -4321,9 +4321,9 @@ function createDateRangeSlider(){
     return `
       <div class="custom-tooltip live-tooltip">
         <div class="live-tooltip-header">
-          <img src="/static/images/safecast-heart-logo.png" alt="Safecast realtime" class="live-tooltip-heart">
+          <img src="/static/images/safecast-heart-logo.png" alt="Realtime sensor" class="live-tooltip-heart">
           <div>
-            <div class="live-tooltip-title">${translate('live_marker_title')}</div>
+            <div class="live-tooltip-title">Realtime sensor</div>
             <p class="live-tooltip-desc">${describeLiveSensor(marker)}</p>
           </div>
         </div>
@@ -4635,7 +4635,7 @@ function updateLiveLayerOnly(state, options) {
   const loadingEl = document.getElementById('loadingOverlay');
   const liveEnabled = markerLayerEnabled(markerLiveLayerName, state);
 
-  if (liveEnabled && window.safecastRealtimeEnabled) {
+  if (liveEnabled && window.realtimeEnabled) {
     if (manageLoadingOverlay && loadingEl) {
       loadingEl.style.display = 'block';
     }
