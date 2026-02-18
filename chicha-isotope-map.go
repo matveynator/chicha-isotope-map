@@ -5753,6 +5753,7 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	if *safecastRealtimeEnabled || *jrcREMRealtimeEnabled {
 		// We only touch realtime tables when the operator explicitly enables the feature.
 		if rt, err := db.GetLatestRealtimeByBounds(ctx, minLat, minLon, maxLat, maxLon, *dbType); err == nil {
+			rt = filterRealtimeByEnabledSources(rt)
 			for i := range rt {
 				// Sanitise detector names on the fly so legacy rows without
 				// the new resolver still produce friendly popups.
@@ -5768,6 +5769,32 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(markers)
+}
+
+// realtimeSourceEnabled reports whether a realtime marker/device belongs to an
+// enabled provider so operator flags control both polling and rendering.
+func realtimeSourceEnabled(deviceID, transport string) bool {
+	id := strings.ToLower(strings.TrimSpace(deviceID))
+	mode := strings.ToLower(strings.TrimSpace(transport))
+	if strings.HasPrefix(id, "jrc-rem:") || mode == "jrc-rem" {
+		return *jrcREMRealtimeEnabled
+	}
+	return *safecastRealtimeEnabled
+}
+
+// filterRealtimeByEnabledSources keeps only rows from providers currently
+// enabled through CLI flags.
+func filterRealtimeByEnabledSources(markers []database.Marker) []database.Marker {
+	if len(markers) == 0 {
+		return markers
+	}
+	out := make([]database.Marker, 0, len(markers))
+	for _, m := range markers {
+		if realtimeSourceEnabled(m.DeviceID, m.Transport) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // ========
@@ -6051,6 +6078,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("realtime query: %v", err)
 		}
+		rtMarks = filterRealtimeByEnabledSources(rtMarks)
 		// Log bounds alongside count to help diagnose empty map tiles.
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}
@@ -6646,6 +6674,10 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(device, "live:") {
 		device = strings.TrimPrefix(device, "live:")
+	}
+	if !realtimeSourceEnabled(device, "") {
+		http.NotFound(w, r)
+		return
 	}
 
 	now := time.Now()
