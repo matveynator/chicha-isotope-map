@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -92,6 +93,10 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
 
+		// prevIDs tracks station churn between polls so operators can quickly
+		// spot topology changes without scanning raw station lists.
+		prevIDs := make(map[string]struct{})
+
 		for {
 			now := time.Now().UTC()
 			rangeStart := now.Add(-7 * 24 * time.Hour)
@@ -102,6 +107,12 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 				logf("jrc-rem fetch: sensors %d", len(stations))
 				nowUnix := now.Unix()
 				active := 0
+				stats := make(map[string]struct {
+					sum   float64
+					count int
+				})
+				curr := make(map[string]struct{})
+
 				for _, s := range stations {
 					if s.ID == "" || s.MeasuredAt == 0 {
 						continue
@@ -109,7 +120,9 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					if s.Lat == 0 && s.Lon == 0 {
 						continue
 					}
-					if _, ok := FromRealtime(s.ValueNSvH, "nSv/h"); !ok {
+
+					converted, ok := FromRealtime(s.ValueNSvH, "nSv/h")
+					if !ok {
 						continue
 					}
 
@@ -137,9 +150,44 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						return
 					case measurements <- m:
 					}
+
 					active++
+					curr[m.DeviceID] = struct{}{}
+					statsKey := country
+					if statsKey == "" {
+						statsKey = "??"
+					}
+					summary := stats[statsKey]
+					summary.sum += converted
+					summary.count++
+					stats[statsKey] = summary
 				}
 				reports <- active
+
+				added, removed := 0, 0
+				for id := range curr {
+					if _, ok := prevIDs[id]; !ok {
+						added++
+					}
+				}
+				for id := range prevIDs {
+					if _, ok := curr[id]; !ok {
+						removed++
+					}
+				}
+				prevIDs = curr
+
+				parts := make([]string, 0, len(stats))
+				for countryCode, summary := range stats {
+					avg := summary.sum / float64(summary.count)
+					label := countryCode
+					if name := countryresolver.NameFor(countryCode); name != "" {
+						label = fmt.Sprintf("%s (%s)", name, countryCode)
+					}
+					parts = append(parts, fmt.Sprintf("%s:%d avg=%.2f", label, summary.count, avg))
+				}
+				sort.Strings(parts)
+				logf("jrc-rem summary: %s added=%d removed=%d", strings.Join(parts, " "), added, removed)
 			}
 
 			select {
