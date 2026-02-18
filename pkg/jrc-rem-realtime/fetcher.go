@@ -89,6 +89,30 @@ func countryLabel(code string) string {
 	return upper
 }
 
+func normalizeCoordinates(lat, lon float64) (float64, float64, bool) {
+	if isValidCoordinatePair(lat, lon) {
+		return lat, lon, true
+	}
+	// Some feeds swap coordinate order; recover when the swapped pair is valid.
+	if isValidCoordinatePair(lon, lat) {
+		return lon, lat, true
+	}
+	return 0, 0, false
+}
+
+func isValidCoordinatePair(lat, lon float64) bool {
+	if lat < -90 || lat > 90 {
+		return false
+	}
+	if lon < -180 || lon > 180 {
+		return false
+	}
+	if lat == 0 && lon == 0 {
+		return false
+	}
+	return true
+}
+
 func Start(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) {
 	if logf == nil {
 		logf = log.Printf
@@ -151,7 +175,8 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					if s.ID == "" || s.MeasuredAt == 0 {
 						continue
 					}
-					if s.Lat == 0 && s.Lon == 0 {
+					lat, lon, ok := normalizeCoordinates(s.Lat, s.Lon)
+					if !ok {
 						continue
 					}
 
@@ -160,7 +185,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						continue
 					}
 
-					country := resolveCountryCode(s.Lat, s.Lon, s.Country)
+					country := resolveCountryCode(lat, lon, s.Country)
 
 					m := database.RealtimeMeasurement{
 						DeviceID:   "jrc-rem:" + s.ID,
@@ -170,8 +195,8 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 						Country:    country,
 						Value:      s.ValueNSvH,
 						Unit:       "nSv/h",
-						Lat:        s.Lat,
-						Lon:        s.Lon,
+						Lat:        lat,
+						Lon:        lon,
 						MeasuredAt: s.MeasuredAt,
 						FetchedAt:  nowUnix,
 					}

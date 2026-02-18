@@ -37,3 +37,17 @@ func TestParseTimestampCompactUTC(t *testing.T) {
 		t.Fatalf("unexpected old timestamp: %d", ts)
 	}
 }
+
+func TestNormalizeCoordinates(t *testing.T) {
+	lat, lon, ok := normalizeCoordinates(120, 45)
+	if !ok {
+		t.Fatal("expected swapped coordinates to be accepted")
+	}
+	if lat != 45 || lon != 120 {
+		t.Fatalf("unexpected normalized pair: %f,%f", lat, lon)
+	}
+
+	if _, _, ok := normalizeCoordinates(999, 999); ok {
+		t.Fatal("expected invalid coordinates to be rejected")
+	}
+}
