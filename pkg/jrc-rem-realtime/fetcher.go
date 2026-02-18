@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"sort"
@@ -90,12 +91,29 @@ func countryLabel(code string) string {
 }
 
 func normalizeCoordinates(lat, lon float64) (float64, float64, bool) {
+	candidates := [][2]float64{{lat, lon}, {lon, lat}}
+	for _, c := range candidates {
+		if nLat, nLon, ok := normalizeCoordinatePair(c[0], c[1]); ok {
+			return nLat, nLon, true
+		}
+	}
+	return 0, 0, false
+}
+
+func normalizeCoordinatePair(lat, lon float64) (float64, float64, bool) {
 	if isValidCoordinatePair(lat, lon) {
 		return lat, lon, true
 	}
-	// Some feeds swap coordinate order; recover when the swapped pair is valid.
-	if isValidCoordinatePair(lon, lat) {
-		return lon, lat, true
+	if math.Abs(lat) < 10000 && math.Abs(lon) < 10000 {
+		return 0, 0, false
+	}
+	scales := []float64{10000, 100000, 1000000, 10000000}
+	for _, scale := range scales {
+		scaledLat := lat / scale
+		scaledLon := lon / scale
+		if isValidCoordinatePair(scaledLat, scaledLon) {
+			return scaledLat, scaledLon, true
+		}
 	}
 	return 0, 0, false
 }
@@ -170,18 +188,24 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					count int
 				})
 				curr := make(map[string]struct{})
+				skippedNoTimestamp := 0
+				skippedNoCoords := 0
+				skippedNoRadiation := 0
 
 				for _, s := range stations {
 					if s.ID == "" || s.MeasuredAt == 0 {
+						skippedNoTimestamp++
 						continue
 					}
 					lat, lon, ok := normalizeCoordinates(s.Lat, s.Lon)
 					if !ok {
+						skippedNoCoords++
 						continue
 					}
 
 					converted, ok := FromRealtime(s.ValueNSvH, "nSv/h")
 					if !ok {
+						skippedNoRadiation++
 						continue
 					}
 
@@ -240,7 +264,7 @@ func Start(ctx context.Context, db *database.Database, dbType string, logf func(
 					parts = append(parts, fmt.Sprintf("%s:%d avg=%.2f", label, summary.count, avg))
 				}
 				sort.Strings(parts)
-				logf("jrc-rem summary: %s added=%d removed=%d", strings.Join(parts, " "), added, removed)
+				logf("jrc-rem summary: %s added=%d removed=%d skipped(timestamp=%d coords=%d value=%d)", strings.Join(parts, " "), added, removed, skippedNoTimestamp, skippedNoCoords, skippedNoRadiation)
 			}
 
 			select {
@@ -304,8 +328,8 @@ func decodeStations(b []byte) ([]stationPayload, error) {
 		s.ID = firstString(m, "id", "stationId", "station_id", "code")
 		s.Name = firstString(m, "name", "stationName", "station_name", "label")
 		s.Country = firstString(m, "country", "countryCode", "country_code")
-		s.Lat = firstFloat(m, "lat", "latitude", "Latitude")
-		s.Lon = firstFloat(m, "lon", "lng", "longitude", "Longitude")
+		s.Lat = firstFloat(m, "lat", "latitude", "Latitude", "y", "loc_lat", "Lat")
+		s.Lon = firstFloat(m, "lon", "lng", "longitude", "Longitude", "x", "loc_lon", "Lon")
 		s.ValueNSvH = firstFloat(m, "nsv", "nSv", "doseRate", "dose_rate", "value")
 		s.MeasuredAt = parseTimestamp(firstString(m, "date", "timestamp", "time", "lastUpdate", "measuredAt"))
 		if s.MeasuredAt == 0 {

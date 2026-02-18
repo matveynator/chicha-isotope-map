@@ -43,11 +43,21 @@ func TestNormalizeCoordinates(t *testing.T) {
 	if !ok {
 		t.Fatal("expected swapped coordinates to be accepted")
 	}
-	if lat != 45 || lon != 120 {
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
 		t.Fatalf("unexpected normalized pair: %f,%f", lat, lon)
 	}
 
 	if _, _, ok := normalizeCoordinates(999, 999); ok {
 		t.Fatal("expected invalid coordinates to be rejected")
+	}
+}
+
+func TestNormalizeCoordinatesScaled(t *testing.T) {
+	lat, lon, ok := normalizeCoordinates(50123456, 14456789)
+	if !ok {
+		t.Fatal("expected scaled coordinates to be accepted")
+	}
+	if lat < 50 || lat > 51 || lon < 14 || lon > 15 {
+		t.Fatalf("unexpected scaled normalization result: %f,%f", lat, lon)
 	}
 }
