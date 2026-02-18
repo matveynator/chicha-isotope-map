@@ -54,6 +54,7 @@ import (
 	"chicha-isotope-map/pkg/cimimport"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
+	jrcremrealtime "chicha-isotope-map/pkg/jrc-rem-realtime"
 	"chicha-isotope-map/pkg/jsonarchive"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
@@ -81,11 +82,13 @@ var version = flag.Bool("version", false, "Show the application version")
 var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
+
 // mapboxToken lets operators wire in Mapbox tiles without hardcoding secrets into HTML.
 var mapboxToken = flag.String("mapbox-token", "", "Mapbox access token used for the optional Mapbox Satellite base layer")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap", "Google Satellite", or "Mapbox Satellite"`)
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
+var jrcREMRealtimeEnabled = flag.Bool("jrc-rem-realtime", false, "Enable polling and display of JRC REM realtime stations")
 
 // Keep the default UI toggle explicit so operators can expose realtime data without auto-enabling it.
 var safecastRealtimeDefault = flag.Bool("safecast-realtime-default", false, "Show Safecast realtime markers by default when realtime polling is enabled")
@@ -146,7 +149,7 @@ var cliUsageSections = []usageSection{
 	{Key: cliSectionGeneral, Flags: []string{"version", "domain", "port", "setup"}},
 	{Key: cliSectionDatabase, Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Key: cliSectionAppearance, Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default", "support-email", "logo-path", "logo-link"}},
-	{Key: cliSectionPlugins, Flags: []string{"safecast-realtime", "safecast-realtime-default"}},
+	{Key: cliSectionPlugins, Flags: []string{"safecast-realtime", "jrc-rem-realtime", "safecast-realtime-default"}},
 	{Key: cliSectionImport, Flags: []string{"import", "import-tgz-url", "import-tgz-file"}},
 	{Key: cliSectionExport, Flags: []string{"json-archive-path", "json-archive-frequency"}},
 }
@@ -5300,7 +5303,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer:      resolvedDefaultLayer,
 		MapboxToken:       resolvedMapboxToken,
 		AutoLocateDefault: *autoLocateDefault,
-		RealtimeAvailable: *safecastRealtimeEnabled,
+		RealtimeAvailable: *safecastRealtimeEnabled || *jrcREMRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
 		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
 		SupportEmail:       strings.TrimSpace(*supportEmail),
@@ -5596,7 +5599,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultLayer:      resolvedDefaultLayer,
 		MapboxToken:       resolvedMapboxToken,
 		AutoLocateDefault: *autoLocateDefault,
-		RealtimeAvailable: *safecastRealtimeEnabled,
+		RealtimeAvailable: *safecastRealtimeEnabled || *jrcREMRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
 		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
 		SupportEmail:       strings.TrimSpace(*supportEmail),
@@ -5747,7 +5750,7 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if *safecastRealtimeEnabled {
+	if *safecastRealtimeEnabled || *jrcREMRealtimeEnabled {
 		// We only touch realtime tables when the operator explicitly enables the feature.
 		if rt, err := db.GetLatestRealtimeByBounds(ctx, minLat, minLon, maxLat, maxLon, *dbType); err == nil {
 			for i := range rt {
@@ -5993,7 +5996,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 			return false
 		}
 	}
-	includeRealtime := *safecastRealtimeEnabled
+	includeRealtime := *safecastRealtimeEnabled || *jrcREMRealtimeEnabled
 	if raw := strings.TrimSpace(q.Get("realtime")); raw != "" {
 		includeRealtime = parseBool(raw)
 	}
@@ -6042,7 +6045,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	// We only touch the realtime table when the dedicated flag enables it so
 	// operators control the feature explicitly.
 	var rtMarks []database.Marker
-	if includeRealtime && *safecastRealtimeEnabled {
+	if includeRealtime && (*safecastRealtimeEnabled || *jrcREMRealtimeEnabled) {
 		var err error
 		rtMarks, err = db.GetLatestRealtimeByBounds(ctx, minLat, minLon, maxLat, maxLon, *dbType)
 		if err != nil {
@@ -6425,6 +6428,15 @@ func prepareRealtimeSeries(points []realtimePoint, limit int, defaultBucket int6
 	return resampled, bucket
 }
 
+// convertStoredRealtime normalizes mixed realtime rows from multiple sources
+// into a single µSv/h stream for maps and history charts.
+func convertStoredRealtime(value float64, unit string) (float64, bool) {
+	if converted, ok := safecastrealtime.FromRealtime(value, unit); ok {
+		return converted, true
+	}
+	return jrcremrealtime.FromRealtime(value, unit)
+}
+
 // summariseRealtimeHistory processes DB rows on a background goroutine and
 // returns aggregated series for day, week, month, and all-time windows.
 func summariseRealtimeHistory(rows []database.RealtimeMeasurement, now time.Time) historyAggregate {
@@ -6432,7 +6444,7 @@ func summariseRealtimeHistory(rows []database.RealtimeMeasurement, now time.Time
 	go func() {
 		defer close(input)
 		for _, row := range rows {
-			val, ok := safecastrealtime.FromRealtime(row.Value, row.Unit)
+			val, ok := convertStoredRealtime(row.Value, row.Unit)
 			if !ok {
 				continue
 			}
@@ -6622,7 +6634,7 @@ func collectRealtimeMeasurements(input <-chan realtimeMeasurementPayload, now ti
 // The handler keeps the response lightweight so the frontend can draw Grafana-style
 // charts without shipping a dedicated dashboard backend.
 func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
-	if !*safecastRealtimeEnabled {
+	if !(*safecastRealtimeEnabled || *jrcREMRealtimeEnabled) {
 		http.NotFound(w, r)
 		return
 	}
@@ -6828,13 +6840,20 @@ func main() {
 		}, log.Printf)
 	}
 
+	if *safecastRealtimeEnabled || *jrcREMRealtimeEnabled {
+		// Keep a single conversion entry point so mixed realtime feeds share
+		// one rendering path in map markers and history charts.
+		database.SetRealtimeConverter(convertStoredRealtime)
+	}
 	if *safecastRealtimeEnabled {
-		// Launch realtime Safecast polling under the dedicated flag so the
-		// feature stays opt-in.
-		database.SetRealtimeConverter(safecastrealtime.FromRealtime)
 		ctxRT, cancelRT := context.WithCancel(context.Background())
 		defer cancelRT()
 		safecastrealtime.Start(ctxRT, db, *dbType, log.Printf)
+	}
+	if *jrcREMRealtimeEnabled {
+		ctxJRC, cancelJRC := context.WithCancel(context.Background())
+		defer cancelJRC()
+		jrcremrealtime.Start(ctxJRC, db, *dbType, log.Printf)
 	}
 
 	// Build a JSON archive tgz with all known exported tracks only when
