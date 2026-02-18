@@ -27,3 +27,13 @@ func TestDecodeStations(t *testing.T) {
 		t.Fatalf("unexpected station payload: %+v", stations[0])
 	}
 }
+
+func TestParseTimestampCompactUTC(t *testing.T) {
+	ts := parseTimestamp("20260218102644")
+	if ts == 0 {
+		t.Fatal("expected compact datetime to parse")
+	}
+	if ts < 1_700_000_000 {
+		t.Fatalf("unexpected old timestamp: %d", ts)
+	}
+}

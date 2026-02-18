@@ -335,6 +335,25 @@ func parseTimestamp(raw string) int64 {
 	if raw == "" {
 		return 0
 	}
+
+	// JRC often uses compact UTC datetime like 20260218102644.
+	// Parse this shape before Unix parsing so we avoid misreading it as
+	// milliseconds and accidentally aging fresh rows into 1970-era timestamps.
+	if len(raw) == 14 {
+		allDigits := true
+		for _, r := range raw {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			if t, err := time.Parse("20060102150405", raw); err == nil {
+				return t.UTC().Unix()
+			}
+		}
+	}
+
 	if ts, err := strconv.ParseInt(raw, 10, 64); err == nil {
 		if ts > 1_000_000_000_000 {
 			return ts / 1000
