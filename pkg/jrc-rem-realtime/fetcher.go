@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"chicha-isotope-map/pkg/countryresolver"
 	"chicha-isotope-map/pkg/database"
@@ -32,6 +33,55 @@ type stationPayload struct {
 	ValueNSvH  float64
 	MeasuredAt int64
 	Country    string
+}
+
+var countryAliasToISO2 = map[string]string{
+	"de": "DE", "deu": "DE", "germany": "DE", "deutschland": "DE",
+	"fr": "FR", "fra": "FR", "france": "FR",
+	"es": "ES", "esp": "ES", "spain": "ES", "espana": "ES",
+	"it": "IT", "ita": "IT", "italy": "IT",
+	"pt": "PT", "prt": "PT", "portugal": "PT",
+	"nl": "NL", "nld": "NL", "netherlands": "NL",
+	"be": "BE", "bel": "BE", "belgium": "BE",
+	"ch": "CH", "che": "CH", "switzerland": "CH",
+	"at": "AT", "aut": "AT", "austria": "AT",
+	"pl": "PL", "pol": "PL", "poland": "PL",
+	"cz": "CZ", "cze": "CZ", "czechia": "CZ", "czech republic": "CZ",
+	"sk": "SK", "svk": "SK", "slovakia": "SK",
+	"hu": "HU", "hun": "HU", "hungary": "HU",
+	"si": "SI", "svn": "SI", "slovenia": "SI",
+	"hr": "HR", "hrv": "HR", "croatia": "HR",
+	"ro": "RO", "rou": "RO", "romania": "RO",
+	"bg": "BG", "bgr": "BG", "bulgaria": "BG",
+	"gr": "GR", "ell": "GR", "greece": "GR",
+	"se": "SE", "swe": "SE", "sweden": "SE",
+	"no": "NO", "nor": "NO", "norway": "NO",
+	"fi": "FI", "fin": "FI", "finland": "FI",
+	"dk": "DK", "dnk": "DK", "denmark": "DK",
+	"ie": "IE", "irl": "IE", "ireland": "IE",
+	"gb": "GB", "gbr": "GB", "uk": "GB", "united kingdom": "GB",
+	"ua": "UA", "ukr": "UA", "ukraine": "UA",
+	"by": "BY", "blr": "BY", "belarus": "BY",
+	"lt": "LT", "ltu": "LT", "lithuania": "LT",
+	"lv": "LV", "lva": "LV", "latvia": "LV",
+	"ee": "EE", "est": "EE", "estonia": "EE",
+	"us": "US", "usa": "US", "united states": "US",
+	"ca": "CA", "can": "CA", "canada": "CA",
+	"jp": "JP", "jpn": "JP", "japan": "JP",
+	"tw": "TW", "twn": "TW", "taiwan": "TW",
+}
+
+func stableStationID(m map[string]any) string {
+	for _, key := range []string{"stationId", "station_id", "stationCode", "station_code", "code", "id"} {
+		if raw := firstString(m, key); strings.TrimSpace(raw) != "" {
+			return strings.TrimSpace(raw)
+		}
+	}
+	name := strings.TrimSpace(firstString(m, "name", "stationName", "station_name", "label"))
+	if name != "" {
+		return "name:" + name
+	}
+	return ""
 }
 
 func FromRealtime(value float64, unit string) (float64, bool) {
@@ -60,10 +110,28 @@ func resolveCountryCode(lat, lon float64, payloadCode string) string {
 	if resolved, _ := countryresolver.Resolve(lat, lon); isISOAlpha2(resolved) {
 		return strings.ToUpper(strings.TrimSpace(resolved))
 	}
+	normalizedPayload := normalizeCountryAlias(payloadCode)
+	if code, ok := countryAliasToISO2[normalizedPayload]; ok {
+		return code
+	}
 	if isISOAlpha2(payloadCode) {
 		return strings.ToUpper(strings.TrimSpace(payloadCode))
 	}
 	return ""
+}
+
+func normalizeCountryAlias(raw string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(raw))
+	if trimmed == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range trimmed {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == ' ' {
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func isISOAlpha2(raw string) bool {
@@ -325,7 +393,7 @@ func decodeStations(b []byte) ([]stationPayload, error) {
 	out := make([]stationPayload, 0, len(list))
 	for _, m := range list {
 		s := stationPayload{}
-		s.ID = firstString(m, "id", "stationId", "station_id", "code")
+		s.ID = stableStationID(m)
 		s.Name = firstString(m, "name", "stationName", "station_name", "label")
 		s.Country = firstString(m, "country", "countryCode", "country_code")
 		s.Lat = firstFloat(m, "lat", "latitude", "Latitude", "y", "loc_lat", "Lat", "station_lat", "station_latitude")

@@ -5754,6 +5754,7 @@ func getMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		// We only touch realtime tables when the operator explicitly enables the feature.
 		if rt, err := db.GetLatestRealtimeByBounds(ctx, minLat, minLon, maxLat, maxLon, *dbType); err == nil {
 			rt = filterRealtimeByEnabledSources(rt)
+			rt = thinRealtimeMarkers(rt, zoom)
 			for i := range rt {
 				// Sanitise detector names on the fly so legacy rows without
 				// the new resolver still produce friendly popups.
@@ -5793,6 +5794,38 @@ func filterRealtimeByEnabledSources(markers []database.Marker) []database.Marker
 		if realtimeSourceEnabled(m.DeviceID, m.Transport) {
 			out = append(out, m)
 		}
+	}
+	return out
+}
+
+// thinRealtimeMarkers keeps one strongest realtime marker per coarse grid cell
+// to keep large global views responsive when thousands of stations are active.
+func thinRealtimeMarkers(markers []database.Marker, zoom int) []database.Marker {
+	if len(markers) == 0 {
+		return markers
+	}
+	if zoom < 0 {
+		zoom = 0
+	}
+	if zoom > 22 {
+		zoom = 22
+	}
+	// Coarsen low-zoom grids aggressively so first page render stays interactive.
+	effectiveZoom := zoom
+	if effectiveZoom > 8 {
+		effectiveZoom = 8
+	}
+	scale := math.Pow(2, float64(effectiveZoom))
+	cells := make(map[string]database.Marker, len(markers))
+	for _, m := range markers {
+		key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
+		if prev, ok := cells[key]; !ok || m.DoseRate > prev.DoseRate {
+			cells[key] = m
+		}
+	}
+	out := make([]database.Marker, 0, len(cells))
+	for _, m := range cells {
+		out = append(out, m)
 	}
 	return out
 }
@@ -6078,7 +6111,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("realtime query: %v", err)
 		}
-		rtMarks = filterRealtimeByEnabledSources(rtMarks)
+		rtMarks = thinRealtimeMarkers(filterRealtimeByEnabledSources(rtMarks), zoom)
 		// Log bounds alongside count to help diagnose empty map tiles.
 		log.Printf("realtime markers: %d lat[%f,%f] lon[%f,%f]", len(rtMarks), minLat, maxLat, minLon, maxLon)
 	}

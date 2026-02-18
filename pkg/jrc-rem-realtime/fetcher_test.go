@@ -81,3 +81,17 @@ func TestDecodeStationsGeometryCoordinates(t *testing.T) {
 		t.Fatalf("expected nsv value from comma decimal, got: %+v", stations[0])
 	}
 }
+
+func TestResolveCountryCodeFallbackAlias(t *testing.T) {
+	code := resolveCountryCode(999, 999, "Germany")
+	if code != "DE" {
+		t.Fatalf("expected DE from alias, got %q", code)
+	}
+}
+
+func TestStableStationIDPreference(t *testing.T) {
+	m := map[string]any{"id": "123456", "stationId": "ST-42"}
+	if got := stableStationID(m); got != "ST-42" {
+		t.Fatalf("unexpected station id preference: %q", got)
+	}
+}
