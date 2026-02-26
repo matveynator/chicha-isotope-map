@@ -151,4 +151,6 @@ After it imports, rerun normally (or keep the same command in a systemd service)
 - We wanted anyone, without training, to see if radiation threatens where they live, grow food, or collect water.
 - The more nodes exist, the harder it is to miss contamination.
 
-Chicha-Isotope-Map was inspired by **Dmitry Ignatenko** and his forward steps in field research, and is deeply influenced by **Rob Oudendijk** and **Safecast**. Open data from the AtomFast and Radiacode communities keeps it useful. If the map spares even one life, it was not in vain.
+Chicha-Isotope-Map was inspired by **Dmitry Ignatenko** and his forward steps in field research, and is deeply influenced by **Rob Oudendijk** and **Safecast**. Open data from the AtomFast and Radiacode communities keeps it useful.
+
+We made this map to save lives. If it saves even one life, it was worth it.
