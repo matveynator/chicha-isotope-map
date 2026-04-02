@@ -87,6 +87,9 @@ body, html {
           --info-card-border: 1px solid rgba(0, 0, 0, 0.08);
           --api-method-bg: rgba(0, 123, 255, 0.1);
           --api-method-text: #0056b3;
+          --action-attention-bg: #ff8c00;
+          --action-attention-bg-hover: #ff9f2f;
+          --action-attention-text: #ffffff;
           color-scheme: light; /* Default to light scheme */
           --font-family-base: "Segoe UI", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; /* Shared font stack keeps every control aligned */
           --font-size-base: 12px; /* Main text size for buttons, menus, and labels */
@@ -118,6 +121,9 @@ body, html {
             --info-card-border: 1px solid rgba(255, 255, 255, 0.08);
             --api-method-bg: rgba(144, 202, 249, 0.2);
             --api-method-text: #90caf9;
+            --action-attention-bg: #ff8c00;
+            --action-attention-bg-hover: #ff9f2f;
+            --action-attention-text: #ffffff;
             color-scheme: dark; /* Match system dark scheme */
           }
         }
@@ -195,6 +201,9 @@ body, html {
           --info-card-border: 1px solid rgba(0, 0, 0, 0.08);
           --api-method-bg: rgba(0, 123, 255, 0.1);
           --api-method-text: #0056b3;
+          --action-attention-bg: #ff8c00;
+          --action-attention-bg-hover: #ff9f2f;
+          --action-attention-text: #ffffff;
           color-scheme: light; /* Force light scheme when manually selected */
         }
 
@@ -227,6 +236,9 @@ body, html {
           --info-card-border: 1px solid rgba(255, 255, 255, 0.08);
           --api-method-bg: rgba(144, 202, 249, 0.2);
           --api-method-text: #90caf9;
+          --action-attention-bg: #ff8c00;
+          --action-attention-bg-hover: #ff9f2f;
+          --action-attention-text: #ffffff;
           color-scheme: dark; /* Force dark scheme when manually selected */
         }
 
@@ -709,18 +721,18 @@ body, html {
         }
 
         .back-to-all-btn {
-          background-color: var(--control-bg);
-          border: var(--legend-border);
+          background-color: var(--action-attention-bg);
+          border: 1px solid #fff;
           border-radius: 4px;
           padding: 5px 10px;
           cursor: pointer;
           font-size: var(--font-size-base);
-          color: var(--modal-text);
+          color: var(--action-attention-text);
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
         }
 
         .back-to-all-btn:hover {
-          background-color: var(--control-bg-hover);
+          background-color: var(--action-attention-bg-hover);
         }
 
         /* Dedicated download container lives under the back button so
@@ -864,6 +876,16 @@ body, html {
           background:#1e88e5;
           color:#fff;
           border-color:#1e88e5;
+        }
+
+        .slider-reset-btn.is-attention{
+          background: var(--action-attention-bg);
+          color: var(--action-attention-text);
+          border: 1px solid #fff;
+        }
+
+        .slider-reset-btn.is-attention:hover{
+          background: var(--action-attention-bg-hover);
         }
 
         /* Track view reset sits under play so both buttons remain aligned. */
@@ -3609,8 +3631,32 @@ function createDateRangeSlider(){
   const btnM = sliderBox.querySelector('#btnMonth');
   const btnPlay = sliderBox.querySelector('#btnPlay');
   const btnReset = sliderBox.querySelector('#btnReset');
+  const backToAllButton = document.getElementById('backToAllButton');
   const lblMin = () => sliderBox.querySelector('#lblMin');
   const lblMax = () => sliderBox.querySelector('#lblMax');
+
+  function isCustomDateRangeSelected(savedRange, defaultRange) {
+    if (!Array.isArray(savedRange) || savedRange.length !== 2) return false;
+    if (!Array.isArray(defaultRange) || defaultRange.length !== 2) return false;
+    const savedStart = Number(savedRange[0]);
+    const savedEnd = Number(savedRange[1]);
+    const defaultStart = Number(defaultRange[0]);
+    const defaultEnd = Number(defaultRange[1]);
+    if (!isFinite(savedStart) || !isFinite(savedEnd) || !isFinite(defaultStart) || !isFinite(defaultEnd)) return false;
+    return Math.abs(savedStart - defaultStart) > 1 || Math.abs(savedEnd - defaultEnd) > 1;
+  }
+
+  function updateActionButtonsHighlight() {
+    const savedRange = loadDateRangeState();
+    const defaultRange = fullRange;
+    const hasCustomDateRange = isCustomDateRangeSelected(savedRange, defaultRange);
+    if (btnReset) {
+      btnReset.classList.toggle('is-attention', hasCustomDateRange);
+    }
+    if (backToAllButton) {
+      backToAllButton.classList.toggle('is-attention', hasCustomDateRange);
+    }
+  }
 
   btnY.onclick = () => switchMode('year');
   btnM.onclick = () => switchMode('month');
@@ -3620,11 +3666,13 @@ function createDateRangeSlider(){
   setPlayButtonState('stopped');
   // Allow playback in both year and month modes so the button reflects the active range filter.
   btnPlay.disabled = false;
+  updateActionButtonsHighlight();
 
   // Show/hide the whole control (called from updateMarkers())
   window.__setDateSliderVisibility = (show)=>{
     sliderBox.style.display = show ? 'block' : 'none';
     if(!show) sessionStorage.removeItem('dateRangeState');
+    updateActionButtonsHighlight();
     if (!show && sliderTooltipHandle) {
       sliderTooltipHandle.hide();
     }
@@ -4136,6 +4184,7 @@ function createDateRangeSlider(){
       lblMin().textContent = tsToNiceStr(minTs);
       lblMax().textContent = tsToNiceStr(maxTs);
     }
+    updateActionButtonsHighlight();
     maybeStartPlaybackFromUrl();
   };
 
@@ -4185,6 +4234,7 @@ function createDateRangeSlider(){
       saveDateRangeState([minTs,maxTs]);
       updateUrl(); // keep the default date range visible in the URL
     }
+    updateActionButtonsHighlight();
   };
 
   // Reset button → drop custom filter and show full bounds of the *current* viewport
@@ -4208,6 +4258,7 @@ function createDateRangeSlider(){
       updateMarkers(true);
       updateUrl(); // keep reset reflected in shared links
     }
+    updateActionButtonsHighlight();
   };
 
   function switchMode(next){
@@ -4221,6 +4272,7 @@ function createDateRangeSlider(){
     monthSlider.style.display = next==='month' ? 'block' : 'none';
     // Keep playback available for both modes so users can animate any chosen range.
     btnPlay.disabled = false;
+    updateActionButtonsHighlight();
     if (next !== 'year') {
       stopPlayback(true);
     }
@@ -4273,6 +4325,7 @@ function createDateRangeSlider(){
     }
     debounceUpdateMarkers(true);
     updateUrl(); // reflect date filters in the shareable URL
+    updateActionButtonsHighlight();
   }
 }
 
