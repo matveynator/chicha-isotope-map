@@ -791,9 +791,9 @@ body, html {
           height:20px;
           left:-18px;              /* center on 6px rail */
           border-radius:3px;
-          background: var(--control-bg);      /* follow theme */
-          border: var(--legend-border);   /* match theme border */
-          box-shadow:0 1px 3px rgba(0,0,0,.25);
+          background: rgba(30, 136, 229, 0.92); /* keep handles visible over map in both themes */
+          border: 1px solid #fff;  /* requested high-contrast 1px white outline */
+          box-shadow:0 1px 4px rgba(0,0,0,.35);
           cursor:grab;
         }
         /* 4) remove pseudo-element tails */
@@ -2255,16 +2255,16 @@ function shouldDisplayBySpeed(speed) {
 // Compute marker fill opacity based on speed
 function getFillOpacity(speed) {
   if (speed <= 5) {
-    return 0.6;
+    return 0.8;
   } else if (speed >= 20) {
-    return 0.1;
+    return 0.8;
   } else {
-    var opacityRange = 0.6 - 0.1;
+    var opacityRange = 0.8 - 0.5;
     var speedRange = 20 - 5;
     var opacityDecreasePerMs = opacityRange / speedRange;
     var speedAboveFive = speed - 5;
     var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
-    var currentOpacity = 0.6 - totalOpacityDecrease;
+    var currentOpacity = 0.8 - totalOpacityDecrease;
     return currentOpacity;
   }
 }
@@ -3578,8 +3578,8 @@ function createDateRangeSlider(){
       sliderBox.style.display = 'none'; // hidden until needed
       sliderBox.innerHTML = `
         <div class="slider-toggle">
-          <button id="btnYear"  class="active">Y</button>
           <button id="btnMonth">M</button>
+          <button id="btnYear">Y</button>
         </div>
         <div id="lblMax" class="slider-label"></div>
         <div id="yearSlider"></div>
