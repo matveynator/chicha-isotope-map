@@ -3349,8 +3349,10 @@ document.addEventListener('DOMContentLoaded', function () {
   if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
     isTrackView = true;
 
-    // Don't show initialMarkers immediately; load them in parts via get_markers
-    map.on('load', debounceUpdateMarkers);
+    // Rely on whenReady so marker loading does not depend on tile fetch success.
+    map.whenReady(function() {
+      debounceUpdateMarkers();
+    });
 
     // Adjust marker size on zoom
     map.on('zoomend', function() {
@@ -3360,7 +3362,9 @@ document.addEventListener('DOMContentLoaded', function () {
     map.on('moveend', scheduleTrackViewReload);
   } else {
     // Dynamic marker updates in global mode
-    map.on('load', debounceUpdateMarkers);
+    map.whenReady(function() {
+      debounceUpdateMarkers();
+    });
     map.on('zoomend', function() {
       adjustMarkerRadius();
       if (trackPlaybackActive || playbackMarkersRendered) {
@@ -3378,7 +3382,6 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       debounceUpdateMarkers();
     });
-    debounceUpdateMarkers;
   }
 
   // Load map state from URL
