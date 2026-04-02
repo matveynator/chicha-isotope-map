@@ -3542,7 +3542,7 @@ function createDateRangeSlider(){
 
   let sliderBox, yearSlider, monthSlider;
   // Default to the last known mode so shared links keep the same UI affordance.
-  let mode  = loadDateRangeMode() || 'year';                // 'year' | 'month'
+  let mode  = loadDateRangeMode() || 'month';               // 'year' | 'month'
   saveDateRangeMode(mode); // persist default so URL state stays explicit
   updateUrl(); // publish the default mode before any slider interaction
   let initY = false, initM = false;  // lazy init flags
