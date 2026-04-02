@@ -1774,32 +1774,27 @@ function getRadius(doseRate, zoomLevel) {
   return Math.max(r, 2);                       // prevent tiny circles
 }
 
-const MARKER_OUTER_RING_COLOR = '#00bfff';
-const MARKER_INNER_RING_COLOR = '#ffffff';
-const MARKER_OUTER_RING_WIDTH = 1;
-const MARKER_INNER_RING_WIDTH = 1;
+const MARKER_CONTRAST_RING_COLOR = '#ffffff';
+const MARKER_CONTRAST_RING_WIDTH = 1;
+const MARKER_CONTRAST_MIN_ZOOM = 12;
 
 function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLevel) {
   const markerRadius = getRadius(doseRate, zoomLevel);
   const markerOpacity = getFillOpacity(speed) + 0.1;
   const markerFillOpacity = getFillOpacity(speed);
   const markerColor = getGradientColor(doseRate);
+  const markerLayers = [];
 
-  const outerRing = L.circleMarker([lat, lon], {
-    radius: markerRadius + MARKER_OUTER_RING_WIDTH + MARKER_INNER_RING_WIDTH,
-    color: MARKER_OUTER_RING_COLOR,
-    weight: MARKER_OUTER_RING_WIDTH,
-    opacity: 1,
-    fillOpacity: 0
-  });
-
-  const innerRing = L.circleMarker([lat, lon], {
-    radius: markerRadius + MARKER_INNER_RING_WIDTH,
-    color: MARKER_INNER_RING_COLOR,
-    weight: MARKER_INNER_RING_WIDTH,
-    opacity: 1,
-    fillOpacity: 0
-  });
+  if (zoomLevel > MARKER_CONTRAST_MIN_ZOOM) {
+    const contrastRing = L.circleMarker([lat, lon], {
+      radius: markerRadius + MARKER_CONTRAST_RING_WIDTH,
+      color: MARKER_CONTRAST_RING_COLOR,
+      weight: MARKER_CONTRAST_RING_WIDTH,
+      opacity: 1,
+      fillOpacity: 0
+    });
+    markerLayers.push(contrastRing);
+  }
 
   const doseMarker = L.circleMarker([lat, lon], {
     radius: markerRadius,
@@ -1809,8 +1804,9 @@ function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLeve
     opacity: markerOpacity,
     fillOpacity: markerFillOpacity
   });
+  markerLayers.push(doseMarker);
 
-  const markerGroup = L.featureGroup([outerRing, innerRing, doseMarker]);
+  const markerGroup = L.featureGroup(markerLayers);
   markerGroup.options = { radius: markerRadius };
   return markerGroup;
 }
