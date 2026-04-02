@@ -1774,6 +1774,47 @@ function getRadius(doseRate, zoomLevel) {
   return Math.max(r, 2);                       // prevent tiny circles
 }
 
+const MARKER_OUTER_RING_COLOR = '#00bfff';
+const MARKER_INNER_RING_COLOR = '#ffffff';
+const MARKER_OUTER_RING_WIDTH = 1;
+const MARKER_INNER_RING_WIDTH = 1;
+
+function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLevel) {
+  const markerRadius = getRadius(doseRate, zoomLevel);
+  const markerOpacity = getFillOpacity(speed) + 0.1;
+  const markerFillOpacity = getFillOpacity(speed);
+  const markerColor = getGradientColor(doseRate);
+
+  const outerRing = L.circleMarker([lat, lon], {
+    radius: markerRadius + MARKER_OUTER_RING_WIDTH + MARKER_INNER_RING_WIDTH,
+    color: MARKER_OUTER_RING_COLOR,
+    weight: MARKER_OUTER_RING_WIDTH,
+    opacity: 1,
+    fillOpacity: 0
+  });
+
+  const innerRing = L.circleMarker([lat, lon], {
+    radius: markerRadius + MARKER_INNER_RING_WIDTH,
+    color: MARKER_INNER_RING_COLOR,
+    weight: MARKER_INNER_RING_WIDTH,
+    opacity: 1,
+    fillOpacity: 0
+  });
+
+  const doseMarker = L.circleMarker([lat, lon], {
+    radius: markerRadius,
+    fillColor: markerColor,
+    color: markerColor,
+    weight: 1,
+    opacity: markerOpacity,
+    fillOpacity: markerFillOpacity
+  });
+
+  const markerGroup = L.featureGroup([outerRing, innerRing, doseMarker]);
+  markerGroup.options = { radius: markerRadius };
+  return markerGroup;
+}
+
 // Live markers need decluttering at low zoom so they never stack and look like
 // a single dot. We enforce a spacing that caps overlap at ~20% between equal
 // circles (≈1.374 * radius in screen space).
@@ -2594,14 +2635,7 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
     .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
     .bindPopup(getPopupContent(marker));
   } else {
-    rendered = L.circleMarker([marker.lat, marker.lon], {
-      radius: getRadius(marker.doseRate, zoomLevel),
-      fillColor: getGradientColor(marker.doseRate),
-      color: getGradientColor(marker.doseRate),
-      weight: 1,
-      opacity: getFillOpacity(marker.speed) + 0.1,
-      fillOpacity: getFillOpacity(marker.speed)
-    })
+    rendered = createDoseMarkerWithContrastOutline(marker.lat, marker.lon, marker.doseRate, marker.speed, zoomLevel)
     .addTo(map)
     .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
     .bindPopup(getPopupContent(marker));
@@ -3794,14 +3828,7 @@ function createDateRangeSlider(){
       map.removeLayer(prevLayer);
       delete circleMarkers[markerKey];
     }
-    const circle = L.circleMarker([marker.lat, marker.lon], {
-      radius: getRadius(marker.doseRate, zoomLevel),
-      fillColor: getGradientColor(marker.doseRate),
-      color: getGradientColor(marker.doseRate),
-      weight: 1,
-      opacity: getFillOpacity(marker.speed) + 0.1,
-      fillOpacity: getFillOpacity(marker.speed)
-    })
+    const circle = createDoseMarkerWithContrastOutline(marker.lat, marker.lon, marker.doseRate, marker.speed, zoomLevel)
     .addTo(map)
     .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
     .bindPopup(getPopupContent(marker));
@@ -4793,15 +4820,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
     } else {
-      const radius = getRadius(m.doseRate, zoom);
-      marker = L.circleMarker([m.lat, m.lon], {
-        radius      : radius,
-        fillColor   : getGradientColor(m.doseRate),
-        color       : getGradientColor(m.doseRate),
-        weight      : 1,
-        opacity     : getFillOpacity(m.speed) + 0.1,
-        fillOpacity : getFillOpacity(m.speed)
-      })
+      marker = createDoseMarkerWithContrastOutline(m.lat, m.lon, m.doseRate, m.speed, zoom)
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
     }
