@@ -893,6 +893,16 @@ body, html {
           margin-top:4px;
         }
 
+        .track-reset-btn.is-attention{
+          background: var(--action-attention-bg);
+          color: var(--action-attention-text);
+          border: 1px solid #fff;
+        }
+
+        .track-reset-btn.is-attention:hover{
+          background: var(--action-attention-bg-hover);
+        }
+
         .loading-overlay{
           position:absolute;
           top:50%;left:50%;
@@ -2569,6 +2579,13 @@ function setTrackViewPlaybackButtonState(state) {
   trackViewPlaybackButton.setAttribute('aria-label', translate(labelKey));
 }
 
+function setTrackViewResetButtonAttention(isAttention) {
+  if (!trackViewResetButton) {
+    return;
+  }
+  trackViewResetButton.classList.toggle('is-attention', isAttention);
+}
+
 function refreshTrackViewPlaybackControl() {
   if (!trackViewPlaybackContainer || !trackViewPlaybackButton) {
     return;
@@ -2609,7 +2626,7 @@ function createTrackViewPlaybackControl() {
   control.addTo(map);
   trackViewPlaybackContainer = control.getContainer();
   trackViewPlaybackButton = trackViewPlaybackContainer.querySelector('#trackPlaybackButton');
-  const trackViewResetButton = trackViewPlaybackContainer.querySelector('#trackPlaybackResetButton');
+  trackViewResetButton = trackViewPlaybackContainer.querySelector('#trackPlaybackResetButton');
   if (trackViewPlaybackButton) {
     trackViewPlaybackButton.addEventListener('click', function () {
       toggleTrackViewPlayback();
@@ -2623,6 +2640,7 @@ function createTrackViewPlaybackControl() {
       updateMarkers(true);
     });
   }
+  setTrackViewResetButtonAttention(trackViewZoomChanged);
   refreshTrackViewPlaybackControl();
 }
 
@@ -2869,6 +2887,8 @@ function resetTrackViewPlaybackForZoom() {
   if (!isTrackView || !currentTrackID) {
     return;
   }
+  trackViewZoomChanged = false;
+  setTrackViewResetButtonAttention(false);
   // Zooming changes the visible bounds, so clear state before re-streaming.
   trackViewPlaybackGeneration += 1;
   stopTrackViewPlayback(false);
@@ -2930,9 +2950,11 @@ let trackViewPlaybackGeneration = 0;
 const trackViewPlaybackConfig = { pointDelayMs: 70 };
 let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
+let trackViewResetButton = null;
 let trackViewMarkers = [];
 let trackViewMarkersReady = false;
 let trackViewReloadTimer = null;
+let trackViewZoomChanged = false;
 
 var liveHistoryCache = new Map();
 
@@ -3354,6 +3376,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Adjust marker size on zoom
     map.on('zoomend', function() {
+      trackViewZoomChanged = true;
+      setTrackViewResetButtonAttention(true);
       adjustMarkerRadius();
       scheduleTrackViewReload();
     });
