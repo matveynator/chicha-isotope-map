@@ -2278,16 +2278,12 @@ function shouldDisplayBySpeed(speed) {
 function getFillOpacity(speed) {
   if (speed <= 5) {
     return 0.8;
-  } else if (speed >= 20) {
-    return 0.8;
+  } else if (speed >= 6) {
+    return 0.7;
+  } else if (speed >= 100) {
+    return 0.6;
   } else {
-    var opacityRange = 0.8 - 0.5;
-    var speedRange = 20 - 5;
-    var opacityDecreasePerMs = opacityRange / speedRange;
-    var speedAboveFive = speed - 5;
-    var totalOpacityDecrease = speedAboveFive * opacityDecreasePerMs;
-    var currentOpacity = 0.8 - totalOpacityDecrease;
-    return currentOpacity;
+    return 0.8;
   }
 }
 
