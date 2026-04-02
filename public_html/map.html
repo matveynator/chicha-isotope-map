@@ -2636,7 +2636,7 @@ function createTrackViewPlaybackControl() {
     trackViewResetButton.setAttribute('title', 'Reset track playback');
     trackViewResetButton.setAttribute('aria-label', 'Reset track playback');
     trackViewResetButton.addEventListener('click', function () {
-      resetTrackViewPlaybackForZoom();
+      resetTrackViewPlaybackForZoom(true);
       updateMarkers(true);
     });
   }
@@ -2883,12 +2883,14 @@ function toggleTrackViewPlayback() {
   startTrackViewPlayback();
 }
 
-function resetTrackViewPlaybackForZoom() {
+function resetTrackViewPlaybackForZoom(clearZoomAttention) {
   if (!isTrackView || !currentTrackID) {
     return;
   }
-  trackViewZoomChanged = false;
-  setTrackViewResetButtonAttention(false);
+  if (clearZoomAttention) {
+    trackViewZoomChanged = false;
+    setTrackViewResetButtonAttention(false);
+  }
   // Zooming changes the visible bounds, so clear state before re-streaming.
   trackViewPlaybackGeneration += 1;
   stopTrackViewPlayback(false);
