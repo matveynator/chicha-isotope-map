@@ -1774,9 +1774,9 @@ function getRadius(doseRate, zoomLevel) {
   return Math.max(r, 2);                       // prevent tiny circles
 }
 
-const MARKER_CONTRAST_RING_COLOR = '#ffffff';
-const MARKER_CONTRAST_RING_WIDTH = 1;
-const MARKER_CONTRAST_MIN_ZOOM = 12;
+const MARKER_CONTRAST_RING_COLOR = '#000000';
+const MARKER_CONTRAST_RING_WIDTH = 0.5;
+const MARKER_CONTRAST_MIN_ZOOM = 4;
 
 function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLevel) {
   const markerRadius = getRadius(doseRate, zoomLevel);
