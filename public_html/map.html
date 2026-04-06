@@ -2766,6 +2766,22 @@ function normalizeTrackViewPlaybackMarker(marker) {
   return marker;
 }
 
+function markerTimestampForSort(marker) {
+  return typeof marker.date === 'number' ? marker.date : 0;
+}
+
+function markerDoseRateForSort(marker) {
+  return typeof marker.doseRate === 'number' ? marker.doseRate : 0;
+}
+
+function compareMarkersByFreshnessAndRadiation(a, b) {
+  const byTimestamp = markerTimestampForSort(a) - markerTimestampForSort(b);
+  if (byTimestamp !== 0) {
+    return byTimestamp;
+  }
+  return markerDoseRateForSort(a) - markerDoseRateForSort(b);
+}
+
 async function playTrackViewPoints(state, points) {
   for (let i = state.pointIndex; i < points.length; i++) {
     if (!trackViewPlaybackActive) {
@@ -2828,15 +2844,12 @@ async function startTrackViewPlayback() {
   trackViewPlaybackState = createTrackViewPlaybackState();
   const playbackGeneration = trackViewPlaybackState.generation;
   try {
-    // Sort by timestamp so playback always runs from the first marker to the last.
+    // Sort by timestamp first, then by radiation, so higher dose markers from the
+    // same moment are rendered later and stay visible above lower values.
     const normalized = trackViewMarkers
       .map(normalizeTrackViewPlaybackMarker)
       .filter(Boolean)
-      .sort(function(a, b) {
-        const aDate = typeof a.date === 'number' ? a.date : 0;
-        const bDate = typeof b.date === 'number' ? b.date : 0;
-        return aDate - bDate;
-      });
+      .sort(compareMarkersByFreshnessAndRadiation);
     await playTrackViewPoints(trackViewPlaybackState, normalized);
   } catch (err) {
     return;
@@ -5261,11 +5274,9 @@ function updateMarkers(forceReload){
     finalizeTrackStream();
     es.close();
     if (isTrackView) {
-      trackViewMarkers.sort(function(a, b) {
-        const aDate = typeof a.date === 'number' ? a.date : 0;
-        const bDate = typeof b.date === 'number' ? b.date : 0;
-        return aDate - bDate;
-      });
+      // Keep track view layering deterministic: older and lower-dose markers are
+      // drawn first, newer and higher-dose markers are drawn last.
+      trackViewMarkers.sort(compareMarkersByFreshnessAndRadiation);
       trackViewMarkersReady = true;
       if (!trackViewAutoplayRequested) {
         renderTrackViewSnapshot();
