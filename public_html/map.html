@@ -4840,6 +4840,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
 
   const renderQueue = [];
   let renderScheduled = false;
+  let renderQueueNeedsSort = false;
   let pendingRenderItems = 0;
   let streamsFinalized = false;
 
@@ -4852,11 +4853,28 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       return;
     }
     renderQueue.push({ marker: marker, layerName: layerName });
+    renderQueueNeedsSort = true;
     pendingRenderItems += 1;
     if (!renderScheduled) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
     }
+  }
+
+  function compareRenderQueueEntriesByZoomPriority(a, b) {
+    const compareResult = compareMarkersByZoomPriority(a.marker, b.marker, zoom);
+    if (compareResult !== 0) {
+      return compareResult;
+    }
+    const aLayerName = typeof a.layerName === 'string' ? a.layerName : '';
+    const bLayerName = typeof b.layerName === 'string' ? b.layerName : '';
+    if (aLayerName < bLayerName) {
+      return -1;
+    }
+    if (aLayerName > bLayerName) {
+      return 1;
+    }
+    return 0;
   }
 
   function drainRenderQueue() {
@@ -4865,6 +4883,11 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       renderQueue.length = 0;
       pendingRenderItems = 0;
       return;
+    }
+    if (renderQueueNeedsSort && renderQueue.length > 1) {
+      // Sort before drawing so z-order follows zoom-specific priority rules.
+      renderQueue.sort(compareRenderQueueEntriesByZoomPriority);
+      renderQueueNeedsSort = false;
     }
     const start = performance.now();
     while (renderQueue.length && performance.now() - start < 12) {
