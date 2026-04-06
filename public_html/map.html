@@ -2774,43 +2774,28 @@ function markerDoseRateForSort(marker) {
   return typeof marker.doseRate === 'number' ? marker.doseRate : 0;
 }
 
-function markerOverlapCellKeyForSort(marker) {
-  if (!marker || typeof marker.lat !== 'number' || typeof marker.lon !== 'number') {
-    return 'unknown';
+function compareMarkersByZoomPriority(a, b, zoomLevel) {
+  // On low zoom we prioritize hotspot visibility. On close zoom we prioritize
+  // chronological layering so fresh points stay on top.
+  if (zoomLevel <= 10) {
+    const byDoseRate = markerDoseRateForSort(a) - markerDoseRateForSort(b);
+    if (byDoseRate !== 0) {
+      return byDoseRate;
+    }
+    return markerTimestampForSort(a) - markerTimestampForSort(b);
   }
-  const overlapMeters = 10;
-  const latitudeMetersPerDegree = 111320;
-  const latitudeStepDegrees = overlapMeters / latitudeMetersPerDegree;
-  const normalizedLatitude = Math.max(-85, Math.min(85, marker.lat));
-  const longitudeMetersPerDegree = latitudeMetersPerDegree * Math.cos(normalizedLatitude * Math.PI / 180);
-  const longitudeStepDegrees = longitudeMetersPerDegree > 0
-    ? overlapMeters / longitudeMetersPerDegree
-    : 360;
-  const latitudeCell = Math.round(marker.lat / latitudeStepDegrees);
-  const longitudeCell = Math.round(marker.lon / longitudeStepDegrees);
-  return `${latitudeCell}:${longitudeCell}`;
+
+  const byTimestamp = markerTimestampForSort(a) - markerTimestampForSort(b);
+  if (byTimestamp !== 0) {
+    return byTimestamp;
+  }
+  return markerDoseRateForSort(a) - markerDoseRateForSort(b);
 }
 
-function compareMarkersByFreshnessAndRadiation(a, b) {
-  const aCellKey = markerOverlapCellKeyForSort(a);
-  const bCellKey = markerOverlapCellKeyForSort(b);
-
-  if (aCellKey === bCellKey) {
-    // Markers from the same ~10m area can physically overlap, so time decides
-    // which one should stay on top to preserve the temporal narrative.
-    const byTimestamp = markerTimestampForSort(a) - markerTimestampForSort(b);
-    if (byTimestamp !== 0) {
-      return byTimestamp;
-    }
-    return markerDoseRateForSort(a) - markerDoseRateForSort(b);
-  }
-
-  // Markers from different places should prioritize hotspot visibility.
-  const byDoseRate = markerDoseRateForSort(a) - markerDoseRateForSort(b);
-  if (byDoseRate !== 0) {
-    return byDoseRate;
-  }
-  return markerTimestampForSort(a) - markerTimestampForSort(b);
+function createMarkerSortComparatorForZoom(zoomLevel) {
+  return function compareMarkersForZoom(a, b) {
+    return compareMarkersByZoomPriority(a, b, zoomLevel);
+  };
 }
 
 async function playTrackViewPoints(state, points) {
@@ -2875,13 +2860,14 @@ async function startTrackViewPlayback() {
   trackViewPlaybackState = createTrackViewPlaybackState();
   const playbackGeneration = trackViewPlaybackState.generation;
   try {
-    // Sort markers with an overlap-aware strategy:
-    // 1) same ~10m cell -> timestamp first,
-    // 2) different cells -> radiation first.
+    // Layering priority depends on zoom:
+    // zoom <= 10  -> radiation first,
+    // zoom >= 11  -> timestamp first.
+    const trackViewZoomLevel = map && typeof map.getZoom === 'function' ? map.getZoom() : 11;
     const normalized = trackViewMarkers
       .map(normalizeTrackViewPlaybackMarker)
       .filter(Boolean)
-      .sort(compareMarkersByFreshnessAndRadiation);
+      .sort(createMarkerSortComparatorForZoom(trackViewZoomLevel));
     await playTrackViewPoints(trackViewPlaybackState, normalized);
   } catch (err) {
     return;
@@ -5306,9 +5292,9 @@ function updateMarkers(forceReload){
     finalizeTrackStream();
     es.close();
     if (isTrackView) {
-      // Keep layering deterministic using the same overlap-aware comparator as
-      // playback so snapshot and animation produce identical z-order.
-      trackViewMarkers.sort(compareMarkersByFreshnessAndRadiation);
+      // Use the same zoom-aware sorting as playback so both modes stay aligned.
+      const trackViewZoomLevel = map && typeof map.getZoom === 'function' ? map.getZoom() : 11;
+      trackViewMarkers.sort(createMarkerSortComparatorForZoom(trackViewZoomLevel));
       trackViewMarkersReady = true;
       if (!trackViewAutoplayRequested) {
         renderTrackViewSnapshot();
