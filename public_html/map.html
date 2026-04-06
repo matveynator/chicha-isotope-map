@@ -2774,12 +2774,43 @@ function markerDoseRateForSort(marker) {
   return typeof marker.doseRate === 'number' ? marker.doseRate : 0;
 }
 
-function compareMarkersByFreshnessAndRadiation(a, b) {
-  const byTimestamp = markerTimestampForSort(a) - markerTimestampForSort(b);
-  if (byTimestamp !== 0) {
-    return byTimestamp;
+function markerOverlapCellKeyForSort(marker) {
+  if (!marker || typeof marker.lat !== 'number' || typeof marker.lon !== 'number') {
+    return 'unknown';
   }
-  return markerDoseRateForSort(a) - markerDoseRateForSort(b);
+  const overlapMeters = 10;
+  const latitudeMetersPerDegree = 111320;
+  const latitudeStepDegrees = overlapMeters / latitudeMetersPerDegree;
+  const normalizedLatitude = Math.max(-85, Math.min(85, marker.lat));
+  const longitudeMetersPerDegree = latitudeMetersPerDegree * Math.cos(normalizedLatitude * Math.PI / 180);
+  const longitudeStepDegrees = longitudeMetersPerDegree > 0
+    ? overlapMeters / longitudeMetersPerDegree
+    : 360;
+  const latitudeCell = Math.round(marker.lat / latitudeStepDegrees);
+  const longitudeCell = Math.round(marker.lon / longitudeStepDegrees);
+  return `${latitudeCell}:${longitudeCell}`;
+}
+
+function compareMarkersByFreshnessAndRadiation(a, b) {
+  const aCellKey = markerOverlapCellKeyForSort(a);
+  const bCellKey = markerOverlapCellKeyForSort(b);
+
+  if (aCellKey === bCellKey) {
+    // Markers from the same ~10m area can physically overlap, so time decides
+    // which one should stay on top to preserve the temporal narrative.
+    const byTimestamp = markerTimestampForSort(a) - markerTimestampForSort(b);
+    if (byTimestamp !== 0) {
+      return byTimestamp;
+    }
+    return markerDoseRateForSort(a) - markerDoseRateForSort(b);
+  }
+
+  // Markers from different places should prioritize hotspot visibility.
+  const byDoseRate = markerDoseRateForSort(a) - markerDoseRateForSort(b);
+  if (byDoseRate !== 0) {
+    return byDoseRate;
+  }
+  return markerTimestampForSort(a) - markerTimestampForSort(b);
 }
 
 async function playTrackViewPoints(state, points) {
@@ -2844,8 +2875,9 @@ async function startTrackViewPlayback() {
   trackViewPlaybackState = createTrackViewPlaybackState();
   const playbackGeneration = trackViewPlaybackState.generation;
   try {
-    // Sort by timestamp first, then by radiation, so higher dose markers from the
-    // same moment are rendered later and stay visible above lower values.
+    // Sort markers with an overlap-aware strategy:
+    // 1) same ~10m cell -> timestamp first,
+    // 2) different cells -> radiation first.
     const normalized = trackViewMarkers
       .map(normalizeTrackViewPlaybackMarker)
       .filter(Boolean)
@@ -5274,8 +5306,8 @@ function updateMarkers(forceReload){
     finalizeTrackStream();
     es.close();
     if (isTrackView) {
-      // Keep track view layering deterministic: older and lower-dose markers are
-      // drawn first, newer and higher-dose markers are drawn last.
+      // Keep layering deterministic using the same overlap-aware comparator as
+      // playback so snapshot and animation produce identical z-order.
       trackViewMarkers.sort(compareMarkersByFreshnessAndRadiation);
       trackViewMarkersReady = true;
       if (!trackViewAutoplayRequested) {
