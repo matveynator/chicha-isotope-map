@@ -6936,15 +6936,22 @@ func main() {
 			}
 		}()
 	}
+	desktopFallbackActive := false
 	if *desktopMode {
 		address := fmt.Sprintf("127.0.0.1:%d", *port)
 		if err := desktop.RunWebviewWindow(address); err != nil {
-			log.Fatalf("desktop mode: %v", err)
+			if errors.Is(err, desktop.ErrExternalBrowserLaunched) {
+				log.Printf("desktop mode: launched system browser fallback; keeping server running")
+				desktopFallbackActive = true
+			} else {
+				log.Fatalf("desktop mode: %v", err)
+			}
 		}
-		log.Printf("desktop mode: window closed, exiting")
-		return
+		if !desktopFallbackActive {
+			log.Printf("desktop mode: window closed, exiting")
+			return
+		}
 	}
-
 	// асинхронные индексы в бд без блокирования основного процесса начало
 	ctxIdx, cancelIdx := context.WithCancel(context.Background())
 	defer cancelIdx()
