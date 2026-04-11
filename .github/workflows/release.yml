@@ -158,7 +158,7 @@ jobs:
       matrix:
         include:
           # go-webview-selector resolves webkit2gtk via pkg-config name "webkit2gtk-4.0",
-          # so Linux desktop builds stay on an image where libwebkit2gtk-4.0-dev is available.
+          # so Linux desktop builds provide a webkit2gtk-4.0 pkg-config target.
           - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
           - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14" }
           - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14" }
@@ -181,11 +181,33 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          WEBKIT_DEV_PACKAGE="libwebkit2gtk-4.1-dev"
+          WEBKIT_DEV_PACKAGE="libwebkit2gtk-4.0-dev"
           if ! apt-cache show "${WEBKIT_DEV_PACKAGE}" >/dev/null 2>&1; then
-            WEBKIT_DEV_PACKAGE="libwebkit2gtk-4.0-dev"
+            WEBKIT_DEV_PACKAGE="libwebkit2gtk-4.1-dev"
           fi
           sudo apt-get install -y build-essential pkg-config libgtk-3-dev "${WEBKIT_DEV_PACKAGE}"
+
+          if ! pkg-config --exists webkit2gtk-4.0 && pkg-config --exists webkit2gtk-4.1; then
+            # go-webview-selector currently asks pkg-config for webkit2gtk-4.0.
+            # This compatibility shim maps that lookup to webkit2gtk-4.1 on newer distros.
+            sudo install -d /usr/local/lib/pkgconfig
+            sudo tee /usr/local/lib/pkgconfig/webkit2gtk-4.0.pc >/dev/null <<'EOF'
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: webkit2gtk-4.0
+Description: Compatibility shim for webkit2gtk-4.1
+Version: 4.0
+Requires: webkit2gtk-4.1
+Libs:
+Cflags:
+EOF
+            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+          fi
+
+          pkg-config --exists webkit2gtk-4.0
 
       - name: go mod tidy (POSIX)
         if: runner.os != 'Windows'
