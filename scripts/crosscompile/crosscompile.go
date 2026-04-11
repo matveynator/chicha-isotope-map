@@ -22,9 +22,10 @@ import (
 // buildJob describes a single compilation task.
 // When DuckDB is true we compile with CGO and the duckdb tag.
 type buildJob struct {
-	osName string
-	arch   string
-	duckdb bool
+	osName  string
+	arch    string
+	duckdb  bool
+	desktop bool
 }
 
 // buildResult carries the outcome of a buildJob through a channel.
@@ -98,9 +99,12 @@ func main() {
 	for _, osName := range osList {
 		for _, arch := range archList {
 			// Build the vanilla binary and, when possible, the DuckDB variant in parallel.
-			jobs := []buildJob{{osName: osName, arch: arch, duckdb: false}}
+			jobs := []buildJob{{osName: osName, arch: arch, duckdb: false, desktop: false}}
 			if supportsDuckDB(osName, arch) {
-				jobs = append(jobs, buildJob{osName: osName, arch: arch, duckdb: true})
+				jobs = append(jobs, buildJob{osName: osName, arch: arch, duckdb: true, desktop: false})
+			}
+			if supportsDesktopWebview(osName, arch) {
+				jobs = append(jobs, buildJob{osName: osName, arch: arch, duckdb: false, desktop: true})
 			}
 
 			results := make(chan buildResult, len(jobs))
@@ -182,7 +186,9 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 	}
 
 	variantDir := "no-gui"
-	if job.duckdb {
+	if job.desktop {
+		variantDir = "desktop-webview"
+	} else if job.duckdb {
 		variantDir = "no-gui-duckdb"
 	}
 
@@ -193,16 +199,22 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 
 	outputPath := filepath.Join(outputDir, execFileName)
 	ldflags := fmt.Sprintf("-X 'main.CompileVersion=%s'", version)
+	if job.desktop && job.osName == "windows" {
+		// Windows desktop builds hide the console window so users can launch by double-clicking the .exe.
+		ldflags = "-H windowsgui " + ldflags
+	}
 
 	args := []string{"build", "-ldflags", ldflags}
-	if job.duckdb {
+	if job.desktop {
+		args = append(args, "-tags", "desktop")
+	} else if job.duckdb {
 		args = append(args, "-tags", "duckdb")
 	}
 	args = append(args, "-o", outputPath, goSourceFile)
 	buildCmd := exec.Command("go", args...)
 
 	env := append(os.Environ(), "GOOS="+job.osName, "GOARCH="+job.arch)
-	if job.duckdb {
+	if job.desktop || job.duckdb {
 		env = append(env, "CGO_ENABLED=1")
 	} else {
 		env = append(env, "CGO_ENABLED=0")
@@ -219,7 +231,7 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 		return fmt.Errorf("chmod failed on %s: %w", outputPath, err)
 	}
 
-	fmt.Printf("Successfully built %s for %s/%s (duckdb=%v)\n", execFileName, job.osName, job.arch, job.duckdb)
+	fmt.Printf("Successfully built %s for %s/%s (duckdb=%v, desktop=%v)\n", execFileName, job.osName, job.arch, job.duckdb, job.desktop)
 	return nil
 }
 
@@ -236,6 +248,15 @@ func supportsDuckDB(osName, arch string) bool {
 	default:
 		return false
 	}
+}
+
+// supportsDesktopWebview reports where the desktop build is expected to work.
+// The selector package maps to WebView2 on Windows and native webviews on macOS/Linux.
+func supportsDesktopWebview(osName, arch string) bool {
+	if arch != "amd64" && arch != "arm64" {
+		return false
+	}
+	return osName == "linux" || osName == "darwin" || osName == "windows"
 }
 
 // ----- Git helpers -----
