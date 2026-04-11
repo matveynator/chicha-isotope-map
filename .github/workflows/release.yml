@@ -156,11 +156,9 @@ jobs:
       matrix:
         include:
           - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04" }
-          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04" }
           - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14" }
           - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14" }
           - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest" }
-          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest" }
 
     steps:
       - name: Checkout
