@@ -54,6 +54,7 @@ import (
 	"chicha-isotope-map/pkg/cimimport"
 	"chicha-isotope-map/pkg/database"
 	"chicha-isotope-map/pkg/database/drivers"
+	"chicha-isotope-map/pkg/desktop"
 	"chicha-isotope-map/pkg/jsonarchive"
 	"chicha-isotope-map/pkg/logger"
 	"chicha-isotope-map/pkg/qrlogoext"
@@ -81,6 +82,7 @@ var version = flag.Bool("version", false, "Show the application version")
 var defaultLat = flag.Float64("default-lat", 44.08832, "Default map latitude")
 var defaultLon = flag.Float64("default-lon", 42.97577, "Default map longitude")
 var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
+
 // mapboxToken lets operators wire in Mapbox tiles without hardcoding secrets into HTML.
 var mapboxToken = flag.String("mapbox-token", "", "Mapbox access token used for the optional Mapbox Satellite base layer")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap", "Google Satellite", or "Mapbox Satellite"`)
@@ -97,6 +99,7 @@ var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz 
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var logoPath = flag.String("logo-path", "", "Filesystem path to a custom logo image that replaces the default branding.")
 var logoLink = flag.String("logo-link", "", "Destination URL for the logo link; defaults to the Chicha Isotope Map GitHub repository.")
+var desktopMode = flag.Bool("desktop", false, "Run as desktop app with an embedded webview window (build with -tags desktop).")
 
 // setupWizardEnabled is registered only on Linux so other platforms avoid unusable
 // flags. We keep the pointer nullable to preserve zero-value semantics without extra
@@ -143,7 +146,7 @@ const (
 )
 
 var cliUsageSections = []usageSection{
-	{Key: cliSectionGeneral, Flags: []string{"version", "domain", "port", "setup"}},
+	{Key: cliSectionGeneral, Flags: []string{"version", "domain", "port", "desktop", "setup"}},
 	{Key: cliSectionDatabase, Flags: []string{"db-type", "db-path", "db-conn"}},
 	{Key: cliSectionAppearance, Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default", "support-email", "logo-path", "logo-link"}},
 	{Key: cliSectionPlugins, Flags: []string{"safecast-realtime", "safecast-realtime-default"}},
@@ -6744,6 +6747,9 @@ func main() {
 		fmt.Printf("chicha-isotope-map version %s\n", CompileVersion)
 		return
 	}
+	if *desktopMode && strings.TrimSpace(*domain) != "" {
+		log.Fatal("desktop mode requires local HTTP mode; remove -domain")
+	}
 
 	// 2. Предупреждение о привилегиях (для :80 / :443)
 	if *domain != "" && runtime.GOOS != "windows" && os.Geteuid() != 0 {
@@ -6929,6 +6935,14 @@ func main() {
 				handleServerError(err, log.Printf)
 			}
 		}()
+	}
+	if *desktopMode {
+		address := fmt.Sprintf("127.0.0.1:%d", *port)
+		if err := desktop.RunWebviewWindow(address); err != nil {
+			log.Fatalf("desktop mode: %v", err)
+		}
+		log.Printf("desktop mode: window closed, exiting")
+		return
 	}
 
 	// асинхронные индексы в бд без блокирования основного процесса начало
