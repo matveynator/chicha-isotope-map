@@ -191,7 +191,7 @@ jobs:
             # go-webview-selector currently asks pkg-config for webkit2gtk-4.0.
             # This compatibility shim maps that lookup to webkit2gtk-4.1 on newer distros.
             sudo install -d /usr/local/lib/pkgconfig
-            sudo tee /usr/local/lib/pkgconfig/webkit2gtk-4.0.pc >/dev/null <<'EOF'
+            sudo tee /usr/local/lib/pkgconfig/webkit2gtk-4.0.pc >/dev/null <<EOF
 prefix=/usr
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
