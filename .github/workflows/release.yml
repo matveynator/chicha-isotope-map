@@ -183,16 +183,12 @@ jobs:
       - name: go mod tidy (POSIX)
         if: runner.os != 'Windows'
         shell: bash
-        run: |
-          go get github.com/jchv/go-webview-selector@latest
-          go mod tidy
+        run: go mod tidy
 
       - name: go mod tidy (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          go get github.com/jchv/go-webview-selector@latest
-          go mod tidy
+        run: go mod tidy
 
       - name: Build desktop (POSIX)
         if: runner.os != 'Windows'
