@@ -1,8 +1,9 @@
-name: stable release
+name: Stable Release
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - stable-release
 
 permissions:
   contents: write
@@ -12,7 +13,6 @@ jobs:
   # GitHub-hosted Debian runners are unavailable, so Linux-hosted jobs use Ubuntu 22.04 LTS
   # as the closest stable base with broad package compatibility.
   build_portable:
-    if: contains(toJson(github.event.head_commit.message), 'stable release')
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -96,7 +96,6 @@ jobs:
 
 # ---------- DUCKDB: Linux/amd64 (glibc 2.28) в контейнере + macOS (amd64/arm64) ----------
   build_duckdb:
-    if: contains(toJson(github.event.head_commit.message), 'stable release')
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -151,7 +150,6 @@ jobs:
 
 # ---------- DESKTOP WEBVIEW: macOS / Linux / Windows ----------
   build_desktop:
-    if: contains(toJson(github.event.head_commit.message), 'stable release')
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -267,12 +265,14 @@ jobs:
         with:
           path: dist-raw/
 
-      - name: Publish GitHub Release (tag latest)
+      - name: Publish GitHub Release (stable tag)
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: latest
-          name: "download stable version"
+          tag_name: stable-release
+          name: "Stable Release"
+          make_latest: true
           prerelease: false
+          overwrite_files: true
           files: dist-raw/**/*

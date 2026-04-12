@@ -23,7 +23,7 @@
 
 Живая демо: [https://pelora.org/](https://pelora.org/) — ваш узел будет выглядеть так же.
 
-👉 [Единая страница скачивания](https://github.com/matveynator/chicha-isotope-map/releases) (все платформы, свежие версии)
+👉 [Страница Stable Release](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) (постоянный URL, всегда ведёт на актуальные стабильные бинарники)
 
 👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
 
@@ -61,7 +61,15 @@
 Самый быстрый путь — готовый бинарник. Никакой Docker, БД или внешние инструменты не нужны: скачали, запустили, карта готова.
 
 ### Вариант 1. Готовый бинарник (рекомендуется)
-1. Откройте [страницу релизов](https://github.com/matveynator/chicha-isotope-map/releases) и скачайте файл под свою систему.
+1. Откройте [страницу Stable Release](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) и скачайте файл под свою систему.
+
+Постоянные ссылки на серверные бинарники (не меняются между релизами):
+- FreeBSD amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_amd64`
+- FreeBSD arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_arm64`
+- OpenBSD amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_amd64`
+- OpenBSD arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_arm64`
+- macOS amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64`
+- macOS arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64`
 2. Сделайте файл исполняемым и запустите:
    ```bash
    chmod +x ./chicha-isotope-map
