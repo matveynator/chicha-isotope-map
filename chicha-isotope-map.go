@@ -5292,6 +5292,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		LogoImageURL       string
 		LogoLink           string
 		ShowGithubTooltip  bool
+		DesktopWebView     bool
 		ChichaGitHubURL    string
 	}{
 		Version:           displayVersion,
@@ -5316,6 +5317,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		LogoImageURL:       activeLogoConfig.ImageURL,
 		LogoLink:           activeLogoConfig.LinkURL,
 		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
+		DesktopWebView:     *desktopMode,
 		ChichaGitHubURL:    chichaGitHubURL,
 	}
 
@@ -5588,6 +5590,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		LogoImageURL       string
 		LogoLink           string
 		ShowGithubTooltip  bool
+		DesktopWebView     bool
 		ChichaGitHubURL    string
 	}{
 		Version:           displayVersion,
@@ -5612,6 +5615,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		LogoImageURL:       activeLogoConfig.ImageURL,
 		LogoLink:           activeLogoConfig.LinkURL,
 		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
+		DesktopWebView:     *desktopMode,
 		ChichaGitHubURL:    chichaGitHubURL,
 	}
 
