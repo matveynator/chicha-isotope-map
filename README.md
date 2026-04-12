@@ -38,6 +38,7 @@ Live demo: [https://pelora.org/](https://pelora.org/) — your node will look th
 
 ---
 
+
 ## 🧭 What’s inside
 - The map gathers measurements from many instruments; layers are neatly separated by movement speed — on foot, by car, or in flight.
 - You can upload your own tracks: new points immediately appear on the map to clarify the situation.
