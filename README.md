@@ -23,7 +23,7 @@ If this map protects even one person or animal, building it was worth it. Let it
 
 Live demo: [https://pelora.org/](https://pelora.org/) — your node will look the same.
 
-👉 [Unified download page](https://github.com/matveynator/chicha-isotope-map/releases) (all platforms, latest builds)
+👉 [Stable Release download page](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) (constant URL, always points to the latest stable binaries)
 
 👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
 
@@ -56,7 +56,15 @@ The project grows thanks to careful support from the **Safecast** community, the
 Fastest path: download the binary. No Docker, no databases, no extra tools — download, run, done.
 
 ### Option 1. Binary (recommended)
-1) Open the [releases page](https://github.com/matveynator/chicha-isotope-map/releases) and download the build for your system.
+1) Open the [Stable Release page](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) and download the build for your system.
+
+Direct stable server binaries (constant URLs):
+- FreeBSD amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_amd64`
+- FreeBSD arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_arm64`
+- OpenBSD amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_amd64`
+- OpenBSD arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_arm64`
+- macOS amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64`
+- macOS arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64`
 2) Make it executable and run:
 ```bash
 chmod +x ./chicha-isotope-map
@@ -95,7 +103,7 @@ On Linux only, run the short wizard. It starts by asking if HTTPS is needed (the
 
 After writing the unit it reloads systemd, starts the service, tails the log for you, and drops a tiny reminder into your `~/.profile` so SSH logins show how to restart, stop, edit, or tail logs. User sessions install to `~/.config/systemd/user`; running as root targets `/etc/systemd/system`, and each unit is named `chicha-isotope-map-<port>.service` so multiple ports can coexist.
 
-The wizard also writes `/usr/local/bin/chicha-update`, a helper that stops the freshly provisioned service, downloads the latest GitHub release, restarts the service, and tails the log — one command to refresh the node.
+The wizard also writes `/usr/local/bin/chicha-update`, a helper that stops the freshly provisioned service, downloads the latest Stable Release, restarts the service, and tails the log — one command to refresh the node.
 
 Quick refresher for later:
 - edit the unit: `sudo nano /etc/systemd/system/chicha-isotope-map-<port>.service` (drop `sudo` for user units)
