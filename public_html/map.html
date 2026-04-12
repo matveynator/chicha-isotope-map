@@ -1415,30 +1415,32 @@ body, html {
         <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width:20px;">
       </button>
       <br>
-      <!-- Small QR button under geolocate -->
-      <button id="qrButton" class="qr-btn" aria-label="{{translate "qr_button_tooltip"}}">
-        <svg viewBox="0 0 100 100" role="img" aria-hidden="true">
-          <rect x="0" y="0" width="100" height="100" fill="#fff"/>
-          <rect x="8" y="8" width="28" height="28" fill="#000"/>
-          <rect x="12" y="12" width="20" height="20" fill="#fff"/>
-          <rect x="16" y="16" width="12" height="12" fill="#000"/>
-          <rect x="64" y="8" width="28" height="28" fill="#000"/>
-          <rect x="68" y="12" width="20" height="20" fill="#fff"/>
-          <rect x="72" y="16" width="12" height="12" fill="#000"/>
-          <rect x="8" y="64" width="28" height="28" fill="#000"/>
-          <rect x="12" y="68" width="20" height="20" fill="#fff"/>
-          <rect x="16" y="72" width="12" height="12" fill="#000"/>
-          <rect x="48" y="12" width="8" height="8" fill="#000"/>
-          <rect x="40" y="28" width="8" height="8" fill="#000"/>
-          <rect x="56" y="28" width="8" height="8" fill="#000"/>
-          <rect x="44" y="44" width="8" height="8" fill="#000"/>
-          <rect x="60" y="44" width="8" height="8" fill="#000"/>
-          <rect x="44" y="60" width="8" height="8" fill="#000"/>
-          <rect x="60" y="60" width="8" height="8" fill="#000"/>
-          <rect x="76" y="60" width="8" height="8" fill="#000"/>
-          <rect x="28" y="44" width="8" height="8" fill="#000"/>
-        </svg>
-      </button>
+      {{if not .DesktopWebView}}
+        <!-- Small QR button under geolocate -->
+        <button id="qrButton" class="qr-btn" aria-label="{{translate "qr_button_tooltip"}}">
+          <svg viewBox="0 0 100 100" role="img" aria-hidden="true">
+            <rect x="0" y="0" width="100" height="100" fill="#fff"/>
+            <rect x="8" y="8" width="28" height="28" fill="#000"/>
+            <rect x="12" y="12" width="20" height="20" fill="#fff"/>
+            <rect x="16" y="16" width="12" height="12" fill="#000"/>
+            <rect x="64" y="8" width="28" height="28" fill="#000"/>
+            <rect x="68" y="12" width="20" height="20" fill="#fff"/>
+            <rect x="72" y="16" width="12" height="12" fill="#000"/>
+            <rect x="8" y="64" width="28" height="28" fill="#000"/>
+            <rect x="12" y="68" width="20" height="20" fill="#fff"/>
+            <rect x="16" y="72" width="12" height="12" fill="#000"/>
+            <rect x="48" y="12" width="8" height="8" fill="#000"/>
+            <rect x="40" y="28" width="8" height="8" fill="#000"/>
+            <rect x="56" y="28" width="8" height="8" fill="#000"/>
+            <rect x="44" y="44" width="8" height="8" fill="#000"/>
+            <rect x="60" y="44" width="8" height="8" fill="#000"/>
+            <rect x="44" y="60" width="8" height="8" fill="#000"/>
+            <rect x="60" y="60" width="8" height="8" fill="#000"/>
+            <rect x="76" y="60" width="8" height="8" fill="#000"/>
+            <rect x="28" y="44" width="8" height="8" fill="#000"/>
+          </svg>
+        </button>
+      {{end}}
     </div>
 
     <!-- Container for "Back to all tracks" button -->
@@ -1468,13 +1470,15 @@ body, html {
       <span class="map-logo-text">{{translate "logo_title"}}</span>
     </h1>
 
-    <!-- Short link pill shows the shareable URL and copies it on click -->
-    <div
-      id="shortLinkDisplay"
-      role="button"
-      tabindex="0"
-      aria-live="polite"
-      aria-label="{{translate "short_link_tooltip"}}"></div>
+    {{if not .DesktopWebView}}
+      <!-- Short link pill shows the shareable URL and copies it on click -->
+      <div
+        id="shortLinkDisplay"
+        role="button"
+        tabindex="0"
+        aria-live="polite"
+        aria-label="{{translate "short_link_tooltip"}}"></div>
+    {{end}}
 
     <!-- Map container -->
     <div id="map"></div>
