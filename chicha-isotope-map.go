@@ -99,7 +99,7 @@ var importTGZFileFlag = flag.String("import-tgz-file", "", "Import a local .tgz 
 var supportEmail = flag.String("support-email", "", "Contact e-mail shown in the legal notice for feedback")
 var logoPath = flag.String("logo-path", "", "Filesystem path to a custom logo image that replaces the default branding.")
 var logoLink = flag.String("logo-link", "", "Destination URL for the logo link; defaults to the Chicha Isotope Map GitHub repository.")
-var desktopMode = flag.Bool("desktop", false, "Run as desktop app with an embedded webview window (build with -tags desktop).")
+var desktopMode = flag.Bool("desktop", desktop.DefaultEnabled(), "Run as desktop app with an embedded webview window (build with -tags desktop).")
 
 // setupWizardEnabled is registered only on Linux so other platforms avoid unusable
 // flags. We keep the pointer nullable to preserve zero-value semantics without extra
