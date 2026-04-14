@@ -282,6 +282,7 @@ jobs:
         with:
           tag_name: stable-release
           name: "Stable Release"
+          body_path: .github/release/stable-release.md
           make_latest: true
           prerelease: false
           overwrite_files: true
