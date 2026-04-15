@@ -1,9 +1,15 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/matveynator/chicha-isotope-map/main/public_html/images/chicha-isotope-map-round-logo.png" alt="Chicha Isotope Map logo" width="120" />
+
 # Chicha Isotope Map
 
 Simple download page for the latest stable build.
 
-- Stable release (always updated): https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release
-- Live demo: https://pelora.org/
+[![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
+</div>
+
+- [Stable release (always updated)](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release)
+- [Live demo](https://pelora.org/)
 
 ---
 
@@ -12,10 +18,10 @@ Simple download page for the latest stable build.
 Best for personal local use.
 
 ### Download
-- Windows (amd64): https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.exe
-- macOS Apple Silicon (arm64): https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64_desktop
-- macOS Intel (amd64): https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64_desktop
-- Linux (amd64): https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop
+- [Desktop for Windows (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.exe)
+- [Desktop for macOS Apple Silicon (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64_desktop)
+- [Desktop for macOS Intel (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64_desktop)
+- [Desktop for Linux (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop)
 
 ### Run
 Windows:
@@ -53,13 +59,13 @@ curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/sta
 chmod +x ./chicha-isotope-map
 ./chicha-isotope-map
 ```
-Open: http://localhost:8765
+Open: [http://localhost:8765](http://localhost:8765)
 
 ### Other server binaries
-- Windows (amd64): https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64.exe
-- macOS arm64: https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64
-- macOS amd64: https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64
-- More platforms (FreeBSD/OpenBSD/arm64): see release assets
+- [Server for Windows (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64.exe)
+- [Server for macOS arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64)
+- [Server for macOS amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64)
+- [All release assets (FreeBSD/OpenBSD/arm64/etc)](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release)
 
 ### Public HTTPS domain
 ```bash
