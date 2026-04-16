@@ -107,10 +107,11 @@ Ports 80/443 must be open.
 
 ## History and contributors
 
-We built this project so people can quickly understand radiation safety in places where they live, work, farm, or collect water.
+This project was conceived to grant people a clear and immediate understanding of radiation safety in the very places they inhabit—where they reside, labor, cultivate the land, and draw water.
 
-Chicha Isotope Map was inspired by field research of **Dmitry Ignatenko** and strongly influenced by **Rob Oudendijk** and the **Safecast** community. Thanks to Safecast, AtomFast, Radiacode, DoseMap, and many open dosimetry contributors.
+The Chicha Isotope Map finds its roots in the field research of [Dmitry Ignatenko](https://www.youtube.com/@MrDrimogemon) and has been profoundly shaped by the insights of Rob Oudendijk and the [Safecast community](https://safecast.org). We extend our sincere appreciation to [Safecast](https://safecast.org), [AtomFast](https://atpmfast.net), [Radiacode](https://radiacode.com), [DoseMap](https://dosemap.org), and the many contributors to open dosimetry whose efforts made this possible.
 
-If this project helps protect even one living being, it is worth it.
+Should this work serve to safeguard even a single living being, its purpose shall be fully justified.
+
 
 
