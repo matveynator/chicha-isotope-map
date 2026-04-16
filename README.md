@@ -3,7 +3,7 @@
 
 # Chicha Isotope Map
 
-Simple download page for the latest stable build.
+Download page for the latest stable build.
 
 [![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 </div>
