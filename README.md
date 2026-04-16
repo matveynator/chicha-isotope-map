@@ -82,7 +82,7 @@ Ports 80/443 must be open.
 - `-domain your-domain.example`
 - `-default-lat`, `-default-lon`, `-default-zoom`, `-default-layer`
 - `-mapbox-token YOUR_TOKEN`
-- `-setup`
+- `-setup` (Linux only)
 - `-import-tgz-url URL`
 - `-import-tgz-path /path/to/file.tgz`
 
