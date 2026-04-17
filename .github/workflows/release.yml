@@ -243,6 +243,46 @@ jobs:
                    -ldflags "-s -w -X main.CompileVersion=$VERSION" \
                    -o "dist/${BIN}"
 
+      - name: Package desktop launcher (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          BIN="chicha-isotope-map_${GOOS}_${GOARCH}_desktop"
+          APP_DIR="dist/chicha-isotope-map_${GOOS}_${GOARCH}_desktop.AppDir"
+          mkdir -p "${APP_DIR}/usr/bin" \
+                   "${APP_DIR}/usr/share/applications" \
+                   "${APP_DIR}/usr/share/icons/hicolor/256x256/apps"
+
+          cp "dist/${BIN}" "${APP_DIR}/usr/bin/chicha-isotope-map"
+          chmod +x "${APP_DIR}/usr/bin/chicha-isotope-map"
+          cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/usr/share/icons/hicolor/256x256/apps/chicha-isotope-map.png"
+
+          cat > "${APP_DIR}/usr/share/applications/chicha-isotope-map.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Chicha Isotope Map
+          Comment=Desktop webview launcher for Chicha Isotope Map
+          Exec=chicha-isotope-map
+          Icon=chicha-isotope-map
+          Terminal=false
+          Categories=Science;Utility;
+          DESKTOP
+
+          tar -czf "dist/${BIN}.tar.gz" -C dist "$(basename "${APP_DIR}")"
+
+      - name: Prepare Windows icon resource
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          go install github.com/akavel/rsrc@latest
+          $rsrcBin = Join-Path (go env GOPATH) "bin/rsrc.exe"
+          & $rsrcBin -ico "public_html/images/app-icon.ico" -arch amd64 -o "zz_chicha_icon_windows_amd64.syso"
+
       - name: Build desktop (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -259,15 +299,109 @@ jobs:
                    -ldflags "-H windowsgui -s -w -X main.CompileVersion=$version" `
                    -o "dist/$bin"
 
+      - name: Package desktop app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $bin = "chicha-isotope-map_${{ matrix.goos }}_${{ matrix.goarch }}_desktop.exe"
+          Compress-Archive -Path "dist/$bin" -DestinationPath "dist/chicha-isotope-map_${{ matrix.goos }}_${{ matrix.goarch }}_desktop.zip" -Force
+
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v4
         with:
           name: bin-desktop-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
 
+  build_desktop_macos_universal:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/stable-release') || contains(join(github.event.commits.*.message, ' || '), 'stable release') || contains(join(github.event.commits.*.message, ' || '), 'Stable Release')
+    needs: [build_desktop]
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download macOS desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bin-desktop-darwin-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Build universal desktop binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          AMD64_BIN="dist/chicha-isotope-map_darwin_amd64_desktop"
+          ARM64_BIN="dist/chicha-isotope-map_darwin_arm64_desktop"
+          UNIVERSAL_BIN="dist/chicha-isotope-map_darwin_universal_desktop"
+          lipo -create "${AMD64_BIN}" "${ARM64_BIN}" -output "${UNIVERSAL_BIN}"
+          chmod +x "${UNIVERSAL_BIN}"
+
+      - name: Package universal desktop app (macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="chicha-isotope-map_darwin_universal_desktop"
+          APP_NAME="Chicha Isotope Map"
+          APP_DIR="dist/${APP_NAME}.app"
+          ICONSET_DIR="dist/AppIcon.iconset"
+          ICON_SOURCE="public_html/images/apple-touch-icon.png"
+
+          mkdir -p "${ICONSET_DIR}" "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
+          for size in 16 32 128; do
+            sips -z "${size}" "${size}" "${ICON_SOURCE}" --out "${ICONSET_DIR}/icon_${size}x${size}.png" >/dev/null
+            double_size=$((size * 2))
+            sips -z "${double_size}" "${double_size}" "${ICON_SOURCE}" --out "${ICONSET_DIR}/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          sips -z 256 256 "${ICON_SOURCE}" --out "${ICONSET_DIR}/icon_256x256.png" >/dev/null
+          sips -z 512 512 "${ICON_SOURCE}" --out "${ICONSET_DIR}/icon_256x256@2x.png" >/dev/null
+          sips -z 512 512 "${ICON_SOURCE}" --out "${ICONSET_DIR}/icon_512x512.png" >/dev/null
+          cp "${ICONSET_DIR}/icon_512x512.png" "${ICONSET_DIR}/icon_512x512@2x.png"
+          iconutil -c icns "${ICONSET_DIR}" -o "dist/AppIcon.icns"
+
+          cp "dist/${BIN}" "${APP_DIR}/Contents/MacOS/chicha-isotope-map"
+          chmod +x "${APP_DIR}/Contents/MacOS/chicha-isotope-map"
+          cp "dist/AppIcon.icns" "${APP_DIR}/Contents/Resources/AppIcon.icns"
+
+          cat > "${APP_DIR}/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>Chicha Isotope Map</string>
+            <key>CFBundleDisplayName</key>
+            <string>Chicha Isotope Map</string>
+            <key>CFBundleIdentifier</key>
+            <string>net.zabiyaka.chicha-isotope-map</string>
+            <key>CFBundleVersion</key>
+            <string>${{ github.run_number }}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${{ github.run_number }}</string>
+            <key>CFBundleExecutable</key>
+            <string>chicha-isotope-map</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleIconFile</key>
+            <string>AppIcon.icns</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+          </dict>
+          </plist>
+          PLIST
+
+          ditto -c -k --sequesterRsrc --keepParent "${APP_DIR}" "dist/${BIN}.app.zip"
+
+      - name: Upload macOS universal desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-desktop-darwin-universal
+          path: dist/chicha-isotope-map_darwin_universal_desktop*
+
   release:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/stable-release') || contains(join(github.event.commits.*.message, ' || '), 'stable release') || contains(join(github.event.commits.*.message, ' || '), 'Stable Release')
-    needs: [build_portable, build_duckdb, build_desktop]
+    needs: [build_portable, build_duckdb, build_desktop, build_desktop_macos_universal]
     runs-on: ubuntu-22.04
     steps:
       - name: Download all artifacts
