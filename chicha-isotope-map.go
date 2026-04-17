@@ -6976,6 +6976,37 @@ func realtimeHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// resolveDesktopDefaultDBPath returns a writable per-user DB path for desktop
+// launches when operators did not pass -db-path explicitly.
+func resolveDesktopDefaultDBPath(driverName string, port int, logf func(string, ...any)) string {
+	var extension string
+	switch driverName {
+	case "sqlite", "chai":
+		extension = driverName
+	case "duckdb":
+		extension = "duckdb"
+	default:
+		return ""
+	}
+
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		logf("desktop mode: user config dir unavailable, keeping implicit DB path: %v", err)
+		return ""
+	}
+
+	appDir := filepath.Join(configDir, "chicha-isotope-map")
+	if mkErr := os.MkdirAll(appDir, 0o755); mkErr != nil {
+		logf("desktop mode: cannot prepare DB directory %s: %v", appDir, mkErr)
+		return ""
+	}
+
+	defaultFile := fmt.Sprintf("database-%d.%s", port, extension)
+	resolvedPath := filepath.Join(appDir, defaultFile)
+	logf("desktop mode: resolved default DB path to %s", resolvedPath)
+	return resolvedPath
+}
+
 // =====================
 // MAIN
 // =====================
@@ -7052,9 +7083,19 @@ func main() {
 	// Persist the normalized driver back into the flag so downstream helpers never
 	// miss engine-specific branches because of incidental casing or whitespace.
 	*dbType = driverName
+	resolvedDBPath := strings.TrimSpace(*dbPath)
+	if *desktopMode && resolvedDBPath == "" {
+		// Finder-launched desktop apps often start outside writable project folders.
+		// We place file-based databases in a per-user config directory to keep
+		// startup deterministic regardless of the current working directory.
+		if autoPath := resolveDesktopDefaultDBPath(driverName, *port, log.Printf); autoPath != "" {
+			resolvedDBPath = autoPath
+		}
+	}
+	*dbPath = resolvedDBPath
 	dbCfg := database.Config{
 		DBType: driverName,
-		DBPath: *dbPath,
+		DBPath: resolvedDBPath,
 		Port:   *port,
 	}
 	switch driverName {
