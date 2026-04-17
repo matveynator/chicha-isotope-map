@@ -1381,6 +1381,8 @@ body, html {
       window.safecastRealtimeEnabled = {{if .RealtimeAvailable}}true{{else}}false{{end}};
       // Keep the default toggle server-driven so operators can require explicit opt-in.
       window.safecastRealtimeDefault = {{if .RealtimeDefault}}true{{else}}false{{end}};
+      // Desktop-native upload is available only where the backend can open a native file picker.
+      window.desktopNativeUpload = {{if .DesktopNativeUpload}}true{{else}}false{{end}};
     </script>
 
   </head>
@@ -1393,20 +1395,31 @@ body, html {
         title/aria-label → short hint on hover/focus about formats
         and what happens after upload.
       -->
-      <label
-        for="fileInput"
+      {{if .DesktopNativeUpload}}
+      <button
+        id="nativeUploadButton"
         class="upload-btn"
-        aria-label="{{translate "upload_button_tooltip"}}">
+        aria-label="{{translate "upload_button_tooltip"}}"
+        type="button"
+        onclick="uploadFilesNativeDesktop()">
         {{translate "upload_button"}}
-      </label>
+      </button>
+      {{else}}
+        <label
+          for="fileInput"
+          class="upload-btn"
+          aria-label="{{translate "upload_button_tooltip"}}">
+          {{translate "upload_button"}}
+        </label>
 
-      <input
-        type="file"
-        id="fileInput"
-        style="display: none;"
-        multiple
-        accept=""
-        onchange="uploadFiles()">
+        <input
+          type="file"
+          id="fileInput"
+          style="display: none;"
+          multiple
+          accept=""
+          onchange="uploadFiles()">
+      {{end}}
     </div>
 
     <!-- Container for geolocation button -->
@@ -1450,7 +1463,11 @@ body, html {
 
     <!-- Track download button appears only in track view so users can retrieve the original JSON quickly. -->
     <div class="download-track-container leaflet-control" style="display: none;">
+      {{if .DesktopNativeUpload}}
+      <button id="downloadTrackLink" class="download-track-btn" type="button">{{ translate "download_track_cim" }}</button>
+      {{else}}
       <a id="downloadTrackLink" class="download-track-btn" href="#">{{ translate "download_track_cim" }}</a>
+      {{end}}
     </div>
 
     <!-- File upload overlay -->
@@ -2547,14 +2564,53 @@ function refreshDownloadLink() {
   if (currentTrackID) {
     // Encode IDs so hyphens and other safe characters keep round-tripping in URLs.
     var encodedTrackID = encodeURIComponent(currentTrackID);
-    link.href = '/api/track/' + encodedTrackID + '.json';
-    link.setAttribute('download', currentTrackID + '.json');
+    if (window.desktopNativeUpload) {
+      link.textContent = currentTrackID + '.json';
+      link.removeAttribute('href');
+      link.removeAttribute('download');
+      link.onclick = function (event) {
+        event.preventDefault();
+        downloadCurrentTrackNativeDesktop();
+      };
+    } else {
+      link.textContent = translate('download_track_cim');
+      link.href = '/api/track/' + encodedTrackID + '.json';
+      link.setAttribute('download', currentTrackID + '.json');
+      link.onclick = null;
+    }
     box.style.display = 'block';
   } else {
+    link.textContent = translate('download_track_cim');
     link.href = '#';
     link.removeAttribute('download');
+    link.onclick = null;
     box.style.display = 'none';
   }
+}
+
+function downloadCurrentTrackNativeDesktop() {
+  if (!currentTrackID) {
+    return;
+  }
+  var encodedTrackID = encodeURIComponent(currentTrackID);
+  fetch('/desktop/download-track/' + encodedTrackID + '.json', { method: 'POST' })
+    .then(function (response) {
+      if (!response.ok) {
+        throw new Error('desktop track download request failed');
+      }
+      return response.json();
+    })
+    .then(function (payload) {
+      if (payload.status === 'cancelled') {
+        return;
+      }
+      if (payload.status !== 'saved') {
+        throw new Error('desktop track download returned unexpected status');
+      }
+    })
+    .catch(function () {
+      alert(translate('error_during_upload'));
+    });
 }
 
 /* ---------------------------------------------------------------
@@ -6964,6 +7020,71 @@ function centerMapToLocation() {
           formData.append('files[]', file);
           xhr.send(formData);
         });
+      }
+
+      function uploadFilesNativeDesktop() {
+        const fileOverlay = document.getElementById('fileOverlay');
+        const fileProgressContainer = document.getElementById('fileProgressContainer');
+        fileProgressContainer.innerHTML = '';
+        fileOverlay.style.display = 'flex';
+
+        const fileBlock = document.createElement('div');
+        fileBlock.className = 'file-progress';
+        const fileName = document.createElement('div');
+        fileName.className = 'file-name';
+        fileName.innerText = translate('upload_button');
+        const progressBar = document.createElement('div');
+        progressBar.className = 'progress-bar';
+        const progressBarInner = document.createElement('div');
+        progressBarInner.className = 'progress-bar-inner';
+        progressBarInner.style.width = '100%';
+        progressBar.appendChild(progressBarInner);
+        const serverProcessing = document.createElement('div');
+        serverProcessing.className = 'server-processing';
+        serverProcessing.innerText = translate('waiting_for_server');
+        fileBlock.append(fileName, progressBar, serverProcessing);
+        fileProgressContainer.appendChild(fileBlock);
+
+        fetch('/desktop/upload-native', { method: 'POST' })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('native upload request failed');
+            }
+            return response.json();
+          })
+          .then(payload => {
+            if (payload.status === 'cancelled') {
+              fileOverlay.style.display = 'none';
+              return;
+            }
+            if (payload.status === 'success' && payload.trackURL) {
+              serverProcessing.innerText = translate('processing_complete');
+              serverProcessing.style.color = 'green';
+              setTimeout(() => {
+                fileOverlay.style.display = 'none';
+                window.location.href = payload.trackURL;
+              }, 700);
+              return;
+            }
+            if (payload.status === 'processing') {
+              serverProcessing.innerText = translate('processing_complete');
+              serverProcessing.style.color = 'green';
+              startBackgroundImportRefresh();
+              setTimeout(() => {
+                fileOverlay.style.display = 'none';
+                updateMarkers(true);
+              }, 700);
+              return;
+            }
+            throw new Error('native upload returned unexpected payload');
+          })
+          .catch(() => {
+            serverProcessing.innerText = translate('error_during_upload');
+            serverProcessing.style.color = 'red';
+            setTimeout(() => {
+              fileOverlay.style.display = 'none';
+            }, 900);
+          });
       }
     </script>
 

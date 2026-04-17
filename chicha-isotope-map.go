@@ -4747,6 +4747,289 @@ func enqueueArchiveImport(fh *multipart.FileHeader, trackID string, db *database
 	return nil
 }
 
+// enqueueArchiveImportPath reuses the archive importer for desktop-native file picks.
+// The work runs in a goroutine so the UI stays responsive while large archives import.
+func enqueueArchiveImportPath(path, filename, trackID string, db *database.Database, dbType string) {
+	go func(localPath string) {
+		ctx := context.Background()
+		logf := func(format string, v ...any) {
+			logT(trackID, "Upload", format, v...)
+		}
+		logf("queued tgz import in background: %s", filename)
+		if err := importArchiveFromFile(ctx, localPath, trackID, db, dbType, logf); err != nil {
+			logf("background tgz import failed: %v", err)
+		}
+	}(path)
+}
+
+func formatFileTypeSummary(fileTypes map[string]int) string {
+	if len(fileTypes) == 0 {
+		return "none"
+	}
+	keys := make([]string, 0, len(fileTypes))
+	for key := range fileTypes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", key, fileTypes[key]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// uploadLocalFiles processes files selected by a desktop-native picker.
+// It mirrors uploadHandler logic so macOS desktop builds can import files even
+// when the embedded WebView blocks <input type="file">.
+func uploadLocalFiles(ctx context.Context, filePaths []string) (map[string]interface{}, int, error) {
+	if len(filePaths) == 0 {
+		return nil, http.StatusBadRequest, fmt.Errorf("no files selected")
+	}
+
+	trackID := GenerateSerialNumber()
+	logT(trackID, "Upload", "▶ desktop native start, total=%d", len(filePaths))
+
+	global := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
+	hasBounds := false
+	backgroundImport := false
+	fileTypes := map[string]int{}
+
+	for _, currentPath := range filePaths {
+		filename := filepath.Base(currentPath)
+		logT(trackID, "Upload", "desktop file received: %s", filename)
+
+		openedFile, openErr := os.Open(currentPath)
+		if openErr != nil {
+			return nil, http.StatusInternalServerError, fmt.Errorf("open %s: %w", filename, openErr)
+		}
+
+		var (
+			bbox database.Bounds
+			err  error
+		)
+
+		ext := strings.ToLower(filepath.Ext(filename))
+		if strings.HasSuffix(strings.ToLower(filename), ".tar.gz") {
+			ext = ".tar.gz"
+		}
+		if ext == "" {
+			ext = "unknown"
+		}
+		fileTypes[ext]++
+
+		switch ext {
+		case ".kml":
+			bbox, trackID, err = processKMLFile(openedFile, trackID, db, *dbType)
+		case ".kmz":
+			bbox, trackID, err = processKMZFile(openedFile, trackID, db, *dbType)
+		case ".gpx":
+			bbox, trackID, err = processGPXFile(openedFile, trackID, db, *dbType)
+		case ".csv":
+			bbox, trackID, err = processAtomSwiftCSVFile(openedFile, trackID, db, *dbType)
+		case ".rctrk":
+			bbox, trackID, err = processRCTRKFile(openedFile, trackID, db, *dbType)
+		case ".cim":
+			var imported bool
+			bbox, trackID, imported, err = processTrackExportFile(ctx, openedFile, trackID, db, *dbType)
+			if err == nil && !imported {
+				logT(trackID, "Upload", "skipped duplicate legacy payload")
+			}
+		case ".json":
+			raw, readErr := io.ReadAll(openedFile)
+			if readErr != nil {
+				_ = openedFile.Close()
+				return nil, http.StatusInternalServerError, fmt.Errorf("read JSON %s: %w", filename, readErr)
+			}
+			var imported bool
+			bbox, trackID, imported, err = processTrackExportPayload(ctx, raw, trackID, db, *dbType)
+			if errors.Is(err, cimimport.ErrInvalidExportFormat) {
+				bbox, trackID, err = processChichaTrackJSON(raw, trackID, db, *dbType)
+			}
+			if errors.Is(err, errNotChichaTrackJSON) {
+				bbox, trackID, err = processAtomFastData(raw, trackID, db, *dbType)
+			}
+			if err == nil && !imported {
+				logT(trackID, "Upload", "skipped duplicate track export JSON")
+			}
+		case ".tgz", ".tar.gz":
+			backgroundImport = true
+			enqueueArchiveImportPath(currentPath, filename, trackID, db, *dbType)
+			_ = openedFile.Close()
+			continue
+		case ".log", ".txt":
+			bbox, trackID, err = processBGeigieZenFile(openedFile, trackID, db, *dbType)
+		default:
+			sample := make([]byte, 1024)
+			bytesRead, _ := openedFile.Read(sample)
+			_ = openedFile.Close()
+			if strings.Contains(string(sample[:bytesRead]), "$BNRDD") {
+				reopenedFile, reopenErr := os.Open(currentPath)
+				if reopenErr != nil {
+					return nil, http.StatusInternalServerError, fmt.Errorf("re-open %s: %w", filename, reopenErr)
+				}
+				bbox, trackID, err = processBGeigieZenFile(reopenedFile, trackID, db, *dbType)
+				_ = reopenedFile.Close()
+				if err != nil {
+					return nil, http.StatusInternalServerError, err
+				}
+				break
+			}
+			return nil, http.StatusBadRequest, fmt.Errorf("unsupported file type: %s", filename)
+		}
+
+		_ = openedFile.Close()
+		if err != nil {
+			return nil, http.StatusInternalServerError, err
+		}
+
+		if bbox.MinLat <= bbox.MaxLat && bbox.MinLon <= bbox.MaxLon {
+			if !hasBounds {
+				global = bbox
+				hasBounds = true
+			} else {
+				if bbox.MinLat < global.MinLat {
+					global.MinLat = bbox.MinLat
+				}
+				if bbox.MinLon < global.MinLon {
+					global.MinLon = bbox.MinLon
+				}
+				if bbox.MaxLat > global.MaxLat {
+					global.MaxLat = bbox.MaxLat
+				}
+				if bbox.MaxLon > global.MaxLon {
+					global.MaxLon = bbox.MaxLon
+				}
+			}
+		}
+	}
+
+	if hasBounds {
+		logT(trackID, "Upload", "desktop all files done, bounds=%.5f %.5f %.5f %.5f", global.MinLat, global.MinLon, global.MaxLat, global.MaxLon)
+	} else {
+		logT(trackID, "Upload", "desktop all files done, no map bounds from files")
+	}
+	if len(fileTypes) > 0 {
+		logT(trackID, "Upload", "desktop file type summary: %s", formatFileTypeSummary(fileTypes))
+	}
+
+	if backgroundImport {
+		return map[string]interface{}{
+			"status":  "processing",
+			"message": "import queued",
+			"trackID": trackID,
+		}, http.StatusOK, nil
+	}
+
+	trackURL := fmt.Sprintf("/trackid/%s", trackID)
+	return map[string]interface{}{
+		"status":       "success",
+		"trackID":      trackID,
+		"trackURL":     trackURL,
+		"mapBounds":    global,
+		"hasMapBounds": hasBounds,
+	}, http.StatusOK, nil
+}
+
+func desktopNativeUploadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !*desktopMode {
+		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+
+	paths, err := desktop.PickFiles()
+	if err != nil {
+		if errors.Is(err, desktop.ErrNativeDialogCanceled) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "cancelled"})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response, status, processErr := uploadLocalFiles(r.Context(), paths)
+	if processErr != nil {
+		http.Error(w, processErr.Error(), status)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !*desktopMode {
+		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+
+	trimmed := strings.Trim(strings.TrimPrefix(r.URL.Path, "/desktop/download-track/"), "/")
+	if trimmed == "" {
+		http.Error(w, "missing track id", http.StatusBadRequest)
+		return
+	}
+	trackID := strings.TrimSuffix(trimmed, ".json")
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		http.Error(w, "missing track id", http.StatusBadRequest)
+		return
+	}
+
+	internalURL := fmt.Sprintf("http://127.0.0.1:%d/api/track/%s.json", *port, url.PathEscape(trackID))
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, internalURL, nil)
+	if err != nil {
+		http.Error(w, "build track request failed", http.StatusInternalServerError)
+		return
+	}
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		http.Error(w, "track export request failed", http.StatusBadGateway)
+		return
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		http.Error(w, "track export endpoint returned error", http.StatusBadGateway)
+		return
+	}
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		http.Error(w, "track export read failed", http.StatusBadGateway)
+		return
+	}
+
+	filename := trackID + ".json"
+	savedPath, err := desktop.SaveFile(filename, payload)
+	if err != nil {
+		if errors.Is(err, desktop.ErrNativeDialogCanceled) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "cancelled"})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "saved",
+		"trackID":   trackID,
+		"fileName":  filename,
+		"savedPath": savedPath,
+	})
+}
+
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		http.Error(w, "multipart parse error", http.StatusBadRequest)
@@ -5271,29 +5554,30 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	defaultSocialImage := activeLogoConfig.ImageURL
 
 	data := struct {
-		Version            string
-		Translations       map[string]map[string]string
-		Lang               string
-		DefaultLat         float64
-		DefaultLon         float64
-		DefaultZoom        int
-		DefaultLayer       string
-		MapboxToken        string
-		AutoLocateDefault  bool
-		RealtimeAvailable  bool
-		RealtimeDefault    bool
-		SupportEmail       string
-		TranslationsJSON   template.JS
-		MarkersJSON        template.JS
-		CurrentURL         string
-		DefaultSocialImage string
-		MetaGenerator      string
-		CanonicalURL       string
-		LogoImageURL       string
-		LogoLink           string
-		ShowGithubTooltip  bool
-		DesktopWebView     bool
-		ChichaGitHubURL    string
+		Version             string
+		Translations        map[string]map[string]string
+		Lang                string
+		DefaultLat          float64
+		DefaultLon          float64
+		DefaultZoom         int
+		DefaultLayer        string
+		MapboxToken         string
+		AutoLocateDefault   bool
+		RealtimeAvailable   bool
+		RealtimeDefault     bool
+		SupportEmail        string
+		TranslationsJSON    template.JS
+		MarkersJSON         template.JS
+		CurrentURL          string
+		DefaultSocialImage  string
+		MetaGenerator       string
+		CanonicalURL        string
+		LogoImageURL        string
+		LogoLink            string
+		ShowGithubTooltip   bool
+		DesktopWebView      bool
+		DesktopNativeUpload bool
+		ChichaGitHubURL     string
 	}{
 		Version:           displayVersion,
 		Translations:      translations,
@@ -5306,19 +5590,20 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		AutoLocateDefault: *autoLocateDefault,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
-		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
-		SupportEmail:       strings.TrimSpace(*supportEmail),
-		TranslationsJSON:   translationsJSON,
-		MarkersJSON:        markersJSON,
-		CurrentURL:         resolveCurrentURL(r),
-		DefaultSocialImage: defaultSocialImage,
-		MetaGenerator:      metaGenerator,
-		CanonicalURL:       resolveCanonicalURL(r),
-		LogoImageURL:       activeLogoConfig.ImageURL,
-		LogoLink:           activeLogoConfig.LinkURL,
-		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
-		DesktopWebView:     *desktopMode,
-		ChichaGitHubURL:    chichaGitHubURL,
+		RealtimeDefault:     *safecastRealtimeEnabled && *safecastRealtimeDefault,
+		SupportEmail:        strings.TrimSpace(*supportEmail),
+		TranslationsJSON:    translationsJSON,
+		MarkersJSON:         markersJSON,
+		CurrentURL:          resolveCurrentURL(r),
+		DefaultSocialImage:  defaultSocialImage,
+		MetaGenerator:       metaGenerator,
+		CanonicalURL:        resolveCanonicalURL(r),
+		LogoImageURL:        activeLogoConfig.ImageURL,
+		LogoLink:            activeLogoConfig.LinkURL,
+		ShowGithubTooltip:   activeLogoConfig.ShowGithubLinkTooltip,
+		DesktopWebView:      *desktopMode,
+		DesktopNativeUpload: *desktopMode && runtime.GOOS == "darwin",
+		ChichaGitHubURL:     chichaGitHubURL,
 	}
 
 	// Рендерим в буфер, чтобы не дублировать WriteHeader
@@ -5569,29 +5854,30 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 
 	// отдаём пустой срез маркеров
 	data := struct {
-		Version            string
-		Translations       map[string]map[string]string
-		Lang               string
-		DefaultLat         float64
-		DefaultLon         float64
-		DefaultZoom        int
-		DefaultLayer       string
-		MapboxToken        string
-		AutoLocateDefault  bool
-		RealtimeAvailable  bool
-		RealtimeDefault    bool
-		SupportEmail       string
-		TranslationsJSON   template.JS
-		MarkersJSON        template.JS
-		CurrentURL         string
-		DefaultSocialImage string
-		MetaGenerator      string
-		CanonicalURL       string
-		LogoImageURL       string
-		LogoLink           string
-		ShowGithubTooltip  bool
-		DesktopWebView     bool
-		ChichaGitHubURL    string
+		Version             string
+		Translations        map[string]map[string]string
+		Lang                string
+		DefaultLat          float64
+		DefaultLon          float64
+		DefaultZoom         int
+		DefaultLayer        string
+		MapboxToken         string
+		AutoLocateDefault   bool
+		RealtimeAvailable   bool
+		RealtimeDefault     bool
+		SupportEmail        string
+		TranslationsJSON    template.JS
+		MarkersJSON         template.JS
+		CurrentURL          string
+		DefaultSocialImage  string
+		MetaGenerator       string
+		CanonicalURL        string
+		LogoImageURL        string
+		LogoLink            string
+		ShowGithubTooltip   bool
+		DesktopWebView      bool
+		DesktopNativeUpload bool
+		ChichaGitHubURL     string
 	}{
 		Version:           displayVersion,
 		Translations:      translations,
@@ -5604,19 +5890,20 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		AutoLocateDefault: *autoLocateDefault,
 		RealtimeAvailable: *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
-		RealtimeDefault:    *safecastRealtimeEnabled && *safecastRealtimeDefault,
-		SupportEmail:       strings.TrimSpace(*supportEmail),
-		TranslationsJSON:   translationsJSON,
-		MarkersJSON:        markersJSON,
-		CurrentURL:         resolveCurrentURL(r),
-		DefaultSocialImage: defaultSocialImage,
-		MetaGenerator:      metaGenerator,
-		CanonicalURL:       resolveCanonicalURL(r),
-		LogoImageURL:       activeLogoConfig.ImageURL,
-		LogoLink:           activeLogoConfig.LinkURL,
-		ShowGithubTooltip:  activeLogoConfig.ShowGithubLinkTooltip,
-		DesktopWebView:     *desktopMode,
-		ChichaGitHubURL:    chichaGitHubURL,
+		RealtimeDefault:     *safecastRealtimeEnabled && *safecastRealtimeDefault,
+		SupportEmail:        strings.TrimSpace(*supportEmail),
+		TranslationsJSON:    translationsJSON,
+		MarkersJSON:         markersJSON,
+		CurrentURL:          resolveCurrentURL(r),
+		DefaultSocialImage:  defaultSocialImage,
+		MetaGenerator:       metaGenerator,
+		CanonicalURL:        resolveCanonicalURL(r),
+		LogoImageURL:        activeLogoConfig.ImageURL,
+		LogoLink:            activeLogoConfig.LinkURL,
+		ShowGithubTooltip:   activeLogoConfig.ShowGithubLinkTooltip,
+		DesktopWebView:      *desktopMode,
+		DesktopNativeUpload: *desktopMode && runtime.GOOS == "darwin",
+		ChichaGitHubURL:     chichaGitHubURL,
 	}
 
 	var buf bytes.Buffer
@@ -6898,6 +7185,8 @@ func main() {
 	// modals can reuse the same source without relying on external storage.
 	http.HandleFunc("/licenses/", licenseHandler)
 	http.HandleFunc("/upload", uploadHandler)
+	http.HandleFunc("/desktop/upload-native", desktopNativeUploadHandler)
+	http.HandleFunc("/desktop/download-track/", desktopTrackDownloadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_playback", streamPlaybackHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)
