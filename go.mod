@@ -52,8 +52,3 @@ replace github.com/apache/arrow-go/v18 => github.com/apache/arrow-go/v18 v18.0.0
 // Use matveynator/webview_go as the desktop webview provider for macOS dialog fixes.
 // Keep imports stable in application code and swap implementation at the module layer.
 replace github.com/webview/webview_go => github.com/matveynator/webview_go v0.0.0-20240831120633-6173450d4dd6
-
-// Ensure CGO webview core also comes from the Matveynator fork.
-// Without this replace, webview_go can still resolve github.com/webview/webview
-// from upstream and silently bypass local macOS dialog patches.
-replace github.com/webview/webview => github.com/matveynator/webview v0.0.0-20240831113003-c17f7a095f5f

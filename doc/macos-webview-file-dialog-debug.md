@@ -5,19 +5,19 @@ This project uses `go-webview-selector` in app code and switches the implementat
 ## Why this file exists
 
 On macOS, `<input type="file">` depends on the native `WKUIDelegate` open panel callback.
-If your patch lives in a fork, both layers must point to that fork:
+If your patch lives in a fork, the Go wrapper must point to that fork:
 
 1. `github.com/webview/webview_go` (Go wrapper)
-2. `github.com/webview/webview` (native webview core)
-
-If only layer 1 is replaced, layer 2 can still come from upstream and file dialogs stay broken.
 
 ## Current module wiring
 
-`go.mod` now contains two replace directives:
+`go.mod` currently contains the implementation override:
 
 - `github.com/webview/webview_go => github.com/matveynator/webview_go`
-- `github.com/webview/webview => github.com/matveynator/webview`
+
+For desktop macOS builds we also provide a native upload fallback endpoint
+(`/desktop/upload-native`) that opens the OS file picker via AppleScript when
+`<input type="file">` is blocked by embedded WebView behavior.
 
 ## Verification checklist
 
@@ -34,6 +34,6 @@ excluded by Go build tags and desktop mode cannot work.
 
 Expected result:
 
-- both `webview_go` and `webview` resolve to `github.com/matveynator/...`
+- `webview_go` resolves to `github.com/matveynator/...`
 - desktop build succeeds
-- file picker opens on macOS when clicking the upload button
+- file picker opens on macOS via native fallback upload button
