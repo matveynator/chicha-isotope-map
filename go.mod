@@ -49,6 +49,6 @@ require (
 
 replace github.com/apache/arrow-go/v18 => github.com/apache/arrow-go/v18 v18.0.0
 
-// Use local matveynator/webview checkout as the desktop webview provider.
-// This keeps import paths stable in code while allowing fork-level fixes.
-replace github.com/webview/webview_go => ../webview
+// Use matveynator/webview as the desktop webview provider for macOS dialog fixes.
+// Keep the import path stable in code and swap the implementation at the module layer.
+replace github.com/webview/webview_go => github.com/matveynator/webview v0.1.1
