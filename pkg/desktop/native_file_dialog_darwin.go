@@ -16,8 +16,12 @@ func PickFiles() ([]string, error) {
 		"osascript",
 		"-s", "s",
 		"-e", "set selectedFiles to choose file with multiple selections allowed",
-		"-e", "set AppleScript's text item delimiters to \"\\n\"",
-		"-e", "POSIX path of selectedFiles as text",
+		"-e", "set selectedPaths to {}",
+		"-e", "repeat with selectedFile in selectedFiles",
+		"-e", "set end of selectedPaths to POSIX path of selectedFile",
+		"-e", "end repeat",
+		"-e", "set AppleScript's text item delimiters to linefeed",
+		"-e", "selectedPaths as text",
 	)
 
 	output, err := command.CombinedOutput()
@@ -30,15 +34,7 @@ func PickFiles() ([]string, error) {
 		return nil, fmt.Errorf("desktop native file dialog: %w (%s)", err, message)
 	}
 
-	rawPaths := strings.Split(strings.TrimSpace(string(output)), "\n")
-	selectedPaths := make([]string, 0, len(rawPaths))
-	for _, rawPath := range rawPaths {
-		trimmedPath := strings.TrimSpace(rawPath)
-		if trimmedPath == "" {
-			continue
-		}
-		selectedPaths = append(selectedPaths, trimmedPath)
-	}
+	selectedPaths := parseAppleScriptSelectedPaths(string(output))
 	if len(selectedPaths) == 0 {
 		return nil, errors.New("desktop native file dialog: empty selection")
 	}
