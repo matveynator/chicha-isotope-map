@@ -4962,6 +4962,74 @@ func desktopNativeUploadHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
+func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !*desktopMode {
+		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+
+	trimmed := strings.Trim(strings.TrimPrefix(r.URL.Path, "/desktop/download-track/"), "/")
+	if trimmed == "" {
+		http.Error(w, "missing track id", http.StatusBadRequest)
+		return
+	}
+	trackID := strings.TrimSuffix(trimmed, ".json")
+	trackID = strings.TrimSpace(trackID)
+	if trackID == "" {
+		http.Error(w, "missing track id", http.StatusBadRequest)
+		return
+	}
+
+	internalURL := fmt.Sprintf("http://127.0.0.1:%d/api/track/%s.json", *port, url.PathEscape(trackID))
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, internalURL, nil)
+	if err != nil {
+		http.Error(w, "build track request failed", http.StatusInternalServerError)
+		return
+	}
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		http.Error(w, "track export request failed", http.StatusBadGateway)
+		return
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		http.Error(w, "track export endpoint returned error", http.StatusBadGateway)
+		return
+	}
+
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		http.Error(w, "track export read failed", http.StatusBadGateway)
+		return
+	}
+
+	filename := trackID + ".json"
+	savedPath, err := desktop.SaveFile(filename, payload)
+	if err != nil {
+		if errors.Is(err, desktop.ErrNativeDialogCanceled) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "cancelled"})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "saved",
+		"trackID":   trackID,
+		"fileName":  filename,
+		"savedPath": savedPath,
+	})
+}
+
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		http.Error(w, "multipart parse error", http.StatusBadRequest)
@@ -7118,6 +7186,7 @@ func main() {
 	http.HandleFunc("/licenses/", licenseHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/desktop/upload-native", desktopNativeUploadHandler)
+	http.HandleFunc("/desktop/download-track/", desktopTrackDownloadHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_playback", streamPlaybackHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)

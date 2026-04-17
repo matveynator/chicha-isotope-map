@@ -1463,7 +1463,11 @@ body, html {
 
     <!-- Track download button appears only in track view so users can retrieve the original JSON quickly. -->
     <div class="download-track-container leaflet-control" style="display: none;">
+      {{if .DesktopNativeUpload}}
+      <button id="downloadTrackLink" class="download-track-btn" type="button">{{ translate "download_track_cim" }}</button>
+      {{else}}
       <a id="downloadTrackLink" class="download-track-btn" href="#">{{ translate "download_track_cim" }}</a>
+      {{end}}
     </div>
 
     <!-- File upload overlay -->
@@ -2560,14 +2564,53 @@ function refreshDownloadLink() {
   if (currentTrackID) {
     // Encode IDs so hyphens and other safe characters keep round-tripping in URLs.
     var encodedTrackID = encodeURIComponent(currentTrackID);
-    link.href = '/api/track/' + encodedTrackID + '.json';
-    link.setAttribute('download', currentTrackID + '.json');
+    if (window.desktopNativeUpload) {
+      link.textContent = currentTrackID + '.json';
+      link.removeAttribute('href');
+      link.removeAttribute('download');
+      link.onclick = function (event) {
+        event.preventDefault();
+        downloadCurrentTrackNativeDesktop();
+      };
+    } else {
+      link.textContent = translate('download_track_cim');
+      link.href = '/api/track/' + encodedTrackID + '.json';
+      link.setAttribute('download', currentTrackID + '.json');
+      link.onclick = null;
+    }
     box.style.display = 'block';
   } else {
+    link.textContent = translate('download_track_cim');
     link.href = '#';
     link.removeAttribute('download');
+    link.onclick = null;
     box.style.display = 'none';
   }
+}
+
+function downloadCurrentTrackNativeDesktop() {
+  if (!currentTrackID) {
+    return;
+  }
+  var encodedTrackID = encodeURIComponent(currentTrackID);
+  fetch('/desktop/download-track/' + encodedTrackID + '.json', { method: 'POST' })
+    .then(function (response) {
+      if (!response.ok) {
+        throw new Error('desktop track download request failed');
+      }
+      return response.json();
+    })
+    .then(function (payload) {
+      if (payload.status === 'cancelled') {
+        return;
+      }
+      if (payload.status !== 'saved') {
+        throw new Error('desktop track download returned unexpected status');
+      }
+    })
+    .catch(function () {
+      alert(translate('error_during_upload'));
+    });
 }
 
 /* ---------------------------------------------------------------
