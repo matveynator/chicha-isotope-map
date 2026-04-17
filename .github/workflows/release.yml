@@ -281,7 +281,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           go install github.com/akavel/rsrc@latest
           $rsrcBin = Join-Path (go env GOPATH) "bin/rsrc.exe"
-          & $rsrcBin -ico "public_html/images/app-icon.ico" -arch amd64 -o "zz_chicha_icon_windows_amd64.syso"
+          # rsrc requires a real ICO container; app-icon.ico currently stores PNG bytes.
+          & $rsrcBin -ico "public_html/images/favicon.ico" -arch amd64 -o "zz_chicha_icon_windows_amd64.syso"
 
       - name: Build desktop (Windows)
         if: runner.os == 'Windows'
