@@ -46,6 +46,22 @@ chmod +x ./chicha-isotope-map-desktop
 ./chicha-isotope-map-desktop
 ```
 
+### Build desktop from source
+
+Desktop WebView builds require CGO.
+
+macOS/Linux:
+```bash
+CGO_ENABLED=1 go build -tags desktop .
+./chicha-isotope-map -desktop
+```
+
+Server-only binary (no embedded desktop window):
+```bash
+CGO_ENABLED=0 go build .
+./chicha-isotope-map
+```
+
 ### Screenshots:
 
 <img width="100%" alt="desktop placeholder 1" src="https://github.com/user-attachments/assets/617a0ced-4280-41c2-9320-de1cfd33a61f" />
@@ -113,6 +129,5 @@ This project was conceived to grant people a clear and immediate understanding o
 The Chicha Isotope Map finds its roots in the field research of [Dmitry Ignatenko](https://www.youtube.com/@MrDrimogemon) and has been profoundly shaped by the insights of Rob Oudendijk and the [Safecast community](https://safecast.org). We extend our sincere appreciation to [Safecast](https://simplemap.safecast.org), [AtomFast](https://atomfast.net), [Radiacode](https://radiacode.com), [DoseMap](https://dosemap.org), and the many contributors to open dosimetry whose efforts made this possible.
 
 Should this work serve to safeguard even a single living being, its purpose shall be fully justified.
-
 
 

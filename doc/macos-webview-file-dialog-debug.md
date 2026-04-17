@@ -26,8 +26,11 @@ Run these commands from project root:
 ```bash
 GOPRIVATE=github.com/matveynator go mod download
 GOPRIVATE=github.com/matveynator go list -m all | rg 'webview(_go)?|matveynator'
-GOPRIVATE=github.com/matveynator go build -tags desktop ./...
+CGO_ENABLED=1 GOPRIVATE=github.com/matveynator go build -tags desktop ./...
 ```
+
+Do not build desktop mode with `CGO_ENABLED=0`. In that case native webview code is
+excluded by Go build tags and desktop mode cannot work.
 
 Expected result:
 
