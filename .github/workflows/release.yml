@@ -263,6 +263,12 @@ jobs:
           chmod +x "${APP_DIR}/usr/bin/chicha-isotope-map"
           cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/usr/share/icons/hicolor/256x256/apps/chicha-isotope-map.png"
           cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/chicha-isotope-map.png"
+          ln -sf "chicha-isotope-map.png" "${APP_DIR}/.DirIcon"
+
+          APPIMAGE_ARCH="x86_64"
+          if [ "${GOARCH}" = "arm64" ]; then
+            APPIMAGE_ARCH="aarch64"
+          fi
 
           cat > "${APP_DIR}/AppRun" <<'APP_RUN'
           #!/usr/bin/env bash
@@ -278,17 +284,20 @@ jobs:
           Comment=Desktop webview launcher for Chicha Isotope Map
           Exec=AppRun
           Icon=chicha-isotope-map
+          StartupWMClass=chicha-isotope-map
           Terminal=false
           Categories=Science;
+          X-AppImage-Name=Chicha Isotope Map
+          X-AppImage-Arch=__APPIMAGE_ARCH__
           DESKTOP
+
+          sed -i "s/__APPIMAGE_ARCH__/${APPIMAGE_ARCH}/" "${APP_DIR}/usr/share/applications/chicha-isotope-map.desktop"
 
           # AppImage tooling validates the desktop entry from APP_DIR root.
           # Keep it spec-compliant and equivalent to the installed launcher file.
           cp "${APP_DIR}/usr/share/applications/chicha-isotope-map.desktop" "${APP_DIR}/chicha-isotope-map.desktop"
 
           chmod +x "${APP_DIR}/AppRun"
-
-          tar -czf "dist/${BIN}.tar.gz" -C dist "$(basename "${APP_DIR}")"
           TOOL_ARCH="x86_64"
           if [ "${GOARCH}" = "arm64" ]; then
             TOOL_ARCH="aarch64"
@@ -298,7 +307,7 @@ jobs:
           ARCH="${TOOL_ARCH}" ./appimagetool.AppImage "${APP_DIR}" "dist/${BIN}.AppImage"
           rm -rf "${APP_DIR}" "dist/${BIN}"
 
-      - name: Build portable desktop launcher (Linux tar.gz helper)
+      - name: Package Linux desktop artifact (single AppImage)
         if: runner.os == 'Linux'
         shell: bash
         env:
@@ -307,23 +316,18 @@ jobs:
         run: |
           set -euo pipefail
           BIN="chicha-isotope-map_${GOOS}_${GOARCH}_desktop"
-          APP_DIR="dist/chicha-isotope-map_${GOOS}_${GOARCH}_desktop.AppDir"
-          tar -xzf "dist/${BIN}.tar.gz" -C dist
+          APPIMAGE_SOURCE="dist/${BIN}.AppImage"
+          APPIMAGE_TARGET="dist/chicha-isotope-map_${GOARCH}.AppImage"
 
-          cat > "${APP_DIR}/chicha-isotope-map.desktop" <<'DESKTOP_PORTABLE'
-          [Desktop Entry]
-          Type=Application
-          Name=Chicha Isotope Map
-          Comment=Desktop webview launcher for Chicha Isotope Map
-          Exec=/bin/sh -c '"$(dirname "$1")/AppRun"' sh %k
-          Icon=chicha-isotope-map.png
-          Terminal=false
-          Categories=Science;
-          DESKTOP_PORTABLE
+          mv "${APPIMAGE_SOURCE}" "${APPIMAGE_TARGET}"
+          chmod +x "${APPIMAGE_TARGET}"
 
-          chmod +x "${APP_DIR}/chicha-isotope-map.desktop"
-          tar -czf "dist/${BIN}.tar.gz" -C dist "$(basename "${APP_DIR}")"
-          rm -rf "${APP_DIR}" "dist/${BIN}"
+          # Keep release output as a single executable file and a download-friendly archive.
+          # zip stores Unix mode bits; extraction tools that honor them keep the executable bit.
+          (
+            cd dist
+            zip -q -X "chicha-isotope-map_${GOOS}_${GOARCH}_desktop.zip" "chicha-isotope-map_${GOARCH}.AppImage"
+          )
 
       - name: Prepare Windows icon resource
         if: runner.os == 'Windows'
