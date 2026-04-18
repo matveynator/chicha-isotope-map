@@ -263,6 +263,12 @@ jobs:
           chmod +x "${APP_DIR}/usr/bin/chicha-isotope-map"
           cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/usr/share/icons/hicolor/256x256/apps/chicha-isotope-map.png"
           cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/chicha-isotope-map.png"
+          ln -sf "chicha-isotope-map.png" "${APP_DIR}/.DirIcon"
+
+          APPIMAGE_ARCH="x86_64"
+          if [ "${GOARCH}" = "arm64" ]; then
+            APPIMAGE_ARCH="aarch64"
+          fi
 
           cat > "${APP_DIR}/AppRun" <<'APP_RUN'
           #!/usr/bin/env bash
@@ -278,9 +284,14 @@ jobs:
           Comment=Desktop webview launcher for Chicha Isotope Map
           Exec=AppRun
           Icon=chicha-isotope-map
+          StartupWMClass=chicha-isotope-map
           Terminal=false
           Categories=Science;
+          X-AppImage-Name=Chicha Isotope Map
+          X-AppImage-Arch=__APPIMAGE_ARCH__
           DESKTOP
+
+          sed -i "s/__APPIMAGE_ARCH__/${APPIMAGE_ARCH}/" "${APP_DIR}/usr/share/applications/chicha-isotope-map.desktop"
 
           # AppImage tooling validates the desktop entry from APP_DIR root.
           # Keep it spec-compliant and equivalent to the installed launcher file.
