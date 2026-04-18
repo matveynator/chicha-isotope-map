@@ -276,7 +276,7 @@ jobs:
           Type=Application
           Name=Chicha Isotope Map
           Comment=Desktop webview launcher for Chicha Isotope Map
-          Exec=chicha-isotope-map
+          Exec=AppRun
           Icon=chicha-isotope-map
           Terminal=false
           Categories=Science;Utility;
