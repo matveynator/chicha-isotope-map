@@ -25,8 +25,8 @@ Best for personal local use.
 - [Desktop for Windows (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.exe)
 - [Desktop for macOS Apple Silicon (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64_desktop)
 - [Desktop for macOS Intel (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64_desktop)
-- [Desktop for Linux (amd64, AppDir tar.gz)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.tar.gz)
-- [Desktop for Linux (arm64, AppDir tar.gz)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop.tar.gz)
+- [Desktop for Linux (amd64, single-file AppImage)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.AppImage)
+- [Desktop for Linux (arm64, single-file AppImage)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop.AppImage)
 
 ### Run
 Windows:
@@ -42,11 +42,11 @@ chmod +x ./chicha-isotope-map_darwin_*_desktop
 
 Linux:
 ```bash
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.tar.gz -o chicha-isotope-map-desktop.tar.gz
-tar -xzf chicha-isotope-map-desktop.tar.gz
-./chicha-isotope-map_linux_amd64_desktop.AppDir/AppRun
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.AppImage -o chicha-isotope-map-desktop.AppImage
+chmod +x ./chicha-isotope-map-desktop.AppImage
+./chicha-isotope-map-desktop.AppImage
 ```
-The extracted folder also contains `chicha-isotope-map.desktop` and `chicha-isotope-map.png` so Linux file managers can show an app icon for the launcher.
+Linux desktop release is now a single file (`.AppImage`) with embedded app metadata and icon.
 
 ### Build desktop from source
 
