@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+const defaultServerBinaryPath = "/usr/local/bin/chicha-isotope-map"
+
 // Defaults carries the starting values presented by the wizard so operators
 // can speed through with sensible answers while still being free to tweak them.
 // Keeping the struct small matches the Go proverb about simplicity beating
@@ -338,9 +340,10 @@ func enrichDefaults(defaults Defaults) Defaults {
 		defaults.NeedCert = true
 	}
 	if defaults.BinaryPath == "" {
-		if exe, err := os.Executable(); err == nil {
-			defaults.BinaryPath = exe
-		}
+		// The setup wizard targets server deployments, so we keep a stable
+		// system-wide binary location that matches release instructions and
+		// updater scripts.
+		defaults.BinaryPath = defaultServerBinaryPath
 	}
 	if defaults.WorkingDir == "" {
 		if wd, err := os.Getwd(); err == nil {

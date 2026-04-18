@@ -7043,9 +7043,7 @@ func main() {
 			ArchivePath:  *jsonArchivePathFlag,
 			ImportTGZURL: *importTGZURLFlag,
 			SupportEmail: *supportEmail,
-		}
-		if exe, err := os.Executable(); err == nil {
-			defaults.BinaryPath = exe
+			BinaryPath:   "/usr/local/bin/chicha-isotope-map",
 		}
 		if wd, err := os.Getwd(); err == nil {
 			defaults.WorkingDir = wd
