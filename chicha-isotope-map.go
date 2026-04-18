@@ -7273,7 +7273,7 @@ func main() {
 	desktopFallbackActive := false
 	if *desktopMode {
 		address := fmt.Sprintf("127.0.0.1:%d", *port)
-		if err := desktop.RunWebviewWindow(address); err != nil {
+		if err := desktop.RunWebviewWindow(address, resolveDisplayVersion()); err != nil {
 			if errors.Is(err, desktop.ErrExternalBrowserLaunched) {
 				log.Printf("desktop mode: launched system browser fallback; keeping server running")
 				desktopFallbackActive = true
