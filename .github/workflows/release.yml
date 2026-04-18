@@ -245,7 +245,7 @@ jobs:
                    -ldflags "-s -w -X main.CompileVersion=$VERSION" \
                    -o "dist/${BIN}"
 
-      - name: Package desktop launcher (Linux)
+      - name: Package Linux desktop artifact (zip with executable binary)
         if: runner.os == 'Linux'
         shell: bash
         env:
@@ -254,79 +254,13 @@ jobs:
         run: |
           set -euo pipefail
           BIN="chicha-isotope-map_${GOOS}_${GOARCH}_desktop"
-          APP_DIR="dist/chicha-isotope-map_${GOOS}_${GOARCH}_desktop.AppDir"
-          mkdir -p "${APP_DIR}/usr/bin" \
-                   "${APP_DIR}/usr/share/applications" \
-                   "${APP_DIR}/usr/share/icons/hicolor/256x256/apps"
+          chmod +x "dist/${BIN}"
 
-          cp "dist/${BIN}" "${APP_DIR}/usr/bin/chicha-isotope-map"
-          chmod +x "${APP_DIR}/usr/bin/chicha-isotope-map"
-          cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/usr/share/icons/hicolor/256x256/apps/chicha-isotope-map.png"
-          cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/chicha-isotope-map.png"
-          ln -sf "chicha-isotope-map.png" "${APP_DIR}/.DirIcon"
-
-          APPIMAGE_ARCH="x86_64"
-          if [ "${GOARCH}" = "arm64" ]; then
-            APPIMAGE_ARCH="aarch64"
-          fi
-
-          cat > "${APP_DIR}/AppRun" <<'APP_RUN'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          APP_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-          exec "${APP_DIR}/usr/bin/chicha-isotope-map" "$@"
-          APP_RUN
-
-          cat > "${APP_DIR}/usr/share/applications/chicha-isotope-map.desktop" <<'DESKTOP'
-          [Desktop Entry]
-          Type=Application
-          Name=Chicha Isotope Map
-          Comment=Desktop webview launcher for Chicha Isotope Map
-          Exec=AppRun
-          Icon=chicha-isotope-map
-          StartupWMClass=chicha-isotope-map
-          Terminal=false
-          Categories=Science;
-          X-AppImage-Name=Chicha Isotope Map
-          X-AppImage-Arch=__APPIMAGE_ARCH__
-          DESKTOP
-
-          sed -i "s/__APPIMAGE_ARCH__/${APPIMAGE_ARCH}/" "${APP_DIR}/usr/share/applications/chicha-isotope-map.desktop"
-
-          # AppImage tooling validates the desktop entry from APP_DIR root.
-          # Keep it spec-compliant and equivalent to the installed launcher file.
-          cp "${APP_DIR}/usr/share/applications/chicha-isotope-map.desktop" "${APP_DIR}/chicha-isotope-map.desktop"
-
-          chmod +x "${APP_DIR}/AppRun"
-          TOOL_ARCH="x86_64"
-          if [ "${GOARCH}" = "arm64" ]; then
-            TOOL_ARCH="aarch64"
-          fi
-          curl -fL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${TOOL_ARCH}.AppImage" -o appimagetool.AppImage
-          chmod +x appimagetool.AppImage
-          ARCH="${TOOL_ARCH}" ./appimagetool.AppImage "${APP_DIR}" "dist/${BIN}.AppImage"
-          rm -rf "${APP_DIR}" "dist/${BIN}"
-
-      - name: Package Linux desktop artifact (single AppImage)
-        if: runner.os == 'Linux'
-        shell: bash
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          set -euo pipefail
-          BIN="chicha-isotope-map_${GOOS}_${GOARCH}_desktop"
-          APPIMAGE_SOURCE="dist/${BIN}.AppImage"
-          APPIMAGE_TARGET="dist/chicha-isotope-map_${GOARCH}.AppImage"
-
-          mv "${APPIMAGE_SOURCE}" "${APPIMAGE_TARGET}"
-          chmod +x "${APPIMAGE_TARGET}"
-
-          # Keep release output as a single executable file and a download-friendly archive.
-          # zip stores Unix mode bits; extraction tools that honor them keep the executable bit.
+          # Keep a direct binary and a download-friendly archive for Linux desktop releases.
+          # zip stores Unix mode bits, so extraction tools that honor them keep the executable bit.
           (
             cd dist
-            zip -q -X "chicha-isotope-map_${GOOS}_${GOARCH}_desktop.zip" "chicha-isotope-map_${GOARCH}.AppImage"
+            zip -q -X "chicha-isotope-map_${GOOS}_${GOARCH}_desktop.zip" "${BIN}"
           )
 
       - name: Prepare Windows icon resource

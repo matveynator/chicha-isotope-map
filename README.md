@@ -26,8 +26,8 @@ Best for personal local use.
 - [Desktop for Windows (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.exe)
 - [Desktop for macOS Apple Silicon (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64_desktop)
 - [Desktop for macOS Intel (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64_desktop)
-- [Desktop for Linux (amd64, single-file AppImage)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.AppImage)
-- [Desktop for Linux (arm64, single-file AppImage)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop.AppImage)
+- [Desktop for Linux (amd64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.zip)
+- [Desktop for Linux (arm64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop.zip)
 
 ### Run
 Windows:
@@ -43,11 +43,12 @@ chmod +x ./chicha-isotope-map_darwin_*_desktop
 
 Linux:
 ```bash
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.AppImage -o chicha-isotope-map-desktop.AppImage
-chmod +x ./chicha-isotope-map-desktop.AppImage
-./chicha-isotope-map-desktop.AppImage
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.zip -o chicha-isotope-map-desktop.zip
+unzip chicha-isotope-map-desktop.zip
+chmod +x ./chicha-isotope-map_linux_amd64_desktop
+./chicha-isotope-map_linux_amd64_desktop
 ```
-Linux desktop release is now a single file (`.AppImage`) with embedded app metadata and icon.
+Linux desktop release now ships as a regular executable binary in a `.zip` archive.
 
 ### Build desktop from source
 

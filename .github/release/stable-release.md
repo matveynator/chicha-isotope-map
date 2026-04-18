@@ -35,12 +35,14 @@ chmod +x ./chicha-isotope-map_darwin_*_desktop
 If Gatekeeper blocks launch, open **System Settings → Privacy & Security** and allow the app.
 
 ### Linux
-[⬇️ Download Desktop for Linux (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop)
+- [⬇️ Download Desktop for Linux (amd64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.zip)
+- [⬇️ Download Desktop for Linux (arm64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop.zip)
 
 ```bash
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop -o chicha-isotope-map-desktop
-chmod +x ./chicha-isotope-map-desktop
-./chicha-isotope-map-desktop
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.zip -o chicha-isotope-map-desktop.zip
+unzip chicha-isotope-map-desktop.zip
+chmod +x ./chicha-isotope-map_linux_amd64_desktop
+./chicha-isotope-map_linux_amd64_desktop
 ```
 
 ---
