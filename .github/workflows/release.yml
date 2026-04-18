@@ -288,7 +288,7 @@ jobs:
           Name=Chicha Isotope Map
           Comment=Desktop webview launcher for Chicha Isotope Map
           Exec=/bin/sh -c '"$(dirname "$1")/AppRun"' sh %k
-          Icon=chicha-isotope-map
+          Icon=chicha-isotope-map.png
           Terminal=false
           Categories=Science;Utility;
           DESKTOP_PORTABLE
@@ -296,6 +296,7 @@ jobs:
           chmod +x "${APP_DIR}/AppRun" "${APP_DIR}/chicha-isotope-map.desktop"
 
           tar -czf "dist/${BIN}.tar.gz" -C dist "$(basename "${APP_DIR}")"
+          rm -rf "${APP_DIR}" "dist/${BIN}"
 
       - name: Prepare Windows icon resource
         if: runner.os == 'Windows'
