@@ -23,9 +23,11 @@ Best for personal local use.
 
 ### Download
 - [Desktop for Windows (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.exe)
+- [Desktop for Windows (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.exe)
 - [Desktop for macOS Apple Silicon (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64_desktop)
 - [Desktop for macOS Intel (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64_desktop)
 - [Desktop for Linux (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop)
+- [Desktop for Linux (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop)
 
 ### Run
 Windows:
@@ -129,5 +131,4 @@ This project was conceived to grant people a clear and immediate understanding o
 The Chicha Isotope Map finds its roots in the field research of [Dmitry Ignatenko](https://www.youtube.com/@MrDrimogemon) and has been profoundly shaped by the insights of Rob Oudendijk and the [Safecast community](https://safecast.org). We extend our sincere appreciation to [Safecast](https://simplemap.safecast.org), [AtomFast](https://atomfast.net), [Radiacode](https://radiacode.com), [DoseMap](https://dosemap.org), and the many contributors to open dosimetry whose efforts made this possible.
 
 Should this work serve to safeguard even a single living being, its purpose shall be fully justified.
-
 

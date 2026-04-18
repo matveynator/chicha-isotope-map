@@ -167,9 +167,11 @@ jobs:
           # go-webview-selector resolves webkit2gtk via pkg-config name "webkit2gtk-4.0",
           # so Linux desktop builds provide a webkit2gtk-4.0 pkg-config target.
           - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
+          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04-arm" }
           - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14" }
           - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14" }
           - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest" }
+          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest" }
 
     steps:
       - name: Checkout
@@ -282,7 +284,8 @@ jobs:
           go install github.com/akavel/rsrc@latest
           $rsrcBin = Join-Path (go env GOPATH) "bin/rsrc.exe"
           # rsrc requires a real ICO container; app-icon.ico currently stores PNG bytes.
-          & $rsrcBin -ico "public_html/images/favicon.ico" -arch amd64 -o "zz_chicha_icon_windows_amd64.syso"
+          $resourceArch = if ("${{ matrix.goarch }}" -eq "arm64") { "arm64" } else { "amd64" }
+          & $rsrcBin -ico "public_html/images/favicon.ico" -arch $resourceArch -o "zz_chicha_icon_windows_${{ matrix.goarch }}.syso"
 
       - name: Build desktop (Windows)
         if: runner.os == 'Windows'
