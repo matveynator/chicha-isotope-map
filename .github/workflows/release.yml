@@ -263,6 +263,40 @@ jobs:
             zip -q -X "chicha-isotope-map_${GOOS}_${GOARCH}_desktop.zip" "${BIN}"
           )
 
+      - name: Build Windows ICO from desktop app icon
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pngPath = "public_html/images/apple-touch-icon.png"
+          $icoPath = "dist/windows-desktop-icon.ico"
+          New-Item -Force -ItemType Directory dist | Out-Null
+
+          [byte[]]$pngBytes = [System.IO.File]::ReadAllBytes($pngPath)
+          if ($pngBytes.Length -lt 8 -or $pngBytes[0] -ne 0x89 -or $pngBytes[1] -ne 0x50 -or $pngBytes[2] -ne 0x4E -or $pngBytes[3] -ne 0x47) {
+            throw "Icon source must be a PNG file: $pngPath"
+          }
+
+          # ICO can store PNG payloads directly; this keeps the Windows desktop icon pixel-identical to the macOS icon source.
+          $iconDataOffset = 6 + 16
+          $writer = New-Object System.IO.BinaryWriter([System.IO.File]::Open($icoPath, [System.IO.FileMode]::Create))
+          try {
+            $writer.Write([UInt16]0)                 # reserved
+            $writer.Write([UInt16]1)                 # type = icon
+            $writer.Write([UInt16]1)                 # one image
+            $writer.Write([Byte]0)                   # width = 256
+            $writer.Write([Byte]0)                   # height = 256
+            $writer.Write([Byte]0)                   # color count
+            $writer.Write([Byte]0)                   # reserved
+            $writer.Write([UInt16]1)                 # color planes
+            $writer.Write([UInt16]32)                # bits per pixel
+            $writer.Write([UInt32]$pngBytes.Length)  # image data size
+            $writer.Write([UInt32]$iconDataOffset)   # image data offset
+            $writer.Write($pngBytes)
+          } finally {
+            $writer.Dispose()
+          }
+
       - name: Prepare Windows icon resource
         if: runner.os == 'Windows'
         shell: pwsh
@@ -270,9 +304,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           go install github.com/akavel/rsrc@latest
           $rsrcBin = Join-Path (go env GOPATH) "bin/rsrc.exe"
-          # rsrc requires a real ICO container; app-icon.ico currently stores PNG bytes.
           $resourceArch = if ("${{ matrix.goarch }}" -eq "arm64") { "arm64" } else { "amd64" }
-          & $rsrcBin -ico "public_html/images/favicon.ico" -arch $resourceArch -o "zz_chicha_icon_windows_${{ matrix.goarch }}.syso"
+          & $rsrcBin -ico "dist/windows-desktop-icon.ico" -arch $resourceArch -o "zz_chicha_icon_windows_${{ matrix.goarch }}.syso"
 
       - name: Build desktop (Windows)
         if: runner.os == 'Windows'
