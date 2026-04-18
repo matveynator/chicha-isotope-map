@@ -24,6 +24,8 @@ Best for personal local use.
 ### Download
 - [Desktop for Windows (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.exe)
 - [Desktop for Windows (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.exe)
+- [Desktop for Windows (amd64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.zip)
+- [Desktop for Windows (arm64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.zip)
 - [Desktop for macOS Apple Silicon (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64_desktop)
 - [Desktop for macOS Intel (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64_desktop)
 - [Desktop for Linux (amd64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.zip)
@@ -31,7 +33,7 @@ Best for personal local use.
 
 ### Run
 Windows:
-1. Download `.exe`
+1. Download `.exe` directly (or `.zip` if your browser/security policy blocks direct `.exe` downloads)
 2. Double click
 3. If SmartScreen appears: **More info → Run anyway**
 
