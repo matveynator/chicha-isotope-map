@@ -316,7 +316,7 @@ jobs:
           Name=Chicha Isotope Map
           Comment=Desktop webview launcher for Chicha Isotope Map
           Exec=/bin/sh -c '"$(dirname "$1")/AppRun"' sh %k
-          Icon=chicha-isotope-map
+          Icon=chicha-isotope-map.png
           Terminal=false
           Categories=Science;
           DESKTOP_PORTABLE
