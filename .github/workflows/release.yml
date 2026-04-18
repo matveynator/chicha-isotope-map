@@ -262,6 +262,14 @@ jobs:
           cp "dist/${BIN}" "${APP_DIR}/usr/bin/chicha-isotope-map"
           chmod +x "${APP_DIR}/usr/bin/chicha-isotope-map"
           cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/usr/share/icons/hicolor/256x256/apps/chicha-isotope-map.png"
+          cp "public_html/images/apple-touch-icon.png" "${APP_DIR}/chicha-isotope-map.png"
+
+          cat > "${APP_DIR}/AppRun" <<'APP_RUN'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APP_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          exec "${APP_DIR}/usr/bin/chicha-isotope-map" "$@"
+          APP_RUN
 
           cat > "${APP_DIR}/usr/share/applications/chicha-isotope-map.desktop" <<'DESKTOP'
           [Desktop Entry]
@@ -273,6 +281,19 @@ jobs:
           Terminal=false
           Categories=Science;Utility;
           DESKTOP
+
+          cat > "${APP_DIR}/chicha-isotope-map.desktop" <<'DESKTOP_PORTABLE'
+          [Desktop Entry]
+          Type=Application
+          Name=Chicha Isotope Map
+          Comment=Desktop webview launcher for Chicha Isotope Map
+          Exec=/bin/sh -c '"$(dirname "$1")/AppRun"' sh %k
+          Icon=chicha-isotope-map
+          Terminal=false
+          Categories=Science;Utility;
+          DESKTOP_PORTABLE
+
+          chmod +x "${APP_DIR}/AppRun" "${APP_DIR}/chicha-isotope-map.desktop"
 
           tar -czf "dist/${BIN}.tar.gz" -C dist "$(basename "${APP_DIR}")"
 
