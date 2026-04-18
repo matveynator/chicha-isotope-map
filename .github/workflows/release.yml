@@ -306,7 +306,7 @@ jobs:
           set -euo pipefail
           BIN="chicha-isotope-map_${GOOS}_${GOARCH}_desktop"
           APPIMAGE_SOURCE="dist/${BIN}.AppImage"
-          APPIMAGE_TARGET="dist/chicha-isotope-map.AppImage"
+          APPIMAGE_TARGET="dist/chicha-isotope-map_${GOARCH}.AppImage"
 
           mv "${APPIMAGE_SOURCE}" "${APPIMAGE_TARGET}"
           chmod +x "${APPIMAGE_TARGET}"
@@ -315,7 +315,7 @@ jobs:
           # zip stores Unix mode bits; extraction tools that honor them keep the executable bit.
           (
             cd dist
-            zip -q -X "chicha-isotope-map_${GOOS}_${GOARCH}_desktop.zip" "chicha-isotope-map.AppImage"
+            zip -q -X "chicha-isotope-map_${GOOS}_${GOARCH}_desktop.zip" "chicha-isotope-map_${GOARCH}.AppImage"
           )
 
       - name: Prepare Windows icon resource
