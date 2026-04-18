@@ -296,6 +296,14 @@ jobs:
           chmod +x "${APP_DIR}/AppRun" "${APP_DIR}/chicha-isotope-map.desktop"
 
           tar -czf "dist/${BIN}.tar.gz" -C dist "$(basename "${APP_DIR}")"
+          TOOL_ARCH="x86_64"
+          if [ "${GOARCH}" = "arm64" ]; then
+            TOOL_ARCH="aarch64"
+          fi
+          curl -fL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${TOOL_ARCH}.AppImage" -o appimagetool.AppImage
+          chmod +x appimagetool.AppImage
+          ARCH="${TOOL_ARCH}" ./appimagetool.AppImage "${APP_DIR}" "dist/${BIN}.AppImage"
+          rm -rf "${APP_DIR}" "dist/${BIN}"
 
       - name: Prepare Windows icon resource
         if: runner.os == 'Windows'

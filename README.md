@@ -25,8 +25,8 @@ Best for personal local use.
 - [Desktop for Windows (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.exe)
 - [Desktop for macOS Apple Silicon (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64_desktop)
 - [Desktop for macOS Intel (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64_desktop)
-- [Desktop for Linux (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop)
-- [Desktop for Linux (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop)
+- [Desktop for Linux (amd64, single-file AppImage)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.AppImage)
+- [Desktop for Linux (arm64, single-file AppImage)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop.AppImage)
 
 ### Run
 Windows:
@@ -42,10 +42,11 @@ chmod +x ./chicha-isotope-map_darwin_*_desktop
 
 Linux:
 ```bash
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop -o chicha-isotope-map-desktop
-chmod +x ./chicha-isotope-map-desktop
-./chicha-isotope-map-desktop
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.AppImage -o chicha-isotope-map-desktop.AppImage
+chmod +x ./chicha-isotope-map-desktop.AppImage
+./chicha-isotope-map-desktop.AppImage
 ```
+Linux desktop release is now a single file (`.AppImage`) with embedded app metadata and icon.
 
 ### Build desktop from source
 
@@ -130,4 +131,3 @@ This project was conceived to grant people a clear and immediate understanding o
 The Chicha Isotope Map finds its roots in the field research of [Dmitry Ignatenko](https://www.youtube.com/@MrDrimogemon) and has been profoundly shaped by the insights of Rob Oudendijk and the [Safecast community](https://safecast.org). We extend our sincere appreciation to [Safecast](https://simplemap.safecast.org), [AtomFast](https://atomfast.net), [Radiacode](https://radiacode.com), [DoseMap](https://dosemap.org), and the many contributors to open dosimetry whose efforts made this possible.
 
 Should this work serve to safeguard even a single living being, its purpose shall be fully justified.
-
