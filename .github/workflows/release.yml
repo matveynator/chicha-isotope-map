@@ -422,7 +422,7 @@ jobs:
             <key>CFBundleIconFile</key>
             <string>AppIcon.icns</string>
             <key>LSMinimumSystemVersion</key>
-            <string>11.0</string>
+            <string>10.2</string>
           </dict>
           </plist>
           PLIST
