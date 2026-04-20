@@ -456,6 +456,11 @@ jobs:
           </plist>
           PLIST
 
+          # Ad-hoc sign keeps macOS launch services happy on fresh systems where
+          # unsigned bundles can bounce in Dock before the first trust override.
+          codesign --force --deep --sign - "${APP_DIR}"
+          codesign --verify --deep --strict "${APP_DIR}"
+
           # Put the app and /Applications shortcut into DMG so installation is drag-and-drop.
           rm -rf "${DMG_STAGING_DIR}"
           mkdir -p "${DMG_STAGING_DIR}"
