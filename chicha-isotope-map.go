@@ -665,6 +665,27 @@ var (
 )
 
 var db *database.Database
+var runtimeDBDriverName string
+var desktopAdminImportSlot = make(chan struct{}, 1)
+var importStatusUpdateCh = make(chan importStatusEvent, 128)
+var importStatusReadCh = make(chan chan string)
+
+type importStatusEvent struct {
+	Source string
+	Text   string
+}
+
+type desktopAdminSettings struct {
+	DBPath                 string `json:"dbPath"`
+	MapboxToken            string `json:"mapboxToken"`
+	MapboxEnabled          bool   `json:"mapboxEnabled"`
+	EnableHistoricalImport bool   `json:"enableHistoricalImport"`
+	EnableSafecastImport   bool   `json:"enableSafecastImport"`
+	EnableAtomFastImport   bool   `json:"enableAtomFastImport"`
+	EnableRealtimeUpdates  bool   `json:"enableRealtimeUpdates"`
+}
+
+const desktopHistoricalImportURL = "https://pelora.org/api/json/weekly.tgz"
 
 func init() {
 	// We trigger driver registration here so "go run chicha-isotope-map.go" keeps
@@ -674,6 +695,58 @@ func init() {
 	// CLI usage grouping is also configured once during init so every entry point
 	// inherits the readable help layout without repeating boilerplate.
 	configureCLIUsage()
+	// Desktop admin imports run one archive job at a time so operators do not
+	// accidentally launch overlapping 300 GB syncs from repeated clicks.
+	desktopAdminImportSlot <- struct{}{}
+	startImportStatusTracker()
+}
+
+// startImportStatusTracker keeps a compact import summary in a single goroutine
+// so readers and writers communicate only through channels.
+func startImportStatusTracker() {
+	go func() {
+		statusBySource := map[string]string{
+			"TGZ":      "idle",
+			"Safecast": "idle",
+			"AtomFast": "idle",
+		}
+		for {
+			select {
+			case event := <-importStatusUpdateCh:
+				source := strings.TrimSpace(event.Source)
+				text := strings.TrimSpace(event.Text)
+				if source == "" || text == "" {
+					continue
+				}
+				statusBySource[source] = text
+			case replyCh := <-importStatusReadCh:
+				replyCh <- fmt.Sprintf("TGZ: %s · Safecast: %s · AtomFast: %s", statusBySource["TGZ"], statusBySource["Safecast"], statusBySource["AtomFast"])
+			}
+		}
+	}()
+}
+
+func setImportStatus(source, text string) {
+	event := importStatusEvent{Source: source, Text: text}
+	select {
+	case importStatusUpdateCh <- event:
+	default:
+	}
+}
+
+func readImportStatusLine() string {
+	replyCh := make(chan string, 1)
+	select {
+	case importStatusReadCh <- replyCh:
+	case <-time.After(100 * time.Millisecond):
+		return "TGZ: unknown · Safecast: unknown · AtomFast: unknown"
+	}
+	select {
+	case summary := <-replyCh:
+		return summary
+	case <-time.After(100 * time.Millisecond):
+		return "TGZ: unknown · Safecast: unknown · AtomFast: unknown"
+	}
 }
 
 // =====================
@@ -3232,12 +3305,15 @@ func startBackgroundArchiveImport(
 		if logf == nil {
 			logf = func(string, ...any) {}
 		}
+		setImportStatus("TGZ", "running")
 		logf("background tgz import queued: %s", label)
 		if err := importer(ctx); err != nil {
 			logf("background tgz import failed (%s): %v", label, err)
+			setImportStatus("TGZ", "error")
 			return
 		}
 		logf("background tgz import finished (%s)", label)
+		setImportStatus("TGZ", "done")
 	}()
 	return done
 }
@@ -3920,8 +3996,10 @@ func atomfastStoredTrackID(sourceID string) string {
 func startAtomFastLoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any), enabled bool) {
 	if !enabled {
 		logf("atomfast loader disabled: set -import atomfast to enable")
+		setImportStatus("AtomFast", "disabled")
 		return
 	}
+	setImportStatus("AtomFast", "starting")
 
 	const (
 		defaultAtomFastBaseURL      = "http://www.atomfast.net"
@@ -4060,6 +4138,7 @@ func (l *atomfastLoader) runInitial(ctx context.Context, jobs chan<- atomfastJob
 
 func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob, results <-chan atomfastResult) error {
 	l.logf("atomfast refresh: start")
+	setImportStatus("AtomFast", "refresh")
 	const alreadySeenLimit = 5
 	stopPaging := false
 	alreadySeen := 0
@@ -4132,6 +4211,7 @@ func (l *atomfastLoader) runRefresh(ctx context.Context, jobs chan<- atomfastJob
 		l.logf("atomfast refresh imported %d tracks across %d pages; latest imported %s at %s; next refresh at %s", totalImported, pages, formatLatestSource(lastImported), formatLatestTime(lastImportedAt), nextPollAt(l.pollInterval))
 	}
 	l.logf("atomfast refresh: done")
+	setImportStatus("AtomFast", "idle")
 	return nil
 }
 
@@ -4351,8 +4431,10 @@ type safecastAPIResult struct {
 func startSafecastAPILoader(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any), enabled bool) {
 	if !enabled {
 		logf("safecast api loader disabled: set -import safecast to enable")
+		setImportStatus("Safecast", "disabled")
 		return
 	}
+	setImportStatus("Safecast", "starting")
 
 	const (
 		defaultSafecastBaseURL      = "http://safecastapi-prd-010.baebmmfncu.us-west-2.elasticbeanstalk.com"
@@ -4478,6 +4560,7 @@ func (l *safecastAPILoader) runBackfill(ctx context.Context, jobs chan<- safecas
 
 func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecastAPIJob, results <-chan safecastAPIResult) error {
 	l.logf("safecast api refresh: start")
+	setImportStatus("Safecast", "refresh")
 	const alreadySeenLimit = 5
 	page := 1
 	stopPaging := false
@@ -4548,6 +4631,7 @@ func (l *safecastAPILoader) runRefresh(ctx context.Context, jobs chan<- safecast
 		l.logf("safecast api refresh imported %d logs across %d pages; latest imported %s at %s; next refresh at %s", totalImported, pages, formatLatestSource(lastImported), formatLatestTime(lastImportedAt), nextPollAt(l.pollInterval))
 	}
 	l.logf("safecast api refresh: done")
+	setImportStatus("Safecast", "idle")
 	return nil
 }
 
@@ -4940,6 +5024,10 @@ func desktopNativeUploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "desktop mode disabled", http.StatusConflict)
 		return
 	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	paths, err := desktop.PickFiles()
 	if err != nil {
@@ -4969,6 +5057,10 @@ func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if !*desktopMode {
 		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -5027,6 +5119,160 @@ func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		"trackID":   trackID,
 		"fileName":  filename,
 		"savedPath": savedPath,
+	})
+}
+
+// desktopAdminBootstrapImportHandler accepts a desktop-admin request to launch
+// an initial historical TGZ import in the background. We serialize jobs through
+// a channel slot instead of shared mutable flags so concurrent clicks remain
+// deterministic without mutexes.
+func desktopAdminBootstrapImportHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !*desktopMode {
+		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	select {
+	case <-desktopAdminImportSlot:
+	default:
+		http.Error(w, "import already running", http.StatusConflict)
+		return
+	}
+
+	type importRequest struct {
+		EnableHistoricalImport bool `json:"enableHistoricalImport"`
+		EnableSafecastImport   bool `json:"enableSafecastImport"`
+		EnableAtomFastImport   bool `json:"enableAtomFastImport"`
+		EnableRealtimeUpdates  bool `json:"enableRealtimeUpdates"`
+	}
+	var payload importRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		desktopAdminImportSlot <- struct{}{}
+		http.Error(w, "invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	if !payload.EnableHistoricalImport {
+		desktopAdminImportSlot <- struct{}{}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "skipped"})
+		return
+	}
+	remoteURL := desktopHistoricalImportURL
+
+	// Save desktop choices immediately so restart follows the selected checkboxes.
+	settingsSnapshot, _ := loadDesktopAdminSettings()
+	settingsSnapshot.EnableHistoricalImport = payload.EnableHistoricalImport
+	settingsSnapshot.EnableSafecastImport = payload.EnableSafecastImport
+	settingsSnapshot.EnableAtomFastImport = payload.EnableAtomFastImport
+	settingsSnapshot.EnableRealtimeUpdates = payload.EnableRealtimeUpdates
+	_ = storeDesktopAdminSettings(settingsSnapshot)
+
+	fallbackTrackID := GenerateSerialNumber()
+	setImportStatus("TGZ", "running")
+	startBackgroundArchiveImport(context.Background(), fmt.Sprintf("desktop admin %s", remoteURL), func(ctx context.Context) error {
+		defer func() {
+			desktopAdminImportSlot <- struct{}{}
+		}()
+		err := importArchiveFromURL(ctx, remoteURL, fallbackTrackID, db, runtimeDBDriverName, log.Printf)
+		if err != nil {
+			setImportStatus("TGZ", "error")
+			return err
+		}
+		setImportStatus("TGZ", "done")
+		return nil
+	}, log.Printf)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "started",
+		"url":    remoteURL,
+	})
+}
+
+func desktopAdminSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	if !*desktopMode {
+		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		response := map[string]any{
+			"dbPath":                 strings.TrimSpace(*dbPath),
+			"dbSizeGB":               measureDatabaseFileSizeGB(strings.TrimSpace(*dbPath)),
+			"mapboxToken":            strings.TrimSpace(*mapboxToken),
+			"mapboxEnabled":          strings.TrimSpace(*mapboxToken) != "",
+			"enableHistoricalImport": true,
+			"enableSafecastImport":   parseImportSelection(*importSourcesFlag).Safecast,
+			"enableAtomFastImport":   parseImportSelection(*importSourcesFlag).AtomFast,
+			"enableRealtimeUpdates":  *safecastRealtimeEnabled,
+			"importStatus":           readImportStatusLine(),
+			"desktopNotice":          "Changes to DB path/import sources are applied on next start.",
+		}
+		if savedSettings, loadErr := loadDesktopAdminSettings(); loadErr == nil {
+			response["mapboxEnabled"] = savedSettings.MapboxEnabled
+			response["enableHistoricalImport"] = savedSettings.EnableHistoricalImport
+			response["enableSafecastImport"] = savedSettings.EnableSafecastImport
+			response["enableAtomFastImport"] = savedSettings.EnableAtomFastImport
+			response["enableRealtimeUpdates"] = savedSettings.EnableRealtimeUpdates
+			if strings.TrimSpace(savedSettings.MapboxToken) != "" {
+				response["mapboxToken"] = strings.TrimSpace(savedSettings.MapboxToken)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(response)
+	case http.MethodPost:
+		if !isTrustedDesktopAdminRequest(r) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var payload desktopAdminSettings
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid request payload", http.StatusBadRequest)
+			return
+		}
+		payload.DBPath = strings.TrimSpace(payload.DBPath)
+		payload.MapboxToken = strings.TrimSpace(payload.MapboxToken)
+		if err := storeDesktopAdminSettings(payload); err != nil {
+			http.Error(w, "cannot save settings", http.StatusInternalServerError)
+			return
+		}
+		if payload.MapboxEnabled && payload.MapboxToken != "" {
+			*mapboxToken = payload.MapboxToken
+		} else {
+			*mapboxToken = ""
+		}
+		*safecastRealtimeEnabled = payload.EnableRealtimeUpdates
+		*safecastRealtimeDefault = payload.EnableRealtimeUpdates
+		if payload.DBPath != "" {
+			*dbPath = payload.DBPath
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "saved"})
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func desktopAdminStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if !*desktopMode {
+		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"line":     readImportStatusLine(),
+		"dbSizeGB": measureDatabaseFileSizeGB(strings.TrimSpace(*dbPath)),
 	})
 }
 
@@ -5357,6 +5603,44 @@ func requestClientIP(r *http.Request) string {
 		return trimmed
 	}
 	return ""
+}
+
+func isFlagExplicitlySet(flagName string) bool {
+	seen := false
+	flag.Visit(func(current *flag.Flag) {
+		if current == nil {
+			return
+		}
+		if strings.EqualFold(strings.TrimSpace(current.Name), strings.TrimSpace(flagName)) {
+			seen = true
+		}
+	})
+	return seen
+}
+
+// isTrustedDesktopAdminRequest allows desktop admin mutations only from local
+// loopback callers and same-origin form submissions to reduce CSRF/remote abuse.
+func isTrustedDesktopAdminRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	clientIP := strings.TrimSpace(requestClientIP(r))
+	parsedIP := net.ParseIP(clientIP)
+	if parsedIP == nil || !parsedIP.IsLoopback() {
+		return false
+	}
+
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	originHost := strings.TrimSpace(parsedOrigin.Host)
+	requestHost := strings.TrimSpace(r.Host)
+	return originHost != "" && strings.EqualFold(originHost, requestHost)
 }
 
 // recordActivity captures a single user action with session context so logs can
@@ -7007,6 +7291,71 @@ func resolveDesktopDefaultDBPath(driverName string, port int, logf func(string, 
 	return resolvedPath
 }
 
+func desktopSettingsFilePath() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	appDir := filepath.Join(configDir, "chicha-isotope-map")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		return "", err
+	}
+	return filepath.Join(appDir, "desktop-settings.json"), nil
+}
+
+func loadDesktopAdminSettings() (desktopAdminSettings, error) {
+	settingsPath, err := desktopSettingsFilePath()
+	if err != nil {
+		return desktopAdminSettings{}, err
+	}
+	payload, err := os.ReadFile(settingsPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return desktopAdminSettings{}, nil
+		}
+		return desktopAdminSettings{}, err
+	}
+	var saved desktopAdminSettings
+	if err := json.Unmarshal(payload, &saved); err != nil {
+		return desktopAdminSettings{}, err
+	}
+	return saved, nil
+}
+
+func storeDesktopAdminSettings(saved desktopAdminSettings) error {
+	settingsPath, err := desktopSettingsFilePath()
+	if err != nil {
+		return err
+	}
+	encoded, err := json.MarshalIndent(saved, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(settingsPath, append(encoded, '\n'), 0o644)
+}
+
+func measureDatabaseFileSizeGB(path string) float64 {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return 0
+	}
+	info, err := os.Stat(trimmedPath)
+	if err != nil || info.IsDir() {
+		return 0
+	}
+	const gib = 1024 * 1024 * 1024
+	return float64(info.Size()) / float64(gib)
+}
+
+func desktopSettingsFileExists() bool {
+	settingsPath, err := desktopSettingsFilePath()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(settingsPath)
+	return err == nil
+}
+
 // =====================
 // MAIN
 // =====================
@@ -7072,6 +7421,52 @@ func main() {
 	if *desktopMode && strings.TrimSpace(*domain) != "" {
 		log.Fatal("desktop mode requires local HTTP mode; remove -domain")
 	}
+	if *desktopMode {
+		savedSettings, settingsErr := loadDesktopAdminSettings()
+		if settingsErr != nil {
+			log.Printf("desktop settings load failed: %v", settingsErr)
+		} else {
+			if !isFlagExplicitlySet("db-path") && strings.TrimSpace(*dbPath) == "" && strings.TrimSpace(savedSettings.DBPath) != "" {
+				*dbPath = strings.TrimSpace(savedSettings.DBPath)
+			}
+			if !isFlagExplicitlySet("mapbox-token") && savedSettings.MapboxEnabled && strings.TrimSpace(*mapboxToken) == "" && strings.TrimSpace(savedSettings.MapboxToken) != "" {
+				*mapboxToken = strings.TrimSpace(savedSettings.MapboxToken)
+			}
+			if !isFlagExplicitlySet("mapbox-token") && !savedSettings.MapboxEnabled {
+				*mapboxToken = ""
+			}
+			if !isFlagExplicitlySet("import") && strings.TrimSpace(*importSourcesFlag) == "" {
+				sources := make([]string, 0, 2)
+				if savedSettings.EnableSafecastImport {
+					sources = append(sources, "safecast")
+				}
+				if savedSettings.EnableAtomFastImport {
+					sources = append(sources, "atomfast")
+				}
+				*importSourcesFlag = strings.Join(sources, ",")
+			}
+			if !isFlagExplicitlySet("safecast-realtime") {
+				*safecastRealtimeEnabled = savedSettings.EnableRealtimeUpdates
+			}
+			if !isFlagExplicitlySet("safecast-realtime-default") {
+				*safecastRealtimeDefault = savedSettings.EnableRealtimeUpdates
+			}
+		}
+	}
+	if *desktopMode {
+		// Desktop bundles should feel ready on first launch, so we default
+		// importer and realtime toggles to enabled unless operators override
+		// them via explicit CLI flags.
+		if strings.TrimSpace(*importSourcesFlag) == "" && !desktopSettingsFileExists() {
+			*importSourcesFlag = "all"
+		}
+		if !*safecastRealtimeEnabled && !desktopSettingsFileExists() && !isFlagExplicitlySet("safecast-realtime") {
+			*safecastRealtimeEnabled = true
+		}
+		if !*safecastRealtimeDefault && !desktopSettingsFileExists() && !isFlagExplicitlySet("safecast-realtime-default") {
+			*safecastRealtimeDefault = true
+		}
+	}
 
 	// 2. Предупреждение о привилегиях (для :80 / :443)
 	if *domain != "" && runtime.GOOS != "windows" && os.Geteuid() != 0 {
@@ -7080,6 +7475,7 @@ func main() {
 
 	// 3. База данных
 	driverName := strings.ToLower(strings.TrimSpace(*dbType))
+	runtimeDBDriverName = driverName
 	// Persist the normalized driver back into the flag so downstream helpers never
 	// miss engine-specific branches because of incidental casing or whitespace.
 	*dbType = driverName
@@ -7228,6 +7624,9 @@ func main() {
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/desktop/upload-native", desktopNativeUploadHandler)
 	http.HandleFunc("/desktop/download-track/", desktopTrackDownloadHandler)
+	http.HandleFunc("/desktop/admin/bootstrap-import", desktopAdminBootstrapImportHandler)
+	http.HandleFunc("/desktop/admin/settings", desktopAdminSettingsHandler)
+	http.HandleFunc("/desktop/admin/status", desktopAdminStatusHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_playback", streamPlaybackHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)
