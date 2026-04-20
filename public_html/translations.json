@@ -137,9 +137,9 @@
     "waiting_for_server": "بانتظار الخادم...",
     "your_location": "موقعك",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "استيراد جميع البيانات المتاحة منذ 2012 (حوالي 300 غيغابايت)",
-    "desktop_admin_option_source_safecast": "تلقي بيانات Safecast الجديدة",
-    "desktop_admin_option_source_atomfast": "تلقي بيانات AtomFast الجديدة",
+    "desktop_admin_option_auto_import": "البيانات التاريخية (منذ 2012 ~300 غيغابايت)",
+    "desktop_admin_option_source_safecast": "تحديثات Safecast",
+    "desktop_admin_option_source_atomfast": "تحديثات AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -153,7 +153,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "تلقي البيانات الفورية (محطات الطقس الإشعاعية)"
+    "desktop_admin_option_realtime_updates": "بيانات realtime"
   },
   "cs": {
     "api_example_archive_desc": "Stáhne archiv tgz se všemi zveřejněnými soubory .json, pokud je JSON archiv zapnutý.",
@@ -293,9 +293,9 @@
     "waiting_for_server": "Čekání na server...",
     "your_location": "Vaše poloha",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importovat všechna dostupná data od roku 2012 (cca 300 GB)",
-    "desktop_admin_option_source_safecast": "Přijímat nová data Safecast",
-    "desktop_admin_option_source_atomfast": "Přijímat nová data AtomFast",
+    "desktop_admin_option_auto_import": "Historická data (od roku 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Aktualizace Safecast",
+    "desktop_admin_option_source_atomfast": "Aktualizace AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -309,7 +309,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Přijímat data v reálném čase (radiační meteostanice)"
+    "desktop_admin_option_realtime_updates": "Realtime data"
   },
   "da": {
     "api_example_archive_desc": "Downloader en tgz-pakke med alle offentliggjorte .json-filer når JSON-arkivet er aktiveret.",
@@ -449,9 +449,9 @@
     "waiting_for_server": "Venter på serveren...",
     "your_location": "Din placering",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importér alle tilgængelige data siden 2012 (ca. 300 GB)",
-    "desktop_admin_option_source_safecast": "Modtag nye Safecast-data",
-    "desktop_admin_option_source_atomfast": "Modtag nye AtomFast-data",
+    "desktop_admin_option_auto_import": "Historiske data (siden 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast-opdateringer",
+    "desktop_admin_option_source_atomfast": "AtomFast-opdateringer",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -465,7 +465,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Modtag realtidsdata (strålings-målestationer)"
+    "desktop_admin_option_realtime_updates": "Realtime-data"
   },
   "de": {
     "api_example_archive_desc": "Lädt ein tgz-Paket mit allen veröffentlichten .json-Dateien, sofern das JSON-Archiv aktiv ist.",
@@ -605,9 +605,9 @@
     "waiting_for_server": "Warten auf den Server...",
     "your_location": "Ihr Standort",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Alle verfügbaren Daten seit 2012 importieren (ca. 300 GB)",
-    "desktop_admin_option_source_safecast": "Neue Safecast-Daten erhalten",
-    "desktop_admin_option_source_atomfast": "Neue AtomFast-Daten erhalten",
+    "desktop_admin_option_auto_import": "Historische Daten (seit 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast-Updates",
+    "desktop_admin_option_source_atomfast": "AtomFast-Updates",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -621,7 +621,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Echtzeitdaten erhalten (Strahlungs-Messstationen)"
+    "desktop_admin_option_realtime_updates": "Realtime-Daten"
   },
   "el": {
     "api_example_archive_desc": "Κατεβάζει ένα αρχείο tgz με όλα τα δημοσιευμένα αρχεία .json όταν είναι ενεργό το JSON αρχείο.",
@@ -761,9 +761,9 @@
     "waiting_for_server": "Αναμονή για τον διακομιστή...",
     "your_location": "Η τοποθεσία σας",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Εισαγωγή όλων των διαθέσιμων δεδομένων από το 2012 (περίπου 300 GB)",
-    "desktop_admin_option_source_safecast": "Λήψη νέων δεδομένων Safecast",
-    "desktop_admin_option_source_atomfast": "Λήψη νέων δεδομένων AtomFast",
+    "desktop_admin_option_auto_import": "Ιστορικά δεδομένα (από το 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Ενημερώσεις Safecast",
+    "desktop_admin_option_source_atomfast": "Ενημερώσεις AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -777,7 +777,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Λήψη δεδομένων σε πραγματικό χρόνο (μετεωρολογικοί σταθμοί ακτινοβολίας)"
+    "desktop_admin_option_realtime_updates": "Δεδομένα realtime"
   },
   "en": {
     "api_example_archive_desc": "Downloads a tgz bundle with every published .json file when the server enables the JSON archive.",
@@ -920,9 +920,9 @@
     "waiting_for_server": "Waiting for server...",
     "your_location": "Your location",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Import all available data since 2012 (about 300 GB)",
-    "desktop_admin_option_source_safecast": "Receive new Safecast data",
-    "desktop_admin_option_source_atomfast": "Receive new AtomFast data",
+    "desktop_admin_option_auto_import": "Historical data (since 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast updates",
+    "desktop_admin_option_source_atomfast": "AtomFast updates",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -936,7 +936,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Receive real-time data (radiation weather stations)"
+    "desktop_admin_option_realtime_updates": "Realtime data"
   },
   "es": {
     "api_example_archive_desc": "Descarga un paquete tgz con todos los archivos .json publicados cuando el archivo JSON está activado.",
@@ -1076,9 +1076,9 @@
     "waiting_for_server": "Esperando al servidor...",
     "your_location": "Tu ubicación",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importar todos los datos disponibles desde 2012 (unos 300 GB)",
-    "desktop_admin_option_source_safecast": "Recibir nuevos datos de Safecast",
-    "desktop_admin_option_source_atomfast": "Recibir nuevos datos de AtomFast",
+    "desktop_admin_option_auto_import": "Datos históricos (desde 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Actualizaciones de Safecast",
+    "desktop_admin_option_source_atomfast": "Actualizaciones de AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -1092,7 +1092,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Recibir datos en tiempo real (estaciones meteorológicas de radiación)"
+    "desktop_admin_option_realtime_updates": "Datos realtime"
   },
   "fa": {
     "api_example_archive_desc": "وقتی آرشیو JSON فعال باشد یک بسته tgz شامل تمام فایل‌های .json منتشرشده را دانلود می‌کند.",
@@ -1232,9 +1232,9 @@
     "waiting_for_server": "در انتظار سرور...",
     "your_location": "موقعیت شما",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "وارد کردن همهٔ داده‌های موجود از سال ۲۰۱۲ (حدود ۳۰۰ گیگابایت)",
-    "desktop_admin_option_source_safecast": "دریافت داده‌های جدید Safecast",
-    "desktop_admin_option_source_atomfast": "دریافت داده‌های جدید AtomFast",
+    "desktop_admin_option_auto_import": "داده‌های تاریخی (از ۲۰۱۲ ~۳۰۰ گیگابایت)",
+    "desktop_admin_option_source_safecast": "به‌روزرسانی‌های Safecast",
+    "desktop_admin_option_source_atomfast": "به‌روزرسانی‌های AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -1248,7 +1248,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "دریافت داده‌های بلادرنگ (ایستگاه‌های هواشناسی پرتویی)"
+    "desktop_admin_option_realtime_updates": "داده‌های realtime"
   },
   "fi": {
     "api_example_archive_desc": "Lataa tgz-paketin, jossa on kaikki julkaistut .json-tiedostot, kun JSON-arkisto on käytössä.",
@@ -1388,9 +1388,9 @@
     "waiting_for_server": "Odotetaan palvelinta...",
     "your_location": "Sijaintisi",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Tuo kaikki saatavilla olevat tiedot vuodesta 2012 alkaen (noin 300 Gt)",
-    "desktop_admin_option_source_safecast": "Vastaanota uudet Safecast-tiedot",
-    "desktop_admin_option_source_atomfast": "Vastaanota uudet AtomFast-tiedot",
+    "desktop_admin_option_auto_import": "Historiatiedot (vuodesta 2012 ~300 Gt)",
+    "desktop_admin_option_source_safecast": "Safecast-päivitykset",
+    "desktop_admin_option_source_atomfast": "AtomFast-päivitykset",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -1404,7 +1404,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Vastaanota reaaliaikaiset tiedot (säteilysääasemat)"
+    "desktop_admin_option_realtime_updates": "Realtime-data"
   },
   "fr": {
     "api_example_archive_desc": "Télécharge une archive tgz avec tous les fichiers .json publiés lorsque l’archive JSON est activée.",
@@ -1544,9 +1544,9 @@
     "waiting_for_server": "En attente du serveur...",
     "your_location": "Votre position",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importer toutes les données disponibles depuis 2012 (environ 300 Go)",
-    "desktop_admin_option_source_safecast": "Recevoir les nouvelles données Safecast",
-    "desktop_admin_option_source_atomfast": "Recevoir les nouvelles données AtomFast",
+    "desktop_admin_option_auto_import": "Données historiques (depuis 2012 ~300 Go)",
+    "desktop_admin_option_source_safecast": "Mises à jour Safecast",
+    "desktop_admin_option_source_atomfast": "Mises à jour AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -1560,7 +1560,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Recevoir les données en temps réel (stations météo radiologiques)"
+    "desktop_admin_option_realtime_updates": "Données realtime"
   },
   "he": {
     "api_example_archive_desc": "מורידה חבילת tgz עם כל קבצי .json שפורסמו כאשר ארכיון ה-JSON מופעל.",
@@ -1700,9 +1700,9 @@
     "waiting_for_server": "ממתין לשרת...",
     "your_location": "המיקום שלך",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "לייבא את כל הנתונים הזמינים מאז 2012 (כ־300 ג״ב)",
-    "desktop_admin_option_source_safecast": "לקבל נתוני Safecast חדשים",
-    "desktop_admin_option_source_atomfast": "לקבל נתוני AtomFast חדשים",
+    "desktop_admin_option_auto_import": "נתונים היסטוריים (מאז 2012 ~300 ג״ב)",
+    "desktop_admin_option_source_safecast": "עדכוני Safecast",
+    "desktop_admin_option_source_atomfast": "עדכוני AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -1716,7 +1716,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "לקבל נתונים בזמן אמת (תחנות מזג אוויר לקרינה)"
+    "desktop_admin_option_realtime_updates": "נתוני realtime"
   },
   "hi": {
     "api_example_archive_desc": "JSON संग्रह सक्षम होने पर सभी प्रकाशित .json फ़ाइलों वाला tgz पैकेज डाउनलोड करता है।",
@@ -1856,9 +1856,9 @@
     "waiting_for_server": "सर्वर की प्रतीक्षा कर रहे हैं...",
     "your_location": "आपका स्थान",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "2012 से उपलब्ध सभी डेटा आयात करें (लगभग 300 GB)",
-    "desktop_admin_option_source_safecast": "Safecast का नया डेटा प्राप्त करें",
-    "desktop_admin_option_source_atomfast": "AtomFast का नया डेटा प्राप्त करें",
+    "desktop_admin_option_auto_import": "ऐतिहासिक डेटा (2012 से ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast अपडेट",
+    "desktop_admin_option_source_atomfast": "AtomFast अपडेट",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -1872,7 +1872,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "रियल-टाइम डेटा प्राप्त करें (विकिरण मौसम स्टेशन)"
+    "desktop_admin_option_realtime_updates": "realtime डेटा"
   },
   "hu": {
     "api_example_archive_desc": "Letölt egy tgz csomagot az összes közzétett .json fájllal, ha a JSON archívum engedélyezett.",
@@ -2012,9 +2012,9 @@
     "waiting_for_server": "Várakozás a szerverre...",
     "your_location": "A te helyzeted",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Az összes elérhető adat importálása 2012 óta (kb. 300 GB)",
-    "desktop_admin_option_source_safecast": "Új Safecast-adatok fogadása",
-    "desktop_admin_option_source_atomfast": "Új AtomFast-adatok fogadása",
+    "desktop_admin_option_auto_import": "Történelmi adatok (2012 óta ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast frissítések",
+    "desktop_admin_option_source_atomfast": "AtomFast frissítések",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -2028,7 +2028,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Valós idejű adatok fogadása (sugárzási meteorológiai állomások)"
+    "desktop_admin_option_realtime_updates": "Realtime adatok"
   },
   "id": {
     "api_example_archive_desc": "Mengunduh paket tgz dengan semua berkas .json yang dipublikasikan saat arsip JSON diaktifkan.",
@@ -2168,9 +2168,9 @@
     "waiting_for_server": "Menunggu server...",
     "your_location": "Lokasimu",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Impor semua data yang tersedia sejak 2012 (sekitar 300 GB)",
-    "desktop_admin_option_source_safecast": "Terima data Safecast baru",
-    "desktop_admin_option_source_atomfast": "Terima data AtomFast baru",
+    "desktop_admin_option_auto_import": "Data historis (sejak 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Pembaruan Safecast",
+    "desktop_admin_option_source_atomfast": "Pembaruan AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -2184,7 +2184,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Terima data real-time (stasiun cuaca radiasi)"
+    "desktop_admin_option_realtime_updates": "Data realtime"
   },
   "it": {
     "api_example_archive_desc": "Scarica un archivio tgz con tutti i file .json pubblicati quando l’archivio JSON è attivo.",
@@ -2324,9 +2324,9 @@
     "waiting_for_server": "In attesa del server...",
     "your_location": "La tua posizione",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importa tutti i dati disponibili dal 2012 (circa 300 GB)",
-    "desktop_admin_option_source_safecast": "Ricevi nuovi dati Safecast",
-    "desktop_admin_option_source_atomfast": "Ricevi nuovi dati AtomFast",
+    "desktop_admin_option_auto_import": "Dati storici (dal 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Aggiornamenti Safecast",
+    "desktop_admin_option_source_atomfast": "Aggiornamenti AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -2340,7 +2340,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Ricevi dati in tempo reale (stazioni meteo radiologiche)"
+    "desktop_admin_option_realtime_updates": "Dati realtime"
   },
   "ja": {
     "api_example_archive_desc": "JSON アーカイブが有効な場合、公開済みの .json ファイルをすべて含む tgz バンドルをダウンロードします。",
@@ -2480,9 +2480,9 @@
     "waiting_for_server": "サーバーを待機中...",
     "your_location": "あなたの位置",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "2012年以降の利用可能なすべてのデータを取り込む（約300GB）",
-    "desktop_admin_option_source_safecast": "新しいSafecastデータを受け取る",
-    "desktop_admin_option_source_atomfast": "新しいAtomFastデータを受け取る",
+    "desktop_admin_option_auto_import": "履歴データ（2012年以降 ~300GB）",
+    "desktop_admin_option_source_safecast": "Safecast 更新",
+    "desktop_admin_option_source_atomfast": "AtomFast 更新",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -2496,7 +2496,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "リアルタイムデータを受け取る（放射線気象観測所）"
+    "desktop_admin_option_realtime_updates": "realtime データ"
   },
   "ko": {
     "api_example_archive_desc": "JSON 아카이브가 활성화된 경우 게시된 모든 .json 파일이 포함된 tgz 번들을 다운로드합니다.",
@@ -2636,9 +2636,9 @@
     "waiting_for_server": "서버 대기 중...",
     "your_location": "내 위치",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "2012년 이후 사용 가능한 모든 데이터 가져오기(약 300GB)",
-    "desktop_admin_option_source_safecast": "새로운 Safecast 데이터 받기",
-    "desktop_admin_option_source_atomfast": "새로운 AtomFast 데이터 받기",
+    "desktop_admin_option_auto_import": "히스토리 데이터(2012년부터 ~300GB)",
+    "desktop_admin_option_source_safecast": "Safecast 업데이트",
+    "desktop_admin_option_source_atomfast": "AtomFast 업데이트",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -2652,7 +2652,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "실시간 데이터 받기(방사선 기상 관측소)"
+    "desktop_admin_option_realtime_updates": "realtime 데이터"
   },
   "ms": {
     "api_example_archive_desc": "Memuat turun pakej tgz dengan semua fail .json yang diterbitkan apabila arkib JSON diaktifkan.",
@@ -2792,9 +2792,9 @@
     "waiting_for_server": "Menunggu pelayan...",
     "your_location": "Lokasi anda",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Import semua data yang tersedia sejak 2012 (sekitar 300 GB)",
-    "desktop_admin_option_source_safecast": "Terima data Safecast baharu",
-    "desktop_admin_option_source_atomfast": "Terima data AtomFast baharu",
+    "desktop_admin_option_auto_import": "Data sejarah (sejak 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Kemas kini Safecast",
+    "desktop_admin_option_source_atomfast": "Kemas kini AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -2808,7 +2808,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Terima data masa nyata (stesen cuaca radiasi)"
+    "desktop_admin_option_realtime_updates": "Data realtime"
   },
   "nl": {
     "api_example_archive_desc": "Downloadt een tgz-pakket met alle gepubliceerde .json-bestanden wanneer het JSON-archief is ingeschakeld.",
@@ -2948,9 +2948,9 @@
     "waiting_for_server": "Wachten op server...",
     "your_location": "Uw locatie",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Alle beschikbare gegevens sinds 2012 importeren (ongeveer 300 GB)",
-    "desktop_admin_option_source_safecast": "Nieuwe Safecast-gegevens ontvangen",
-    "desktop_admin_option_source_atomfast": "Nieuwe AtomFast-gegevens ontvangen",
+    "desktop_admin_option_auto_import": "Historische gegevens (sinds 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast-updates",
+    "desktop_admin_option_source_atomfast": "AtomFast-updates",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -2964,7 +2964,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtimegegevens ontvangen (stralingsweerstations)"
+    "desktop_admin_option_realtime_updates": "Realtime-gegevens"
   },
   "no": {
     "api_example_archive_desc": "Laster ned en tgz-pakke med alle publiserte .json-filer når JSON-arkivet er aktivert.",
@@ -3104,9 +3104,9 @@
     "waiting_for_server": "Venter på serveren...",
     "your_location": "Din posisjon",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importer alle tilgjengelige data siden 2012 (omtrent 300 GB)",
-    "desktop_admin_option_source_safecast": "Motta nye Safecast-data",
-    "desktop_admin_option_source_atomfast": "Motta nye AtomFast-data",
+    "desktop_admin_option_auto_import": "Historiske data (siden 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast-oppdateringer",
+    "desktop_admin_option_source_atomfast": "AtomFast-oppdateringer",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -3120,7 +3120,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Motta sanntidsdata (strålingsværstasjoner)"
+    "desktop_admin_option_realtime_updates": "Realtime-data"
   },
   "pl": {
     "api_example_archive_desc": "Pobiera paczkę tgz ze wszystkimi opublikowanymi plikami .json, gdy archiwum JSON jest włączone.",
@@ -3260,9 +3260,9 @@
     "waiting_for_server": "Oczekiwanie na serwer...",
     "your_location": "Twoja lokalizacja",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importuj wszystkie dostępne dane od 2012 roku (około 300 GB)",
-    "desktop_admin_option_source_safecast": "Otrzymuj nowe dane Safecast",
-    "desktop_admin_option_source_atomfast": "Otrzymuj nowe dane AtomFast",
+    "desktop_admin_option_auto_import": "Dane historyczne (od 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Aktualizacje Safecast",
+    "desktop_admin_option_source_atomfast": "Aktualizacje AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -3276,7 +3276,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Otrzymuj dane w czasie rzeczywistym (stacje pogodowe promieniowania)"
+    "desktop_admin_option_realtime_updates": "Dane realtime"
   },
   "pt": {
     "api_example_archive_desc": "Baixa um pacote tgz com todos os arquivos .json publicados quando o arquivo JSON está ativado.",
@@ -3416,9 +3416,9 @@
     "waiting_for_server": "Aguardando o servidor...",
     "your_location": "Sua localização",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importar todos os dados disponíveis desde 2012 (cerca de 300 GB)",
-    "desktop_admin_option_source_safecast": "Receber novos dados do Safecast",
-    "desktop_admin_option_source_atomfast": "Receber novos dados do AtomFast",
+    "desktop_admin_option_auto_import": "Dados históricos (desde 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Atualizações do Safecast",
+    "desktop_admin_option_source_atomfast": "Atualizações do AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -3432,7 +3432,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Receber dados em tempo real (estações meteorológicas de radiação)"
+    "desktop_admin_option_realtime_updates": "Dados realtime"
   },
   "ru": {
     "api_example_archive_desc": "Скачивает архив tgz со всеми опубликованными файлами .json, если включён JSON‑архив.",
@@ -3572,9 +3572,9 @@
     "waiting_for_server": "Ожидание сервера...",
     "your_location": "Ваше местоположение",
     "desktop_admin_panel_title": "Настройки Desktop режима",
-    "desktop_admin_option_auto_import": "импортировать все доступные данные с 2012 года (около 300гб)",
-    "desktop_admin_option_source_safecast": "получать новые данные Safecast",
-    "desktop_admin_option_source_atomfast": "получать новые данные AtomFast",
+    "desktop_admin_option_auto_import": "исторические данные (с 2012 года ~300гб.)",
+    "desktop_admin_option_source_safecast": "обновления Safecast",
+    "desktop_admin_option_source_atomfast": "обновления AtomFast",
     "desktop_admin_option_realtime_enable": "Включить плагин Safecast realtime",
     "desktop_admin_option_realtime_visible": "Показывать realtime-маркеры по умолчанию",
     "desktop_admin_option_archive_url": "URL weekly TGZ",
@@ -3588,7 +3588,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API токен",
     "desktop_admin_option_default_layer": "Слой карты по умолчанию",
     "desktop_admin_option_mapbox_enable": "Включить слой Mapbox",
-    "desktop_admin_option_realtime_updates": "получать данные реального времени (радиационных метеостанций)"
+    "desktop_admin_option_realtime_updates": "realtime данные"
   },
   "sv": {
     "api_example_archive_desc": "Hämtar ett tgz-paket med alla publicerade .json-filer när JSON-arkivet är aktiverat.",
@@ -3728,9 +3728,9 @@
     "waiting_for_server": "Väntar på servern...",
     "your_location": "Din plats",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Importera all tillgänglig data sedan 2012 (cirka 300 GB)",
-    "desktop_admin_option_source_safecast": "Ta emot nya Safecast-data",
-    "desktop_admin_option_source_atomfast": "Ta emot nya AtomFast-data",
+    "desktop_admin_option_auto_import": "Historiska data (sedan 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast-uppdateringar",
+    "desktop_admin_option_source_atomfast": "AtomFast-uppdateringar",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -3744,7 +3744,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Ta emot realtidsdata (strålningsväderstationer)"
+    "desktop_admin_option_realtime_updates": "Realtime-data"
   },
   "th": {
     "api_example_archive_desc": "ดาวน์โหลดแพ็กเกจ tgz ที่มีไฟล์ .json ทั้งหมดเมื่อเปิดใช้งานคลัง JSON",
@@ -3884,9 +3884,9 @@
     "waiting_for_server": "กำลังรอเซิร์ฟเวอร์...",
     "your_location": "ตำแหน่งของคุณ",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "นำเข้าข้อมูลทั้งหมดที่มีตั้งแต่ปี 2012 (ประมาณ 300 GB)",
-    "desktop_admin_option_source_safecast": "รับข้อมูล Safecast ใหม่",
-    "desktop_admin_option_source_atomfast": "รับข้อมูล AtomFast ใหม่",
+    "desktop_admin_option_auto_import": "ข้อมูลย้อนหลัง (ตั้งแต่ปี 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "อัปเดต Safecast",
+    "desktop_admin_option_source_atomfast": "อัปเดต AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -3900,7 +3900,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "รับข้อมูลแบบเรียลไทม์ (สถานีอากาศรังสี)"
+    "desktop_admin_option_realtime_updates": "ข้อมูล realtime"
   },
   "tr": {
     "api_example_archive_desc": "JSON arşivi etkinse yayımlanmış tüm .json dosyalarıyla bir tgz paketi indirir.",
@@ -4040,9 +4040,9 @@
     "waiting_for_server": "Sunucu bekleniyor...",
     "your_location": "Konumunuz",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "2012'den beri mevcut tüm verileri içe aktar (yaklaşık 300 GB)",
-    "desktop_admin_option_source_safecast": "Yeni Safecast verilerini al",
-    "desktop_admin_option_source_atomfast": "Yeni AtomFast verilerini al",
+    "desktop_admin_option_auto_import": "Geçmiş veriler (2012'den beri ~300 GB)",
+    "desktop_admin_option_source_safecast": "Safecast güncellemeleri",
+    "desktop_admin_option_source_atomfast": "AtomFast güncellemeleri",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -4056,7 +4056,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Gerçek zamanlı verileri al (radyasyon hava istasyonları)"
+    "desktop_admin_option_realtime_updates": "Realtime veriler"
   },
   "uk": {
     "api_example_archive_desc": "Завантажує tgz-пакет з усіма опублікованими файлами .json, коли JSON-архів увімкнено.",
@@ -4196,9 +4196,9 @@
     "waiting_for_server": "Очікування сервера...",
     "your_location": "Ваше розташування",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Імпортувати всі доступні дані з 2012 року (близько 300 ГБ)",
-    "desktop_admin_option_source_safecast": "Отримувати нові дані Safecast",
-    "desktop_admin_option_source_atomfast": "Отримувати нові дані AtomFast",
+    "desktop_admin_option_auto_import": "Історичні дані (з 2012 року ~300 ГБ)",
+    "desktop_admin_option_source_safecast": "Оновлення Safecast",
+    "desktop_admin_option_source_atomfast": "Оновлення AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -4212,7 +4212,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Отримувати дані реального часу (радіаційні метеостанції)"
+    "desktop_admin_option_realtime_updates": "Realtime дані"
   },
   "vi": {
     "api_example_archive_desc": "Tải gói tgz chứa mọi tệp .json đã công bố khi bật lưu trữ JSON.",
@@ -4352,9 +4352,9 @@
     "waiting_for_server": "Đang chờ máy chủ...",
     "your_location": "Vị trí của bạn",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "Nhập toàn bộ dữ liệu có sẵn từ năm 2012 (khoảng 300 GB)",
-    "desktop_admin_option_source_safecast": "Nhận dữ liệu Safecast mới",
-    "desktop_admin_option_source_atomfast": "Nhận dữ liệu AtomFast mới",
+    "desktop_admin_option_auto_import": "Dữ liệu lịch sử (từ 2012 ~300 GB)",
+    "desktop_admin_option_source_safecast": "Cập nhật Safecast",
+    "desktop_admin_option_source_atomfast": "Cập nhật AtomFast",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -4368,7 +4368,7 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Nhận dữ liệu thời gian thực (trạm thời tiết bức xạ)"
+    "desktop_admin_option_realtime_updates": "Dữ liệu realtime"
   },
   "zh": {
     "api_example_archive_desc": "在启用 JSON 归档时，下载包含所有已发布 .json 文件的 tgz 包。",
@@ -4508,9 +4508,9 @@
     "waiting_for_server": "正在等待服务器...",
     "your_location": "您的位置",
     "desktop_admin_panel_title": "Desktop mode configuration",
-    "desktop_admin_option_auto_import": "导入自2012年以来所有可用数据（约300GB）",
-    "desktop_admin_option_source_safecast": "接收新的 Safecast 数据",
-    "desktop_admin_option_source_atomfast": "接收新的 AtomFast 数据",
+    "desktop_admin_option_auto_import": "历史数据（自2012年起 ~300GB）",
+    "desktop_admin_option_source_safecast": "Safecast 更新",
+    "desktop_admin_option_source_atomfast": "AtomFast 更新",
     "desktop_admin_option_realtime_enable": "Enable Safecast realtime plugin",
     "desktop_admin_option_realtime_visible": "Show realtime markers by default",
     "desktop_admin_option_archive_url": "Weekly TGZ URL",
@@ -4524,6 +4524,6 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "接收实时数据（辐射气象站）"
+    "desktop_admin_option_realtime_updates": "realtime 数据"
   }
 }
