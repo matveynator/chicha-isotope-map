@@ -3359,6 +3359,8 @@ function createDesktopAdminDefaultModel() {
     importSourcesAtomFast: true,
     realtimeUpdatesEnabled: true,
     weeklyArchiveURL: 'https://pelora.org/api/json/weekly.tgz',
+    dbPath: '',
+    dbSizeGB: 0,
     importStatusLine: '',
   };
 }
@@ -3385,8 +3387,17 @@ function saveDesktopAdminModel(adminModel) {
 function renderDesktopAdminPanel(adminModel) {
   const panelNode = document.getElementById('desktopAdminPanel');
   if (!panelNode) return;
+  const databasePathText = (adminModel.dbPath || '').trim();
+  const databaseSizeText = Number.isFinite(Number(adminModel.dbSizeGB))
+    ? `${Number(adminModel.dbSizeGB).toFixed(2)} GB`
+    : '—';
   panelNode.innerHTML = `
     <h3>${translate('desktop_admin_panel_title')}</h3>
+    <div class="desktop-admin-row">
+      <label for="desktopAdminDBPath">${translate('desktop_admin_option_db_path')}</label><br>
+      <input id="desktopAdminDBPath" type="text" style="width:100%; box-sizing:border-box;" value="${escapeHtml(databasePathText)}" placeholder="/path/to/chicha-isotope-map.db">
+    </div>
+    <div class="desktop-admin-row"><strong>${translate('desktop_admin_option_db_size')}:</strong> <span id="desktopDbSizeValue">${databaseSizeText}</span></div>
     <div class="desktop-admin-row"><label><input id="desktopAdminAutoImport" type="checkbox" ${adminModel.autoImportWeeklyArchive ? 'checked' : ''}> ${translate('desktop_admin_option_auto_import')}</label></div>
     <div class="desktop-admin-row"><label><input id="desktopAdminSourceSafecast" type="checkbox" ${adminModel.importSourcesSafecast ? 'checked' : ''}> ${translate('desktop_admin_option_source_safecast')}</label></div>
     <div class="desktop-admin-row"><label><input id="desktopAdminSourceAtomFast" type="checkbox" ${adminModel.importSourcesAtomFast ? 'checked' : ''}> ${translate('desktop_admin_option_source_atomfast')}</label></div>
@@ -3400,6 +3411,7 @@ function renderDesktopAdminPanel(adminModel) {
 
 function collectDesktopAdminModelFromPanel() {
   const currentModel = createDesktopAdminDefaultModel();
+  currentModel.dbPath = (document.getElementById('desktopAdminDBPath')?.value || '').trim();
   currentModel.autoImportWeeklyArchive = !!document.getElementById('desktopAdminAutoImport')?.checked;
   currentModel.importSourcesSafecast = !!document.getElementById('desktopAdminSourceSafecast')?.checked;
   currentModel.importSourcesAtomFast = !!document.getElementById('desktopAdminSourceAtomFast')?.checked;
@@ -3443,6 +3455,7 @@ async function saveDesktopServerSettings(adminModel) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      dbPath: (adminModel.dbPath || '').trim(),
       enableHistoricalImport: adminModel.autoImportWeeklyArchive,
       enableSafecastImport: adminModel.importSourcesSafecast,
       enableAtomFastImport: adminModel.importSourcesAtomFast,
@@ -3469,6 +3482,15 @@ async function refreshDesktopStatusLine() {
     if (!statusResponse.ok) return;
     const statusPayload = await statusResponse.json();
     const line = `${statusPayload.line || ''}`;
+    if (typeof statusPayload.dbSizeGB !== 'undefined') {
+      const cachedModel = loadDesktopAdminModel();
+      cachedModel.dbSizeGB = Number(statusPayload.dbSizeGB) || 0;
+      saveDesktopAdminModel(cachedModel);
+      const sizeNode = document.getElementById('desktopDbSizeValue');
+      if (sizeNode) {
+        sizeNode.textContent = `${cachedModel.dbSizeGB.toFixed(2)} GB`;
+      }
+    }
     renderDesktopStatusLine(line);
   } catch (error) {
     console.warn('desktop status request failed:', error);
@@ -3521,7 +3543,10 @@ function initializeDesktopAdminUI() {
     adminModel.importSourcesSafecast = !!serverSettings.enableSafecastImport;
     adminModel.importSourcesAtomFast = !!serverSettings.enableAtomFastImport;
     adminModel.realtimeUpdatesEnabled = !!serverSettings.enableRealtimeUpdates;
+    adminModel.dbPath = (serverSettings.dbPath || '').trim();
+    adminModel.dbSizeGB = Number(serverSettings.dbSizeGB) || 0;
     adminModel.importStatusLine = (serverSettings.importStatus || '').trim();
+    saveDesktopAdminModel(adminModel);
     renderDesktopAdminPanel(adminModel);
     bindPanelApplyButton();
   }).catch(function (error) {
