@@ -398,7 +398,7 @@ jobs:
           ARM64_BIN="dist/chicha-isotope-map_darwin_arm64_desktop"
           UNIVERSAL_BIN="dist/chicha-isotope-map_darwin_universal_desktop"
           lipo -create "${AMD64_BIN}" "${ARM64_BIN}" -output "${UNIVERSAL_BIN}"
-          lipo -verify_arch x86_64 arm64 "${UNIVERSAL_BIN}"
+          lipo "${UNIVERSAL_BIN}" -verify_arch x86_64 arm64
           chmod +x "${UNIVERSAL_BIN}"
 
       - name: Package universal desktop app (macOS DMG)
