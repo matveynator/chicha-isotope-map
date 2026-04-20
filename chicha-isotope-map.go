@@ -5006,6 +5006,13 @@ func uploadLocalFiles(ctx context.Context, filePaths []string) (map[string]inter
 	}
 
 	trackURL := fmt.Sprintf("/trackid/%s", trackID)
+	if hasBounds {
+		trackURL = fmt.Sprintf(
+			"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
+			trackID, global.MinLat, global.MinLon, global.MaxLat, global.MaxLon,
+			"OpenStreetMap",
+		)
+	}
 	return map[string]interface{}{
 		"status":       "success",
 		"trackID":      trackID,
