@@ -665,6 +665,8 @@ var (
 )
 
 var db *database.Database
+var runtimeDBDriverName string
+var desktopAdminImportSlot = make(chan struct{}, 1)
 
 func init() {
 	// We trigger driver registration here so "go run chicha-isotope-map.go" keeps
@@ -674,6 +676,9 @@ func init() {
 	// CLI usage grouping is also configured once during init so every entry point
 	// inherits the readable help layout without repeating boilerplate.
 	configureCLIUsage()
+	// Desktop admin imports run one archive job at a time so operators do not
+	// accidentally launch overlapping 300 GB syncs from repeated clicks.
+	desktopAdminImportSlot <- struct{}{}
 }
 
 // =====================
@@ -5030,6 +5035,64 @@ func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// desktopAdminBootstrapImportHandler accepts a desktop-admin request to launch
+// an initial historical TGZ import in the background. We serialize jobs through
+// a channel slot instead of shared mutable flags so concurrent clicks remain
+// deterministic without mutexes.
+func desktopAdminBootstrapImportHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !*desktopMode {
+		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+
+	select {
+	case <-desktopAdminImportSlot:
+	default:
+		http.Error(w, "import already running", http.StatusConflict)
+		return
+	}
+
+	type importRequest struct {
+		URL string `json:"url"`
+	}
+	var payload importRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		desktopAdminImportSlot <- struct{}{}
+		http.Error(w, "invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	remoteURL := strings.TrimSpace(payload.URL)
+	if remoteURL == "" {
+		remoteURL = "https://pelora.org/api/json/weekly.tgz"
+	}
+	parsedURL, err := url.Parse(remoteURL)
+	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
+		desktopAdminImportSlot <- struct{}{}
+		http.Error(w, "invalid import url", http.StatusBadRequest)
+		return
+	}
+
+	fallbackTrackID := GenerateSerialNumber()
+	startBackgroundArchiveImport(context.Background(), fmt.Sprintf("desktop admin %s", remoteURL), func(ctx context.Context) error {
+		defer func() {
+			desktopAdminImportSlot <- struct{}{}
+		}()
+		return importArchiveFromURL(ctx, remoteURL, fallbackTrackID, db, runtimeDBDriverName, log.Printf)
+	}, log.Printf)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "started",
+		"url":    remoteURL,
+	})
+}
+
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		http.Error(w, "multipart parse error", http.StatusBadRequest)
@@ -7072,6 +7135,20 @@ func main() {
 	if *desktopMode && strings.TrimSpace(*domain) != "" {
 		log.Fatal("desktop mode requires local HTTP mode; remove -domain")
 	}
+	if *desktopMode {
+		// Desktop bundles should feel ready on first launch, so we default
+		// importer and realtime toggles to enabled unless operators override
+		// them via explicit CLI flags.
+		if strings.TrimSpace(*importSourcesFlag) == "" {
+			*importSourcesFlag = "all"
+		}
+		if !*safecastRealtimeEnabled {
+			*safecastRealtimeEnabled = true
+		}
+		if !*safecastRealtimeDefault {
+			*safecastRealtimeDefault = true
+		}
+	}
 
 	// 2. Предупреждение о привилегиях (для :80 / :443)
 	if *domain != "" && runtime.GOOS != "windows" && os.Geteuid() != 0 {
@@ -7080,6 +7157,7 @@ func main() {
 
 	// 3. База данных
 	driverName := strings.ToLower(strings.TrimSpace(*dbType))
+	runtimeDBDriverName = driverName
 	// Persist the normalized driver back into the flag so downstream helpers never
 	// miss engine-specific branches because of incidental casing or whitespace.
 	*dbType = driverName
@@ -7228,6 +7306,7 @@ func main() {
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/desktop/upload-native", desktopNativeUploadHandler)
 	http.HandleFunc("/desktop/download-track/", desktopTrackDownloadHandler)
+	http.HandleFunc("/desktop/admin/bootstrap-import", desktopAdminBootstrapImportHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_playback", streamPlaybackHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)

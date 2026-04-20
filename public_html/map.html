@@ -1327,6 +1327,93 @@ body, html {
           line-height: 1;
         }
 
+        .desktop-admin-toggle {
+          position: absolute;
+          top: 12px;
+          right: 14px;
+          width: 28px;
+          height: 28px;
+          border: var(--legend-border);
+          border-radius: 999px;
+          background: var(--overlay-bg);
+          color: var(--modal-text);
+          display: none;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 1250;
+          font-size: var(--font-size-base);
+        }
+
+        .desktop-admin-panel {
+          position: absolute;
+          top: 46px;
+          right: 14px;
+          min-width: 280px;
+          max-width: 320px;
+          border: var(--modal-border);
+          border-radius: 8px;
+          background: var(--modal-bg);
+          color: var(--modal-text);
+          box-shadow: 0 6px 24px rgba(0, 0, 0, 0.24);
+          padding: 10px;
+          z-index: 1250;
+          display: none;
+          font-size: var(--font-size-sm);
+        }
+
+        .desktop-admin-panel h3 {
+          margin: 0 0 8px 0;
+          font-size: var(--font-size-base);
+        }
+
+        .desktop-admin-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+        }
+
+        .desktop-admin-actions {
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 10px;
+          gap: 8px;
+        }
+
+        .desktop-admin-btn {
+          border: var(--legend-border);
+          border-radius: 4px;
+          background: var(--control-bg);
+          color: var(--modal-text);
+          padding: 4px 8px;
+          cursor: pointer;
+          font-size: var(--font-size-xs);
+        }
+
+        .desktop-admin-setup-overlay {
+          position: fixed;
+          inset: 0;
+          display: none;
+          background: rgba(0, 0, 0, 0.56);
+          z-index: 2200;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .desktop-admin-setup-card {
+          width: min(560px, 92vw);
+          max-height: 84vh;
+          overflow-y: auto;
+          background: var(--modal-bg);
+          color: var(--modal-text);
+          border: var(--modal-border);
+          border-radius: 10px;
+          padding: 16px;
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+          font-size: var(--font-size-base);
+        }
+
     </style>
 
     <!-- Translation script -->
@@ -1383,6 +1470,8 @@ body, html {
       window.safecastRealtimeDefault = {{if .RealtimeDefault}}true{{else}}false{{end}};
       // Desktop-native upload is available only where the backend can open a native file picker.
       window.desktopNativeUpload = {{if .DesktopNativeUpload}}true{{else}}false{{end}};
+      // Desktop mode unlocks a compact admin panel and first-run setup modal.
+      window.desktopWebViewMode = {{if .DesktopWebView}}true{{else}}false{{end}};
     </script>
 
   </head>
@@ -1502,6 +1591,12 @@ body, html {
 
     <div id="loadingOverlay" class="loading-overlay" style="display:none;">
       <div class="spinner"></div>
+    </div>
+
+    <button id="desktopAdminToggle" class="desktop-admin-toggle" type="button" aria-label="Desktop settings">⚙</button>
+    <div id="desktopAdminPanel" class="desktop-admin-panel" aria-live="polite"></div>
+    <div id="desktopAdminSetupOverlay" class="desktop-admin-setup-overlay">
+      <div id="desktopAdminSetupCard" class="desktop-admin-setup-card"></div>
     </div>
 
     <!-- Theme toggle -->
@@ -3228,6 +3323,161 @@ function attachControlTooltip(target, options) {
   };
 }
 
+const desktopAdminStorageKey = 'desktop-admin-settings-v1';
+const desktopAdminSetupDoneKey = 'desktop-admin-setup-done-v1';
+
+function createDesktopAdminDefaultModel() {
+  return {
+    autoImportWeeklyArchive: true,
+    importSourcesSafecast: true,
+    importSourcesAtomFast: true,
+    safecastRealtimeEnabled: true,
+    safecastRealtimeDefaultVisible: true,
+    weeklyArchiveURL: 'https://pelora.org/api/json/weekly.tgz',
+  };
+}
+
+function loadDesktopAdminModel() {
+  const fallbackModel = createDesktopAdminDefaultModel();
+  try {
+    const rawModel = localStorage.getItem(desktopAdminStorageKey);
+    if (!rawModel) {
+      return fallbackModel;
+    }
+    const parsedModel = JSON.parse(rawModel);
+    return Object.assign({}, fallbackModel, parsedModel);
+  } catch (error) {
+    console.warn('desktop admin model restore failed:', error);
+    return fallbackModel;
+  }
+}
+
+function saveDesktopAdminModel(adminModel) {
+  localStorage.setItem(desktopAdminStorageKey, JSON.stringify(adminModel));
+}
+
+function renderDesktopAdminPanel(adminModel) {
+  const panelNode = document.getElementById('desktopAdminPanel');
+  if (!panelNode) return;
+  panelNode.innerHTML = `
+    <h3>${translate('desktop_admin_panel_title')}</h3>
+    <div class="desktop-admin-row"><label><input id="desktopAdminAutoImport" type="checkbox" ${adminModel.autoImportWeeklyArchive ? 'checked' : ''}> ${translate('desktop_admin_option_auto_import')}</label></div>
+    <div class="desktop-admin-row"><label><input id="desktopAdminSourceSafecast" type="checkbox" ${adminModel.importSourcesSafecast ? 'checked' : ''}> ${translate('desktop_admin_option_source_safecast')}</label></div>
+    <div class="desktop-admin-row"><label><input id="desktopAdminSourceAtomFast" type="checkbox" ${adminModel.importSourcesAtomFast ? 'checked' : ''}> ${translate('desktop_admin_option_source_atomfast')}</label></div>
+    <div class="desktop-admin-row"><label><input id="desktopAdminRealtimeEnabled" type="checkbox" ${adminModel.safecastRealtimeEnabled ? 'checked' : ''}> ${translate('desktop_admin_option_realtime_enable')}</label></div>
+    <div class="desktop-admin-row"><label><input id="desktopAdminRealtimeVisible" type="checkbox" ${adminModel.safecastRealtimeDefaultVisible ? 'checked' : ''}> ${translate('desktop_admin_option_realtime_visible')}</label></div>
+    <div class="desktop-admin-row">
+      <label for="desktopAdminArchiveURL">${translate('desktop_admin_option_archive_url')}</label>
+      <input id="desktopAdminArchiveURL" type="url" style="width:100%;" value="${adminModel.weeklyArchiveURL}">
+    </div>
+    <div class="desktop-admin-row" style="opacity:0.8;">${translate('desktop_admin_disk_notice')}</div>
+    <div class="desktop-admin-actions">
+      <button id="desktopAdminApplyButton" class="desktop-admin-btn" type="button">${translate('desktop_admin_apply')}</button>
+    </div>
+  `;
+}
+
+function collectDesktopAdminModelFromPanel() {
+  const currentModel = createDesktopAdminDefaultModel();
+  const archiveField = document.getElementById('desktopAdminArchiveURL');
+  currentModel.autoImportWeeklyArchive = !!document.getElementById('desktopAdminAutoImport')?.checked;
+  currentModel.importSourcesSafecast = !!document.getElementById('desktopAdminSourceSafecast')?.checked;
+  currentModel.importSourcesAtomFast = !!document.getElementById('desktopAdminSourceAtomFast')?.checked;
+  currentModel.safecastRealtimeEnabled = !!document.getElementById('desktopAdminRealtimeEnabled')?.checked;
+  currentModel.safecastRealtimeDefaultVisible = !!document.getElementById('desktopAdminRealtimeVisible')?.checked;
+  currentModel.weeklyArchiveURL = (archiveField ? archiveField.value : '').trim() || 'https://pelora.org/api/json/weekly.tgz';
+  return currentModel;
+}
+
+function applyDesktopAdminRuntimeFlags(adminModel) {
+  window.safecastRealtimeEnabled = !!adminModel.safecastRealtimeEnabled;
+  window.safecastRealtimeDefault = !!adminModel.safecastRealtimeDefaultVisible;
+}
+
+async function triggerDesktopBootstrapImportIfEnabled(adminModel) {
+  if (!adminModel.autoImportWeeklyArchive) return;
+  try {
+    await fetch('/desktop/admin/bootstrap-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: adminModel.weeklyArchiveURL }),
+    });
+  } catch (error) {
+    console.warn('desktop bootstrap import request failed:', error);
+  }
+}
+
+function initializeDesktopAdminUI() {
+  if (!window.desktopWebViewMode) return;
+
+  const toggleButton = document.getElementById('desktopAdminToggle');
+  const panelNode = document.getElementById('desktopAdminPanel');
+  const setupOverlayNode = document.getElementById('desktopAdminSetupOverlay');
+  const setupCardNode = document.getElementById('desktopAdminSetupCard');
+  if (!toggleButton || !panelNode || !setupOverlayNode || !setupCardNode) return;
+
+  let adminModel = loadDesktopAdminModel();
+  applyDesktopAdminRuntimeFlags(adminModel);
+  renderDesktopAdminPanel(adminModel);
+  toggleButton.style.display = 'inline-flex';
+
+  const applyPanelModel = function () {
+    adminModel = collectDesktopAdminModelFromPanel();
+    saveDesktopAdminModel(adminModel);
+    applyDesktopAdminRuntimeFlags(adminModel);
+    renderDesktopAdminPanel(adminModel);
+    bindPanelApplyButton();
+  };
+
+  const bindPanelApplyButton = function () {
+    const applyButton = document.getElementById('desktopAdminApplyButton');
+    if (!applyButton) return;
+    applyButton.addEventListener('click', function () {
+      applyPanelModel();
+      triggerDesktopBootstrapImportIfEnabled(adminModel);
+    });
+  };
+  bindPanelApplyButton();
+
+  toggleButton.addEventListener('click', function () {
+    panelNode.style.display = panelNode.style.display === 'block' ? 'none' : 'block';
+  });
+
+  const setupCompleted = localStorage.getItem(desktopAdminSetupDoneKey) === '1';
+  if (setupCompleted) return;
+
+  setupCardNode.innerHTML = `
+    <h3>${translate('desktop_setup_title')}</h3>
+    <p>${translate('desktop_setup_intro')}</p>
+    <p>${translate('desktop_admin_disk_notice')}</p>
+    <div class="desktop-admin-row"><label><input id="desktopSetupAutoImport" type="checkbox" checked> ${translate('desktop_admin_option_auto_import')}</label></div>
+    <div class="desktop-admin-row"><label><input id="desktopSetupSafecast" type="checkbox" checked> ${translate('desktop_admin_option_source_safecast')}</label></div>
+    <div class="desktop-admin-row"><label><input id="desktopSetupAtomFast" type="checkbox" checked> ${translate('desktop_admin_option_source_atomfast')}</label></div>
+    <div class="desktop-admin-row"><label><input id="desktopSetupRealtimeEnable" type="checkbox" checked> ${translate('desktop_admin_option_realtime_enable')}</label></div>
+    <div class="desktop-admin-row"><label><input id="desktopSetupRealtimeVisible" type="checkbox" checked> ${translate('desktop_admin_option_realtime_visible')}</label></div>
+    <div class="desktop-admin-row"><label for="desktopSetupArchiveURL">${translate('desktop_admin_option_archive_url')}</label><input id="desktopSetupArchiveURL" style="width:100%;" type="url" value="${adminModel.weeklyArchiveURL}"></div>
+    <div class="desktop-admin-actions"><button id="desktopSetupApplyButton" class="desktop-admin-btn" type="button">${translate('desktop_setup_apply')}</button></div>
+  `;
+  setupOverlayNode.style.display = 'flex';
+  const applySetupButton = document.getElementById('desktopSetupApplyButton');
+  if (!applySetupButton) return;
+  applySetupButton.addEventListener('click', function () {
+    adminModel.autoImportWeeklyArchive = !!document.getElementById('desktopSetupAutoImport')?.checked;
+    adminModel.importSourcesSafecast = !!document.getElementById('desktopSetupSafecast')?.checked;
+    adminModel.importSourcesAtomFast = !!document.getElementById('desktopSetupAtomFast')?.checked;
+    adminModel.safecastRealtimeEnabled = !!document.getElementById('desktopSetupRealtimeEnable')?.checked;
+    adminModel.safecastRealtimeDefaultVisible = !!document.getElementById('desktopSetupRealtimeVisible')?.checked;
+    adminModel.weeklyArchiveURL = (document.getElementById('desktopSetupArchiveURL')?.value || '').trim() || adminModel.weeklyArchiveURL;
+    saveDesktopAdminModel(adminModel);
+    applyDesktopAdminRuntimeFlags(adminModel);
+    renderDesktopAdminPanel(adminModel);
+    bindPanelApplyButton();
+    localStorage.setItem(desktopAdminSetupDoneKey, '1');
+    setupOverlayNode.style.display = 'none';
+    triggerDesktopBootstrapImportIfEnabled(adminModel);
+  });
+}
+
 
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -3454,6 +3704,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Initialize UI elements
   initializeUIElements();
+  initializeDesktopAdminUI();
 
   // Periodically refresh realtime styling so markers fade without map motion.
   setInterval(adjustMarkerRadius, 60 * 1000);
