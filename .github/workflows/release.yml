@@ -170,8 +170,9 @@ jobs:
           - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", desktop_variant: "gtk41" }
           - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04-arm", desktop_variant: "gtk40" }
           - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04-arm", desktop_variant: "gtk41" }
-          # Build amd64 on Intel runner to avoid cgo cross-compilation edge cases.
-          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-13", desktop_variant: "default" }
+          # Build both macOS desktop targets on macos-14 to avoid queue stalls on scarce macos-13 runners.
+          # amd64 output is cross-compiled with explicit x86_64 toolchain flags and old deployment target.
+          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14", desktop_variant: "default" }
           - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14", desktop_variant: "default" }
           - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest", desktop_variant: "default" }
           - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest", desktop_variant: "default" }
@@ -248,17 +249,21 @@ jobs:
             BIN="${BIN}_${DESKTOP_VARIANT}"
           fi
           if [ "${GOOS}" = "darwin" ] && [ "${GOARCH}" = "amd64" ]; then
-            # Keep Intel builds launchable on older macOS releases.
+            # Keep Intel builds launchable on older macOS releases even when built on Apple Silicon runners.
             export MACOSX_DEPLOYMENT_TARGET=10.13
-            export CGO_CFLAGS="-mmacosx-version-min=10.13"
-            export CGO_CXXFLAGS="-mmacosx-version-min=10.13"
-            export CGO_LDFLAGS="-mmacosx-version-min=10.13"
+            export CC="clang -arch x86_64"
+            export CXX="clang++ -arch x86_64"
+            export CGO_CFLAGS="-arch x86_64 -mmacosx-version-min=10.13"
+            export CGO_CXXFLAGS="-arch x86_64 -mmacosx-version-min=10.13"
+            export CGO_LDFLAGS="-arch x86_64 -mmacosx-version-min=10.13"
           elif [ "${GOOS}" = "darwin" ] && [ "${GOARCH}" = "arm64" ]; then
             # Apple Silicon binaries require macOS 11+.
             export MACOSX_DEPLOYMENT_TARGET=11.0
-            export CGO_CFLAGS="-mmacosx-version-min=11.0"
-            export CGO_CXXFLAGS="-mmacosx-version-min=11.0"
-            export CGO_LDFLAGS="-mmacosx-version-min=11.0"
+            export CC="clang -arch arm64"
+            export CXX="clang++ -arch arm64"
+            export CGO_CFLAGS="-arch arm64 -mmacosx-version-min=11.0"
+            export CGO_CXXFLAGS="-arch arm64 -mmacosx-version-min=11.0"
+            export CGO_LDFLAGS="-arch arm64 -mmacosx-version-min=11.0"
           fi
           GOFLAGS="-trimpath -buildvcs=false" \
           go build -tags "desktop" \
