@@ -7387,63 +7387,139 @@ function centerMapToLocation() {
         const fileProgressContainer = document.getElementById('fileProgressContainer');
         fileProgressContainer.innerHTML = '';
         fileOverlay.style.display = 'flex';
+        const fileRowsByName = new Map();
 
-        const fileBlock = document.createElement('div');
-        fileBlock.className = 'file-progress';
-        const fileName = document.createElement('div');
-        fileName.className = 'file-name';
-        fileName.innerText = translate('upload_button');
-        const progressBar = document.createElement('div');
-        progressBar.className = 'progress-bar';
-        const progressBarInner = document.createElement('div');
-        progressBarInner.className = 'progress-bar-inner';
-        progressBarInner.style.width = '100%';
-        progressBar.appendChild(progressBarInner);
-        const serverProcessing = document.createElement('div');
-        serverProcessing.className = 'server-processing';
-        serverProcessing.innerText = translate('waiting_for_server');
-        fileBlock.append(fileName, progressBar, serverProcessing);
-        fileProgressContainer.appendChild(fileBlock);
+        function ensureFileRow(fileNameText) {
+          if (fileRowsByName.has(fileNameText)) {
+            return fileRowsByName.get(fileNameText);
+          }
+          const fileBlock = document.createElement('div');
+          fileBlock.className = 'file-progress';
+          const fileName = document.createElement('div');
+          fileName.className = 'file-name';
+          fileName.innerText = fileNameText;
+          const progressBar = document.createElement('div');
+          progressBar.className = 'progress-bar';
+          const progressBarInner = document.createElement('div');
+          progressBarInner.className = 'progress-bar-inner';
+          progressBarInner.style.width = '0%';
+          progressBar.appendChild(progressBarInner);
+          const serverProcessing = document.createElement('div');
+          serverProcessing.className = 'server-processing';
+          serverProcessing.innerText = translate('waiting_for_server');
+          fileBlock.append(fileName, progressBar, serverProcessing);
+          fileProgressContainer.appendChild(fileBlock);
+          const rowState = { fileBlock, fileName, progressBarInner, serverProcessing };
+          fileRowsByName.set(fileNameText, rowState);
+          return rowState;
+        }
+
+        function applyFileProgress(eventPayload) {
+          const eventFileName = (eventPayload.fileName || '').trim();
+          if (!eventFileName) return;
+          const rowState = ensureFileRow(eventFileName);
+          const percentValue = Number.isFinite(eventPayload.percent) ? eventPayload.percent : null;
+          if (percentValue !== null) {
+            rowState.progressBarInner.style.width = Math.max(0, Math.min(100, percentValue)) + '%';
+          }
+          if (eventPayload.status === 'done' || eventPayload.status === 'success') {
+            rowState.serverProcessing.innerText = translate('processing_complete');
+            rowState.serverProcessing.style.color = 'green';
+            return;
+          }
+          if (eventPayload.status === 'error') {
+            rowState.serverProcessing.innerText = translate('error_processing_files');
+            rowState.serverProcessing.style.color = 'red';
+            return;
+          }
+          rowState.serverProcessing.innerText = translate('waiting_for_server');
+          rowState.serverProcessing.style.color = '';
+        }
+
+        function finalizeNativeUpload(payload) {
+          if (!payload || payload.status === 'cancelled') {
+            fileOverlay.style.display = 'none';
+            return;
+          }
+          if (payload.status === 'success' && payload.trackURL) {
+            setTimeout(() => {
+              fileOverlay.style.display = 'none';
+              window.location.href = payload.trackURL;
+            }, 700);
+            return;
+          }
+          if (payload.status === 'processing') {
+            startBackgroundImportRefresh();
+            setTimeout(() => {
+              fileOverlay.style.display = 'none';
+              updateMarkers(true);
+            }, 700);
+            return;
+          }
+          throw new Error('native upload returned unexpected payload');
+        }
+
+        function markGlobalNativeUploadError() {
+          const fallbackRow = ensureFileRow(translate('upload_button'));
+          fallbackRow.serverProcessing.innerText = translate('error_during_upload');
+          fallbackRow.serverProcessing.style.color = 'red';
+          setTimeout(() => {
+            fileOverlay.style.display = 'none';
+          }, 900);
+        }
 
         fetch('/desktop/upload-native', { method: 'POST' })
-          .then(response => {
+          .then(async response => {
             if (!response.ok) {
               throw new Error('native upload request failed');
             }
-            return response.json();
-          })
-          .then(payload => {
-            if (payload.status === 'cancelled') {
-              fileOverlay.style.display = 'none';
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (contentType.includes('application/json')) {
+              const payload = await response.json();
+              finalizeNativeUpload(payload);
               return;
             }
-            if (payload.status === 'success' && payload.trackURL) {
-              serverProcessing.innerText = translate('processing_complete');
-              serverProcessing.style.color = 'green';
-              setTimeout(() => {
-                fileOverlay.style.display = 'none';
-                window.location.href = payload.trackURL;
-              }, 700);
+            if (!response.body) {
+              throw new Error('native upload stream unavailable');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let bufferedText = '';
+            let finalResult = null;
+
+            while (true) {
+              const readerResult = await reader.read();
+              if (readerResult.done) break;
+              bufferedText += decoder.decode(readerResult.value, { stream: true });
+              const lines = bufferedText.split('\n');
+              bufferedText = lines.pop() || '';
+              lines.forEach(line => {
+                const trimmedLine = line.trim();
+                if (!trimmedLine) return;
+                const parsed = JSON.parse(trimmedLine);
+                if (parsed.type === 'file') {
+                  applyFileProgress(parsed);
+                  return;
+                }
+                if (parsed.type === 'result') {
+                  finalResult = parsed;
+                  return;
+                }
+                if (parsed.type === 'error') {
+                  throw new Error(parsed.message || 'native upload processing failed');
+                }
+              });
+            }
+
+            if (finalResult) {
+              finalizeNativeUpload(finalResult);
               return;
             }
-            if (payload.status === 'processing') {
-              serverProcessing.innerText = translate('processing_complete');
-              serverProcessing.style.color = 'green';
-              startBackgroundImportRefresh();
-              setTimeout(() => {
-                fileOverlay.style.display = 'none';
-                updateMarkers(true);
-              }, 700);
-              return;
-            }
-            throw new Error('native upload returned unexpected payload');
+            throw new Error('native upload finished without result');
           })
           .catch(() => {
-            serverProcessing.innerText = translate('error_during_upload');
-            serverProcessing.style.color = 'red';
-            setTimeout(() => {
-              fileOverlay.style.display = 'none';
-            }, 900);
+            markGlobalNativeUploadError();
           });
       }
     </script>

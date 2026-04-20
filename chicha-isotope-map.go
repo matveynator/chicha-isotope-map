@@ -4863,12 +4863,27 @@ func formatFileTypeSummary(fileTypes map[string]int) string {
 	return strings.Join(parts, ", ")
 }
 
+type desktopUploadProgressEvent struct {
+	Type       string `json:"type"`
+	FileName   string `json:"fileName,omitempty"`
+	Index      int    `json:"index,omitempty"`
+	Total      int    `json:"total,omitempty"`
+	Percent    int    `json:"percent,omitempty"`
+	Status     string `json:"status,omitempty"`
+	Message    string `json:"message,omitempty"`
+	TrackURL   string `json:"trackURL,omitempty"`
+	StatusCode int    `json:"statusCode,omitempty"`
+}
+
 // uploadLocalFiles processes files selected by a desktop-native picker.
 // It mirrors uploadHandler logic so macOS desktop builds can import files even
 // when the embedded WebView blocks <input type="file">.
-func uploadLocalFiles(ctx context.Context, filePaths []string) (map[string]interface{}, int, error) {
+func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func(desktopUploadProgressEvent)) (map[string]interface{}, int, error) {
 	if len(filePaths) == 0 {
 		return nil, http.StatusBadRequest, fmt.Errorf("no files selected")
+	}
+	if emitProgress != nil {
+		emitProgress(desktopUploadProgressEvent{Type: "start", Total: len(filePaths), Percent: 0})
 	}
 
 	trackID := GenerateSerialNumber()
@@ -4879,9 +4894,20 @@ func uploadLocalFiles(ctx context.Context, filePaths []string) (map[string]inter
 	backgroundImport := false
 	fileTypes := map[string]int{}
 
-	for _, currentPath := range filePaths {
+	for fileIndex, currentPath := range filePaths {
 		filename := filepath.Base(currentPath)
 		logT(trackID, "Upload", "desktop file received: %s", filename)
+		if emitProgress != nil {
+			emitProgress(desktopUploadProgressEvent{
+				Type:     "file",
+				FileName: filename,
+				Index:    fileIndex + 1,
+				Total:    len(filePaths),
+				Percent:  0,
+				Status:   "processing",
+				Message:  "processing started",
+			})
+		}
 
 		openedFile, openErr := os.Open(currentPath)
 		if openErr != nil {
@@ -4939,6 +4965,18 @@ func uploadLocalFiles(ctx context.Context, filePaths []string) (map[string]inter
 		case ".tgz", ".tar.gz":
 			backgroundImport = true
 			enqueueArchiveImportPath(currentPath, filename, trackID, db, *dbType)
+			if emitProgress != nil {
+				percent := int(float64(fileIndex+1) * 100 / float64(len(filePaths)))
+				emitProgress(desktopUploadProgressEvent{
+					Type:     "file",
+					FileName: filename,
+					Index:    fileIndex + 1,
+					Total:    len(filePaths),
+					Percent:  percent,
+					Status:   "processing",
+					Message:  "queued for background import",
+				})
+			}
 			_ = openedFile.Close()
 			continue
 		case ".log", ".txt":
@@ -4964,7 +5002,29 @@ func uploadLocalFiles(ctx context.Context, filePaths []string) (map[string]inter
 
 		_ = openedFile.Close()
 		if err != nil {
+			if emitProgress != nil {
+				emitProgress(desktopUploadProgressEvent{
+					Type:     "file",
+					FileName: filename,
+					Index:    fileIndex + 1,
+					Total:    len(filePaths),
+					Status:   "error",
+					Message:  err.Error(),
+				})
+			}
 			return nil, http.StatusInternalServerError, err
+		}
+		if emitProgress != nil {
+			percent := int(float64(fileIndex+1) * 100 / float64(len(filePaths)))
+			emitProgress(desktopUploadProgressEvent{
+				Type:     "file",
+				FileName: filename,
+				Index:    fileIndex + 1,
+				Total:    len(filePaths),
+				Percent:  percent,
+				Status:   "done",
+				Message:  "processing complete",
+			})
 		}
 
 		if bbox.MinLat <= bbox.MaxLat && bbox.MinLon <= bbox.MaxLon {
@@ -5047,14 +5107,35 @@ func desktopNativeUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, status, processErr := uploadLocalFiles(r.Context(), paths)
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	flusher, hasFlusher := w.(http.Flusher)
+	writeEvent := func(event desktopUploadProgressEvent) {
+		_ = json.NewEncoder(w).Encode(event)
+		if hasFlusher {
+			flusher.Flush()
+		}
+	}
+
+	response, status, processErr := uploadLocalFiles(r.Context(), paths, writeEvent)
 	if processErr != nil {
-		http.Error(w, processErr.Error(), status)
+		writeEvent(desktopUploadProgressEvent{
+			Type:       "error",
+			Status:     "error",
+			Message:    processErr.Error(),
+			StatusCode: status,
+		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(response)
+	payloadStatus, _ := response["status"].(string)
+	trackURL, _ := response["trackURL"].(string)
+	writeEvent(desktopUploadProgressEvent{
+		Type:     "result",
+		Status:   payloadStatus,
+		TrackURL: trackURL,
+		Message:  "desktop upload completed",
+		Percent:  100,
+	})
 }
 
 func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
