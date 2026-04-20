@@ -28,8 +28,10 @@ Best for personal local use.
 - [Desktop for Windows (arm64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.zip)
 - [Desktop for macOS Apple Silicon (arm64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64_desktop)
 - [Desktop for macOS Intel (amd64)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64_desktop)
-- [Desktop for Linux (amd64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.zip)
-- [Desktop for Linux (arm64, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop.zip)
+- [Desktop for Linux (amd64, Mint 21 / Ubuntu 22.04, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk40.zip)
+- [Desktop for Linux (amd64, Mint 22 / Ubuntu 24.04+, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip)
+- [Desktop for Linux (arm64, Mint 21 / Ubuntu 22.04, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk40.zip)
+- [Desktop for Linux (arm64, Mint 22 / Ubuntu 24.04+, zip)](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk41.zip)
 
 ### Run
 Windows:
@@ -45,12 +47,13 @@ chmod +x ./chicha-isotope-map_darwin_*_desktop
 
 Linux:
 ```bash
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop.zip -o chicha-isotope-map-desktop.zip
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip -o chicha-isotope-map-desktop.zip
 unzip chicha-isotope-map-desktop.zip
-chmod +x ./chicha-isotope-map_linux_amd64_desktop
-./chicha-isotope-map_linux_amd64_desktop
+chmod +x ./chicha-isotope-map_linux_amd64_desktop_gtk41
+./chicha-isotope-map_linux_amd64_desktop_gtk41
 ```
 Linux desktop release now ships as a regular executable binary in a `.zip` archive.
+Use `*_gtk40` for Ubuntu 22.04 / Mint 21 and `*_gtk41` for Ubuntu 24.04+ / Mint 22 (both amd64 and arm64).
 
 ### Build desktop from source
 

@@ -166,12 +166,14 @@ jobs:
         include:
           # go-webview-selector resolves webkit2gtk via pkg-config name "webkit2gtk-4.0",
           # so Linux desktop builds provide a webkit2gtk-4.0 pkg-config target.
-          - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04-arm" }
-          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14" }
-          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14" }
-          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest" }
-          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest" }
+          - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04", desktop_variant: "gtk40" }
+          - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", desktop_variant: "gtk41" }
+          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04-arm", desktop_variant: "gtk40" }
+          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04-arm", desktop_variant: "gtk41" }
+          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14", desktop_variant: "default" }
+          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14", desktop_variant: "default" }
+          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest", desktop_variant: "default" }
+          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest", desktop_variant: "default" }
 
     steps:
       - name: Checkout
@@ -234,12 +236,16 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          DESKTOP_VARIANT: ${{ matrix.desktop_variant }}
           CGO_ENABLED: 1
         run: |
           set -euo pipefail
           VERSION=${{ github.run_number }}
           mkdir -p dist
           BIN="chicha-isotope-map_${GOOS}_${GOARCH}_desktop"
+          if [ "${GOOS}" = "linux" ]; then
+            BIN="${BIN}_${DESKTOP_VARIANT}"
+          fi
           GOFLAGS="-trimpath -buildvcs=false" \
           go build -tags "desktop" \
                    -ldflags "-s -w -X main.CompileVersion=$VERSION" \
@@ -251,16 +257,17 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          DESKTOP_VARIANT: ${{ matrix.desktop_variant }}
         run: |
           set -euo pipefail
-          BIN="chicha-isotope-map_${GOOS}_${GOARCH}_desktop"
+          BIN="chicha-isotope-map_${GOOS}_${GOARCH}_desktop_${DESKTOP_VARIANT}"
           chmod +x "dist/${BIN}"
 
           # Keep a direct binary and a download-friendly archive for Linux desktop releases.
           # zip stores Unix mode bits, so extraction tools that honor them keep the executable bit.
           (
             cd dist
-            zip -q -X "chicha-isotope-map_${GOOS}_${GOARCH}_desktop.zip" "${BIN}"
+            zip -q -X "${BIN}.zip" "${BIN}"
           )
 
       - name: Build Windows ICO from desktop app icon
@@ -346,7 +353,7 @@ jobs:
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bin-desktop-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: bin-desktop-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.desktop_variant }}
           path: dist/
 
   build_desktop_macos_universal:
