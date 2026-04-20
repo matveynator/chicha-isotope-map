@@ -676,9 +676,12 @@ type importStatusEvent struct {
 }
 
 type desktopAdminSettings struct {
-	DBPath       string `json:"dbPath"`
-	MapboxToken  string `json:"mapboxToken"`
-	DefaultLayer string `json:"defaultLayer"`
+	DBPath                 string `json:"dbPath"`
+	MapboxToken            string `json:"mapboxToken"`
+	MapboxEnabled          bool   `json:"mapboxEnabled"`
+	EnableHistoricalImport bool   `json:"enableHistoricalImport"`
+	EnableSafecastImport   bool   `json:"enableSafecastImport"`
+	EnableAtomFastImport   bool   `json:"enableAtomFastImport"`
 }
 
 func init() {
@@ -5181,12 +5184,24 @@ func desktopAdminSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		response := map[string]any{
-			"dbPath":        strings.TrimSpace(*dbPath),
-			"dbSizeGB":      measureDatabaseFileSizeGB(strings.TrimSpace(*dbPath)),
-			"mapboxToken":   strings.TrimSpace(*mapboxToken),
-			"defaultLayer":  strings.TrimSpace(*defaultLayer),
-			"importStatus":  readImportStatusLine(),
-			"desktopNotice": "Changes to DB path are applied on next start.",
+			"dbPath":                 strings.TrimSpace(*dbPath),
+			"dbSizeGB":               measureDatabaseFileSizeGB(strings.TrimSpace(*dbPath)),
+			"mapboxToken":            strings.TrimSpace(*mapboxToken),
+			"mapboxEnabled":          strings.TrimSpace(*mapboxToken) != "",
+			"enableHistoricalImport": true,
+			"enableSafecastImport":   parseImportSelection(*importSourcesFlag).Safecast,
+			"enableAtomFastImport":   parseImportSelection(*importSourcesFlag).AtomFast,
+			"importStatus":           readImportStatusLine(),
+			"desktopNotice":          "Changes to DB path/import sources are applied on next start.",
+		}
+		if savedSettings, loadErr := loadDesktopAdminSettings(); loadErr == nil {
+			response["mapboxEnabled"] = savedSettings.MapboxEnabled
+			response["enableHistoricalImport"] = savedSettings.EnableHistoricalImport
+			response["enableSafecastImport"] = savedSettings.EnableSafecastImport
+			response["enableAtomFastImport"] = savedSettings.EnableAtomFastImport
+			if strings.TrimSpace(savedSettings.MapboxToken) != "" {
+				response["mapboxToken"] = strings.TrimSpace(savedSettings.MapboxToken)
+			}
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(response)
@@ -5198,19 +5213,14 @@ func desktopAdminSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		payload.DBPath = strings.TrimSpace(payload.DBPath)
 		payload.MapboxToken = strings.TrimSpace(payload.MapboxToken)
-		payload.DefaultLayer = strings.TrimSpace(payload.DefaultLayer)
-		if payload.DefaultLayer == "" {
-			payload.DefaultLayer = "OpenStreetMap"
-		}
 		if err := storeDesktopAdminSettings(payload); err != nil {
 			http.Error(w, "cannot save settings", http.StatusInternalServerError)
 			return
 		}
-		if payload.MapboxToken != "" {
+		if payload.MapboxEnabled && payload.MapboxToken != "" {
 			*mapboxToken = payload.MapboxToken
-		}
-		if payload.DefaultLayer != "" {
-			*defaultLayer = payload.DefaultLayer
+		} else {
+			*mapboxToken = ""
 		}
 		if payload.DBPath != "" {
 			*dbPath = payload.DBPath
@@ -7268,6 +7278,15 @@ func measureDatabaseFileSizeGB(path string) float64 {
 	return float64(info.Size()) / float64(gib)
 }
 
+func desktopSettingsFileExists() bool {
+	settingsPath, err := desktopSettingsFilePath()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(settingsPath)
+	return err == nil
+}
+
 // =====================
 // MAIN
 // =====================
@@ -7341,11 +7360,21 @@ func main() {
 			if strings.TrimSpace(*dbPath) == "" && strings.TrimSpace(savedSettings.DBPath) != "" {
 				*dbPath = strings.TrimSpace(savedSettings.DBPath)
 			}
-			if strings.TrimSpace(*mapboxToken) == "" && strings.TrimSpace(savedSettings.MapboxToken) != "" {
+			if savedSettings.MapboxEnabled && strings.TrimSpace(*mapboxToken) == "" && strings.TrimSpace(savedSettings.MapboxToken) != "" {
 				*mapboxToken = strings.TrimSpace(savedSettings.MapboxToken)
 			}
-			if strings.TrimSpace(savedSettings.DefaultLayer) != "" {
-				*defaultLayer = strings.TrimSpace(savedSettings.DefaultLayer)
+			if !savedSettings.MapboxEnabled {
+				*mapboxToken = ""
+			}
+			if strings.TrimSpace(*importSourcesFlag) == "" {
+				sources := make([]string, 0, 2)
+				if savedSettings.EnableSafecastImport {
+					sources = append(sources, "safecast")
+				}
+				if savedSettings.EnableAtomFastImport {
+					sources = append(sources, "atomfast")
+				}
+				*importSourcesFlag = strings.Join(sources, ",")
 			}
 		}
 	}
@@ -7353,7 +7382,7 @@ func main() {
 		// Desktop bundles should feel ready on first launch, so we default
 		// importer and realtime toggles to enabled unless operators override
 		// them via explicit CLI flags.
-		if strings.TrimSpace(*importSourcesFlag) == "" {
+		if strings.TrimSpace(*importSourcesFlag) == "" && !desktopSettingsFileExists() {
 			*importSourcesFlag = "all"
 		}
 		if !*safecastRealtimeEnabled {
