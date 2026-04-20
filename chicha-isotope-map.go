@@ -682,6 +682,7 @@ type desktopAdminSettings struct {
 	EnableHistoricalImport bool   `json:"enableHistoricalImport"`
 	EnableSafecastImport   bool   `json:"enableSafecastImport"`
 	EnableAtomFastImport   bool   `json:"enableAtomFastImport"`
+	EnableRealtimeUpdates  bool   `json:"enableRealtimeUpdates"`
 }
 
 func init() {
@@ -5191,6 +5192,7 @@ func desktopAdminSettingsHandler(w http.ResponseWriter, r *http.Request) {
 			"enableHistoricalImport": true,
 			"enableSafecastImport":   parseImportSelection(*importSourcesFlag).Safecast,
 			"enableAtomFastImport":   parseImportSelection(*importSourcesFlag).AtomFast,
+			"enableRealtimeUpdates":  *safecastRealtimeEnabled,
 			"importStatus":           readImportStatusLine(),
 			"desktopNotice":          "Changes to DB path/import sources are applied on next start.",
 		}
@@ -5199,6 +5201,7 @@ func desktopAdminSettingsHandler(w http.ResponseWriter, r *http.Request) {
 			response["enableHistoricalImport"] = savedSettings.EnableHistoricalImport
 			response["enableSafecastImport"] = savedSettings.EnableSafecastImport
 			response["enableAtomFastImport"] = savedSettings.EnableAtomFastImport
+			response["enableRealtimeUpdates"] = savedSettings.EnableRealtimeUpdates
 			if strings.TrimSpace(savedSettings.MapboxToken) != "" {
 				response["mapboxToken"] = strings.TrimSpace(savedSettings.MapboxToken)
 			}
@@ -5222,6 +5225,8 @@ func desktopAdminSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			*mapboxToken = ""
 		}
+		*safecastRealtimeEnabled = payload.EnableRealtimeUpdates
+		*safecastRealtimeDefault = payload.EnableRealtimeUpdates
 		if payload.DBPath != "" {
 			*dbPath = payload.DBPath
 		}
@@ -7376,6 +7381,8 @@ func main() {
 				}
 				*importSourcesFlag = strings.Join(sources, ",")
 			}
+			*safecastRealtimeEnabled = savedSettings.EnableRealtimeUpdates
+			*safecastRealtimeDefault = savedSettings.EnableRealtimeUpdates
 		}
 	}
 	if *desktopMode {
@@ -7385,10 +7392,10 @@ func main() {
 		if strings.TrimSpace(*importSourcesFlag) == "" && !desktopSettingsFileExists() {
 			*importSourcesFlag = "all"
 		}
-		if !*safecastRealtimeEnabled {
+		if !*safecastRealtimeEnabled && !desktopSettingsFileExists() {
 			*safecastRealtimeEnabled = true
 		}
-		if !*safecastRealtimeDefault {
+		if !*safecastRealtimeDefault && !desktopSettingsFileExists() {
 			*safecastRealtimeDefault = true
 		}
 	}

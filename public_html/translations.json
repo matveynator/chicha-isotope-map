@@ -152,7 +152,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "cs": {
     "api_example_archive_desc": "Stáhne archiv tgz se všemi zveřejněnými soubory .json, pokud je JSON archiv zapnutý.",
@@ -307,7 +308,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "da": {
     "api_example_archive_desc": "Downloader en tgz-pakke med alle offentliggjorte .json-filer når JSON-arkivet er aktiveret.",
@@ -462,7 +464,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "de": {
     "api_example_archive_desc": "Lädt ein tgz-Paket mit allen veröffentlichten .json-Dateien, sofern das JSON-Archiv aktiv ist.",
@@ -617,7 +620,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "el": {
     "api_example_archive_desc": "Κατεβάζει ένα αρχείο tgz με όλα τα δημοσιευμένα αρχεία .json όταν είναι ενεργό το JSON αρχείο.",
@@ -772,7 +776,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "en": {
     "api_example_archive_desc": "Downloads a tgz bundle with every published .json file when the server enables the JSON archive.",
@@ -930,7 +935,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "es": {
     "api_example_archive_desc": "Descarga un paquete tgz con todos los archivos .json publicados cuando el archivo JSON está activado.",
@@ -1085,7 +1091,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "fa": {
     "api_example_archive_desc": "وقتی آرشیو JSON فعال باشد یک بسته tgz شامل تمام فایل‌های .json منتشرشده را دانلود می‌کند.",
@@ -1240,7 +1247,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "fi": {
     "api_example_archive_desc": "Lataa tgz-paketin, jossa on kaikki julkaistut .json-tiedostot, kun JSON-arkisto on käytössä.",
@@ -1395,7 +1403,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "fr": {
     "api_example_archive_desc": "Télécharge une archive tgz avec tous les fichiers .json publiés lorsque l’archive JSON est activée.",
@@ -1550,7 +1559,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "he": {
     "api_example_archive_desc": "מורידה חבילת tgz עם כל קבצי .json שפורסמו כאשר ארכיון ה-JSON מופעל.",
@@ -1705,7 +1715,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "hi": {
     "api_example_archive_desc": "JSON संग्रह सक्षम होने पर सभी प्रकाशित .json फ़ाइलों वाला tgz पैकेज डाउनलोड करता है।",
@@ -1860,7 +1871,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "hu": {
     "api_example_archive_desc": "Letölt egy tgz csomagot az összes közzétett .json fájllal, ha a JSON archívum engedélyezett.",
@@ -2015,7 +2027,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "id": {
     "api_example_archive_desc": "Mengunduh paket tgz dengan semua berkas .json yang dipublikasikan saat arsip JSON diaktifkan.",
@@ -2170,7 +2183,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "it": {
     "api_example_archive_desc": "Scarica un archivio tgz con tutti i file .json pubblicati quando l’archivio JSON è attivo.",
@@ -2325,7 +2339,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "ja": {
     "api_example_archive_desc": "JSON アーカイブが有効な場合、公開済みの .json ファイルをすべて含む tgz バンドルをダウンロードします。",
@@ -2480,7 +2495,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "ko": {
     "api_example_archive_desc": "JSON 아카이브가 활성화된 경우 게시된 모든 .json 파일이 포함된 tgz 번들을 다운로드합니다.",
@@ -2635,7 +2651,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "ms": {
     "api_example_archive_desc": "Memuat turun pakej tgz dengan semua fail .json yang diterbitkan apabila arkib JSON diaktifkan.",
@@ -2790,7 +2807,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "nl": {
     "api_example_archive_desc": "Downloadt een tgz-pakket met alle gepubliceerde .json-bestanden wanneer het JSON-archief is ingeschakeld.",
@@ -2945,7 +2963,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "no": {
     "api_example_archive_desc": "Laster ned en tgz-pakke med alle publiserte .json-filer når JSON-arkivet er aktivert.",
@@ -3100,7 +3119,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "pl": {
     "api_example_archive_desc": "Pobiera paczkę tgz ze wszystkimi opublikowanymi plikami .json, gdy archiwum JSON jest włączone.",
@@ -3255,7 +3275,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "pt": {
     "api_example_archive_desc": "Baixa um pacote tgz com todos os arquivos .json publicados quando o arquivo JSON está ativado.",
@@ -3410,7 +3431,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "ru": {
     "api_example_archive_desc": "Скачивает архив tgz со всеми опубликованными файлами .json, если включён JSON‑архив.",
@@ -3565,7 +3587,8 @@
     "desktop_admin_option_db_size": "Размер базы данных",
     "desktop_admin_option_mapbox_token": "Mapbox API токен",
     "desktop_admin_option_default_layer": "Слой карты по умолчанию",
-    "desktop_admin_option_mapbox_enable": "Включить слой Mapbox"
+    "desktop_admin_option_mapbox_enable": "Включить слой Mapbox",
+    "desktop_admin_option_realtime_updates": "Получать real-time данные"
   },
   "sv": {
     "api_example_archive_desc": "Hämtar ett tgz-paket med alla publicerade .json-filer när JSON-arkivet är aktiverat.",
@@ -3720,7 +3743,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "th": {
     "api_example_archive_desc": "ดาวน์โหลดแพ็กเกจ tgz ที่มีไฟล์ .json ทั้งหมดเมื่อเปิดใช้งานคลัง JSON",
@@ -3875,7 +3899,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "tr": {
     "api_example_archive_desc": "JSON arşivi etkinse yayımlanmış tüm .json dosyalarıyla bir tgz paketi indirir.",
@@ -4030,7 +4055,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "uk": {
     "api_example_archive_desc": "Завантажує tgz-пакет з усіма опублікованими файлами .json, коли JSON-архів увімкнено.",
@@ -4185,7 +4211,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "vi": {
     "api_example_archive_desc": "Tải gói tgz chứa mọi tệp .json đã công bố khi bật lưu trữ JSON.",
@@ -4340,7 +4367,8 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   },
   "zh": {
     "api_example_archive_desc": "在启用 JSON 归档时，下载包含所有已发布 .json 文件的 tgz 包。",
@@ -4495,6 +4523,7 @@
     "desktop_admin_option_db_size": "Database size",
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
-    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer"
+    "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
+    "desktop_admin_option_realtime_updates": "Receive realtime updates"
   }
 }

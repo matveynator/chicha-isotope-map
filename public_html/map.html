@@ -3357,11 +3357,8 @@ function createDesktopAdminDefaultModel() {
     autoImportWeeklyArchive: true,
     importSourcesSafecast: true,
     importSourcesAtomFast: true,
+    realtimeUpdatesEnabled: true,
     weeklyArchiveURL: 'https://pelora.org/api/json/weekly.tgz',
-    dbPath: '',
-    dbSizeGB: 0,
-    mapboxEnabled: false,
-    mapboxToken: '',
     importStatusLine: '',
   };
 }
@@ -3391,20 +3388,9 @@ function renderDesktopAdminPanel(adminModel) {
   panelNode.innerHTML = `
     <h3>${translate('desktop_admin_panel_title')}</h3>
     <div class="desktop-admin-row"><label><input id="desktopAdminAutoImport" type="checkbox" ${adminModel.autoImportWeeklyArchive ? 'checked' : ''}> ${translate('desktop_admin_option_auto_import')}</label></div>
-    <div class="desktop-admin-row">${translate('desktop_admin_option_archive_url')}: ${adminModel.weeklyArchiveURL}</div>
     <div class="desktop-admin-row"><label><input id="desktopAdminSourceSafecast" type="checkbox" ${adminModel.importSourcesSafecast ? 'checked' : ''}> ${translate('desktop_admin_option_source_safecast')}</label></div>
     <div class="desktop-admin-row"><label><input id="desktopAdminSourceAtomFast" type="checkbox" ${adminModel.importSourcesAtomFast ? 'checked' : ''}> ${translate('desktop_admin_option_source_atomfast')}</label></div>
-    <div class="desktop-admin-row">${translate('desktop_admin_option_db_size')}: ${Number(adminModel.dbSizeGB || 0).toFixed(2)} GB</div>
-    <div class="desktop-admin-row">
-      <label for="desktopAdminDBPath">${translate('desktop_admin_option_db_path')}</label>
-      <input id="desktopAdminDBPath" type="text" style="width:100%;" value="${adminModel.dbPath}">
-    </div>
-    <div class="desktop-admin-row"><label><input id="desktopAdminMapboxEnabled" type="checkbox" ${adminModel.mapboxEnabled ? 'checked' : ''}> ${translate('desktop_admin_option_mapbox_enable')}</label></div>
-    <div class="desktop-admin-row">
-      <label for="desktopAdminMapboxToken">${translate('desktop_admin_option_mapbox_token')}</label>
-      <input id="desktopAdminMapboxToken" type="text" style="width:100%;" value="${adminModel.mapboxToken}" ${adminModel.mapboxEnabled ? '' : 'disabled'}>
-    </div>
-    <div class="desktop-admin-row" style="opacity:0.8;">${translate('desktop_admin_disk_notice')}</div>
+    <div class="desktop-admin-row"><label><input id="desktopAdminRealtimeUpdates" type="checkbox" ${adminModel.realtimeUpdatesEnabled ? 'checked' : ''}> ${translate('desktop_admin_option_realtime_updates')}</label></div>
     <div class="desktop-admin-row" style="opacity:0.8;">${adminModel.importStatusLine || ''}</div>
     <div class="desktop-admin-actions">
       <button id="desktopAdminApplyButton" class="desktop-admin-btn" type="button">${translate('desktop_admin_apply')}</button>
@@ -3417,15 +3403,14 @@ function collectDesktopAdminModelFromPanel() {
   currentModel.autoImportWeeklyArchive = !!document.getElementById('desktopAdminAutoImport')?.checked;
   currentModel.importSourcesSafecast = !!document.getElementById('desktopAdminSourceSafecast')?.checked;
   currentModel.importSourcesAtomFast = !!document.getElementById('desktopAdminSourceAtomFast')?.checked;
+  currentModel.realtimeUpdatesEnabled = !!document.getElementById('desktopAdminRealtimeUpdates')?.checked;
   currentModel.weeklyArchiveURL = 'https://pelora.org/api/json/weekly.tgz';
-  currentModel.dbPath = (document.getElementById('desktopAdminDBPath')?.value || '').trim();
-  currentModel.mapboxEnabled = !!document.getElementById('desktopAdminMapboxEnabled')?.checked;
-  currentModel.mapboxToken = (document.getElementById('desktopAdminMapboxToken')?.value || '').trim();
   return currentModel;
 }
 
 function applyDesktopAdminRuntimeFlags(adminModel) {
   window.safecastRealtimeDefault = window.safecastRealtimeEnabled;
+  window.safecastRealtimeEnabled = !!adminModel.realtimeUpdatesEnabled;
 }
 
 async function triggerDesktopBootstrapImportIfEnabled(adminModel) {
@@ -3454,12 +3439,10 @@ async function saveDesktopServerSettings(adminModel) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      dbPath: adminModel.dbPath,
-      mapboxEnabled: adminModel.mapboxEnabled,
-      mapboxToken: adminModel.mapboxToken,
       enableHistoricalImport: adminModel.autoImportWeeklyArchive,
       enableSafecastImport: adminModel.importSourcesSafecast,
       enableAtomFastImport: adminModel.importSourcesAtomFast,
+      enableRealtimeUpdates: adminModel.realtimeUpdatesEnabled,
     }),
   });
   if (!response.ok) {
@@ -3481,8 +3464,7 @@ async function refreshDesktopStatusLine() {
     const statusResponse = await fetch('/desktop/admin/status', { method: 'GET' });
     if (!statusResponse.ok) return;
     const statusPayload = await statusResponse.json();
-    const dbSize = Number(statusPayload.dbSizeGB || 0).toFixed(2);
-    const line = `${statusPayload.line || ''} · DB: ${dbSize} GB`;
+    const line = `${statusPayload.line || ''}`;
     renderDesktopStatusLine(line);
   } catch (error) {
     console.warn('desktop status request failed:', error);
@@ -3522,13 +3504,6 @@ function initializeDesktopAdminUI() {
       await applyPanelModel();
       triggerDesktopBootstrapImportIfEnabled(adminModel);
     });
-    const mapboxToggle = document.getElementById('desktopAdminMapboxEnabled');
-    const mapboxTokenField = document.getElementById('desktopAdminMapboxToken');
-    if (mapboxToggle && mapboxTokenField) {
-      mapboxToggle.addEventListener('change', function () {
-        mapboxTokenField.disabled = !mapboxToggle.checked;
-      });
-    }
   };
   bindPanelApplyButton();
 
@@ -3538,13 +3513,10 @@ function initializeDesktopAdminUI() {
 
   const setupCompleted = localStorage.getItem(desktopAdminSetupDoneKey) === '1';
   fetchDesktopServerSettings().then(function (serverSettings) {
-    adminModel.dbPath = (serverSettings.dbPath || '').trim();
-    adminModel.dbSizeGB = Number(serverSettings.dbSizeGB || 0);
-    adminModel.mapboxEnabled = !!serverSettings.mapboxEnabled;
-    adminModel.mapboxToken = (serverSettings.mapboxToken || '').trim();
     adminModel.autoImportWeeklyArchive = !!serverSettings.enableHistoricalImport;
     adminModel.importSourcesSafecast = !!serverSettings.enableSafecastImport;
     adminModel.importSourcesAtomFast = !!serverSettings.enableAtomFastImport;
+    adminModel.realtimeUpdatesEnabled = !!serverSettings.enableRealtimeUpdates;
     adminModel.importStatusLine = (serverSettings.importStatus || '').trim();
     renderDesktopAdminPanel(adminModel);
     bindPanelApplyButton();
@@ -3556,31 +3528,20 @@ function initializeDesktopAdminUI() {
   setupCardNode.innerHTML = `
     <h3>${translate('desktop_setup_title')}</h3>
     <p>${translate('desktop_setup_intro')}</p>
-    <p>${translate('desktop_admin_disk_notice')}</p>
     <div class="desktop-admin-row"><label><input id="desktopSetupAutoImport" type="checkbox" checked> ${translate('desktop_admin_option_auto_import')}</label></div>
-    <div class="desktop-admin-row">${translate('desktop_admin_option_archive_url')}: https://pelora.org/api/json/weekly.tgz</div>
     <div class="desktop-admin-row"><label><input id="desktopSetupSafecast" type="checkbox" checked> ${translate('desktop_admin_option_source_safecast')}</label></div>
     <div class="desktop-admin-row"><label><input id="desktopSetupAtomFast" type="checkbox" checked> ${translate('desktop_admin_option_source_atomfast')}</label></div>
-    <div class="desktop-admin-row"><label><input id="desktopSetupMapboxEnabled" type="checkbox" ${adminModel.mapboxEnabled ? 'checked' : ''}> ${translate('desktop_admin_option_mapbox_enable')}</label></div>
-    <div class="desktop-admin-row"><label for="desktopSetupMapboxToken">${translate('desktop_admin_option_mapbox_token')}</label><input id="desktopSetupMapboxToken" style="width:100%;" type="text" value="${adminModel.mapboxToken || ''}" ${adminModel.mapboxEnabled ? '' : 'disabled'}></div>
+    <div class="desktop-admin-row"><label><input id="desktopSetupRealtimeUpdates" type="checkbox" checked> ${translate('desktop_admin_option_realtime_updates')}</label></div>
     <div class="desktop-admin-actions"><button id="desktopSetupApplyButton" class="desktop-admin-btn" type="button">${translate('desktop_setup_apply')}</button></div>
   `;
   setupOverlayNode.style.display = 'flex';
   const applySetupButton = document.getElementById('desktopSetupApplyButton');
-  const setupMapboxToggle = document.getElementById('desktopSetupMapboxEnabled');
-  const setupMapboxTokenField = document.getElementById('desktopSetupMapboxToken');
-  if (setupMapboxToggle && setupMapboxTokenField) {
-    setupMapboxToggle.addEventListener('change', function () {
-      setupMapboxTokenField.disabled = !setupMapboxToggle.checked;
-    });
-  }
   if (!applySetupButton) return;
   applySetupButton.addEventListener('click', async function () {
     adminModel.autoImportWeeklyArchive = !!document.getElementById('desktopSetupAutoImport')?.checked;
     adminModel.importSourcesSafecast = !!document.getElementById('desktopSetupSafecast')?.checked;
     adminModel.importSourcesAtomFast = !!document.getElementById('desktopSetupAtomFast')?.checked;
-    adminModel.mapboxEnabled = !!document.getElementById('desktopSetupMapboxEnabled')?.checked;
-    adminModel.mapboxToken = (document.getElementById('desktopSetupMapboxToken')?.value || '').trim();
+    adminModel.realtimeUpdatesEnabled = !!document.getElementById('desktopSetupRealtimeUpdates')?.checked;
     adminModel.weeklyArchiveURL = 'https://pelora.org/api/json/weekly.tgz';
     try {
       await saveDesktopServerSettings(adminModel);
