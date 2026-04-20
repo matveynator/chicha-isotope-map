@@ -6,7 +6,7 @@
 
 # Chicha Isotope Map
 
-Download page for the latest stable build: <a href="https://matveynator.github.io/chicha-isotope-map/doc/pages/">matveynator.github.io/chicha-isotope-map/doc/pages</a>. <br>
+Download page for the latest stable build: <a href="https://matveynator.github.io/chicha-isotope-map/">matveynator.github.io/chicha-isotope-map/doc/pages</a>. <br>
 Radiacode, AtomFast, BGeigie Safecast devices supported.
 
 [![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
