@@ -553,6 +553,9 @@ body, html {
           top: 20px;
           right: 20px;
           z-index: 1000;
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
 
         /* Upload button styling, theme-aware */
@@ -1328,9 +1331,6 @@ body, html {
         }
 
         .desktop-admin-toggle {
-          position: absolute;
-          top: 12px;
-          right: 14px;
           width: 28px;
           height: 28px;
           border: var(--legend-border);
@@ -1343,6 +1343,28 @@ body, html {
           cursor: pointer;
           z-index: 1250;
           font-size: var(--font-size-base);
+          box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        }
+
+        #desktopStatusLine {
+          position: absolute;
+          top: 56px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: var(--overlay-bg);
+          border: var(--legend-border);
+          border-radius: 999px;
+          padding: 4px 10px;
+          font-size: var(--font-size-xs);
+          color: var(--modal-text);
+          opacity: 0.85;
+          z-index: 1200;
+          display: none;
+          user-select: none;
+          max-width: min(90vw, 860px);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .desktop-admin-panel {
@@ -1480,6 +1502,7 @@ body, html {
 
     <!-- Container for upload button -->
     <div class="upload-btn-container leaflet-control">
+      <button id="desktopAdminToggle" class="desktop-admin-toggle" type="button" aria-label="Desktop settings">⚙</button>
       <!--
         title/aria-label → short hint on hover/focus about formats
         and what happens after upload.
@@ -1584,6 +1607,8 @@ body, html {
         tabindex="0"
         aria-live="polite"
         aria-label="{{translate "short_link_tooltip"}}"></div>
+    {{else}}
+      <div id="desktopStatusLine" aria-live="polite"></div>
     {{end}}
 
     <!-- Map container -->
@@ -1593,7 +1618,6 @@ body, html {
       <div class="spinner"></div>
     </div>
 
-    <button id="desktopAdminToggle" class="desktop-admin-toggle" type="button" aria-label="Desktop settings">⚙</button>
     <div id="desktopAdminPanel" class="desktop-admin-panel" aria-live="polite"></div>
     <div id="desktopAdminSetupOverlay" class="desktop-admin-setup-overlay">
       <div id="desktopAdminSetupCard" class="desktop-admin-setup-card"></div>
@@ -3334,6 +3358,11 @@ function createDesktopAdminDefaultModel() {
     safecastRealtimeEnabled: true,
     safecastRealtimeDefaultVisible: true,
     weeklyArchiveURL: 'https://pelora.org/api/json/weekly.tgz',
+    dbPath: '',
+    dbSizeGB: 0,
+    mapboxToken: '',
+    defaultLayer: 'OpenStreetMap',
+    importStatusLine: '',
   };
 }
 
@@ -3370,7 +3399,25 @@ function renderDesktopAdminPanel(adminModel) {
       <label for="desktopAdminArchiveURL">${translate('desktop_admin_option_archive_url')}</label>
       <input id="desktopAdminArchiveURL" type="url" style="width:100%;" value="${adminModel.weeklyArchiveURL}">
     </div>
+    <div class="desktop-admin-row">
+      <label for="desktopAdminDBPath">${translate('desktop_admin_option_db_path')}</label>
+      <input id="desktopAdminDBPath" type="text" style="width:100%;" value="${adminModel.dbPath}">
+    </div>
+    <div class="desktop-admin-row">${translate('desktop_admin_option_db_size')}: ${Number(adminModel.dbSizeGB || 0).toFixed(2)} GB</div>
+    <div class="desktop-admin-row">
+      <label for="desktopAdminMapboxToken">${translate('desktop_admin_option_mapbox_token')}</label>
+      <input id="desktopAdminMapboxToken" type="text" style="width:100%;" value="${adminModel.mapboxToken}">
+    </div>
+    <div class="desktop-admin-row">
+      <label for="desktopAdminDefaultLayer">${translate('desktop_admin_option_default_layer')}</label>
+      <select id="desktopAdminDefaultLayer" style="width:100%;">
+        <option value="OpenStreetMap" ${adminModel.defaultLayer === 'OpenStreetMap' ? 'selected' : ''}>OpenStreetMap</option>
+        <option value="Google Satellite" ${adminModel.defaultLayer === 'Google Satellite' ? 'selected' : ''}>Google Satellite</option>
+        <option value="Mapbox Satellite" ${adminModel.defaultLayer === 'Mapbox Satellite' ? 'selected' : ''}>Mapbox Satellite</option>
+      </select>
+    </div>
     <div class="desktop-admin-row" style="opacity:0.8;">${translate('desktop_admin_disk_notice')}</div>
+    <div class="desktop-admin-row" style="opacity:0.8;">${adminModel.importStatusLine || ''}</div>
     <div class="desktop-admin-actions">
       <button id="desktopAdminApplyButton" class="desktop-admin-btn" type="button">${translate('desktop_admin_apply')}</button>
     </div>
@@ -3386,6 +3433,9 @@ function collectDesktopAdminModelFromPanel() {
   currentModel.safecastRealtimeEnabled = !!document.getElementById('desktopAdminRealtimeEnabled')?.checked;
   currentModel.safecastRealtimeDefaultVisible = !!document.getElementById('desktopAdminRealtimeVisible')?.checked;
   currentModel.weeklyArchiveURL = (archiveField ? archiveField.value : '').trim() || 'https://pelora.org/api/json/weekly.tgz';
+  currentModel.dbPath = (document.getElementById('desktopAdminDBPath')?.value || '').trim();
+  currentModel.mapboxToken = (document.getElementById('desktopAdminMapboxToken')?.value || '').trim();
+  currentModel.defaultLayer = (document.getElementById('desktopAdminDefaultLayer')?.value || 'OpenStreetMap').trim();
   return currentModel;
 }
 
@@ -3407,6 +3457,51 @@ async function triggerDesktopBootstrapImportIfEnabled(adminModel) {
   }
 }
 
+async function fetchDesktopServerSettings() {
+  const response = await fetch('/desktop/admin/settings', { method: 'GET' });
+  if (!response.ok) {
+    throw new Error('desktop settings request failed');
+  }
+  return response.json();
+}
+
+async function saveDesktopServerSettings(adminModel) {
+  const response = await fetch('/desktop/admin/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      dbPath: adminModel.dbPath,
+      mapboxToken: adminModel.mapboxToken,
+      defaultLayer: adminModel.defaultLayer,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error('desktop settings save failed');
+  }
+}
+
+function renderDesktopStatusLine(statusText) {
+  const statusLineNode = document.getElementById('desktopStatusLine');
+  if (!statusLineNode) return;
+  statusLineNode.style.display = 'block';
+  statusLineNode.textContent = statusText;
+}
+
+async function refreshDesktopStatusLine() {
+  const statusLineNode = document.getElementById('desktopStatusLine');
+  if (!statusLineNode) return;
+  try {
+    const statusResponse = await fetch('/desktop/admin/status', { method: 'GET' });
+    if (!statusResponse.ok) return;
+    const statusPayload = await statusResponse.json();
+    const dbSize = Number(statusPayload.dbSizeGB || 0).toFixed(2);
+    const line = `${statusPayload.line || ''} · DB: ${dbSize} GB`;
+    renderDesktopStatusLine(line);
+  } catch (error) {
+    console.warn('desktop status request failed:', error);
+  }
+}
+
 function initializeDesktopAdminUI() {
   if (!window.desktopWebViewMode) return;
 
@@ -3420,20 +3515,24 @@ function initializeDesktopAdminUI() {
   applyDesktopAdminRuntimeFlags(adminModel);
   renderDesktopAdminPanel(adminModel);
   toggleButton.style.display = 'inline-flex';
+  refreshDesktopStatusLine();
+  setInterval(refreshDesktopStatusLine, 5000);
 
-  const applyPanelModel = function () {
+  const applyPanelModel = async function () {
     adminModel = collectDesktopAdminModelFromPanel();
+    await saveDesktopServerSettings(adminModel);
     saveDesktopAdminModel(adminModel);
     applyDesktopAdminRuntimeFlags(adminModel);
     renderDesktopAdminPanel(adminModel);
     bindPanelApplyButton();
+    setTimeout(function () { window.location.reload(); }, 120);
   };
 
   const bindPanelApplyButton = function () {
     const applyButton = document.getElementById('desktopAdminApplyButton');
     if (!applyButton) return;
-    applyButton.addEventListener('click', function () {
-      applyPanelModel();
+    applyButton.addEventListener('click', async function () {
+      await applyPanelModel();
       triggerDesktopBootstrapImportIfEnabled(adminModel);
     });
   };
@@ -3444,6 +3543,17 @@ function initializeDesktopAdminUI() {
   });
 
   const setupCompleted = localStorage.getItem(desktopAdminSetupDoneKey) === '1';
+  fetchDesktopServerSettings().then(function (serverSettings) {
+    adminModel.dbPath = (serverSettings.dbPath || '').trim();
+    adminModel.dbSizeGB = Number(serverSettings.dbSizeGB || 0);
+    adminModel.mapboxToken = (serverSettings.mapboxToken || '').trim();
+    adminModel.defaultLayer = (serverSettings.defaultLayer || 'OpenStreetMap').trim();
+    adminModel.importStatusLine = (serverSettings.importStatus || '').trim();
+    renderDesktopAdminPanel(adminModel);
+    bindPanelApplyButton();
+  }).catch(function (error) {
+    console.warn('desktop settings bootstrap failed:', error);
+  });
   if (setupCompleted) return;
 
   setupCardNode.innerHTML = `
