@@ -685,6 +685,8 @@ type desktopAdminSettings struct {
 	EnableRealtimeUpdates  bool   `json:"enableRealtimeUpdates"`
 }
 
+const desktopHistoricalImportURL = "https://pelora.org/api/json/weekly.tgz"
+
 func init() {
 	// We trigger driver registration here so "go run chicha-isotope-map.go" keeps
 	// working even when auxiliary files are skipped; relying on init avoids extra
@@ -5022,6 +5024,10 @@ func desktopNativeUploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "desktop mode disabled", http.StatusConflict)
 		return
 	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	paths, err := desktop.PickFiles()
 	if err != nil {
@@ -5051,6 +5057,10 @@ func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if !*desktopMode {
 		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -5126,6 +5136,10 @@ func desktopAdminBootstrapImportHandler(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "desktop mode disabled", http.StatusConflict)
 		return
 	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	select {
 	case <-desktopAdminImportSlot:
@@ -5135,7 +5149,10 @@ func desktopAdminBootstrapImportHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type importRequest struct {
-		URL string `json:"url"`
+		EnableHistoricalImport bool `json:"enableHistoricalImport"`
+		EnableSafecastImport   bool `json:"enableSafecastImport"`
+		EnableAtomFastImport   bool `json:"enableAtomFastImport"`
+		EnableRealtimeUpdates  bool `json:"enableRealtimeUpdates"`
 	}
 	var payload importRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -5144,16 +5161,21 @@ func desktopAdminBootstrapImportHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	remoteURL := strings.TrimSpace(payload.URL)
-	if remoteURL == "" {
-		remoteURL = "https://pelora.org/api/json/weekly.tgz"
-	}
-	parsedURL, err := url.Parse(remoteURL)
-	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
+	if !payload.EnableHistoricalImport {
 		desktopAdminImportSlot <- struct{}{}
-		http.Error(w, "invalid import url", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "skipped"})
 		return
 	}
+	remoteURL := desktopHistoricalImportURL
+
+	// Save desktop choices immediately so restart follows the selected checkboxes.
+	settingsSnapshot, _ := loadDesktopAdminSettings()
+	settingsSnapshot.EnableHistoricalImport = payload.EnableHistoricalImport
+	settingsSnapshot.EnableSafecastImport = payload.EnableSafecastImport
+	settingsSnapshot.EnableAtomFastImport = payload.EnableAtomFastImport
+	settingsSnapshot.EnableRealtimeUpdates = payload.EnableRealtimeUpdates
+	_ = storeDesktopAdminSettings(settingsSnapshot)
 
 	fallbackTrackID := GenerateSerialNumber()
 	setImportStatus("TGZ", "running")
@@ -5209,6 +5231,10 @@ func desktopAdminSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(response)
 	case http.MethodPost:
+		if !isTrustedDesktopAdminRequest(r) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		var payload desktopAdminSettings
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			http.Error(w, "invalid request payload", http.StatusBadRequest)
@@ -5577,6 +5603,44 @@ func requestClientIP(r *http.Request) string {
 		return trimmed
 	}
 	return ""
+}
+
+func isFlagExplicitlySet(flagName string) bool {
+	seen := false
+	flag.Visit(func(current *flag.Flag) {
+		if current == nil {
+			return
+		}
+		if strings.EqualFold(strings.TrimSpace(current.Name), strings.TrimSpace(flagName)) {
+			seen = true
+		}
+	})
+	return seen
+}
+
+// isTrustedDesktopAdminRequest allows desktop admin mutations only from local
+// loopback callers and same-origin form submissions to reduce CSRF/remote abuse.
+func isTrustedDesktopAdminRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	clientIP := strings.TrimSpace(requestClientIP(r))
+	parsedIP := net.ParseIP(clientIP)
+	if parsedIP == nil || !parsedIP.IsLoopback() {
+		return false
+	}
+
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	originHost := strings.TrimSpace(parsedOrigin.Host)
+	requestHost := strings.TrimSpace(r.Host)
+	return originHost != "" && strings.EqualFold(originHost, requestHost)
 }
 
 // recordActivity captures a single user action with session context so logs can
@@ -7362,16 +7426,16 @@ func main() {
 		if settingsErr != nil {
 			log.Printf("desktop settings load failed: %v", settingsErr)
 		} else {
-			if strings.TrimSpace(*dbPath) == "" && strings.TrimSpace(savedSettings.DBPath) != "" {
+			if !isFlagExplicitlySet("db-path") && strings.TrimSpace(*dbPath) == "" && strings.TrimSpace(savedSettings.DBPath) != "" {
 				*dbPath = strings.TrimSpace(savedSettings.DBPath)
 			}
-			if savedSettings.MapboxEnabled && strings.TrimSpace(*mapboxToken) == "" && strings.TrimSpace(savedSettings.MapboxToken) != "" {
+			if !isFlagExplicitlySet("mapbox-token") && savedSettings.MapboxEnabled && strings.TrimSpace(*mapboxToken) == "" && strings.TrimSpace(savedSettings.MapboxToken) != "" {
 				*mapboxToken = strings.TrimSpace(savedSettings.MapboxToken)
 			}
-			if !savedSettings.MapboxEnabled {
+			if !isFlagExplicitlySet("mapbox-token") && !savedSettings.MapboxEnabled {
 				*mapboxToken = ""
 			}
-			if strings.TrimSpace(*importSourcesFlag) == "" {
+			if !isFlagExplicitlySet("import") && strings.TrimSpace(*importSourcesFlag) == "" {
 				sources := make([]string, 0, 2)
 				if savedSettings.EnableSafecastImport {
 					sources = append(sources, "safecast")
@@ -7381,8 +7445,12 @@ func main() {
 				}
 				*importSourcesFlag = strings.Join(sources, ",")
 			}
-			*safecastRealtimeEnabled = savedSettings.EnableRealtimeUpdates
-			*safecastRealtimeDefault = savedSettings.EnableRealtimeUpdates
+			if !isFlagExplicitlySet("safecast-realtime") {
+				*safecastRealtimeEnabled = savedSettings.EnableRealtimeUpdates
+			}
+			if !isFlagExplicitlySet("safecast-realtime-default") {
+				*safecastRealtimeDefault = savedSettings.EnableRealtimeUpdates
+			}
 		}
 	}
 	if *desktopMode {
@@ -7392,10 +7460,10 @@ func main() {
 		if strings.TrimSpace(*importSourcesFlag) == "" && !desktopSettingsFileExists() {
 			*importSourcesFlag = "all"
 		}
-		if !*safecastRealtimeEnabled && !desktopSettingsFileExists() {
+		if !*safecastRealtimeEnabled && !desktopSettingsFileExists() && !isFlagExplicitlySet("safecast-realtime") {
 			*safecastRealtimeEnabled = true
 		}
-		if !*safecastRealtimeDefault && !desktopSettingsFileExists() {
+		if !*safecastRealtimeDefault && !desktopSettingsFileExists() && !isFlagExplicitlySet("safecast-realtime-default") {
 			*safecastRealtimeDefault = true
 		}
 	}

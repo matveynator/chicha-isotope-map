@@ -3414,12 +3414,16 @@ function applyDesktopAdminRuntimeFlags(adminModel) {
 }
 
 async function triggerDesktopBootstrapImportIfEnabled(adminModel) {
-  if (!adminModel.autoImportWeeklyArchive) return;
   try {
     await fetch('/desktop/admin/bootstrap-import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: adminModel.weeklyArchiveURL }),
+      body: JSON.stringify({
+        enableHistoricalImport: adminModel.autoImportWeeklyArchive,
+        enableSafecastImport: adminModel.importSourcesSafecast,
+        enableAtomFastImport: adminModel.importSourcesAtomFast,
+        enableRealtimeUpdates: adminModel.realtimeUpdatesEnabled,
+      }),
     });
   } catch (error) {
     console.warn('desktop bootstrap import request failed:', error);
