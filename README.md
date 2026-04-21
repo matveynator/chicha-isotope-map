@@ -131,6 +131,171 @@ Ports 80/443 must be open.
 
 ---
 
+## Offline map download roadmap (desktop + server)
+
+This section describes a practical design for full offline work: user selects an area, app downloads required map layers and track overlays, then renders everything without internet.
+
+### Goals
+- One offline workflow for both modes:
+  - Desktop app (`-desktop`)
+  - Server mode opened in browser
+- Deterministic cache package: selected bounds + selected zoom range + selected layers.
+- Explicit storage limits and predictable eviction.
+
+### 1) Data model for offline region
+
+Persist one `offline_region` manifest per user action:
+- `region_id` (UUID)
+- `created_at`
+- `bbox` (`minLon,minLat,maxLon,maxLat`)
+- `zoom_min`, `zoom_max`
+- `base_layers[]` (e.g., OSM, satellite)
+- `overlay_layers[]` (track heatmap, markers, optional tiles)
+- `tile_count_estimate`, `byte_estimate`
+- `status` (`queued|downloading|ready|failed|canceled`)
+
+Each manifest points to downloaded tile and overlay records. Keep manifests immutable after `ready`; update by creating a new region version.
+
+### 2) Client storage (IndexedDB first)
+
+Use IndexedDB as the primary browser-side storage for both desktop WebView and server-browser sessions:
+
+- DB: `chicha_offline_v1`
+- Stores:
+  - `offline_regions` (manifest metadata)
+  - `tiles` (key: `source|z|x|y|styleVersion`, value: binary blob + metadata)
+  - `overlays` (vector chunks / compressed GeoJSON for tracks)
+  - `jobs` (download progress, retry counters)
+
+Recommended indexes:
+- `tiles.by_source_zxy`
+- `tiles.by_last_access`
+- `tiles.by_region_id`
+- `jobs.by_status`
+
+Why IndexedDB:
+- Works in browser and desktop WebView with one code path.
+- Blob storage is efficient enough for map tiles.
+- Can stream chunks and resume interrupted downloads.
+
+### 3) Server-side cache mirror
+
+For server deployments, add a disk cache so offline packs survive browser storage resets:
+
+- Directory layout:
+  - `data/offline/regions/<region_id>/manifest.json`
+  - `data/offline/tiles/<source>/<z>/<x>/<y>.tile`
+  - `data/offline/overlays/<region_id>/<chunk_id>.bin`
+- Optional metadata table in existing SQL DB:
+  - `offline_regions`
+  - `offline_region_tiles`
+  - `offline_region_overlays`
+
+Client still uses IndexedDB for fast read. Server cache is authoritative backup and supports sharing one prepared region with many users.
+
+### 4) Area selection and tile enumeration
+
+User flow:
+1. Click **Offline mode**
+2. Draw rectangle / polygon
+3. Choose zoom range and layers
+4. See estimate (`N tiles`, `~MB/GB`)
+5. Confirm download
+
+Tile enumeration algorithm:
+- Convert selected geometry to XYZ tile ranges for each zoom level.
+- If polygon mode is used, keep only tiles intersecting polygon.
+- Deduplicate by tile key across layers that share source/version.
+- Emit a deterministic queue (`source,z,x,y`) sorted by:
+  1. lower zoom first (faster coarse preview),
+  2. then distance from map center.
+
+### 5) Download pipeline (channel-oriented)
+
+Use a pipeline model for Go + frontend workers:
+
+`enumerate -> fetch -> verify -> persist -> index -> progress`
+
+Rules:
+- Bounded worker pool per source host (avoid bans).
+- Retry with exponential backoff for transient failures.
+- Verify content type + non-empty body before persist.
+- Persist atomically (temp key/file then commit).
+- Progress events over WebSocket:
+  - `offline_job_started`
+  - `offline_tile_saved`
+  - `offline_overlay_saved`
+  - `offline_job_failed`
+  - `offline_job_completed`
+
+### 6) Read path in offline mode
+
+At render time:
+1. Try IndexedDB tile/overlay.
+2. If miss and server mode enabled: ask server offline cache endpoint.
+3. If still miss and online allowed: fetch network and optionally backfill cache.
+4. If strict offline enabled: return explicit placeholder + log miss counter.
+
+This keeps behavior explicit and debuggable.
+
+### 7) Eviction and quotas
+
+Required controls:
+- Global byte quota for IndexedDB cache.
+- Optional per-region quota.
+- LRU eviction on `tiles.by_last_access`.
+- “Pin region” flag to prevent eviction.
+- Pre-download warning if estimated size exceeds remaining budget.
+
+### 8) Overlay/track offline strategy
+
+Tracks should not rely on live API when region is offline-ready.
+
+Recommended approach:
+- During region download, query track points intersecting selected geometry.
+- Chunk by geohash/S2 cell or tile-aligned vector chunks.
+- Store compressed payload (gzip/brotli) in `overlays`.
+- Build local spatial index (`cell_id -> chunk_ids`).
+
+Render path loads only visible chunks for current viewport.
+
+### 9) Minimal incremental implementation plan
+
+Phase 1:
+- Rectangle selection, base map tiles only, IndexedDB storage, manual delete.
+
+Phase 2:
+- Add overlays/tracks download and local chunk index.
+
+Phase 3:
+- Add server disk mirror and rehydrate endpoint.
+
+Phase 4:
+- Add polygon selection, pinning, quota UI, and integrity checker.
+
+### 10) API contracts to add
+
+- `POST /api/offline/estimate`
+  - input: bbox/polygon + zooms + layers
+  - output: tile count + byte estimate
+- `POST /api/offline/jobs`
+  - start download job
+- `GET /api/offline/jobs/:id`
+  - progress state
+- `DELETE /api/offline/regions/:id`
+  - delete region
+- `GET /api/offline/tiles/:source/:z/:x/:y`
+  - server cache fallback
+
+### 11) Why this architecture fits the current project
+
+- Keeps one UX across desktop and server variants.
+- Uses web-standard client storage (IndexedDB) with no platform-specific branching.
+- Preserves fast startup and predictable behavior during no-network operation.
+- Scales from single-user desktop to multi-user hosted server.
+
+---
+
 ## History and contributors
 
 This project was conceived to grant people a clear and immediate understanding of radiation safety in the very places they inhabit—where they reside, labor, cultivate the land, and draw water.

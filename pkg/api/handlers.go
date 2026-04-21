@@ -59,6 +59,7 @@ func NewHandler(db *database.Database, dbType string, archive *jsonarchive.Gener
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api", h.handleOverview)
 	mux.HandleFunc("/api/latest", h.handleLatestNearby)
+	mux.HandleFunc("/api/offline/estimate", h.handleOfflineEstimate)
 	mux.HandleFunc("/api/tracks", h.handleTracksList)
 	mux.HandleFunc("/api/tracks/index/", h.handleTrackDataByIndex)
 	mux.HandleFunc("/api/tracks/years/", h.handleTracksByYear)
@@ -328,6 +329,11 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 				"method":      "GET",
 				"path":        "/api/tracks/months/{year}/{month}",
 				"description": "Lists all tracks for a calendar month without pagination.",
+			},
+			"offlineEstimate": map[string]any{
+				"method":      "POST",
+				"path":        "/api/offline/estimate",
+				"description": "Estimates how many XYZ tiles are needed for a selected bbox and zoom range, plus rough storage size.",
 			},
 		}
 		if h.Archive != nil {
