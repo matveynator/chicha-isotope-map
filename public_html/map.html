@@ -3819,6 +3819,160 @@ document.addEventListener('DOMContentLoaded', function () {
   setInterval(adjustMarkerRadius, 60 * 1000);
 
   /**
+   * Offline selection control keeps region bounds and zoom range explicit
+   * before the user starts any heavy download workflow.
+   */
+  function createOfflineSelectionControl() {
+    if (isTrackView) return;
+
+    const offlineSelectionModel = {
+      minLat: 0,
+      minLon: 0,
+      maxLat: 0,
+      maxLon: 0,
+      zoomMin: 6,
+      zoomMax: 12,
+      isExpanded: false,
+      isBusy: false,
+      statusText: '',
+    };
+
+    const OfflineSelectionControl = L.Control.extend({
+      onAdd() {
+        const controlNode = L.DomUtil.create('div', 'leaflet-control-layers');
+        controlNode.style.padding = '6px 8px';
+        controlNode.style.minWidth = '220px';
+        controlNode.innerHTML = `
+          <button id="offlineToggleButton" type="button" style="width:100%;">Offline area</button>
+          <div id="offlineSelectionPanel" style="display:none; margin-top:8px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+              <label style="display:flex; flex-direction:column;">Min lat<input id="offlineMinLatInput" type="number" step="0.000001"></label>
+              <label style="display:flex; flex-direction:column;">Min lon<input id="offlineMinLonInput" type="number" step="0.000001"></label>
+              <label style="display:flex; flex-direction:column;">Max lat<input id="offlineMaxLatInput" type="number" step="0.000001"></label>
+              <label style="display:flex; flex-direction:column;">Max lon<input id="offlineMaxLonInput" type="number" step="0.000001"></label>
+              <label style="display:flex; flex-direction:column;">Zoom min<input id="offlineZoomMinInput" type="number" min="0" max="22" step="1"></label>
+              <label style="display:flex; flex-direction:column;">Zoom max<input id="offlineZoomMaxInput" type="number" min="0" max="22" step="1"></label>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:8px;">
+              <button id="offlineUseViewButton" type="button" style="flex:1;">Use current view</button>
+              <button id="offlineEstimateButton" type="button" style="flex:1;">Estimate</button>
+            </div>
+            <div id="offlineEstimateStatus" style="margin-top:6px; font-size:var(--font-size-sm);"></div>
+          </div>
+        `;
+
+        const toggleButtonNode = controlNode.querySelector('#offlineToggleButton');
+        const panelNode = controlNode.querySelector('#offlineSelectionPanel');
+        const minLatInputNode = controlNode.querySelector('#offlineMinLatInput');
+        const minLonInputNode = controlNode.querySelector('#offlineMinLonInput');
+        const maxLatInputNode = controlNode.querySelector('#offlineMaxLatInput');
+        const maxLonInputNode = controlNode.querySelector('#offlineMaxLonInput');
+        const zoomMinInputNode = controlNode.querySelector('#offlineZoomMinInput');
+        const zoomMaxInputNode = controlNode.querySelector('#offlineZoomMaxInput');
+        const useViewButtonNode = controlNode.querySelector('#offlineUseViewButton');
+        const estimateButtonNode = controlNode.querySelector('#offlineEstimateButton');
+        const statusNode = controlNode.querySelector('#offlineEstimateStatus');
+
+        function formatCoordinateText(coordinateNumber) {
+          return Number(coordinateNumber).toFixed(6);
+        }
+
+        function readModelFromInputs() {
+          offlineSelectionModel.minLat = Number(minLatInputNode.value);
+          offlineSelectionModel.minLon = Number(minLonInputNode.value);
+          offlineSelectionModel.maxLat = Number(maxLatInputNode.value);
+          offlineSelectionModel.maxLon = Number(maxLonInputNode.value);
+          offlineSelectionModel.zoomMin = Number(zoomMinInputNode.value);
+          offlineSelectionModel.zoomMax = Number(zoomMaxInputNode.value);
+        }
+
+        function applyCurrentMapViewToModel() {
+          const mapBounds = map.getBounds();
+          const currentZoomLevel = map.getZoom();
+          offlineSelectionModel.minLat = mapBounds.getSouth();
+          offlineSelectionModel.minLon = mapBounds.getWest();
+          offlineSelectionModel.maxLat = mapBounds.getNorth();
+          offlineSelectionModel.maxLon = mapBounds.getEast();
+          offlineSelectionModel.zoomMin = Math.max(0, currentZoomLevel - 2);
+          offlineSelectionModel.zoomMax = Math.min(22, currentZoomLevel + 2);
+        }
+
+        function renderOfflineSelectionControl() {
+          panelNode.style.display = offlineSelectionModel.isExpanded ? 'block' : 'none';
+          minLatInputNode.value = formatCoordinateText(offlineSelectionModel.minLat);
+          minLonInputNode.value = formatCoordinateText(offlineSelectionModel.minLon);
+          maxLatInputNode.value = formatCoordinateText(offlineSelectionModel.maxLat);
+          maxLonInputNode.value = formatCoordinateText(offlineSelectionModel.maxLon);
+          zoomMinInputNode.value = String(offlineSelectionModel.zoomMin);
+          zoomMaxInputNode.value = String(offlineSelectionModel.zoomMax);
+          toggleButtonNode.textContent = offlineSelectionModel.isExpanded ? 'Hide offline area' : 'Offline area';
+          estimateButtonNode.disabled = offlineSelectionModel.isBusy;
+          useViewButtonNode.disabled = offlineSelectionModel.isBusy;
+          statusNode.textContent = offlineSelectionModel.statusText;
+        }
+
+        async function estimateCurrentSelection() {
+          readModelFromInputs();
+          offlineSelectionModel.isBusy = true;
+          offlineSelectionModel.statusText = 'Estimating…';
+          renderOfflineSelectionControl();
+
+          try {
+            const response = await fetch('/api/offline/estimate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                minLat: offlineSelectionModel.minLat,
+                minLon: offlineSelectionModel.minLon,
+                maxLat: offlineSelectionModel.maxLat,
+                maxLon: offlineSelectionModel.maxLon,
+                zoomMin: offlineSelectionModel.zoomMin,
+                zoomMax: offlineSelectionModel.zoomMax,
+                baseLayers: [getActiveBaseLayerName()],
+              }),
+            });
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(errorText || ('HTTP ' + response.status));
+            }
+            const estimatePayload = await response.json();
+            offlineSelectionModel.statusText = 'Tiles: ' + estimatePayload.tileCount + ' • Size: ~' + estimatePayload.estimatedMiB + ' MiB';
+          } catch (requestError) {
+            offlineSelectionModel.statusText = 'Estimate failed: ' + (requestError && requestError.message ? requestError.message : 'unknown error');
+          } finally {
+            offlineSelectionModel.isBusy = false;
+            renderOfflineSelectionControl();
+          }
+        }
+
+        toggleButtonNode.addEventListener('click', function () {
+          offlineSelectionModel.isExpanded = !offlineSelectionModel.isExpanded;
+          renderOfflineSelectionControl();
+        });
+        useViewButtonNode.addEventListener('click', function () {
+          applyCurrentMapViewToModel();
+          offlineSelectionModel.statusText = '';
+          renderOfflineSelectionControl();
+        });
+        estimateButtonNode.addEventListener('click', estimateCurrentSelection);
+        minLatInputNode.addEventListener('change', readModelFromInputs);
+        minLonInputNode.addEventListener('change', readModelFromInputs);
+        maxLatInputNode.addEventListener('change', readModelFromInputs);
+        maxLonInputNode.addEventListener('change', readModelFromInputs);
+        zoomMinInputNode.addEventListener('change', readModelFromInputs);
+        zoomMaxInputNode.addEventListener('change', readModelFromInputs);
+
+        L.DomEvent.disableClickPropagation(controlNode);
+        applyCurrentMapViewToModel();
+        renderOfflineSelectionControl();
+        return controlNode;
+      }
+    });
+
+    new OfflineSelectionControl({ position: 'topleft' }).addTo(map);
+  }
+
+  /**
    * Build a Leaflet control with three check-boxes that filter markers
    * by recorded speed. Labels now show speed in km/h instead of m/s.
    * Default state (when realtime exists): Safecast heart on, ✈️ off, 🚗 on, 🚶 on.
@@ -3936,6 +4090,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
   // Call it
+  createOfflineSelectionControl();
   createSpeedFilterControls();   
   createDateRangeSlider();
 
