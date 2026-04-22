@@ -2822,6 +2822,27 @@ const mapCacheLabelFallbacks = {
   cancel: 'Cancel',
   reset_button: 'Reset',
 };
+const mapCacheTranslationKeys = Object.keys(mapCacheLabelFallbacks).map(function(name) {
+  return 'map_cache_' + name;
+});
+
+function ensureMapCacheTranslationsForAllLanguages() {
+  if (!translations || typeof translations !== 'object') {
+    return;
+  }
+  const englishBundle = translations.en || {};
+  Object.keys(translations).forEach(function(languageCode) {
+    const languageBundle = translations[languageCode];
+    if (!languageBundle || typeof languageBundle !== 'object') {
+      return;
+    }
+    mapCacheTranslationKeys.forEach(function(translationKey) {
+      if (!languageBundle[translationKey]) {
+        languageBundle[translationKey] = englishBundle[translationKey] || translationKey.replace(/^map_cache_/, '');
+      }
+    });
+  });
+}
 
 function mapCacheText(key) {
   const translated = translate('map_cache_' + key);
@@ -2846,6 +2867,7 @@ function applyMapCacheLocalization() {
   }
 }
 
+ensureMapCacheTranslationsForAllLanguages();
 applyMapCacheLocalization();
 
 function openMapCacheResetConfirmModal() {
@@ -3106,6 +3128,12 @@ async function renderOfflineCacheStatus() {
   const onlineLabel = navigator.onLine ? mapCacheText('online') : mapCacheText('offline');
   const modeLabel = latestCacheTrafficMode === 'cache' ? mapCacheText('mode_cache_hit') : latestCacheTrafficMode === 'mixed' ? mapCacheText('mode_cache_mixed') : mapCacheText('mode_network');
   const desktopMode = !!window.desktopWebViewMode;
+  if (desktopMode && !desktopRuntimeStatusLine) {
+    const statusLineNode = document.getElementById('desktopStatusLine');
+    if (statusLineNode && statusLineNode.textContent) {
+      desktopRuntimeStatusLine = statusLineNode.textContent.trim();
+    }
+  }
   const tileTotal = stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox;
   const measuredTotal = Math.max(stats.total, indexedDBUsageBytes);
   const effectiveTotal = desktopMode ? Math.max(tileTotal, indexedDBUsageBytes) : measuredTotal;
