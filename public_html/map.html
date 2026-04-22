@@ -2870,6 +2870,15 @@ async function recordTileCacheAccess(resultType, downloadedTileCount) {
   await updateOfflineCacheStats(stats);
 }
 
+async function recordDownloadedTiles(downloadedTileCount) {
+  if (!Number.isFinite(downloadedTileCount) || downloadedTileCount <= 0) {
+    return;
+  }
+  const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
+  stats.tileDownloads = (Number(stats.tileDownloads) || 0) + downloadedTileCount;
+  await updateOfflineCacheStats(stats);
+}
+
 async function applyMarkerStatsDelta(previousBytes, nextBytes) {
   const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
   const safePrev = Math.max(0, Number(previousBytes) || 0);
@@ -2886,19 +2895,23 @@ async function renderOfflineCacheStatus() {
   const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
   offlineCacheStatsSnapshot = stats;
   let quotaBytes = 0;
+  let indexedDBUsageBytes = 0;
   if (navigator.storage && navigator.storage.estimate) {
     try {
       const estimate = await navigator.storage.estimate();
       quotaBytes = Number(estimate && estimate.quota) || 0;
+      indexedDBUsageBytes = Number(estimate && estimate.usageDetails && estimate.usageDetails.indexedDB) || Number(estimate && estimate.usage) || 0;
     } catch (error) {
       quotaBytes = 0;
+      indexedDBUsageBytes = 0;
     }
   }
   const onlineLabel = navigator.onLine ? 'online' : 'offline';
   const modeLabel = latestCacheTrafficMode === 'cache' ? 'cache hit' : latestCacheTrafficMode === 'mixed' ? 'cache+network' : 'network';
   const desktopMode = !!window.desktopWebViewMode;
   const tileTotal = stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox;
-  const effectiveTotal = desktopMode ? tileTotal : stats.total;
+  const measuredTotal = Math.max(stats.total, indexedDBUsageBytes);
+  const effectiveTotal = desktopMode ? Math.max(tileTotal, indexedDBUsageBytes) : measuredTotal;
   const markersLine = desktopMode ? '' : ` · Markers ${formatBytes(stats.markers)}`;
   const hitMissLine = `${stats.tileHits}/${stats.tileMisses}`;
   const downloadsLine = Number(stats.tileDownloads) || 0;
@@ -2952,15 +2965,20 @@ L.CachedTileLayer = L.TileLayer.extend({
 
     async function cacheTileInBackground() {
       try {
-        const response = await fetch(tileURL, { mode: 'no-cors', cache: 'no-store' });
+        let response = null;
+        try {
+          response = await fetch(tileURL, { mode: 'cors', cache: 'no-store' });
+        } catch (corsError) {
+          response = await fetch(tileURL, { mode: 'no-cors', cache: 'no-store' });
+        }
         const blob = await response.blob();
+        const previousTile = await offlineCacheStorage.loadTile(tileKey);
         if (!blob || blob.size <= 0) {
           return;
         }
-        const previousTile = await offlineCacheStorage.loadTile(tileKey);
         await offlineCacheStorage.saveTile({ key: tileKey, provider: providerName, blob: blob, byteSize: blob.size, savedAt: Date.now() });
         await applyTileStatsDelta(providerName, previousTile ? previousTile.byteSize : 0, blob.size);
-        await recordTileCacheAccess('miss', previousTile ? 0 : 1);
+        await recordDownloadedTiles(previousTile ? 0 : 1);
         latestCacheTrafficMode = 'network';
         renderOfflineCacheStatus();
       } catch (error) {
