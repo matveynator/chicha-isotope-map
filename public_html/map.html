@@ -2848,7 +2848,7 @@ const mapCacheLabelFallbacks = {
   provider_osm: 'OSM',
   provider_google: 'Google',
   provider_markers: 'Markers',
-  markers_cached: 'cached markers',
+  markers_cached: 'Markers',
   tiles_downloaded: 'Tiles',
   hits_misses: 'H/M',
   storage: 'Cache',
@@ -2876,9 +2876,14 @@ function ensureMapCacheTranslationsForAllLanguages() {
       return;
     }
     mapCacheTranslationKeys.forEach(function(translationKey) {
-      if (!languageBundle[translationKey]) {
-        languageBundle[translationKey] = englishBundle[translationKey] || translationKey.replace(/^map_cache_/, '');
+      if (languageBundle[translationKey]) {
+        return;
       }
+      if (translationKey === 'map_cache_markers_cached') {
+        languageBundle[translationKey] = languageBundle.map_cache_provider_markers || englishBundle.map_cache_provider_markers || mapCacheLabelFallbacks.markers_cached;
+        return;
+      }
+      languageBundle[translationKey] = englishBundle[translationKey] || translationKey.replace(/^map_cache_/, '');
     });
   });
 }
@@ -3501,7 +3506,13 @@ L.CachedTileLayer = L.TileLayer.extend({
     tileImage.setAttribute('role', 'presentation');
     const tileURL = this.getTileUrl(coords);
     const providerName = this.options.cacheProvider || 'osm';
-    const tileKey = `${providerName}:${coords.z}:${coords.x}:${coords.y}`;
+    const cacheVariantResolver = typeof this.options.cacheVariantResolver === 'function'
+      ? this.options.cacheVariantResolver
+      : null;
+    const cacheVariant = cacheVariantResolver ? (cacheVariantResolver(tileURL, coords) || '') : '';
+    const tileKey = cacheVariant
+      ? `${providerName}:${cacheVariant}:${coords.z}:${coords.x}:${coords.y}`
+      : `${providerName}:${coords.z}:${coords.x}:${coords.y}`;
     const finalize = function(error) {
       if (typeof done === 'function') {
         done(error || null, tileImage);
@@ -4600,7 +4611,10 @@ document.addEventListener('DOMContentLoaded', function () {
   osmLayer = new L.CachedTileLayer(media.matches ? osmDark : osmLight, {
     maxZoom: 18,
     attribution: '&copy; OSM contributors',
-    cacheProvider: 'osm'
+    cacheProvider: 'osm',
+    cacheVariantResolver: function(tileURL) {
+      return /cartocdn\.com\/dark_all\//.test(tileURL) ? 'dark' : 'light';
+    }
   });
 
   // Use the same satellite layer regardless of theme
