@@ -343,6 +343,28 @@ body, html {
           opacity: 0.9;
           white-space: normal;
           overflow-wrap: anywhere;
+          display: block;
+          text-align: center;
+          margin: 1px 0;
+        }
+
+        .cache-connectivity-dot {
+          display: inline-block;
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          margin-right: 5px;
+          vertical-align: middle;
+        }
+
+        .cache-connectivity-dot.online {
+          background: #2fbf5f;
+          box-shadow: 0 0 0 1px rgba(47, 191, 95, 0.35);
+        }
+
+        .cache-connectivity-dot.offline {
+          background: #e34d4d;
+          box-shadow: 0 0 0 1px rgba(227, 77, 77, 0.35);
         }
 
         #mapCacheStatus .cache-reset-link {
@@ -3106,6 +3128,34 @@ async function applyMarkerStatsDelta(previousBytes, nextBytes) {
   await updateOfflineCacheStats(stats);
 }
 
+function splitCacheStatusSegmentsIntoBalancedLines(segmentEntries) {
+  if (!Array.isArray(segmentEntries) || segmentEntries.length === 0) {
+    return [''];
+  }
+  const totalLength = segmentEntries.reduce(function(accumulator, segmentEntry) {
+    return accumulator + (segmentEntry.textLength || 0);
+  }, 0) + Math.max(0, segmentEntries.length - 1) * 3;
+  const targetLength = Math.ceil(totalLength / 2);
+  const firstLineSegments = [];
+  const secondLineSegments = [];
+  let currentLength = 0;
+
+  segmentEntries.forEach(function(segmentEntry) {
+    const entryLength = (segmentEntry.textLength || 0) + (firstLineSegments.length > 0 ? 3 : 0);
+    if (currentLength < targetLength || firstLineSegments.length === 0) {
+      firstLineSegments.push(segmentEntry.html);
+      currentLength += entryLength;
+      return;
+    }
+    secondLineSegments.push(segmentEntry.html);
+  });
+
+  if (secondLineSegments.length === 0) {
+    return [firstLineSegments.join(' · ')];
+  }
+  return [firstLineSegments.join(' · '), secondLineSegments.join(' · ')];
+}
+
 async function renderOfflineCacheStatus() {
   if (!mapCacheStatusNode) {
     return;
@@ -3138,9 +3188,53 @@ async function renderOfflineCacheStatus() {
   const effectiveTotal = desktopMode ? Math.max(tileTotal, indexedDBUsageBytes) : measuredTotal;
   const hitMissLine = `${stats.tileHits}/${stats.tileMisses}`;
   const downloadsLine = Number(stats.tileDownloads) || 0;
-  const desktopStatusPrefix = desktopRuntimeStatusLine ? `${desktopRuntimeStatusLine} · ` : '';
-  mapCacheStatusNode.innerHTML =
-    `<div class="cache-inline-line">${desktopStatusPrefix}${mapCacheText('map')}: ${onlineLabel} · ${modeLabel} · ${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)} · ${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}${desktopMode ? '' : ` · ${mapCacheText('provider_markers')} ${formatBytes(stats.markers)}`} · ${mapCacheText('tiles_downloaded')} ↓${downloadsLine} · ${mapCacheText('hits_misses')} ${hitMissLine} · ${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')} <span id="resetMapCacheLink" class="cache-reset-link">${mapCacheText('reset')}</span></div>`;
+  const cacheStatusSegments = [];
+  cacheStatusSegments.push({
+    html: `<span class="cache-connectivity-dot ${navigator.onLine ? 'online' : 'offline'}" aria-hidden="true"></span>${mapCacheText('map')}: ${onlineLabel}`,
+    textLength: (`${mapCacheText('map')}: ${onlineLabel}`).length,
+  });
+  cacheStatusSegments.push({ html: modeLabel, textLength: modeLabel.length });
+  cacheStatusSegments.push({
+    html: `${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)}`,
+    textLength: (`${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)}`).length,
+  });
+  cacheStatusSegments.push({
+    html: `${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}`,
+    textLength: (`${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}`).length,
+  });
+  if (!desktopMode) {
+    cacheStatusSegments.push({
+      html: `${mapCacheText('provider_markers')} ${formatBytes(stats.markers)}`,
+      textLength: (`${mapCacheText('provider_markers')} ${formatBytes(stats.markers)}`).length,
+    });
+  }
+  cacheStatusSegments.push({
+    html: `${mapCacheText('tiles_downloaded')} ↓${downloadsLine}`,
+    textLength: (`${mapCacheText('tiles_downloaded')} ↓${downloadsLine}`).length,
+  });
+  cacheStatusSegments.push({
+    html: `${mapCacheText('hits_misses')} ${hitMissLine}`,
+    textLength: (`${mapCacheText('hits_misses')} ${hitMissLine}`).length,
+  });
+  cacheStatusSegments.push({
+    html: `${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`,
+    textLength: (`${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`).length,
+  });
+  cacheStatusSegments.push({
+    html: `<span id="resetMapCacheLink" class="cache-reset-link">${mapCacheText('reset')}</span>`,
+    textLength: mapCacheText('reset').length,
+  });
+  if (desktopMode && desktopRuntimeStatusLine) {
+    cacheStatusSegments.push({
+      html: desktopRuntimeStatusLine,
+      textLength: desktopRuntimeStatusLine.length,
+    });
+  }
+
+  const balancedStatusLines = splitCacheStatusSegmentsIntoBalancedLines(cacheStatusSegments);
+  mapCacheStatusNode.innerHTML = balancedStatusLines
+    .map(function(statusLine) { return `<div class="cache-inline-line">${statusLine}</div>`; })
+    .join('');
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
     resetLink.onclick = function() {
