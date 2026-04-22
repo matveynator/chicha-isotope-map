@@ -2090,39 +2090,26 @@ function getRadius(doseRate, zoomLevel) {
 
 const MARKER_CONTRAST_RING_COLOR = '#000000';
 const MARKER_CONTRAST_RING_WIDTH = 0.5;
-const MARKER_CONTRAST_MIN_ZOOM = 4;
 
 function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLevel) {
   const markerRadius = getRadius(doseRate, zoomLevel);
-  const markerOpacity = getFillOpacity(speed) + 0.1;
   const markerFillOpacity = getFillOpacity(speed);
   const markerColor = getGradientColor(doseRate);
-  const markerLayers = [];
 
-  if (zoomLevel > MARKER_CONTRAST_MIN_ZOOM) {
-    const contrastRing = L.circleMarker([lat, lon], {
-      radius: markerRadius + MARKER_CONTRAST_RING_WIDTH,
-      color: MARKER_CONTRAST_RING_COLOR,
-      weight: MARKER_CONTRAST_RING_WIDTH,
-      opacity: 1,
-      fillOpacity: 0
-    });
-    markerLayers.push(contrastRing);
-  }
-
+  // Keep outline on the same path as fill so sub-pixel zoom rendering
+  // cannot hide the stroke on specific tile layers.
   const doseMarker = L.circleMarker([lat, lon], {
     radius: markerRadius,
     fillColor: markerColor,
-    color: markerColor,
-    weight: 1,
-    opacity: markerOpacity,
+    color: MARKER_CONTRAST_RING_COLOR,
+    weight: MARKER_CONTRAST_RING_WIDTH,
+    opacity: 1,
     fillOpacity: markerFillOpacity
   });
-  markerLayers.push(doseMarker);
 
-  const markerGroup = L.featureGroup(markerLayers);
-  markerGroup.options = { radius: markerRadius };
-  return markerGroup;
+  // Preserve radius access pattern used by overlap-pruning logic.
+  doseMarker.options.radius = markerRadius;
+  return doseMarker;
 }
 
 // Live markers need decluttering at low zoom so they never stack and look like
