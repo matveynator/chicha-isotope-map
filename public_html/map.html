@@ -2822,6 +2822,7 @@ const offlineCacheStoreMeta = 'meta';
 let latestCacheTrafficMode = 'network';
 let offlineCacheStatsSnapshot = null;
 let desktopRuntimeStatusLine = '';
+let internetConnectivityState = navigator.onLine ? 'online' : 'offline';
 
 const mapCacheLabelFallbacks = {
   map: 'Map',
@@ -2865,6 +2866,49 @@ function ensureMapCacheTranslationsForAllLanguages() {
   });
 }
 
+function updateInternetConnectivityState(isInternetOnline) {
+  const nextState = isInternetOnline ? 'online' : 'offline';
+  if (internetConnectivityState === nextState) {
+    return;
+  }
+  internetConnectivityState = nextState;
+  latestCacheTrafficMode = isInternetOnline ? 'network' : 'cache';
+  renderOfflineCacheStatus();
+}
+
+function isInternetOnlineNow() {
+  return internetConnectivityState === 'online';
+}
+
+function probeInternetConnectivityOnce() {
+  return new Promise(function(resolve) {
+    const testImage = new Image();
+    let resolved = false;
+    const finish = function(result) {
+      if (resolved) return;
+      resolved = true;
+      resolve(result);
+    };
+    const timeoutHandle = setTimeout(function() {
+      finish(false);
+    }, 1400);
+    testImage.onload = function() {
+      clearTimeout(timeoutHandle);
+      finish(true);
+    };
+    testImage.onerror = function() {
+      clearTimeout(timeoutHandle);
+      finish(false);
+    };
+    testImage.src = 'https://tile.openstreetmap.org/0/0/0.png?ping=' + Date.now();
+  });
+}
+
+async function refreshInternetConnectivityState() {
+  const probeResult = await probeInternetConnectivityOnce();
+  updateInternetConnectivityState(probeResult);
+}
+
 function mapCacheText(key) {
   const translated = translate('map_cache_' + key);
   if (translated && translated !== 'map_cache_' + key) {
@@ -2890,6 +2934,10 @@ function applyMapCacheLocalization() {
 
 ensureMapCacheTranslationsForAllLanguages();
 applyMapCacheLocalization();
+refreshInternetConnectivityState().catch(function() {});
+setInterval(function() {
+  refreshInternetConnectivityState().catch(function() {});
+}, 5000);
 
 function openMapCacheResetConfirmModal() {
   if (!mapCacheResetConfirmModalNode) {
@@ -3174,7 +3222,7 @@ async function renderOfflineCacheStatus() {
       indexedDBUsageBytes = 0;
     }
   }
-  const onlineLabel = navigator.onLine ? mapCacheText('online') : mapCacheText('offline');
+  const onlineLabel = isInternetOnlineNow() ? mapCacheText('online') : mapCacheText('offline');
   const modeLabel = latestCacheTrafficMode === 'cache' ? mapCacheText('mode_cache_hit') : latestCacheTrafficMode === 'mixed' ? mapCacheText('mode_cache_mixed') : mapCacheText('mode_network');
   const desktopMode = !!window.desktopWebViewMode;
   if (desktopMode && !desktopRuntimeStatusLine) {
@@ -3190,7 +3238,7 @@ async function renderOfflineCacheStatus() {
   const downloadsLine = Number(stats.tileDownloads) || 0;
   const cacheStatusSegments = [];
   cacheStatusSegments.push({
-    html: `<span class="cache-connectivity-dot ${navigator.onLine ? 'online' : 'offline'}" aria-hidden="true"></span>${mapCacheText('map')}: ${onlineLabel}`,
+    html: `<span class="cache-connectivity-dot ${isInternetOnlineNow() ? 'online' : 'offline'}" aria-hidden="true"></span>${mapCacheText('map')}: ${onlineLabel}`,
     textLength: (`${mapCacheText('map')}: ${onlineLabel}`).length,
   });
   cacheStatusSegments.push({ html: modeLabel, textLength: modeLabel.length });
@@ -3244,12 +3292,11 @@ async function renderOfflineCacheStatus() {
 }
 
 window.addEventListener('online', function() {
-  latestCacheTrafficMode = 'network';
-  renderOfflineCacheStatus();
+  updateInternetConnectivityState(true);
+  refreshInternetConnectivityState().catch(function() {});
 });
 window.addEventListener('offline', function() {
-  latestCacheTrafficMode = 'cache';
-  renderOfflineCacheStatus();
+  updateInternetConnectivityState(false);
 });
 
 L.CachedTileLayer = L.TileLayer.extend({
@@ -3289,6 +3336,7 @@ L.CachedTileLayer = L.TileLayer.extend({
         renderOfflineCacheStatus();
       } catch (error) {
         // Keep rendering path resilient: tile draw must not depend on cache write success.
+        updateInternetConnectivityState(false);
       }
     }
 
@@ -3296,13 +3344,13 @@ L.CachedTileLayer = L.TileLayer.extend({
       const cachedTile = await offlineCacheStorage.loadTile(tileKey);
       if (cachedTile && cachedTile.blob) {
         await recordTileCacheAccess('hit', 0);
-        latestCacheTrafficMode = navigator.onLine ? 'mixed' : 'cache';
+        latestCacheTrafficMode = isInternetOnlineNow() ? 'mixed' : 'cache';
         tileImage.src = URL.createObjectURL(cachedTile.blob);
         renderOfflineCacheStatus();
         return;
       }
       await recordTileCacheAccess('miss', 0);
-      if (!navigator.onLine) {
+      if (!isInternetOnlineNow()) {
         latestCacheTrafficMode = 'cache';
         renderOfflineCacheStatus();
         finalize(new Error('tile missing in offline cache'));
@@ -3313,11 +3361,12 @@ L.CachedTileLayer = L.TileLayer.extend({
       cacheTileInBackground();
       renderOfflineCacheStatus();
     })().catch(function(error) {
-      if (!navigator.onLine) {
+      if (!isInternetOnlineNow()) {
         latestCacheTrafficMode = 'cache';
       } else {
         // Fallback to direct tile URL when cache logic fails in WebView/CORS edge cases.
         tileImage.src = tileURL;
+        refreshInternetConnectivityState().catch(function() {});
       }
       renderOfflineCacheStatus();
     });
@@ -5777,7 +5826,8 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     await applyMarkerStatsDelta(previousEntry ? previousEntry.byteSize : 0, byteSize);
   }
 
-  if (!navigator.onLine) {
+  const shouldReadMarkerStreamFromOfflineCache = !isInternetOnlineNow() && !window.desktopWebViewMode;
+  if (shouldReadMarkerStreamFromOfflineCache) {
     if (!enableMarkerStreamCache) {
       if (handlers && typeof handlers.onError === 'function') {
         handlers.onError();
