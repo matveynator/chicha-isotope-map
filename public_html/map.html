@@ -2528,6 +2528,9 @@ function parsePlaybackParam(raw) {
 
 // Helper keeps URL state in sync with the currently active base layer.
 function getActiveBaseLayerName() {
+  if (offlineOsmLayer && map.hasLayer(offlineOsmLayer)) {
+    return 'Offline OSM';
+  }
   if (mapboxSatellite && map.hasLayer(mapboxSatellite)) {
     return 'Mapbox Satellite';
   }
@@ -2651,7 +2654,7 @@ var markerFilterState = null;
 // Guard async callbacks so stale marker loads cannot mutate shared loading UI.
 var markerLoadToken = 0;
 var isTrackView = false;
-var osmLayer, googleSatellite, mapboxSatellite;
+var osmLayer, googleSatellite, mapboxSatellite, offlineOsmLayer;
 var trackBounds;
 var currentTrackID = null;
 const shortLinkBox = document.getElementById('shortLinkDisplay');
@@ -2670,6 +2673,166 @@ let storedUserCenter = null;
 let waitForDangerFit = false;
 // Cache short link payloads by target URL so play/pause toggles reuse two entries.
 const shortLinkCache = new Map();
+const offlineTileDbName = 'cim_offline_tiles_v1';
+const offlineTileStoreName = 'osm_tiles';
+const offlineTileSourceTemplate = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+// IndexedDB keeps downloaded OSM tiles local so the offline layer can render
+// without hitting the network once a region has been cached.
+function openOfflineTileDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(offlineTileDbName, 1);
+    request.onupgradeneeded = function(event) {
+      const database = event.target.result;
+      if (!database.objectStoreNames.contains(offlineTileStoreName)) {
+        database.createObjectStore(offlineTileStoreName);
+      }
+    };
+    request.onsuccess = function(event) {
+      resolve(event.target.result);
+    };
+    request.onerror = function(event) {
+      reject(event.target.error || new Error('failed to open offline tile database'));
+    };
+  });
+}
+
+function buildOfflineTileKey(z, x, y) {
+  return `${z}/${x}/${y}`;
+}
+
+async function readOfflineTileBlob(z, x, y) {
+  const database = await openOfflineTileDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(offlineTileStoreName, 'readonly');
+    const store = transaction.objectStore(offlineTileStoreName);
+    const request = store.get(buildOfflineTileKey(z, x, y));
+    request.onsuccess = function() {
+      resolve(request.result || null);
+    };
+    request.onerror = function(event) {
+      reject(event.target.error || new Error('failed to read offline tile'));
+    };
+  });
+}
+
+async function writeOfflineTileBlob(z, x, y, blob) {
+  const database = await openOfflineTileDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(offlineTileStoreName, 'readwrite');
+    const store = transaction.objectStore(offlineTileStoreName);
+    const request = store.put(blob, buildOfflineTileKey(z, x, y));
+    request.onsuccess = function() {
+      resolve();
+    };
+    request.onerror = function(event) {
+      reject(event.target.error || new Error('failed to store offline tile'));
+    };
+  });
+}
+
+function buildOfflineTileUrl(z, x, y) {
+  return offlineTileSourceTemplate
+    .replace('{z}', String(z))
+    .replace('{x}', String(x))
+    .replace('{y}', String(y));
+}
+
+async function fetchAndCacheOfflineTile(z, x, y) {
+  const tileResponse = await fetch(buildOfflineTileUrl(z, x, y), { mode: 'cors', cache: 'no-store' });
+  if (!tileResponse.ok) {
+    throw new Error(`tile download failed with ${tileResponse.status}`);
+  }
+  const tileBlob = await tileResponse.blob();
+  await writeOfflineTileBlob(z, x, y, tileBlob);
+  return tileBlob;
+}
+
+function buildOfflineTileLayer() {
+  return L.tileLayer('', {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap contributors (offline cache)',
+    tileSize: 256,
+    noWrap: false,
+    bounds: [[-85.05112878, -180], [85.05112878, 180]]
+  });
+}
+
+function latLngToTileXY(lat, lon, zoom) {
+  const latClamped = Math.max(Math.min(lat, 85.05112878), -85.05112878);
+  const tilesPerAxis = Math.pow(2, zoom);
+  const xFloat = ((lon + 180) / 360) * tilesPerAxis;
+  const latRad = latClamped * Math.PI / 180;
+  const yFloat = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * tilesPerAxis;
+  return {
+    x: Math.floor(Math.max(0, Math.min(tilesPerAxis - 1, xFloat))),
+    y: Math.floor(Math.max(0, Math.min(tilesPerAxis - 1, yFloat))),
+  };
+}
+
+function collectTilesForBounds(bounds, minZoom, maxZoom) {
+  const tileEntries = [];
+  for (let zoom = minZoom; zoom <= maxZoom; zoom += 1) {
+    const southWest = latLngToTileXY(bounds.getSouth(), bounds.getWest(), zoom);
+    const northEast = latLngToTileXY(bounds.getNorth(), bounds.getEast(), zoom);
+    const minX = Math.min(southWest.x, northEast.x);
+    const maxX = Math.max(southWest.x, northEast.x);
+    const minY = Math.min(southWest.y, northEast.y);
+    const maxY = Math.max(southWest.y, northEast.y);
+    for (let tileX = minX; tileX <= maxX; tileX += 1) {
+      for (let tileY = minY; tileY <= maxY; tileY += 1) {
+        tileEntries.push({ z: zoom, x: tileX, y: tileY });
+      }
+    }
+  }
+  return tileEntries;
+}
+
+async function downloadOfflineTilesForCurrentView() {
+  if (!map) return;
+  const viewBounds = map.getBounds();
+  const startZoom = Math.max(0, map.getZoom());
+  const endZoom = 18;
+  const tileEntries = collectTilesForBounds(viewBounds, startZoom, endZoom);
+  if (tileEntries.length === 0) {
+    return;
+  }
+  const approved = window.confirm(
+    `Download ${tileEntries.length} OSM tiles for current area (zoom ${startZoom}-${endZoom})?\n\n` +
+    'Tip: for region packages use https://download.geofabrik.de/'
+  );
+  if (!approved) {
+    return;
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+  const workerCount = 8;
+  const queue = tileEntries.slice();
+  const workers = [];
+  for (let index = 0; index < workerCount; index += 1) {
+    workers.push((async () => {
+      while (queue.length > 0) {
+        const tileEntry = queue.shift();
+        if (!tileEntry) {
+          return;
+        }
+        try {
+          const existingBlob = await readOfflineTileBlob(tileEntry.z, tileEntry.x, tileEntry.y);
+          if (!existingBlob) {
+            await fetchAndCacheOfflineTile(tileEntry.z, tileEntry.x, tileEntry.y);
+          }
+          successCount += 1;
+        } catch (downloadError) {
+          failCount += 1;
+          console.warn('offline tile download failed', tileEntry, downloadError);
+        }
+      }
+    })());
+  }
+  await Promise.all(workers);
+  window.alert(`Offline cache ready: ${successCount} tiles stored, ${failCount} failed.`);
+}
 
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
@@ -3712,6 +3875,45 @@ document.addEventListener('DOMContentLoaded', function () {
     attribution: '&copy; Mapbox',
     className: 'google-satellite-layer' // Reuse the satellite styling so it matches our theme tweaks.
   }) : null;
+  offlineOsmLayer = buildOfflineTileLayer();
+  offlineOsmLayer.createTile = function(coords, done) {
+    const tileImage = document.createElement('img');
+    tileImage.alt = '';
+    tileImage.setAttribute('role', 'presentation');
+    tileImage.onload = function() {
+      done(null, tileImage);
+    };
+    tileImage.onerror = function() {
+      done(new Error('offline tile unavailable'), tileImage);
+    };
+    (async () => {
+      try {
+        const cachedBlob = await readOfflineTileBlob(coords.z, coords.x, coords.y);
+        if (cachedBlob) {
+          tileImage.src = URL.createObjectURL(cachedBlob);
+          tileImage.onload = function() {
+            URL.revokeObjectURL(tileImage.src);
+            done(null, tileImage);
+          };
+          return;
+        }
+        if (!navigator.onLine) {
+          tileImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+          return;
+        }
+        const fetchedBlob = await fetchAndCacheOfflineTile(coords.z, coords.x, coords.y);
+        tileImage.src = URL.createObjectURL(fetchedBlob);
+        tileImage.onload = function() {
+          URL.revokeObjectURL(tileImage.src);
+          done(null, tileImage);
+        };
+      } catch (offlineError) {
+        console.warn('offline tile load failed', coords, offlineError);
+        tileImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+      }
+    })();
+    return tileImage;
+  };
 
   // right after creating osmLayer and googleSatellite
   const urlParams       = new URLSearchParams(window.location.search);
@@ -3721,6 +3923,8 @@ document.addEventListener('DOMContentLoaded', function () {
     startLayer = googleSatellite;
   } else if (startLayerName === 'Mapbox Satellite' && mapboxSatellite) {
     startLayer = mapboxSatellite;
+  } else if (startLayerName === 'Offline OSM') {
+    startLayer = offlineOsmLayer;
   }
 
   map = L.map('map', {
@@ -3742,7 +3946,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // Layer control
   var baseLayers = {
     "OpenStreetMap": osmLayer,
-    "Google Satellite": googleSatellite
+    "Google Satellite": googleSatellite,
+    "Offline OSM": offlineOsmLayer
   };
   if (mapboxSatellite) {
     baseLayers["Mapbox Satellite"] = mapboxSatellite;
@@ -3752,6 +3957,28 @@ document.addEventListener('DOMContentLoaded', function () {
     position: 'topleft',
     collapsed: false
   }).addTo(map);
+
+  const OfflineDownloadControl = L.Control.extend({
+    onAdd: function() {
+      const div = L.DomUtil.create('div', 'leaflet-control-layers');
+      div.style.padding = '6px 10px';
+      const button = L.DomUtil.create('button', '', div);
+      button.type = 'button';
+      button.textContent = '⬇ Offline tiles';
+      button.style.cursor = 'pointer';
+      button.style.border = 'none';
+      button.style.background = 'transparent';
+      button.style.color = 'var(--modal-text)';
+      button.style.fontWeight = '600';
+      L.DomEvent.on(button, 'click', function(event) {
+        L.DomEvent.stopPropagation(event);
+        L.DomEvent.preventDefault(event);
+        downloadOfflineTilesForCurrentView();
+      });
+      return div;
+    }
+  });
+  map.addControl(new OfflineDownloadControl({ position: 'topleft' }));
 
   // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
@@ -3808,6 +4035,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Update URL on map changes
   map.on('baselayerchange', updateUrl);
+  map.on('baselayerchange', function(event) {
+    if (event && event.name === 'Offline OSM') {
+      downloadOfflineTilesForCurrentView();
+    }
+  });
   map.on('moveend', updateUrl);
   map.on('zoomend', updateUrl);
 
@@ -6651,6 +6883,9 @@ function viewTrack(trackID) {
 
 
 function setBaseLayer(layerName) {
+  if (offlineOsmLayer && map.hasLayer(offlineOsmLayer)) {
+    map.removeLayer(offlineOsmLayer);
+  }
   if (mapboxSatellite && map.hasLayer(mapboxSatellite)) {
     map.removeLayer(mapboxSatellite);
   }
@@ -6662,6 +6897,10 @@ function setBaseLayer(layerName) {
   }
   if (layerName === 'Mapbox Satellite' && mapboxSatellite) {
     mapboxSatellite.addTo(map);
+    return;
+  }
+  if (layerName === 'Offline OSM') {
+    offlineOsmLayer.addTo(map);
     return;
   }
   if (layerName === 'Google Satellite') {
