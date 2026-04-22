@@ -2872,10 +2872,14 @@ async function renderOfflineCacheStatus() {
   }
   const onlineLabel = navigator.onLine ? 'online' : 'offline';
   const modeLabel = latestCacheTrafficMode === 'cache' ? 'cache hit' : latestCacheTrafficMode === 'mixed' ? 'cache+network' : 'network';
+  const desktopMode = !!window.desktopWebViewMode;
+  const tileTotal = stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox;
+  const effectiveTotal = desktopMode ? tileTotal : stats.total;
+  const markersLine = desktopMode ? '' : ` · Markers ${formatBytes(stats.markers)}`;
   mapCacheStatusNode.innerHTML =
     `<div class="cache-mode-line">Map mode: ${onlineLabel} (${modeLabel})</div>` +
-    `<div class="cache-meta-line">OSM ${formatBytes(stats.tiles.osm)} · Google ${formatBytes(stats.tiles.google)} · Markers ${formatBytes(stats.markers)}</div>` +
-    `<div class="cache-meta-line">Storage ${formatBytes(stats.total)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : 'unknown'} <span id="resetMapCacheLink" class="cache-reset-link">reset cache</span></div>`;
+    `<div class="cache-meta-line">OSM ${formatBytes(stats.tiles.osm)} · Google ${formatBytes(stats.tiles.google)}${markersLine}</div>` +
+    `<div class="cache-meta-line">Storage ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : 'unknown'} <span id="resetMapCacheLink" class="cache-reset-link">reset cache</span></div>`;
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
     resetLink.onclick = async function() {
@@ -2914,6 +2918,23 @@ L.CachedTileLayer = L.TileLayer.extend({
     tileImage.onload = function() { finalize(null); };
     tileImage.onerror = function() { finalize(new Error('tile load failed')); };
 
+    async function cacheTileInBackground() {
+      try {
+        const response = await fetch(tileURL, { mode: 'no-cors', cache: 'no-store' });
+        const blob = await response.blob();
+        if (!blob || blob.size <= 0) {
+          return;
+        }
+        const previousTile = await offlineCacheStorage.loadTile(tileKey);
+        await offlineCacheStorage.saveTile({ key: tileKey, provider: providerName, blob: blob, byteSize: blob.size, savedAt: Date.now() });
+        await applyTileStatsDelta(providerName, previousTile ? previousTile.byteSize : 0, blob.size);
+        latestCacheTrafficMode = 'network';
+        renderOfflineCacheStatus();
+      } catch (error) {
+        // Keep rendering path resilient: tile draw must not depend on cache write success.
+      }
+    }
+
     (async function() {
       const cachedTile = await offlineCacheStorage.loadTile(tileKey);
       if (cachedTile && cachedTile.blob) {
@@ -2928,20 +2949,18 @@ L.CachedTileLayer = L.TileLayer.extend({
         finalize(new Error('tile missing in offline cache'));
         return;
       }
-      const response = await fetch(tileURL, { mode: 'no-cors', cache: 'no-store' });
-      const blob = await response.blob();
-      const previousTile = await offlineCacheStorage.loadTile(tileKey);
-      await offlineCacheStorage.saveTile({ key: tileKey, provider: providerName, blob: blob, byteSize: blob.size, savedAt: Date.now() });
-      await applyTileStatsDelta(providerName, previousTile ? previousTile.byteSize : 0, blob.size);
       latestCacheTrafficMode = 'network';
-      tileImage.src = URL.createObjectURL(blob);
+      tileImage.src = tileURL;
+      cacheTileInBackground();
       renderOfflineCacheStatus();
     })().catch(function(error) {
       if (!navigator.onLine) {
         latestCacheTrafficMode = 'cache';
+      } else {
+        // Fallback to direct tile URL when cache logic fails in WebView/CORS edge cases.
+        tileImage.src = tileURL;
       }
       renderOfflineCacheStatus();
-      finalize(error);
     });
 
     return tileImage;
@@ -5344,6 +5363,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     return;
   }
   closeMarkerLayerStream(layerName);
+  const enableMarkerStreamCache = !window.desktopWebViewMode;
   const streamKey = `v1:${layerName}:${params.toString()}`;
   state.loaded = false;
   state.viewKey = viewKey || '';
@@ -5377,6 +5397,9 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   }
 
   async function persistStreamCache() {
+    if (!enableMarkerStreamCache) {
+      return;
+    }
     const payload = { markers: streamedMarkers, summary: streamSummary || null };
     const encoded = JSON.stringify(payload);
     const byteSize = new Blob([encoded]).size;
@@ -5393,6 +5416,12 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   }
 
   if (!navigator.onLine) {
+    if (!enableMarkerStreamCache) {
+      if (handlers && typeof handlers.onError === 'function') {
+        handlers.onError();
+      }
+      return;
+    }
     offlineCacheStorage.loadMarkerStream(streamKey)
       .then(function(cachedEntry) {
         if (!emitFromCache(cachedEntry) && handlers && typeof handlers.onError === 'function') {
@@ -5459,6 +5488,13 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
 
   es.onerror = () => {
     state.source = null;
+    if (!enableMarkerStreamCache) {
+      if (handlers && typeof handlers.onError === 'function') {
+        handlers.onError();
+      }
+      es.close();
+      return;
+    }
     offlineCacheStorage.loadMarkerStream(streamKey)
       .then(function(cachedEntry) {
         if (emitFromCache(cachedEntry)) {
