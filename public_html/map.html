@@ -332,17 +332,15 @@ body, html {
           user-select: none;
           min-width: min(92vw, 420px);
           max-width: min(92vw, 640px);
-          line-height: 1.35;
+          line-height: 1.2;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
-        #mapCacheStatus .cache-mode-line {
-          font-size: var(--font-size-lg);
-          font-weight: 600;
-          margin-bottom: 2px;
-        }
-
-        #mapCacheStatus .cache-meta-line {
-          opacity: 0.85;
+        #mapCacheStatus .cache-inline-line {
+          font-size: var(--font-size-sm);
+          opacity: 0.9;
         }
 
         #mapCacheStatus .cache-reset-link {
@@ -2815,7 +2813,15 @@ const offlineCacheStorage = {
 };
 
 async function readOfflineCacheStats() {
-  const emptyStats = { tiles: { osm: 0, google: 0, mapbox: 0 }, markers: 0, total: 0 };
+  const emptyStats = {
+    tiles: { osm: 0, google: 0, mapbox: 0 },
+    markers: 0,
+    total: 0,
+    tileRequests: 0,
+    tileHits: 0,
+    tileMisses: 0,
+    tileDownloads: 0,
+  };
   const storedStats = await offlineCacheStorage.readMeta('stats');
   if (!storedStats || typeof storedStats !== 'object') {
     return emptyStats;
@@ -2828,6 +2834,10 @@ async function readOfflineCacheStats() {
     tiles: { osm: Math.max(0, osmSize), google: Math.max(0, googleSize), mapbox: Math.max(0, mapboxSize) },
     markers: Math.max(0, markerSize),
     total: Math.max(0, Number(storedStats.total) || (osmSize + googleSize + mapboxSize + markerSize)),
+    tileRequests: Math.max(0, Number(storedStats.tileRequests) || 0),
+    tileHits: Math.max(0, Number(storedStats.tileHits) || 0),
+    tileMisses: Math.max(0, Number(storedStats.tileMisses) || 0),
+    tileDownloads: Math.max(0, Number(storedStats.tileDownloads) || 0),
   };
 }
 
@@ -2843,6 +2853,20 @@ async function applyTileStatsDelta(providerName, previousBytes, nextBytes) {
   const safeNext = Math.max(0, Number(nextBytes) || 0);
   stats.tiles[providerKey] = Math.max(0, (Number(stats.tiles[providerKey]) || 0) - safePrev + safeNext);
   stats.total = Math.max(0, stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox + stats.markers);
+  await updateOfflineCacheStats(stats);
+}
+
+async function recordTileCacheAccess(resultType, downloadedTileCount) {
+  const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
+  stats.tileRequests = (Number(stats.tileRequests) || 0) + 1;
+  if (resultType === 'hit') {
+    stats.tileHits = (Number(stats.tileHits) || 0) + 1;
+  } else {
+    stats.tileMisses = (Number(stats.tileMisses) || 0) + 1;
+  }
+  if (Number.isFinite(downloadedTileCount) && downloadedTileCount > 0) {
+    stats.tileDownloads = (Number(stats.tileDownloads) || 0) + downloadedTileCount;
+  }
   await updateOfflineCacheStats(stats);
 }
 
@@ -2876,15 +2900,23 @@ async function renderOfflineCacheStatus() {
   const tileTotal = stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox;
   const effectiveTotal = desktopMode ? tileTotal : stats.total;
   const markersLine = desktopMode ? '' : ` · Markers ${formatBytes(stats.markers)}`;
+  const hitMissLine = `${stats.tileHits}/${stats.tileMisses}`;
+  const downloadsLine = Number(stats.tileDownloads) || 0;
   mapCacheStatusNode.innerHTML =
-    `<div class="cache-mode-line">Map mode: ${onlineLabel} (${modeLabel})</div>` +
-    `<div class="cache-meta-line">OSM ${formatBytes(stats.tiles.osm)} · Google ${formatBytes(stats.tiles.google)}${markersLine}</div>` +
-    `<div class="cache-meta-line">Storage ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : 'unknown'} <span id="resetMapCacheLink" class="cache-reset-link">reset cache</span></div>`;
+    `<div class="cache-inline-line">Map: ${onlineLabel} · ${modeLabel} · OSM ${formatBytes(stats.tiles.osm)} · Google ${formatBytes(stats.tiles.google)}${markersLine} · Tiles ↓${downloadsLine} · H/M ${hitMissLine} · Storage ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : 'unknown'} <span id="resetMapCacheLink" class="cache-reset-link">reset</span></div>`;
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
     resetLink.onclick = async function() {
       await offlineCacheStorage.clearAll();
-      offlineCacheStatsSnapshot = { tiles: { osm: 0, google: 0, mapbox: 0 }, markers: 0, total: 0 };
+      offlineCacheStatsSnapshot = {
+        tiles: { osm: 0, google: 0, mapbox: 0 },
+        markers: 0,
+        total: 0,
+        tileRequests: 0,
+        tileHits: 0,
+        tileMisses: 0,
+        tileDownloads: 0,
+      };
       latestCacheTrafficMode = 'network';
       await renderOfflineCacheStatus();
       updateMarkers(true);
@@ -2928,6 +2960,7 @@ L.CachedTileLayer = L.TileLayer.extend({
         const previousTile = await offlineCacheStorage.loadTile(tileKey);
         await offlineCacheStorage.saveTile({ key: tileKey, provider: providerName, blob: blob, byteSize: blob.size, savedAt: Date.now() });
         await applyTileStatsDelta(providerName, previousTile ? previousTile.byteSize : 0, blob.size);
+        await recordTileCacheAccess('miss', previousTile ? 0 : 1);
         latestCacheTrafficMode = 'network';
         renderOfflineCacheStatus();
       } catch (error) {
@@ -2938,11 +2971,13 @@ L.CachedTileLayer = L.TileLayer.extend({
     (async function() {
       const cachedTile = await offlineCacheStorage.loadTile(tileKey);
       if (cachedTile && cachedTile.blob) {
+        await recordTileCacheAccess('hit', 0);
         latestCacheTrafficMode = navigator.onLine ? 'mixed' : 'cache';
         tileImage.src = URL.createObjectURL(cachedTile.blob);
         renderOfflineCacheStatus();
         return;
       }
+      await recordTileCacheAccess('miss', 0);
       if (!navigator.onLine) {
         latestCacheTrafficMode = 'cache';
         renderOfflineCacheStatus();
