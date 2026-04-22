@@ -289,7 +289,7 @@ body, html {
         /* Small centered pill that surfaces the shareable short link under the logo */
         #shortLinkDisplay {
           position: absolute;
-          top: 56px;
+          top: var(--short-link-top, 56px);
           left: 50%;
           transform: translateX(-50%);
           background: var(--overlay-bg);
@@ -319,7 +319,7 @@ body, html {
 
         #mapCacheStatus {
           position: absolute;
-          top: 62px;
+          top: var(--cache-status-top, 62px);
           left: 50%;
           transform: translateX(-50%);
           background: var(--overlay-bg);
@@ -2836,6 +2836,23 @@ let desktopRuntimeStatusLine = '';
 let internetConnectivityState = navigator.onLine ? 'online' : 'offline';
 let desktopExternalLinkRoutingBound = false;
 
+function applyTopOverlayLayoutByRuntimeMode() {
+  const rootNode = document.documentElement;
+  if (!rootNode) {
+    return;
+  }
+  const desktopMode = !!window.desktopWebViewMode;
+  if (desktopMode) {
+    rootNode.style.setProperty('--short-link-top', '56px');
+    rootNode.style.setProperty('--cache-status-top', '62px');
+    return;
+  }
+  // Keep short URL close to the title in web mode and move cache status below it
+  // so both controls remain clickable and never overlap.
+  rootNode.style.setProperty('--short-link-top', '56px');
+  rootNode.style.setProperty('--cache-status-top', '86px');
+}
+
 const mapCacheLabelFallbacks = {
   map: 'Map',
   mode_network: 'network',
@@ -2947,6 +2964,7 @@ function applyMapCacheLocalization() {
 
 ensureMapCacheTranslationsForAllLanguages();
 applyMapCacheLocalization();
+applyTopOverlayLayoutByRuntimeMode();
 refreshInternetConnectivityState().catch(function() {});
 setInterval(function() {
   refreshInternetConnectivityState().catch(function() {});
