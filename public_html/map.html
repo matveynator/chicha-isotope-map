@@ -289,7 +289,7 @@ body, html {
         /* Small centered pill that surfaces the shareable short link under the logo */
         #shortLinkDisplay {
           position: absolute;
-          top: 56px;
+          top: var(--short-link-top, 56px);
           left: 50%;
           transform: translateX(-50%);
           background: var(--overlay-bg);
@@ -319,7 +319,7 @@ body, html {
 
         #mapCacheStatus {
           position: absolute;
-          top: 62px;
+          top: var(--cache-status-top, 62px);
           left: 50%;
           transform: translateX(-50%);
           background: var(--overlay-bg);
@@ -2836,6 +2836,23 @@ let desktopRuntimeStatusLine = '';
 let internetConnectivityState = navigator.onLine ? 'online' : 'offline';
 let desktopExternalLinkRoutingBound = false;
 
+function applyTopOverlayLayoutByRuntimeMode() {
+  const rootNode = document.documentElement;
+  if (!rootNode) {
+    return;
+  }
+  const desktopMode = !!window.desktopWebViewMode;
+  if (desktopMode) {
+    rootNode.style.setProperty('--short-link-top', '56px');
+    rootNode.style.setProperty('--cache-status-top', '62px');
+    return;
+  }
+  // Keep short URL close to the title in web mode and move cache status below it
+  // so both controls remain clickable and never overlap.
+  rootNode.style.setProperty('--short-link-top', '56px');
+  rootNode.style.setProperty('--cache-status-top', '86px');
+}
+
 const mapCacheLabelFallbacks = {
   map: 'Map',
   mode_network: 'network',
@@ -2844,6 +2861,7 @@ const mapCacheLabelFallbacks = {
   provider_osm: 'OSM',
   provider_google: 'Google',
   provider_markers: 'Markers',
+  markers_cached: 'cached markers',
   tiles_downloaded: 'Tiles',
   hits_misses: 'H/M',
   storage: 'Cache',
@@ -2946,6 +2964,7 @@ function applyMapCacheLocalization() {
 
 ensureMapCacheTranslationsForAllLanguages();
 applyMapCacheLocalization();
+applyTopOverlayLayoutByRuntimeMode();
 refreshInternetConnectivityState().catch(function() {});
 setInterval(function() {
   refreshInternetConnectivityState().catch(function() {});
@@ -2972,6 +2991,8 @@ async function clearOfflineCacheWithConfirmation() {
   offlineCacheStatsSnapshot = {
     tiles: { osm: 0, google: 0, mapbox: 0 },
     markers: 0,
+    markerStreams: 0,
+    markerPoints: 0,
     total: 0,
     tileRequests: 0,
     tileHits: 0,
@@ -3090,6 +3111,36 @@ const offlineCacheStorage = {
       request.onerror = function() { reject(request.error || new Error('IndexedDB marker stream read failed')); };
     });
   },
+  async findMarkerStreams(matcher) {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      const matchedEntries = [];
+      const tx = db.transaction([offlineCacheStoreMarkerStreams], 'readonly');
+      const store = tx.objectStore(offlineCacheStoreMarkerStreams);
+      const request = store.openCursor();
+      request.onsuccess = function(event) {
+        const cursor = event.target.result;
+        if (!cursor) {
+          resolve(matchedEntries);
+          return;
+        }
+        const markerStreamEntry = cursor.value;
+        let isMatch = false;
+        try {
+          isMatch = !!matcher(markerStreamEntry);
+        } catch (matcherError) {
+          isMatch = false;
+        }
+        if (isMatch) {
+          matchedEntries.push(markerStreamEntry);
+        }
+        cursor.continue();
+      };
+      request.onerror = function() {
+        reject(request.error || new Error('IndexedDB marker stream scan failed'));
+      };
+    });
+  },
   async saveMarkerStream(streamEntry) {
     const db = await openOfflineCacheDatabase();
     return new Promise(function(resolve, reject) {
@@ -3112,10 +3163,124 @@ const offlineCacheStorage = {
   }
 };
 
+function parseMarkerStreamQueryParams(params, layerName) {
+  if (!params || typeof params.get !== 'function') {
+    return null;
+  }
+  const zoom = Number(params.get('zoom'));
+  const minLat = Number(params.get('minLat'));
+  const minLon = Number(params.get('minLon'));
+  const maxLat = Number(params.get('maxLat'));
+  const maxLon = Number(params.get('maxLon'));
+  if (![zoom, minLat, minLon, maxLat, maxLon].every(Number.isFinite)) {
+    return null;
+  }
+  return {
+    layerName: layerName || '',
+    zoom: zoom,
+    minLat: minLat,
+    minLon: minLon,
+    maxLat: maxLat,
+    maxLon: maxLon,
+    trackID: params.get('trackID') || '',
+    speeds: params.get('speeds') || '',
+    dateFrom: params.get('dateFrom') || '',
+    dateTo: params.get('dateTo') || '',
+    realtime: params.get('realtime') || '',
+    liveOnly: params.get('liveOnly') || '',
+  };
+}
+
+function markerStreamBoundsOverlap(firstBounds, secondBounds) {
+  if (!firstBounds || !secondBounds) {
+    return false;
+  }
+  return !(firstBounds.maxLat < secondBounds.minLat ||
+    firstBounds.minLat > secondBounds.maxLat ||
+    firstBounds.maxLon < secondBounds.minLon ||
+    firstBounds.minLon > secondBounds.maxLon);
+}
+
+function markerStreamRequestCompatible(cachedQuery, requestedQuery) {
+  if (!cachedQuery || !requestedQuery) {
+    return false;
+  }
+  return (cachedQuery.layerName || '') === (requestedQuery.layerName || '') &&
+    (cachedQuery.trackID || '') === (requestedQuery.trackID || '') &&
+    (cachedQuery.speeds || '') === (requestedQuery.speeds || '') &&
+    (cachedQuery.dateFrom || '') === (requestedQuery.dateFrom || '') &&
+    (cachedQuery.dateTo || '') === (requestedQuery.dateTo || '') &&
+    (cachedQuery.realtime || '') === (requestedQuery.realtime || '') &&
+    (cachedQuery.liveOnly || '') === (requestedQuery.liveOnly || '');
+}
+
+function mergeCachedMarkerStreams(markerStreamEntries, preferredZoom) {
+  if (!Array.isArray(markerStreamEntries) || markerStreamEntries.length === 0) {
+    return null;
+  }
+  const markerDedupSet = new Set();
+  const mergedMarkers = [];
+  let mergedSavedAt = 0;
+  markerStreamEntries.forEach(function(markerStreamEntry) {
+    const markers = Array.isArray(markerStreamEntry && markerStreamEntry.markers) ? markerStreamEntry.markers : [];
+    mergedSavedAt = Math.max(mergedSavedAt, Number(markerStreamEntry && markerStreamEntry.savedAt) || 0);
+    markers.forEach(function(markerRecord) {
+      const markerKey = markerRecord && markerRecord.id != null
+        ? `id:${markerRecord.id}`
+        : `p:${markerRecord && markerRecord.lat}:${markerRecord && markerRecord.lon}:${markerRecord && markerRecord.date}:${markerRecord && markerRecord.trackID}`;
+      if (markerDedupSet.has(markerKey)) {
+        return;
+      }
+      markerDedupSet.add(markerKey);
+      mergedMarkers.push(markerRecord);
+    });
+  });
+  return {
+    key: `merged:${preferredZoom}:${markerStreamEntries.length}`,
+    markers: mergedMarkers,
+    summary: null,
+    markerCount: mergedMarkers.length,
+    savedAt: mergedSavedAt,
+  };
+}
+
+async function loadBestOfflineMarkerStream(layerName, params, exactStreamKey) {
+  const exactEntry = await offlineCacheStorage.loadMarkerStream(exactStreamKey);
+  if (exactEntry && Array.isArray(exactEntry.markers) && exactEntry.markers.length > 0) {
+    return exactEntry;
+  }
+  const requestedQuery = parseMarkerStreamQueryParams(params, layerName);
+  if (!requestedQuery) {
+    return null;
+  }
+  const matchingEntries = await offlineCacheStorage.findMarkerStreams(function(markerStreamEntry) {
+    if (!markerStreamEntry || !Array.isArray(markerStreamEntry.markers) || markerStreamEntry.markers.length === 0) {
+      return false;
+    }
+    const cachedQuery = markerStreamEntry.query || null;
+    if (!markerStreamRequestCompatible(cachedQuery, requestedQuery)) {
+      return false;
+    }
+    return markerStreamBoundsOverlap(cachedQuery, requestedQuery);
+  });
+  if (!matchingEntries || matchingEntries.length === 0) {
+    return null;
+  }
+  const entriesWithExactZoom = matchingEntries.filter(function(markerStreamEntry) {
+    return markerStreamEntry.query && Number(markerStreamEntry.query.zoom) === requestedQuery.zoom;
+  });
+  if (entriesWithExactZoom.length > 0) {
+    return mergeCachedMarkerStreams(entriesWithExactZoom, requestedQuery.zoom);
+  }
+  return mergeCachedMarkerStreams(matchingEntries, requestedQuery.zoom);
+}
+
 async function readOfflineCacheStats() {
   const emptyStats = {
     tiles: { osm: 0, google: 0, mapbox: 0 },
     markers: 0,
+    markerStreams: 0,
+    markerPoints: 0,
     total: 0,
     tileRequests: 0,
     tileHits: 0,
@@ -3130,9 +3295,13 @@ async function readOfflineCacheStats() {
   const googleSize = Number(storedStats.tiles && storedStats.tiles.google) || 0;
   const mapboxSize = Number(storedStats.tiles && storedStats.tiles.mapbox) || 0;
   const markerSize = Number(storedStats.markers) || 0;
+  const markerStreams = Number(storedStats.markerStreams) || 0;
+  const markerPoints = Number(storedStats.markerPoints) || 0;
   return {
     tiles: { osm: Math.max(0, osmSize), google: Math.max(0, googleSize), mapbox: Math.max(0, mapboxSize) },
     markers: Math.max(0, markerSize),
+    markerStreams: Math.max(0, markerStreams),
+    markerPoints: Math.max(0, markerPoints),
     total: Math.max(0, Number(storedStats.total) || (osmSize + googleSize + mapboxSize + markerSize)),
     tileRequests: Math.max(0, Number(storedStats.tileRequests) || 0),
     tileHits: Math.max(0, Number(storedStats.tileHits) || 0),
@@ -3179,11 +3348,27 @@ async function recordDownloadedTiles(downloadedTileCount) {
   await updateOfflineCacheStats(stats);
 }
 
-async function applyMarkerStatsDelta(previousBytes, nextBytes) {
+async function applyMarkerStatsDelta(previousEntry, nextEntry) {
   const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
-  const safePrev = Math.max(0, Number(previousBytes) || 0);
-  const safeNext = Math.max(0, Number(nextBytes) || 0);
+  const safePrev = Math.max(0, Number(previousEntry && previousEntry.byteSize) || 0);
+  const safeNext = Math.max(0, Number(nextEntry && nextEntry.byteSize) || 0);
+  const previousCountRaw = previousEntry && previousEntry.markerCount != null
+    ? previousEntry.markerCount
+    : (previousEntry && Array.isArray(previousEntry.markers) ? previousEntry.markers.length : 0);
+  const nextCountRaw = nextEntry && nextEntry.markerCount != null
+    ? nextEntry.markerCount
+    : (nextEntry && Array.isArray(nextEntry.markers) ? nextEntry.markers.length : 0);
+  const safePrevMarkerCount = Math.max(0, Number(previousCountRaw) || 0);
+  const safeNextMarkerCount = Math.max(0, Number(nextCountRaw) || 0);
+  const hadPrevious = !!previousEntry;
+  const hasNext = !!nextEntry;
   stats.markers = Math.max(0, (Number(stats.markers) || 0) - safePrev + safeNext);
+  stats.markerPoints = Math.max(0, (Number(stats.markerPoints) || 0) - safePrevMarkerCount + safeNextMarkerCount);
+  if (!hadPrevious && hasNext) {
+    stats.markerStreams = (Number(stats.markerStreams) || 0) + 1;
+  } else if (hadPrevious && !hasNext) {
+    stats.markerStreams = Math.max(0, (Number(stats.markerStreams) || 0) - 1);
+  }
   stats.total = Math.max(0, stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox + stats.markers);
   await updateOfflineCacheStats(stats);
 }
@@ -3284,6 +3469,10 @@ async function renderOfflineCacheStatus() {
   secondLineSegments.push({
     html: `${mapCacheText('hits_misses')} ${hitMissLine}`,
     textLength: (`${mapCacheText('hits_misses')} ${hitMissLine}`).length,
+  });
+  secondLineSegments.push({
+    html: `${mapCacheText('markers_cached')} ${Number(stats.markerPoints) || 0}`,
+    textLength: (`${mapCacheText('markers_cached')} ${Number(stats.markerPoints) || 0}`).length,
   });
   secondLineSegments.push({
     html: `${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`,
@@ -5795,6 +5984,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   closeMarkerLayerStream(layerName);
   const enableMarkerStreamCache = !window.desktopWebViewMode;
   const streamKey = `v1:${layerName}:${params.toString()}`;
+  const streamQuery = parseMarkerStreamQueryParams(params, layerName);
   state.loaded = false;
   state.viewKey = viewKey || '';
   let streamSummary = null;
@@ -5833,16 +6023,20 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     const payload = { markers: streamedMarkers, summary: streamSummary || null };
     const encoded = JSON.stringify(payload);
     const byteSize = new Blob([encoded]).size;
+    const markerCount = streamedMarkers.length;
     const previousEntry = await offlineCacheStorage.loadMarkerStream(streamKey);
-    await offlineCacheStorage.saveMarkerStream({
+    const nextEntry = {
       key: streamKey,
       layerName: layerName,
+      query: streamQuery,
       markers: streamedMarkers,
       summary: streamSummary || null,
       byteSize: byteSize,
+      markerCount: markerCount,
       savedAt: Date.now(),
-    });
-    await applyMarkerStatsDelta(previousEntry ? previousEntry.byteSize : 0, byteSize);
+    };
+    await offlineCacheStorage.saveMarkerStream(nextEntry);
+    await applyMarkerStatsDelta(previousEntry || null, nextEntry);
   }
 
   const shouldReadMarkerStreamFromOfflineCache = !isInternetOnlineNow() && !window.desktopWebViewMode;
@@ -5853,7 +6047,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
       }
       return;
     }
-    offlineCacheStorage.loadMarkerStream(streamKey)
+    loadBestOfflineMarkerStream(layerName, params, streamKey)
       .then(function(cachedEntry) {
         if (!emitFromCache(cachedEntry) && handlers && typeof handlers.onError === 'function') {
           handlers.onError();
@@ -5926,7 +6120,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
       es.close();
       return;
     }
-    offlineCacheStorage.loadMarkerStream(streamKey)
+    loadBestOfflineMarkerStream(layerName, params, streamKey)
       .then(function(cachedEntry) {
         if (emitFromCache(cachedEntry)) {
           return;
