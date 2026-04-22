@@ -3513,6 +3513,7 @@ L.CachedTileLayer = L.TileLayer.extend({
     const tileKey = cacheVariant
       ? `${providerName}:${cacheVariant}:${coords.z}:${coords.x}:${coords.y}`
       : `${providerName}:${coords.z}:${coords.x}:${coords.y}`;
+    const legacyTileKey = cacheVariant ? `${providerName}:${coords.z}:${coords.x}:${coords.y}` : '';
     const finalize = function(error) {
       if (typeof done === 'function') {
         done(error || null, tileImage);
@@ -3547,7 +3548,20 @@ L.CachedTileLayer = L.TileLayer.extend({
     }
 
     (async function() {
-      const cachedTile = await offlineCacheStorage.loadTile(tileKey);
+      let cachedTile = await offlineCacheStorage.loadTile(tileKey);
+      if (!cachedTile && legacyTileKey) {
+        cachedTile = await offlineCacheStorage.loadTile(legacyTileKey);
+        if (cachedTile && cachedTile.blob) {
+          // Preserve offline compatibility after cache key schema upgrades.
+          await offlineCacheStorage.saveTile({
+            key: tileKey,
+            provider: providerName,
+            blob: cachedTile.blob,
+            byteSize: Number(cachedTile.byteSize) || cachedTile.blob.size || 0,
+            savedAt: Date.now(),
+          });
+        }
+      }
       if (cachedTile && cachedTile.blob) {
         await recordTileCacheAccess('hit', 0);
         latestCacheTrafficMode = isInternetOnlineNow() ? 'mixed' : 'cache';
