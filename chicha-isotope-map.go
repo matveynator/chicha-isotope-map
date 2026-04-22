@@ -5210,6 +5210,36 @@ func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func desktopOpenExternalHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !*desktopMode {
+		http.Error(w, "desktop mode disabled", http.StatusConflict)
+		return
+	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	var payload struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid json payload", http.StatusBadRequest)
+		return
+	}
+	if err := desktop.OpenExternalURL(payload.URL); err != nil {
+		http.Error(w, "failed to open external url", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 // desktopAdminBootstrapImportHandler accepts a desktop-admin request to launch
 // an initial historical TGZ import in the background. We serialize jobs through
 // a channel slot instead of shared mutable flags so concurrent clicks remain
@@ -7715,6 +7745,7 @@ func main() {
 	http.HandleFunc("/desktop/admin/bootstrap-import", desktopAdminBootstrapImportHandler)
 	http.HandleFunc("/desktop/admin/settings", desktopAdminSettingsHandler)
 	http.HandleFunc("/desktop/admin/status", desktopAdminStatusHandler)
+	http.HandleFunc("/desktop/open-external", desktopOpenExternalHandler)
 	http.HandleFunc("/get_markers", getMarkersHandler)
 	http.HandleFunc("/stream_playback", streamPlaybackHandler)
 	http.HandleFunc("/stream_markers", streamMarkersHandler)

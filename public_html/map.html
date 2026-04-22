@@ -317,6 +317,145 @@ body, html {
           background: var(--control-bg-hover);
         }
 
+        #mapCacheStatus {
+          position: absolute;
+          top: 62px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: var(--overlay-bg);
+          border: var(--legend-border);
+          border-radius: 14px;
+          padding: 6px 8px;
+          font-size: var(--font-size-xs);
+          color: var(--modal-text);
+          z-index: 1200;
+          user-select: none;
+          width: fit-content;
+          min-width: 0;
+          max-width: min(92vw, 760px);
+          line-height: 1.25;
+          white-space: normal;
+          overflow: visible;
+          text-overflow: clip;
+        }
+
+        #mapCacheStatus .cache-inline-line {
+          font-size: var(--font-size-xs);
+          opacity: 0.9;
+          white-space: normal;
+          overflow-wrap: anywhere;
+          display: block;
+          text-align: center;
+          margin: 1px 0;
+        }
+
+        .cache-connectivity-dot {
+          display: inline-block;
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          margin-right: 5px;
+          vertical-align: middle;
+        }
+
+        .cache-connectivity-dot.online {
+          background: #2fbf5f;
+          box-shadow: 0 0 0 1px rgba(47, 191, 95, 0.35);
+        }
+
+        .cache-connectivity-dot.offline {
+          background: #e34d4d;
+          box-shadow: 0 0 0 1px rgba(227, 77, 77, 0.35);
+        }
+
+        #mapCacheStatus .cache-reset-link {
+          color: var(--link-color);
+          text-decoration: underline;
+          cursor: pointer;
+          margin-left: 6px;
+        }
+
+        /* Keep cache status away from crowded top controls on narrow phone screens. */
+        @media (max-width: 767px) {
+          #mapCacheStatus {
+            top: auto;
+            bottom: 10px;
+            left: auto;
+            right: 10px;
+            transform: none;
+            min-width: 0;
+            width: fit-content;
+            max-width: min(88vw, 560px);
+            border-radius: 10px;
+            padding: 6px 8px;
+            z-index: 1050;
+          }
+
+          #mapCacheStatus .cache-inline-line {
+            font-size: var(--font-size-xs);
+            white-space: normal;
+            overflow-wrap: anywhere;
+          }
+
+          #legend {
+            bottom: calc(20px + var(--mobile-cache-offset, 0px)) !important;
+            z-index: 1060 !important;
+          }
+
+          #themeToggle {
+            bottom: calc(140px + var(--mobile-cache-offset, 0px));
+          }
+        }
+
+        #mapCacheResetConfirmModal {
+          position: fixed;
+          inset: 0;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.45);
+          z-index: 2400;
+          padding: 16px;
+        }
+
+        #mapCacheResetConfirmCard {
+          width: min(92vw, 360px);
+          background: var(--modal-bg);
+          color: var(--modal-text);
+          border: var(--modal-border);
+          border-radius: 10px;
+          padding: 14px;
+          box-sizing: border-box;
+        }
+
+        .map-cache-reset-title {
+          font-size: var(--font-size-lg);
+          font-weight: 600;
+          margin: 0 0 8px;
+        }
+
+        .map-cache-reset-text {
+          margin: 0 0 12px;
+          opacity: 0.9;
+        }
+
+        .map-cache-reset-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+        }
+
+        .map-cache-reset-btn {
+          border: var(--legend-border);
+          border-radius: 6px;
+          padding: 6px 10px;
+          background: var(--control-bg);
+          color: var(--modal-text);
+          cursor: pointer;
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-base);
+        }
+
         /* API quickstart cards inside the info modal stay theme aware through shared variables. */
         #infoModal .api-heading {
           font-size: var(--font-size-xl);
@@ -1345,7 +1484,7 @@ body, html {
           z-index: 1250;
           font-size: var(--font-size-base);
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-          order: 2;
+          order: 0;
         }
 
         #desktopStatusLine {
@@ -1592,7 +1731,7 @@ body, html {
     </div>
 
     <!-- GitHub link and program info -->
-    <a href="{{ .LogoLink }}" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{if .ShowGithubTooltip}}{{translate "github_link_tooltip_desc"}}{{else}}{{translate "logo_title"}}{{end}}">
+    <a href="https://matveynator.github.io/chicha-isotope-map" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{if .ShowGithubTooltip}}{{translate "github_link_tooltip_desc"}}{{else}}{{translate "logo_title"}}{{end}}">
       <img src="{{ .LogoImageURL }}" alt="{{translate "description"}} (version: {{ .Version }})" >
     </a>
 
@@ -1612,6 +1751,17 @@ body, html {
     {{else}}
       <div id="desktopStatusLine" aria-live="polite"></div>
     {{end}}
+    <div id="mapCacheStatus" aria-live="polite"></div>
+    <div id="mapCacheResetConfirmModal" aria-hidden="true">
+      <div id="mapCacheResetConfirmCard" role="dialog" aria-modal="true" aria-labelledby="mapCacheResetConfirmTitle">
+        <h3 id="mapCacheResetConfirmTitle" class="map-cache-reset-title">Reset offline cache?</h3>
+        <p id="mapCacheResetConfirmText" class="map-cache-reset-text">This will remove saved map tiles and cached marker streams from this browser.</p>
+        <div class="map-cache-reset-actions">
+          <button id="mapCacheResetCancelButton" class="map-cache-reset-btn" type="button">Cancel</button>
+          <button id="mapCacheResetConfirmButton" class="map-cache-reset-btn" type="button">Reset</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -2670,6 +2820,579 @@ let storedUserCenter = null;
 let waitForDangerFit = false;
 // Cache short link payloads by target URL so play/pause toggles reuse two entries.
 const shortLinkCache = new Map();
+const mapCacheStatusNode = document.getElementById('mapCacheStatus');
+const mapCacheResetConfirmModalNode = document.getElementById('mapCacheResetConfirmModal');
+const mapCacheResetConfirmButtonNode = document.getElementById('mapCacheResetConfirmButton');
+const mapCacheResetCancelButtonNode = document.getElementById('mapCacheResetCancelButton');
+const mapCacheResetConfirmTitleNode = document.getElementById('mapCacheResetConfirmTitle');
+const mapCacheResetConfirmTextNode = document.getElementById('mapCacheResetConfirmText');
+const offlineCacheDatabaseName = 'cim-offline-cache-v1';
+const offlineCacheStoreTiles = 'tiles';
+const offlineCacheStoreMarkerStreams = 'marker_streams';
+const offlineCacheStoreMeta = 'meta';
+let latestCacheTrafficMode = 'network';
+let offlineCacheStatsSnapshot = null;
+let desktopRuntimeStatusLine = '';
+let internetConnectivityState = navigator.onLine ? 'online' : 'offline';
+let desktopExternalLinkRoutingBound = false;
+
+const mapCacheLabelFallbacks = {
+  map: 'Map',
+  mode_network: 'network',
+  mode_cache_hit: 'cache hit',
+  mode_cache_mixed: 'cache+network',
+  provider_osm: 'OSM',
+  provider_google: 'Google',
+  provider_markers: 'Markers',
+  tiles_downloaded: 'Tiles',
+  hits_misses: 'H/M',
+  storage: 'Cache',
+  reset: 'reset',
+  unknown: 'unknown',
+  online: 'online',
+  offline: 'offline',
+  reset_title: 'Reset offline cache?',
+  reset_text: 'This will remove saved map tiles and cached marker streams from this browser.',
+  cancel: 'Cancel',
+  reset_button: 'Reset',
+};
+const mapCacheTranslationKeys = Object.keys(mapCacheLabelFallbacks).map(function(name) {
+  return 'map_cache_' + name;
+});
+
+function ensureMapCacheTranslationsForAllLanguages() {
+  if (!translations || typeof translations !== 'object') {
+    return;
+  }
+  const englishBundle = translations.en || {};
+  Object.keys(translations).forEach(function(languageCode) {
+    const languageBundle = translations[languageCode];
+    if (!languageBundle || typeof languageBundle !== 'object') {
+      return;
+    }
+    mapCacheTranslationKeys.forEach(function(translationKey) {
+      if (!languageBundle[translationKey]) {
+        languageBundle[translationKey] = englishBundle[translationKey] || translationKey.replace(/^map_cache_/, '');
+      }
+    });
+  });
+}
+
+function updateInternetConnectivityState(isInternetOnline) {
+  const nextState = isInternetOnline ? 'online' : 'offline';
+  if (internetConnectivityState === nextState) {
+    return;
+  }
+  internetConnectivityState = nextState;
+  latestCacheTrafficMode = isInternetOnline ? 'network' : 'cache';
+  renderOfflineCacheStatus();
+}
+
+function isInternetOnlineNow() {
+  return internetConnectivityState === 'online';
+}
+
+function probeInternetConnectivityOnce() {
+  return new Promise(function(resolve) {
+    const testImage = new Image();
+    let resolved = false;
+    const finish = function(result) {
+      if (resolved) return;
+      resolved = true;
+      resolve(result);
+    };
+    const timeoutHandle = setTimeout(function() {
+      finish(false);
+    }, 1400);
+    testImage.onload = function() {
+      clearTimeout(timeoutHandle);
+      finish(true);
+    };
+    testImage.onerror = function() {
+      clearTimeout(timeoutHandle);
+      finish(false);
+    };
+    testImage.src = 'https://tile.openstreetmap.org/0/0/0.png?ping=' + Date.now();
+  });
+}
+
+async function refreshInternetConnectivityState() {
+  const probeResult = await probeInternetConnectivityOnce();
+  updateInternetConnectivityState(probeResult);
+}
+
+function mapCacheText(key) {
+  const translated = translate('map_cache_' + key);
+  if (translated && translated !== 'map_cache_' + key) {
+    return translated;
+  }
+  return mapCacheLabelFallbacks[key] || key;
+}
+
+function applyMapCacheLocalization() {
+  if (mapCacheResetConfirmTitleNode) {
+    mapCacheResetConfirmTitleNode.textContent = mapCacheText('reset_title');
+  }
+  if (mapCacheResetConfirmTextNode) {
+    mapCacheResetConfirmTextNode.textContent = mapCacheText('reset_text');
+  }
+  if (mapCacheResetCancelButtonNode) {
+    mapCacheResetCancelButtonNode.textContent = mapCacheText('cancel');
+  }
+  if (mapCacheResetConfirmButtonNode) {
+    mapCacheResetConfirmButtonNode.textContent = mapCacheText('reset_button');
+  }
+}
+
+ensureMapCacheTranslationsForAllLanguages();
+applyMapCacheLocalization();
+refreshInternetConnectivityState().catch(function() {});
+setInterval(function() {
+  refreshInternetConnectivityState().catch(function() {});
+}, 5000);
+
+function openMapCacheResetConfirmModal() {
+  if (!mapCacheResetConfirmModalNode) {
+    return;
+  }
+  mapCacheResetConfirmModalNode.style.display = 'flex';
+  mapCacheResetConfirmModalNode.setAttribute('aria-hidden', 'false');
+}
+
+function closeMapCacheResetConfirmModal() {
+  if (!mapCacheResetConfirmModalNode) {
+    return;
+  }
+  mapCacheResetConfirmModalNode.style.display = 'none';
+  mapCacheResetConfirmModalNode.setAttribute('aria-hidden', 'true');
+}
+
+async function clearOfflineCacheWithConfirmation() {
+  await offlineCacheStorage.clearAll();
+  offlineCacheStatsSnapshot = {
+    tiles: { osm: 0, google: 0, mapbox: 0 },
+    markers: 0,
+    total: 0,
+    tileRequests: 0,
+    tileHits: 0,
+    tileMisses: 0,
+    tileDownloads: 0,
+  };
+  latestCacheTrafficMode = 'network';
+  await renderOfflineCacheStatus();
+  updateMarkers(true);
+}
+
+if (mapCacheResetCancelButtonNode) {
+  mapCacheResetCancelButtonNode.addEventListener('click', function() {
+    closeMapCacheResetConfirmModal();
+  });
+}
+if (mapCacheResetConfirmModalNode) {
+  mapCacheResetConfirmModalNode.addEventListener('click', function(event) {
+    if (event.target === mapCacheResetConfirmModalNode) {
+      closeMapCacheResetConfirmModal();
+    }
+  });
+}
+if (mapCacheResetConfirmButtonNode) {
+  mapCacheResetConfirmButtonNode.addEventListener('click', function() {
+    clearOfflineCacheWithConfirmation()
+      .catch(function(error) {
+        console.warn('offline cache clear failed:', error);
+      })
+      .finally(function() {
+        closeMapCacheResetConfirmModal();
+      });
+  });
+}
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape' && mapCacheResetConfirmModalNode && mapCacheResetConfirmModalNode.style.display === 'flex') {
+    closeMapCacheResetConfirmModal();
+  }
+});
+
+function formatBytes(byteCount) {
+  const safeBytes = Number.isFinite(byteCount) && byteCount > 0 ? byteCount : 0;
+  if (safeBytes < 1024) return `${safeBytes} B`;
+  if (safeBytes < 1024 * 1024) return `${(safeBytes / 1024).toFixed(1)} KB`;
+  if (safeBytes < 1024 * 1024 * 1024) return `${(safeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(safeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function openOfflineCacheDatabase() {
+  return new Promise(function(resolve, reject) {
+    if (!window.indexedDB) {
+      reject(new Error('IndexedDB is not available'));
+      return;
+    }
+    const request = indexedDB.open(offlineCacheDatabaseName, 1);
+    request.onupgradeneeded = function(event) {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(offlineCacheStoreTiles)) {
+        db.createObjectStore(offlineCacheStoreTiles, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(offlineCacheStoreMarkerStreams)) {
+        db.createObjectStore(offlineCacheStoreMarkerStreams, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(offlineCacheStoreMeta)) {
+        db.createObjectStore(offlineCacheStoreMeta, { keyPath: 'key' });
+      }
+    };
+    request.onsuccess = function() { resolve(request.result); };
+    request.onerror = function() { reject(request.error || new Error('IndexedDB open failed')); };
+  });
+}
+
+const offlineCacheStorage = {
+  async readMeta(key) {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      const tx = db.transaction([offlineCacheStoreMeta], 'readonly');
+      const request = tx.objectStore(offlineCacheStoreMeta).get(key);
+      request.onsuccess = function() { resolve(request.result ? request.result.value : null); };
+      request.onerror = function() { reject(request.error || new Error('IndexedDB meta read failed')); };
+    });
+  },
+  async writeMeta(key, value) {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      const tx = db.transaction([offlineCacheStoreMeta], 'readwrite');
+      tx.objectStore(offlineCacheStoreMeta).put({ key: key, value: value });
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror = function() { reject(tx.error || new Error('IndexedDB meta write failed')); };
+    });
+  },
+  async loadTile(tileKey) {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      const tx = db.transaction([offlineCacheStoreTiles], 'readonly');
+      const request = tx.objectStore(offlineCacheStoreTiles).get(tileKey);
+      request.onsuccess = function() { resolve(request.result || null); };
+      request.onerror = function() { reject(request.error || new Error('IndexedDB tile read failed')); };
+    });
+  },
+  async saveTile(tileEntry) {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      const tx = db.transaction([offlineCacheStoreTiles], 'readwrite');
+      tx.objectStore(offlineCacheStoreTiles).put(tileEntry);
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror = function() { reject(tx.error || new Error('IndexedDB tile write failed')); };
+    });
+  },
+  async loadMarkerStream(streamKey) {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      const tx = db.transaction([offlineCacheStoreMarkerStreams], 'readonly');
+      const request = tx.objectStore(offlineCacheStoreMarkerStreams).get(streamKey);
+      request.onsuccess = function() { resolve(request.result || null); };
+      request.onerror = function() { reject(request.error || new Error('IndexedDB marker stream read failed')); };
+    });
+  },
+  async saveMarkerStream(streamEntry) {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      const tx = db.transaction([offlineCacheStoreMarkerStreams], 'readwrite');
+      tx.objectStore(offlineCacheStoreMarkerStreams).put(streamEntry);
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror = function() { reject(tx.error || new Error('IndexedDB marker stream write failed')); };
+    });
+  },
+  async clearAll() {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      const tx = db.transaction([offlineCacheStoreTiles, offlineCacheStoreMarkerStreams, offlineCacheStoreMeta], 'readwrite');
+      tx.objectStore(offlineCacheStoreTiles).clear();
+      tx.objectStore(offlineCacheStoreMarkerStreams).clear();
+      tx.objectStore(offlineCacheStoreMeta).clear();
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror = function() { reject(tx.error || new Error('IndexedDB clear failed')); };
+    });
+  }
+};
+
+async function readOfflineCacheStats() {
+  const emptyStats = {
+    tiles: { osm: 0, google: 0, mapbox: 0 },
+    markers: 0,
+    total: 0,
+    tileRequests: 0,
+    tileHits: 0,
+    tileMisses: 0,
+    tileDownloads: 0,
+  };
+  const storedStats = await offlineCacheStorage.readMeta('stats');
+  if (!storedStats || typeof storedStats !== 'object') {
+    return emptyStats;
+  }
+  const osmSize = Number(storedStats.tiles && storedStats.tiles.osm) || 0;
+  const googleSize = Number(storedStats.tiles && storedStats.tiles.google) || 0;
+  const mapboxSize = Number(storedStats.tiles && storedStats.tiles.mapbox) || 0;
+  const markerSize = Number(storedStats.markers) || 0;
+  return {
+    tiles: { osm: Math.max(0, osmSize), google: Math.max(0, googleSize), mapbox: Math.max(0, mapboxSize) },
+    markers: Math.max(0, markerSize),
+    total: Math.max(0, Number(storedStats.total) || (osmSize + googleSize + mapboxSize + markerSize)),
+    tileRequests: Math.max(0, Number(storedStats.tileRequests) || 0),
+    tileHits: Math.max(0, Number(storedStats.tileHits) || 0),
+    tileMisses: Math.max(0, Number(storedStats.tileMisses) || 0),
+    tileDownloads: Math.max(0, Number(storedStats.tileDownloads) || 0),
+  };
+}
+
+async function updateOfflineCacheStats(nextStats) {
+  offlineCacheStatsSnapshot = nextStats;
+  await offlineCacheStorage.writeMeta('stats', nextStats);
+}
+
+async function applyTileStatsDelta(providerName, previousBytes, nextBytes) {
+  const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
+  const providerKey = providerName === 'google' ? 'google' : providerName === 'mapbox' ? 'mapbox' : 'osm';
+  const safePrev = Math.max(0, Number(previousBytes) || 0);
+  const safeNext = Math.max(0, Number(nextBytes) || 0);
+  stats.tiles[providerKey] = Math.max(0, (Number(stats.tiles[providerKey]) || 0) - safePrev + safeNext);
+  stats.total = Math.max(0, stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox + stats.markers);
+  await updateOfflineCacheStats(stats);
+}
+
+async function recordTileCacheAccess(resultType, downloadedTileCount) {
+  const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
+  stats.tileRequests = (Number(stats.tileRequests) || 0) + 1;
+  if (resultType === 'hit') {
+    stats.tileHits = (Number(stats.tileHits) || 0) + 1;
+  } else {
+    stats.tileMisses = (Number(stats.tileMisses) || 0) + 1;
+  }
+  if (Number.isFinite(downloadedTileCount) && downloadedTileCount > 0) {
+    stats.tileDownloads = (Number(stats.tileDownloads) || 0) + downloadedTileCount;
+  }
+  await updateOfflineCacheStats(stats);
+}
+
+async function recordDownloadedTiles(downloadedTileCount) {
+  if (!Number.isFinite(downloadedTileCount) || downloadedTileCount <= 0) {
+    return;
+  }
+  const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
+  stats.tileDownloads = (Number(stats.tileDownloads) || 0) + downloadedTileCount;
+  await updateOfflineCacheStats(stats);
+}
+
+async function applyMarkerStatsDelta(previousBytes, nextBytes) {
+  const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
+  const safePrev = Math.max(0, Number(previousBytes) || 0);
+  const safeNext = Math.max(0, Number(nextBytes) || 0);
+  stats.markers = Math.max(0, (Number(stats.markers) || 0) - safePrev + safeNext);
+  stats.total = Math.max(0, stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox + stats.markers);
+  await updateOfflineCacheStats(stats);
+}
+
+function splitCacheStatusSegmentsIntoBalancedLines(segmentEntries, forcedSecondLineStartIndex) {
+  if (!Array.isArray(segmentEntries) || segmentEntries.length === 0) {
+    return [''];
+  }
+  if (Number.isInteger(forcedSecondLineStartIndex) && forcedSecondLineStartIndex > 0 && forcedSecondLineStartIndex < segmentEntries.length) {
+    return [
+      segmentEntries.slice(0, forcedSecondLineStartIndex).map(function(segmentEntry) { return segmentEntry.html; }).join(' · '),
+      segmentEntries.slice(forcedSecondLineStartIndex).map(function(segmentEntry) { return segmentEntry.html; }).join(' · '),
+    ];
+  }
+  const totalLength = segmentEntries.reduce(function(accumulator, segmentEntry) {
+    return accumulator + (segmentEntry.textLength || 0);
+  }, 0) + Math.max(0, segmentEntries.length - 1) * 3;
+  const targetLength = Math.ceil(totalLength / 2);
+  const firstLineSegments = [];
+  const secondLineSegments = [];
+  let currentLength = 0;
+
+  segmentEntries.forEach(function(segmentEntry) {
+    const entryLength = (segmentEntry.textLength || 0) + (firstLineSegments.length > 0 ? 3 : 0);
+    if (currentLength < targetLength || firstLineSegments.length === 0) {
+      firstLineSegments.push(segmentEntry.html);
+      currentLength += entryLength;
+      return;
+    }
+    secondLineSegments.push(segmentEntry.html);
+  });
+
+  if (secondLineSegments.length === 0) {
+    return [firstLineSegments.join(' · ')];
+  }
+  return [firstLineSegments.join(' · '), secondLineSegments.join(' · ')];
+}
+
+function updateMobileControlOffsetsFromCacheStatus() {
+  if (!mapCacheStatusNode) {
+    return;
+  }
+  if (window.matchMedia('(max-width: 767px)').matches) {
+    const cachePanelHeight = mapCacheStatusNode.offsetHeight || 0;
+    const verticalGap = 12;
+    const offsetValue = Math.max(0, cachePanelHeight + verticalGap);
+    document.documentElement.style.setProperty('--mobile-cache-offset', offsetValue + 'px');
+    return;
+  }
+  document.documentElement.style.setProperty('--mobile-cache-offset', '0px');
+}
+
+async function renderOfflineCacheStatus() {
+  if (!mapCacheStatusNode) {
+    return;
+  }
+  const stats = offlineCacheStatsSnapshot || await readOfflineCacheStats();
+  offlineCacheStatsSnapshot = stats;
+  let quotaBytes = 0;
+  let indexedDBUsageBytes = 0;
+  if (navigator.storage && navigator.storage.estimate) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      quotaBytes = Number(estimate && estimate.quota) || 0;
+      indexedDBUsageBytes = Number(estimate && estimate.usageDetails && estimate.usageDetails.indexedDB) || Number(estimate && estimate.usage) || 0;
+    } catch (error) {
+      quotaBytes = 0;
+      indexedDBUsageBytes = 0;
+    }
+  }
+  const onlineLabel = isInternetOnlineNow() ? mapCacheText('online') : mapCacheText('offline');
+  const modeLabel = latestCacheTrafficMode === 'cache' ? mapCacheText('mode_cache_hit') : latestCacheTrafficMode === 'mixed' ? mapCacheText('mode_cache_mixed') : mapCacheText('mode_network');
+  const desktopMode = !!window.desktopWebViewMode;
+  const tileTotal = stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox;
+  const measuredTotal = Math.max(stats.total, indexedDBUsageBytes);
+  const effectiveTotal = desktopMode ? Math.max(tileTotal, indexedDBUsageBytes) : measuredTotal;
+  const hitMissLine = `${stats.tileHits}/${stats.tileMisses}`;
+  const downloadsLine = Number(stats.tileDownloads) || 0;
+  const firstLineSegments = [];
+  const secondLineSegments = [];
+  firstLineSegments.push({
+    html: `<span class="cache-connectivity-dot ${isInternetOnlineNow() ? 'online' : 'offline'}" aria-hidden="true"></span>${mapCacheText('map')}: ${onlineLabel}`,
+    textLength: (`${mapCacheText('map')}: ${onlineLabel}`).length,
+  });
+  firstLineSegments.push({ html: modeLabel, textLength: modeLabel.length });
+  firstLineSegments.push({
+    html: `${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)}`,
+    textLength: (`${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)}`).length,
+  });
+  firstLineSegments.push({
+    html: `${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}`,
+    textLength: (`${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}`).length,
+  });
+  secondLineSegments.push({
+    html: `${mapCacheText('tiles_downloaded')} ↓${downloadsLine}`,
+    textLength: (`${mapCacheText('tiles_downloaded')} ↓${downloadsLine}`).length,
+  });
+  secondLineSegments.push({
+    html: `${mapCacheText('hits_misses')} ${hitMissLine}`,
+    textLength: (`${mapCacheText('hits_misses')} ${hitMissLine}`).length,
+  });
+  secondLineSegments.push({
+    html: `${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`,
+    textLength: (`${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`).length,
+  });
+  secondLineSegments.push({
+    html: `<span id="resetMapCacheLink" class="cache-reset-link">${mapCacheText('reset')}</span>`,
+    textLength: mapCacheText('reset').length,
+  });
+  const firstLine = firstLineSegments.map(function(segmentEntry) { return segmentEntry.html; }).join(' · ') + ' ·';
+  const secondLine = secondLineSegments.map(function(segmentEntry) { return segmentEntry.html; }).join(' · ') + ' ·';
+  mapCacheStatusNode.innerHTML =
+    `<div class="cache-inline-line">${firstLine}</div>` +
+    `<div class="cache-inline-line">${secondLine}</div>`;
+  updateMobileControlOffsetsFromCacheStatus();
+  const resetLink = document.getElementById('resetMapCacheLink');
+  if (resetLink) {
+    resetLink.onclick = function() {
+      openMapCacheResetConfirmModal();
+    };
+  }
+}
+
+window.addEventListener('online', function() {
+  updateInternetConnectivityState(true);
+  refreshInternetConnectivityState().catch(function() {});
+});
+window.addEventListener('offline', function() {
+  updateInternetConnectivityState(false);
+});
+window.addEventListener('resize', function() {
+  updateMobileControlOffsetsFromCacheStatus();
+});
+
+L.CachedTileLayer = L.TileLayer.extend({
+  createTile: function(coords, done) {
+    const tileImage = document.createElement('img');
+    tileImage.alt = '';
+    tileImage.setAttribute('role', 'presentation');
+    const tileURL = this.getTileUrl(coords);
+    const providerName = this.options.cacheProvider || 'osm';
+    const tileKey = `${providerName}:${coords.z}:${coords.x}:${coords.y}`;
+    const finalize = function(error) {
+      if (typeof done === 'function') {
+        done(error || null, tileImage);
+      }
+    };
+
+    tileImage.onload = function() { finalize(null); };
+    tileImage.onerror = function() { finalize(new Error('tile load failed')); };
+
+    async function cacheTileInBackground() {
+      try {
+        let response = null;
+        try {
+          response = await fetch(tileURL, { mode: 'cors', cache: 'no-store' });
+        } catch (corsError) {
+          response = await fetch(tileURL, { mode: 'no-cors', cache: 'no-store' });
+        }
+        const blob = await response.blob();
+        const previousTile = await offlineCacheStorage.loadTile(tileKey);
+        if (!blob || blob.size <= 0) {
+          return;
+        }
+        await offlineCacheStorage.saveTile({ key: tileKey, provider: providerName, blob: blob, byteSize: blob.size, savedAt: Date.now() });
+        await applyTileStatsDelta(providerName, previousTile ? previousTile.byteSize : 0, blob.size);
+        await recordDownloadedTiles(previousTile ? 0 : 1);
+        latestCacheTrafficMode = 'network';
+        renderOfflineCacheStatus();
+      } catch (error) {
+        // Keep rendering path resilient: tile draw must not depend on cache write success.
+        updateInternetConnectivityState(false);
+      }
+    }
+
+    (async function() {
+      const cachedTile = await offlineCacheStorage.loadTile(tileKey);
+      if (cachedTile && cachedTile.blob) {
+        await recordTileCacheAccess('hit', 0);
+        latestCacheTrafficMode = isInternetOnlineNow() ? 'mixed' : 'cache';
+        tileImage.src = URL.createObjectURL(cachedTile.blob);
+        renderOfflineCacheStatus();
+        return;
+      }
+      await recordTileCacheAccess('miss', 0);
+      if (!isInternetOnlineNow()) {
+        latestCacheTrafficMode = 'cache';
+        renderOfflineCacheStatus();
+        finalize(new Error('tile missing in offline cache'));
+        return;
+      }
+      latestCacheTrafficMode = 'network';
+      tileImage.src = tileURL;
+      cacheTileInBackground();
+      renderOfflineCacheStatus();
+    })().catch(function(error) {
+      if (!isInternetOnlineNow()) {
+        latestCacheTrafficMode = 'cache';
+      } else {
+        // Fallback to direct tile URL when cache logic fails in WebView/CORS edge cases.
+        tileImage.src = tileURL;
+        refreshInternetConnectivityState().catch(function() {});
+      }
+      renderOfflineCacheStatus();
+    });
+
+    return tileImage;
+  }
+});
 
 /* ---------------------------------------------------------------
  *  refreshDownloadLink() toggles the track download button.
@@ -3470,8 +4193,11 @@ async function saveDesktopServerSettings(adminModel) {
 function renderDesktopStatusLine(statusText) {
   const statusLineNode = document.getElementById('desktopStatusLine');
   if (!statusLineNode) return;
-  statusLineNode.style.display = 'block';
+  desktopRuntimeStatusLine = (statusText || '').trim();
+  // Keep legacy node hidden because status is now merged into cache status line.
+  statusLineNode.style.display = 'none';
   statusLineNode.textContent = statusText;
+  renderOfflineCacheStatus();
 }
 
 async function refreshDesktopStatusLine() {
@@ -3695,22 +4421,25 @@ document.addEventListener('DOMContentLoaded', function () {
     ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
     : '';
 
-  osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
+  osmLayer = new L.CachedTileLayer(media.matches ? osmDark : osmLight, {
     maxZoom: 18,
-    attribution: '&copy; OSM contributors'
+    attribution: '&copy; OSM contributors',
+    cacheProvider: 'osm'
   });
 
   // Use the same satellite layer regardless of theme
-  googleSatellite = L.tileLayer(googleSat, {
+  googleSatellite = new L.CachedTileLayer(googleSat, {
     maxZoom: 20,
     attribution: '&copy; Google',
-    className: 'google-satellite-layer' // Apply theme-aware styling to satellite tiles.
+    className: 'google-satellite-layer', // Apply theme-aware styling to satellite tiles.
+    cacheProvider: 'google'
   });
   // Mapbox Satellite is optional because the tiles require a token.
-  mapboxSatellite = mapboxSat ? L.tileLayer(mapboxSat, {
+  mapboxSatellite = mapboxSat ? new L.CachedTileLayer(mapboxSat, {
     maxZoom: 20,
     attribution: '&copy; Mapbox',
-    className: 'google-satellite-layer' // Reuse the satellite styling so it matches our theme tweaks.
+    className: 'google-satellite-layer', // Reuse the satellite styling so it matches our theme tweaks.
+    cacheProvider: 'mapbox'
   }) : null;
 
   // right after creating osmLayer and googleSatellite
@@ -3732,7 +4461,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Keep the attribution prefix short so Chicha appears before Leaflet and tiles.
   if (map.attributionControl) {
     // Pin the short attribution link to the canonical repository even if branding overrides the logo link.
-    var chichaHref = 'https://github.com/matveynator/chicha-isotope-map';
+    var chichaHref = 'https://matveynator.github.io/chicha-isotope-map';
     map.attributionControl.setPrefix(
       '<a href=\"' + chichaHref + '\" target=\"_blank\" rel=\"noopener noreferrer\">chicha</a> | ' +
       '<a href=\"https://leafletjs.com\" target=\"_blank\" rel=\"noopener noreferrer\">Leaflet</a>'
@@ -3760,6 +4489,14 @@ document.addEventListener('DOMContentLoaded', function () {
     '<a href="#" class="attr-link" data-info="sources">' + translate('attr_sources') + '</a> | ' +
     '<a href="#" class="attr-link" data-info="license">' + translate('attr_license') + '</a>'
   );
+  readOfflineCacheStats()
+    .then(function(stats) {
+      offlineCacheStatsSnapshot = stats;
+      return renderOfflineCacheStatus();
+    })
+    .catch(function(error) {
+      console.warn('offline cache stats init failed:', error);
+    });
 
   // Track view initialization
   // Inject markers as literal JSON so the first render avoids the template parse error
@@ -5056,13 +5793,82 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     return;
   }
   closeMarkerLayerStream(layerName);
-  const es = new EventSource('/stream_markers?' + params.toString());
-  state.source = es;
+  const enableMarkerStreamCache = !window.desktopWebViewMode;
+  const streamKey = `v1:${layerName}:${params.toString()}`;
   state.loaded = false;
   state.viewKey = viewKey || '';
   let streamSummary = null;
   let streamMin = Infinity;
   let streamMax = -Infinity;
+  const streamedMarkers = [];
+
+  function emitFromCache(entry) {
+    if (!entry || !Array.isArray(entry.markers)) {
+      return false;
+    }
+    entry.markers.forEach(function(marker) {
+      if (typeof marker.date === 'number') {
+        streamMin = Math.min(streamMin, marker.date);
+        streamMax = Math.max(streamMax, marker.date);
+      }
+      if (handlers && typeof handlers.onMarker === 'function') {
+        handlers.onMarker(marker);
+      }
+    });
+    streamSummary = entry.summary || null;
+    latestCacheTrafficMode = 'cache';
+    renderOfflineCacheStatus();
+    if (handlers && typeof handlers.onDone === 'function') {
+      handlers.onDone(streamSummary, streamMin, streamMax);
+    }
+    state.loaded = true;
+    state.source = null;
+    return true;
+  }
+
+  async function persistStreamCache() {
+    if (!enableMarkerStreamCache) {
+      return;
+    }
+    const payload = { markers: streamedMarkers, summary: streamSummary || null };
+    const encoded = JSON.stringify(payload);
+    const byteSize = new Blob([encoded]).size;
+    const previousEntry = await offlineCacheStorage.loadMarkerStream(streamKey);
+    await offlineCacheStorage.saveMarkerStream({
+      key: streamKey,
+      layerName: layerName,
+      markers: streamedMarkers,
+      summary: streamSummary || null,
+      byteSize: byteSize,
+      savedAt: Date.now(),
+    });
+    await applyMarkerStatsDelta(previousEntry ? previousEntry.byteSize : 0, byteSize);
+  }
+
+  const shouldReadMarkerStreamFromOfflineCache = !isInternetOnlineNow() && !window.desktopWebViewMode;
+  if (shouldReadMarkerStreamFromOfflineCache) {
+    if (!enableMarkerStreamCache) {
+      if (handlers && typeof handlers.onError === 'function') {
+        handlers.onError();
+      }
+      return;
+    }
+    offlineCacheStorage.loadMarkerStream(streamKey)
+      .then(function(cachedEntry) {
+        if (!emitFromCache(cachedEntry) && handlers && typeof handlers.onError === 'function') {
+          handlers.onError();
+        }
+      })
+      .catch(function() {
+        if (handlers && typeof handlers.onError === 'function') {
+          handlers.onError();
+        }
+      });
+    return;
+  }
+
+  const es = new EventSource('/stream_markers?' + params.toString());
+  state.source = es;
 
   es.onmessage = e => {
     let marker;
@@ -5074,6 +5880,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     if (!marker) {
       return;
     }
+    streamedMarkers.push(marker);
     if (typeof marker.date === 'number') {
       streamMin = Math.min(streamMin, marker.date);
       streamMax = Math.max(streamMax, marker.date);
@@ -5092,6 +5899,14 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   });
 
   function finishStream() {
+    persistStreamCache()
+      .then(function() {
+        latestCacheTrafficMode = 'network';
+        renderOfflineCacheStatus();
+      })
+      .catch(function(error) {
+        console.warn('marker stream cache save failed:', error);
+      });
     state.loaded = true;
     state.source = null;
     if (handlers && typeof handlers.onDone === 'function') {
@@ -5104,9 +5919,27 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
 
   es.onerror = () => {
     state.source = null;
-    if (handlers && typeof handlers.onError === 'function') {
-      handlers.onError();
+    if (!enableMarkerStreamCache) {
+      if (handlers && typeof handlers.onError === 'function') {
+        handlers.onError();
+      }
+      es.close();
+      return;
     }
+    offlineCacheStorage.loadMarkerStream(streamKey)
+      .then(function(cachedEntry) {
+        if (emitFromCache(cachedEntry)) {
+          return;
+        }
+        if (handlers && typeof handlers.onError === 'function') {
+          handlers.onError();
+        }
+      })
+      .catch(function() {
+        if (handlers && typeof handlers.onError === 'function') {
+          handlers.onError();
+        }
+      });
     es.close();
   };
 }
@@ -7161,7 +7994,41 @@ function openServerPoster() {
     });
 }
 
+function bindDesktopExternalLinkRouting() {
+  if (desktopExternalLinkRoutingBound || !window.desktopWebViewMode) {
+    return;
+  }
+  desktopExternalLinkRoutingBound = true;
+  document.addEventListener('click', function(event) {
+    const anchorNode = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+    if (!anchorNode) {
+      return;
+    }
+    const hrefValue = anchorNode.getAttribute('href') || '';
+    if (!/^https?:\/\//i.test(hrefValue)) {
+      return;
+    }
+    try {
+      const targetURL = new URL(hrefValue, window.location.href);
+      if (targetURL.origin === window.location.origin) {
+        return;
+      }
+      event.preventDefault();
+      fetch('/desktop/open-external', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetURL.href })
+      }).catch(function() {
+        window.open(targetURL.href, '_blank', 'noopener,noreferrer');
+      });
+    } catch (error) {
+      // Ignore invalid URLs and keep default browser behavior.
+    }
+  }, true);
+}
+
 function initializeUIElements() {
+  bindDesktopExternalLinkRouting();
   var locateButton = document.getElementById('locateButton');
   if (locateButton) {
     locateButton.addEventListener('click', function () {
@@ -7813,7 +8680,7 @@ function centerMapToLocation() {
       var poweredTemplate = translate('sources_powered_by');
       var version = (typeof window.chichaVersion === 'string') ? window.chichaVersion : '';
       // Keep data source attribution anchored to the upstream repository for consistency.
-      var githubURL = 'https://github.com/matveynator/chicha-isotope-map';
+      var githubURL = 'https://matveynator.github.io/chicha-isotope-map';
       var githubLink = githubURL ? '<a href=\"' + githubURL + '\" target=\"_blank\" rel=\"noopener noreferrer\">GitHub</a>' : 'GitHub';
       if (poweredTemplate && poweredTemplate !== 'sources_powered_by') {
         // Localize the attribution line so every language keeps the upstream credit.
