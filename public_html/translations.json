@@ -964,7 +964,7 @@
     "map_cache_provider_markers": "Markers",
     "map_cache_tiles_downloaded": "Tiles",
     "map_cache_hits_misses": "H/M",
-    "map_cache_storage": "Storage",
+    "map_cache_storage": "Cache",
     "map_cache_reset": "reset",
     "map_cache_unknown": "unknown",
     "map_cache_online": "online",

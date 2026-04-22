@@ -396,8 +396,12 @@ body, html {
           }
 
           #legend {
-            bottom: 92px !important;
+            bottom: calc(20px + var(--mobile-cache-offset, 0px)) !important;
             z-index: 1060 !important;
+          }
+
+          #themeToggle {
+            bottom: calc(140px + var(--mobile-cache-offset, 0px));
           }
         }
 
@@ -2828,6 +2832,7 @@ let latestCacheTrafficMode = 'network';
 let offlineCacheStatsSnapshot = null;
 let desktopRuntimeStatusLine = '';
 let internetConnectivityState = navigator.onLine ? 'online' : 'offline';
+let desktopExternalLinkRoutingBound = false;
 
 const mapCacheLabelFallbacks = {
   map: 'Map',
@@ -3215,6 +3220,20 @@ function splitCacheStatusSegmentsIntoBalancedLines(segmentEntries, forcedSecondL
   return [firstLineSegments.join(' · '), secondLineSegments.join(' · ')];
 }
 
+function updateMobileControlOffsetsFromCacheStatus() {
+  if (!mapCacheStatusNode) {
+    return;
+  }
+  if (window.matchMedia('(max-width: 767px)').matches) {
+    const cachePanelHeight = mapCacheStatusNode.offsetHeight || 0;
+    const verticalGap = 12;
+    const offsetValue = Math.max(0, cachePanelHeight + verticalGap);
+    document.documentElement.style.setProperty('--mobile-cache-offset', offsetValue + 'px');
+    return;
+  }
+  document.documentElement.style.setProperty('--mobile-cache-offset', '0px');
+}
+
 async function renderOfflineCacheStatus() {
   if (!mapCacheStatusNode) {
     return;
@@ -3277,6 +3296,7 @@ async function renderOfflineCacheStatus() {
   mapCacheStatusNode.innerHTML =
     `<div class="cache-inline-line">${firstLine}</div>` +
     `<div class="cache-inline-line">${secondLine}</div>`;
+  updateMobileControlOffsetsFromCacheStatus();
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
     resetLink.onclick = function() {
@@ -3291,6 +3311,9 @@ window.addEventListener('online', function() {
 });
 window.addEventListener('offline', function() {
   updateInternetConnectivityState(false);
+});
+window.addEventListener('resize', function() {
+  updateMobileControlOffsetsFromCacheStatus();
 });
 
 L.CachedTileLayer = L.TileLayer.extend({
@@ -4379,13 +4402,6 @@ document.addEventListener('DOMContentLoaded', function () {
     window.__hideGithubHint = githubHandle.hide;
     githubLink.addEventListener('click', function () {
       githubHandle.hide();
-      if (window.desktopWebViewMode) {
-        // Desktop mode should open project docs in the system browser.
-        const href = githubLink.getAttribute('href');
-        if (href) {
-          window.open(href, '_blank', 'noopener,noreferrer');
-        }
-      }
     });
   }
 
@@ -7976,7 +7992,35 @@ function openServerPoster() {
     });
 }
 
+function bindDesktopExternalLinkRouting() {
+  if (desktopExternalLinkRoutingBound || !window.desktopWebViewMode) {
+    return;
+  }
+  desktopExternalLinkRoutingBound = true;
+  document.addEventListener('click', function(event) {
+    const anchorNode = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+    if (!anchorNode) {
+      return;
+    }
+    const hrefValue = anchorNode.getAttribute('href') || '';
+    if (!/^https?:\/\//i.test(hrefValue)) {
+      return;
+    }
+    try {
+      const targetURL = new URL(hrefValue, window.location.href);
+      if (targetURL.origin === window.location.origin) {
+        return;
+      }
+      event.preventDefault();
+      window.open(targetURL.href, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      // Ignore invalid URLs and keep default browser behavior.
+    }
+  }, true);
+}
+
 function initializeUIElements() {
+  bindDesktopExternalLinkRouting();
   var locateButton = document.getElementById('locateButton');
   if (locateButton) {
     locateButton.addEventListener('click', function () {
