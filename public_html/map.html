@@ -2090,7 +2090,6 @@ function getRadius(doseRate, zoomLevel) {
 
 const MARKER_CONTRAST_RING_COLOR = '#000000';
 const MARKER_CONTRAST_RING_WIDTH = 0.5;
-const MARKER_CONTRAST_MIN_ZOOM = 4;
 
 function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLevel) {
   const markerRadius = getRadius(doseRate, zoomLevel);
@@ -2099,16 +2098,14 @@ function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLeve
   const markerColor = getGradientColor(doseRate);
   const markerLayers = [];
 
-  if (zoomLevel > MARKER_CONTRAST_MIN_ZOOM) {
-    const contrastRing = L.circleMarker([lat, lon], {
-      radius: markerRadius + MARKER_CONTRAST_RING_WIDTH,
-      color: MARKER_CONTRAST_RING_COLOR,
-      weight: MARKER_CONTRAST_RING_WIDTH,
-      opacity: 1,
-      fillOpacity: 0
-    });
-    markerLayers.push(contrastRing);
-  }
+  const contrastRing = L.circleMarker([lat, lon], {
+    radius: markerRadius + MARKER_CONTRAST_RING_WIDTH,
+    color: MARKER_CONTRAST_RING_COLOR,
+    weight: MARKER_CONTRAST_RING_WIDTH,
+    opacity: 1,
+    fillOpacity: 0
+  });
+  markerLayers.push(contrastRing);
 
   const doseMarker = L.circleMarker([lat, lon], {
     radius: markerRadius,
