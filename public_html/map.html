@@ -8012,7 +8012,13 @@ function bindDesktopExternalLinkRouting() {
         return;
       }
       event.preventDefault();
-      window.open(targetURL.href, '_blank', 'noopener,noreferrer');
+      fetch('/desktop/open-external', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetURL.href })
+      }).catch(function() {
+        window.open(targetURL.href, '_blank', 'noopener,noreferrer');
+      });
     } catch (error) {
       // Ignore invalid URLs and keep default browser behavior.
     }
