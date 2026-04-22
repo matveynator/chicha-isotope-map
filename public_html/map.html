@@ -380,11 +380,12 @@ body, html {
           #mapCacheStatus {
             top: auto;
             bottom: 10px;
-            left: 10px;
+            left: auto;
             right: 10px;
             transform: none;
             min-width: 0;
-            max-width: none;
+            width: fit-content;
+            max-width: min(88vw, 560px);
             border-radius: 10px;
             padding: 6px 8px;
             z-index: 1050;
@@ -1483,7 +1484,7 @@ body, html {
           z-index: 1250;
           font-size: var(--font-size-base);
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-          order: 2;
+          order: 0;
         }
 
         #desktopStatusLine {
