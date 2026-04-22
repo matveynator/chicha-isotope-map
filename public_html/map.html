@@ -6608,15 +6608,7 @@ function updateMarkers(forceReload){
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
     } else {
-      const radius = getRadius(m.doseRate, zoom);
-      marker = L.circleMarker([m.lat, m.lon], {
-        radius      : radius,
-        fillColor   : getGradientColor(m.doseRate),
-        color       : getGradientColor(m.doseRate),
-        weight      : 1,
-        opacity     : getFillOpacity(m.speed) + 0.1,
-        fillOpacity : getFillOpacity(m.speed)
-      })
+      marker = createDoseMarkerWithContrastOutline(m.lat, m.lon, m.doseRate, m.speed, zoom)
       .addTo(map)
       .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
       .bindPopup(getPopupContent(m));
