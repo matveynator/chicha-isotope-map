@@ -319,18 +319,19 @@ body, html {
 
         #mapCacheStatus {
           position: absolute;
-          top: 86px;
+          top: 62px;
           left: 50%;
           transform: translateX(-50%);
           background: var(--overlay-bg);
           border: var(--legend-border);
           border-radius: 14px;
-          padding: 8px 12px;
+          padding: 6px 8px;
           font-size: var(--font-size-xs);
           color: var(--modal-text);
           z-index: 1200;
           user-select: none;
-          min-width: min(92vw, 420px);
+          width: fit-content;
+          min-width: 0;
           max-width: min(92vw, 760px);
           line-height: 1.25;
           white-space: normal;
