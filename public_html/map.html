@@ -394,6 +394,11 @@ body, html {
             white-space: normal;
             overflow-wrap: anywhere;
           }
+
+          #legend {
+            bottom: 92px !important;
+            z-index: 1060 !important;
+          }
         }
 
         #mapCacheResetConfirmModal {
@@ -1720,7 +1725,7 @@ body, html {
     </div>
 
     <!-- GitHub link and program info -->
-    <a href="{{ .LogoLink }}" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{if .ShowGithubTooltip}}{{translate "github_link_tooltip_desc"}}{{else}}{{translate "logo_title"}}{{end}}">
+    <a href="https://matveynator.github.io/chicha-isotope-map" class="github-link" target="_blank" rel="noopener noreferrer" aria-label="{{if .ShowGithubTooltip}}{{translate "github_link_tooltip_desc"}}{{else}}{{translate "logo_title"}}{{end}}">
       <img src="{{ .LogoImageURL }}" alt="{{translate "description"}} (version: {{ .Version }})" >
     </a>
 
@@ -2834,7 +2839,7 @@ const mapCacheLabelFallbacks = {
   provider_markers: 'Markers',
   tiles_downloaded: 'Tiles',
   hits_misses: 'H/M',
-  storage: 'Storage',
+  storage: 'Cache',
   reset: 'reset',
   unknown: 'unknown',
   online: 'online',
@@ -3231,68 +3236,47 @@ async function renderOfflineCacheStatus() {
   const onlineLabel = isInternetOnlineNow() ? mapCacheText('online') : mapCacheText('offline');
   const modeLabel = latestCacheTrafficMode === 'cache' ? mapCacheText('mode_cache_hit') : latestCacheTrafficMode === 'mixed' ? mapCacheText('mode_cache_mixed') : mapCacheText('mode_network');
   const desktopMode = !!window.desktopWebViewMode;
-  if (desktopMode && !desktopRuntimeStatusLine) {
-    const statusLineNode = document.getElementById('desktopStatusLine');
-    if (statusLineNode && statusLineNode.textContent) {
-      desktopRuntimeStatusLine = statusLineNode.textContent.trim();
-    }
-  }
   const tileTotal = stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox;
   const measuredTotal = Math.max(stats.total, indexedDBUsageBytes);
   const effectiveTotal = desktopMode ? Math.max(tileTotal, indexedDBUsageBytes) : measuredTotal;
   const hitMissLine = `${stats.tileHits}/${stats.tileMisses}`;
   const downloadsLine = Number(stats.tileDownloads) || 0;
-  const cacheStatusSegments = [];
-  cacheStatusSegments.push({
+  const firstLineSegments = [];
+  const secondLineSegments = [];
+  firstLineSegments.push({
     html: `<span class="cache-connectivity-dot ${isInternetOnlineNow() ? 'online' : 'offline'}" aria-hidden="true"></span>${mapCacheText('map')}: ${onlineLabel}`,
     textLength: (`${mapCacheText('map')}: ${onlineLabel}`).length,
   });
-  cacheStatusSegments.push({ html: modeLabel, textLength: modeLabel.length });
-  cacheStatusSegments.push({
+  firstLineSegments.push({ html: modeLabel, textLength: modeLabel.length });
+  firstLineSegments.push({
     html: `${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)}`,
     textLength: (`${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)}`).length,
   });
-  cacheStatusSegments.push({
+  firstLineSegments.push({
     html: `${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}`,
     textLength: (`${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}`).length,
   });
-  if (!desktopMode) {
-    cacheStatusSegments.push({
-      html: `${mapCacheText('provider_markers')} ${formatBytes(stats.markers)}`,
-      textLength: (`${mapCacheText('provider_markers')} ${formatBytes(stats.markers)}`).length,
-    });
-  }
-  cacheStatusSegments.push({
+  secondLineSegments.push({
     html: `${mapCacheText('tiles_downloaded')} ↓${downloadsLine}`,
     textLength: (`${mapCacheText('tiles_downloaded')} ↓${downloadsLine}`).length,
   });
-  cacheStatusSegments.push({
+  secondLineSegments.push({
     html: `${mapCacheText('hits_misses')} ${hitMissLine}`,
     textLength: (`${mapCacheText('hits_misses')} ${hitMissLine}`).length,
   });
-  cacheStatusSegments.push({
+  secondLineSegments.push({
     html: `${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`,
     textLength: (`${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`).length,
-    segmentKind: 'storage',
   });
-  cacheStatusSegments.push({
+  secondLineSegments.push({
     html: `<span id="resetMapCacheLink" class="cache-reset-link">${mapCacheText('reset')}</span>`,
     textLength: mapCacheText('reset').length,
   });
-  if (desktopMode && desktopRuntimeStatusLine) {
-    cacheStatusSegments.push({
-      html: desktopRuntimeStatusLine,
-      textLength: desktopRuntimeStatusLine.length,
-    });
-  }
-
-  const storageSegmentIndex = cacheStatusSegments.findIndex(function(segmentEntry) {
-    return segmentEntry.segmentKind === 'storage';
-  });
-  const balancedStatusLines = splitCacheStatusSegmentsIntoBalancedLines(cacheStatusSegments, storageSegmentIndex);
-  mapCacheStatusNode.innerHTML = balancedStatusLines
-    .map(function(statusLine) { return `<div class="cache-inline-line">${statusLine}</div>`; })
-    .join('');
+  const firstLine = firstLineSegments.map(function(segmentEntry) { return segmentEntry.html; }).join(' · ') + ' ·';
+  const secondLine = secondLineSegments.map(function(segmentEntry) { return segmentEntry.html; }).join(' · ') + ' ·';
+  mapCacheStatusNode.innerHTML =
+    `<div class="cache-inline-line">${firstLine}</div>` +
+    `<div class="cache-inline-line">${secondLine}</div>`;
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
     resetLink.onclick = function() {
@@ -4395,6 +4379,13 @@ document.addEventListener('DOMContentLoaded', function () {
     window.__hideGithubHint = githubHandle.hide;
     githubLink.addEventListener('click', function () {
       githubHandle.hide();
+      if (window.desktopWebViewMode) {
+        // Desktop mode should open project docs in the system browser.
+        const href = githubLink.getAttribute('href');
+        if (href) {
+          window.open(href, '_blank', 'noopener,noreferrer');
+        }
+      }
     });
   }
 
@@ -4452,7 +4443,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Keep the attribution prefix short so Chicha appears before Leaflet and tiles.
   if (map.attributionControl) {
     // Pin the short attribution link to the canonical repository even if branding overrides the logo link.
-    var chichaHref = 'https://github.com/matveynator/chicha-isotope-map';
+    var chichaHref = 'https://matveynator.github.io/chicha-isotope-map';
     map.attributionControl.setPrefix(
       '<a href=\"' + chichaHref + '\" target=\"_blank\" rel=\"noopener noreferrer\">chicha</a> | ' +
       '<a href=\"https://leafletjs.com\" target=\"_blank\" rel=\"noopener noreferrer\">Leaflet</a>'
@@ -8637,7 +8628,7 @@ function centerMapToLocation() {
       var poweredTemplate = translate('sources_powered_by');
       var version = (typeof window.chichaVersion === 'string') ? window.chichaVersion : '';
       // Keep data source attribution anchored to the upstream repository for consistency.
-      var githubURL = 'https://github.com/matveynator/chicha-isotope-map';
+      var githubURL = 'https://matveynator.github.io/chicha-isotope-map';
       var githubLink = githubURL ? '<a href=\"' + githubURL + '\" target=\"_blank\" rel=\"noopener noreferrer\">GitHub</a>' : 'GitHub';
       if (poweredTemplate && poweredTemplate !== 'sources_powered_by') {
         // Localize the attribution line so every language keeps the upstream credit.
