@@ -350,6 +350,80 @@ body, html {
           margin-left: 6px;
         }
 
+        /* Keep cache status away from crowded top controls on narrow phone screens. */
+        @media (max-width: 767px) {
+          #mapCacheStatus {
+            top: auto;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            transform: none;
+            min-width: 0;
+            max-width: none;
+            border-radius: 10px;
+            padding: 6px 8px;
+            z-index: 1050;
+          }
+
+          #mapCacheStatus .cache-inline-line {
+            font-size: var(--font-size-xs);
+            white-space: normal;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+          }
+        }
+
+        #mapCacheResetConfirmModal {
+          position: fixed;
+          inset: 0;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.45);
+          z-index: 2400;
+          padding: 16px;
+        }
+
+        #mapCacheResetConfirmCard {
+          width: min(92vw, 360px);
+          background: var(--modal-bg);
+          color: var(--modal-text);
+          border: var(--modal-border);
+          border-radius: 10px;
+          padding: 14px;
+          box-sizing: border-box;
+        }
+
+        .map-cache-reset-title {
+          font-size: var(--font-size-lg);
+          font-weight: 600;
+          margin: 0 0 8px;
+        }
+
+        .map-cache-reset-text {
+          margin: 0 0 12px;
+          opacity: 0.9;
+        }
+
+        .map-cache-reset-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+        }
+
+        .map-cache-reset-btn {
+          border: var(--legend-border);
+          border-radius: 6px;
+          padding: 6px 10px;
+          background: var(--control-bg);
+          color: var(--modal-text);
+          cursor: pointer;
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-base);
+        }
+
         /* API quickstart cards inside the info modal stay theme aware through shared variables. */
         #infoModal .api-heading {
           font-size: var(--font-size-xl);
@@ -1646,6 +1720,16 @@ body, html {
       <div id="desktopStatusLine" aria-live="polite"></div>
     {{end}}
     <div id="mapCacheStatus" aria-live="polite"></div>
+    <div id="mapCacheResetConfirmModal" aria-hidden="true">
+      <div id="mapCacheResetConfirmCard" role="dialog" aria-modal="true" aria-labelledby="mapCacheResetConfirmTitle">
+        <h3 id="mapCacheResetConfirmTitle" class="map-cache-reset-title">Reset offline cache?</h3>
+        <p class="map-cache-reset-text">This will remove saved map tiles and cached marker streams from this browser.</p>
+        <div class="map-cache-reset-actions">
+          <button id="mapCacheResetCancelButton" class="map-cache-reset-btn" type="button">Cancel</button>
+          <button id="mapCacheResetConfirmButton" class="map-cache-reset-btn" type="button">Reset</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -2705,12 +2789,76 @@ let waitForDangerFit = false;
 // Cache short link payloads by target URL so play/pause toggles reuse two entries.
 const shortLinkCache = new Map();
 const mapCacheStatusNode = document.getElementById('mapCacheStatus');
+const mapCacheResetConfirmModalNode = document.getElementById('mapCacheResetConfirmModal');
+const mapCacheResetConfirmButtonNode = document.getElementById('mapCacheResetConfirmButton');
+const mapCacheResetCancelButtonNode = document.getElementById('mapCacheResetCancelButton');
 const offlineCacheDatabaseName = 'cim-offline-cache-v1';
 const offlineCacheStoreTiles = 'tiles';
 const offlineCacheStoreMarkerStreams = 'marker_streams';
 const offlineCacheStoreMeta = 'meta';
 let latestCacheTrafficMode = 'network';
 let offlineCacheStatsSnapshot = null;
+
+function openMapCacheResetConfirmModal() {
+  if (!mapCacheResetConfirmModalNode) {
+    return;
+  }
+  mapCacheResetConfirmModalNode.style.display = 'flex';
+  mapCacheResetConfirmModalNode.setAttribute('aria-hidden', 'false');
+}
+
+function closeMapCacheResetConfirmModal() {
+  if (!mapCacheResetConfirmModalNode) {
+    return;
+  }
+  mapCacheResetConfirmModalNode.style.display = 'none';
+  mapCacheResetConfirmModalNode.setAttribute('aria-hidden', 'true');
+}
+
+async function clearOfflineCacheWithConfirmation() {
+  await offlineCacheStorage.clearAll();
+  offlineCacheStatsSnapshot = {
+    tiles: { osm: 0, google: 0, mapbox: 0 },
+    markers: 0,
+    total: 0,
+    tileRequests: 0,
+    tileHits: 0,
+    tileMisses: 0,
+    tileDownloads: 0,
+  };
+  latestCacheTrafficMode = 'network';
+  await renderOfflineCacheStatus();
+  updateMarkers(true);
+}
+
+if (mapCacheResetCancelButtonNode) {
+  mapCacheResetCancelButtonNode.addEventListener('click', function() {
+    closeMapCacheResetConfirmModal();
+  });
+}
+if (mapCacheResetConfirmModalNode) {
+  mapCacheResetConfirmModalNode.addEventListener('click', function(event) {
+    if (event.target === mapCacheResetConfirmModalNode) {
+      closeMapCacheResetConfirmModal();
+    }
+  });
+}
+if (mapCacheResetConfirmButtonNode) {
+  mapCacheResetConfirmButtonNode.addEventListener('click', function() {
+    clearOfflineCacheWithConfirmation()
+      .catch(function(error) {
+        console.warn('offline cache clear failed:', error);
+      })
+      .finally(function() {
+        closeMapCacheResetConfirmModal();
+      });
+  });
+}
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape' && mapCacheResetConfirmModalNode && mapCacheResetConfirmModalNode.style.display === 'flex') {
+    closeMapCacheResetConfirmModal();
+  }
+});
 
 function formatBytes(byteCount) {
   const safeBytes = Number.isFinite(byteCount) && byteCount > 0 ? byteCount : 0;
@@ -2919,20 +3067,8 @@ async function renderOfflineCacheStatus() {
     `<div class="cache-inline-line">Map: ${onlineLabel} · ${modeLabel} · OSM ${formatBytes(stats.tiles.osm)} · Google ${formatBytes(stats.tiles.google)}${markersLine} · Tiles ↓${downloadsLine} · H/M ${hitMissLine} · Storage ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : 'unknown'} <span id="resetMapCacheLink" class="cache-reset-link">reset</span></div>`;
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
-    resetLink.onclick = async function() {
-      await offlineCacheStorage.clearAll();
-      offlineCacheStatsSnapshot = {
-        tiles: { osm: 0, google: 0, mapbox: 0 },
-        markers: 0,
-        total: 0,
-        tileRequests: 0,
-        tileHits: 0,
-        tileMisses: 0,
-        tileDownloads: 0,
-      };
-      latestCacheTrafficMode = 'network';
-      await renderOfflineCacheStatus();
-      updateMarkers(true);
+    resetLink.onclick = function() {
+      openMapCacheResetConfirmModal();
     };
   }
 }
