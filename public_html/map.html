@@ -3164,6 +3164,7 @@ function parseMarkerStreamQueryParams(params, layerName) {
   }
   return {
     layerName: layerName || '',
+    theme: normalizeThemePreference(params.get('theme')) || '',
     zoom: zoom,
     minLat: minLat,
     minLon: minLon,
@@ -3193,6 +3194,7 @@ function markerStreamRequestCompatible(cachedQuery, requestedQuery) {
     return false;
   }
   return (cachedQuery.layerName || '') === (requestedQuery.layerName || '') &&
+    (normalizeThemePreference(cachedQuery.theme) || '') === (normalizeThemePreference(requestedQuery.theme) || '') &&
     (cachedQuery.trackID || '') === (requestedQuery.trackID || '') &&
     (cachedQuery.speeds || '') === (requestedQuery.speeds || '') &&
     (cachedQuery.dateFrom || '') === (requestedQuery.dateFrom || '') &&
@@ -6160,6 +6162,7 @@ function updateLiveLayerOnly(state, options) {
       realtime: '1',
       liveOnly: '1',
     });
+    params.set('theme', getThemePreference() || 'light');
     startMarkerLayerStream(markerLiveLayerName, params, viewKey, {
       onMarker: function(m) {
         if (m && typeof m.speed === 'number' && m.speed < 0) {
@@ -6377,6 +6380,8 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       maxLat: bounds.getNorthEast().lat,
       maxLon: bounds.getNorthEast().lng,
     });
+    const activeTheme = getThemePreference() || 'light';
+    params.set('theme', activeTheme);
     if (speedTag) {
       params.set('speeds', speedTag);
     }
