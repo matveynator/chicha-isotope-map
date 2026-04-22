@@ -317,6 +317,38 @@ body, html {
           background: var(--control-bg-hover);
         }
 
+        /* Compact cache status stays near the map title and short link for quick visibility. */
+        #offlineCacheStatus {
+          position: absolute;
+          top: 82px;
+          left: 50%;
+          transform: translateX(-50%);
+          min-width: 320px;
+          max-width: min(90vw, 760px);
+          background: var(--overlay-bg);
+          border: var(--legend-border);
+          border-radius: 10px;
+          padding: 5px 10px;
+          z-index: 1200;
+          color: var(--modal-text);
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          pointer-events: none;
+        }
+
+        #offlineCacheStatusSummary {
+          font-size: var(--font-size-xs);
+          font-weight: 600;
+          line-height: 1.3;
+        }
+
+        #offlineCacheStatusDetails {
+          font-size: var(--font-size-xxs);
+          line-height: 1.2;
+          opacity: 0.92;
+        }
+
         /* API quickstart cards inside the info modal stay theme aware through shared variables. */
         #infoModal .api-heading {
           font-size: var(--font-size-xl);
@@ -1612,6 +1644,10 @@ body, html {
     {{else}}
       <div id="desktopStatusLine" aria-live="polite"></div>
     {{end}}
+    <div id="offlineCacheStatus" aria-live="polite">
+      <div id="offlineCacheStatusSummary"></div>
+      <div id="offlineCacheStatusDetails"></div>
+    </div>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -2528,9 +2564,6 @@ function parsePlaybackParam(raw) {
 
 // Helper keeps URL state in sync with the currently active base layer.
 function getActiveBaseLayerName() {
-  if (offlineOsmLayer && map.hasLayer(offlineOsmLayer)) {
-    return 'Offline OSM';
-  }
   if (mapboxSatellite && map.hasLayer(mapboxSatellite)) {
     return 'Mapbox Satellite';
   }
@@ -2654,7 +2687,7 @@ var markerFilterState = null;
 // Guard async callbacks so stale marker loads cannot mutate shared loading UI.
 var markerLoadToken = 0;
 var isTrackView = false;
-var osmLayer, googleSatellite, mapboxSatellite, offlineOsmLayer;
+var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
 var currentTrackID = null;
 const shortLinkBox = document.getElementById('shortLinkDisplay');
@@ -2675,13 +2708,14 @@ let waitForDangerFit = false;
 const shortLinkCache = new Map();
 const offlineTileDbName = 'cim_offline_tiles_v1';
 const offlineTileStoreName = 'osm_tiles';
-const offlineTileSourceTemplate = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 let offlineStatusSummaryElement = null;
 let offlineStatusDetailsElement = null;
 const offlineCacheModel = {
   activeBaseLayerName: 'OpenStreetMap',
-  networkFallbackTileRequests: 0,
-  networkFetchedBytes: 0,
+  sourceStats: {
+    openstreetmap: { networkRequests: 0, networkBytes: 0 },
+    google: { networkRequests: 0, networkBytes: 0 },
+  },
   storageUsageBytes: 0,
   storageQuotaBytes: 0,
 };
@@ -2706,16 +2740,16 @@ function openOfflineTileDatabase() {
   });
 }
 
-function buildOfflineTileKey(z, x, y) {
-  return `${z}/${x}/${y}`;
+function buildOfflineTileKey(sourceName, z, x, y) {
+  return `${sourceName}/${z}/${x}/${y}`;
 }
 
-async function readOfflineTileBlob(z, x, y) {
+async function readOfflineTileBlob(sourceName, z, x, y) {
   const database = await openOfflineTileDatabase();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(offlineTileStoreName, 'readonly');
     const store = transaction.objectStore(offlineTileStoreName);
-    const request = store.get(buildOfflineTileKey(z, x, y));
+    const request = store.get(buildOfflineTileKey(sourceName, z, x, y));
     request.onsuccess = function() {
       resolve(request.result || null);
     };
@@ -2725,12 +2759,12 @@ async function readOfflineTileBlob(z, x, y) {
   });
 }
 
-async function writeOfflineTileBlob(z, x, y, blob) {
+async function writeOfflineTileBlob(sourceName, z, x, y, blob) {
   const database = await openOfflineTileDatabase();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(offlineTileStoreName, 'readwrite');
     const store = transaction.objectStore(offlineTileStoreName);
-    const request = store.put(blob, buildOfflineTileKey(z, x, y));
+    const request = store.put(blob, buildOfflineTileKey(sourceName, z, x, y));
     request.onsuccess = function() {
       resolve();
     };
@@ -2738,13 +2772,6 @@ async function writeOfflineTileBlob(z, x, y, blob) {
       reject(event.target.error || new Error('failed to store offline tile'));
     };
   });
-}
-
-function buildOfflineTileUrl(z, x, y) {
-  return offlineTileSourceTemplate
-    .replace('{z}', String(z))
-    .replace('{x}', String(x))
-    .replace('{y}', String(y));
 }
 
 function formatByteSize(byteCount) {
@@ -2775,46 +2802,90 @@ async function refreshOfflineStorageEstimate() {
 }
 
 function updateOfflineStatusPanel() {
-  if (!offlineStatusSummaryElement || !offlineStatusDetailsElement) {
-    return;
-  }
-  const isOfflineLayerActive = offlineCacheModel.activeBaseLayerName === 'Offline OSM';
-  const networkLoads = offlineCacheModel.networkFallbackTileRequests;
-  const networkBytes = formatByteSize(offlineCacheModel.networkFetchedBytes);
+  const openStreetMapStats = offlineCacheModel.sourceStats.openstreetmap;
+  const googleStats = offlineCacheModel.sourceStats.google;
+  const openStreetMapNetworkBytes = formatByteSize(openStreetMapStats.networkBytes);
+  const googleNetworkBytes = formatByteSize(googleStats.networkBytes);
   const storageUsage = formatByteSize(offlineCacheModel.storageUsageBytes);
   const storageQuota = formatByteSize(offlineCacheModel.storageQuotaBytes);
   const storagePercent = offlineCacheModel.storageQuotaBytes > 0
     ? ((offlineCacheModel.storageUsageBytes / offlineCacheModel.storageQuotaBytes) * 100).toFixed(1)
     : '0.0';
-  offlineStatusSummaryElement.textContent = isOfflineLayerActive
-    ? `Offline OSM: сетевые загрузки ${networkLoads} (${networkBytes})`
-    : 'Offline OSM: готов к работе из локального кеша';
-  offlineStatusDetailsElement.textContent = `Хранилище: ${storageUsage} / ${storageQuota} (${storagePercent}%)`;
+  const networkModeText = navigator.onLine ? 'онлайн (кеш пополняется)' : 'офлайн (чтение из кеша)';
+  const summaryText = `Режим карты: ${networkModeText}`;
+  const detailsText = `OSM ${openStreetMapStats.networkRequests} / ${openStreetMapNetworkBytes} · Google ${googleStats.networkRequests} / ${googleNetworkBytes} · Хранилище ${storageUsage} / ${storageQuota} (${storagePercent}%)`;
+  if (offlineStatusSummaryElement) {
+    offlineStatusSummaryElement.textContent = summaryText;
+  }
+  if (offlineStatusDetailsElement) {
+    offlineStatusDetailsElement.textContent = detailsText;
+  }
+  const desktopStatusLine = document.getElementById('desktopStatusLine');
+  if (desktopStatusLine) {
+    desktopStatusLine.textContent = `${summaryText}. ${detailsText}`;
+  }
 }
 
-async function fetchAndCacheOfflineTile(z, x, y, requestReason) {
-  const tileResponse = await fetch(buildOfflineTileUrl(z, x, y), { mode: 'cors', cache: 'no-store' });
+async function fetchAndCacheOfflineTile(sourceName, z, x, y, tileUrl, requestReason) {
+  const tileResponse = await fetch(tileUrl, { mode: 'cors', cache: 'no-store' });
   if (!tileResponse.ok) {
     throw new Error(`tile download failed with ${tileResponse.status}`);
   }
   const tileBlob = await tileResponse.blob();
-  await writeOfflineTileBlob(z, x, y, tileBlob);
+  await writeOfflineTileBlob(sourceName, z, x, y, tileBlob);
   if (requestReason === 'tile-render') {
-    offlineCacheModel.networkFallbackTileRequests += 1;
-    offlineCacheModel.networkFetchedBytes += tileBlob.size;
+    if (!offlineCacheModel.sourceStats[sourceName]) {
+      offlineCacheModel.sourceStats[sourceName] = { networkRequests: 0, networkBytes: 0 };
+    }
+    offlineCacheModel.sourceStats[sourceName].networkRequests += 1;
+    offlineCacheModel.sourceStats[sourceName].networkBytes += tileBlob.size;
     refreshOfflineStorageEstimate().finally(updateOfflineStatusPanel);
   }
   return tileBlob;
 }
 
-function buildOfflineTileLayer() {
-  return L.tileLayer('', {
-    maxZoom: 18,
-    attribution: '&copy; OpenStreetMap contributors (offline cache)',
-    tileSize: 256,
-    noWrap: false,
-    bounds: [[-85.05112878, -180], [85.05112878, 180]]
-  });
+function buildCachedTileLayer(sourceName, tileTemplateUrl, layerOptions) {
+  const cachedLayer = L.tileLayer(tileTemplateUrl, layerOptions);
+  cachedLayer.createTile = function(coords, done) {
+    const tileImage = document.createElement('img');
+    tileImage.alt = '';
+    tileImage.setAttribute('role', 'presentation');
+    tileImage.onload = function() {
+      done(null, tileImage);
+    };
+    tileImage.onerror = function() {
+      done(new Error('cached tile unavailable'), tileImage);
+    };
+    (async () => {
+      const resolvedTileUrl = cachedLayer.getTileUrl(coords);
+      try {
+        const cachedBlob = await readOfflineTileBlob(sourceName, coords.z, coords.x, coords.y);
+        if (cachedBlob) {
+          tileImage.src = URL.createObjectURL(cachedBlob);
+          tileImage.onload = function() {
+            URL.revokeObjectURL(tileImage.src);
+            done(null, tileImage);
+          };
+          return;
+        }
+        if (!navigator.onLine) {
+          tileImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+          return;
+        }
+        const fetchedBlob = await fetchAndCacheOfflineTile(sourceName, coords.z, coords.x, coords.y, resolvedTileUrl, 'tile-render');
+        tileImage.src = URL.createObjectURL(fetchedBlob);
+        tileImage.onload = function() {
+          URL.revokeObjectURL(tileImage.src);
+          done(null, tileImage);
+        };
+      } catch (offlineError) {
+        console.warn('cached tile load failed', sourceName, coords, offlineError);
+        tileImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+      }
+    })();
+    return tileImage;
+  };
+  return cachedLayer;
 }
 
 /* ---------------------------------------------------------------
@@ -3841,13 +3912,14 @@ document.addEventListener('DOMContentLoaded', function () {
     ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
     : '';
 
-  osmLayer = L.tileLayer(media.matches ? osmDark : osmLight, {
+  osmLayer = buildCachedTileLayer('openstreetmap', media.matches ? osmDark : osmLight, {
     maxZoom: 18,
     attribution: '&copy; OSM contributors'
   });
+  window.osmLayer = osmLayer;
 
   // Use the same satellite layer regardless of theme
-  googleSatellite = L.tileLayer(googleSat, {
+  googleSatellite = buildCachedTileLayer('google', googleSat, {
     maxZoom: 20,
     attribution: '&copy; Google',
     className: 'google-satellite-layer' // Apply theme-aware styling to satellite tiles.
@@ -3858,46 +3930,6 @@ document.addEventListener('DOMContentLoaded', function () {
     attribution: '&copy; Mapbox',
     className: 'google-satellite-layer' // Reuse the satellite styling so it matches our theme tweaks.
   }) : null;
-  offlineOsmLayer = buildOfflineTileLayer();
-  offlineOsmLayer.createTile = function(coords, done) {
-    const tileImage = document.createElement('img');
-    tileImage.alt = '';
-    tileImage.setAttribute('role', 'presentation');
-    tileImage.onload = function() {
-      done(null, tileImage);
-    };
-    tileImage.onerror = function() {
-      done(new Error('offline tile unavailable'), tileImage);
-    };
-    (async () => {
-      try {
-        const cachedBlob = await readOfflineTileBlob(coords.z, coords.x, coords.y);
-        if (cachedBlob) {
-          tileImage.src = URL.createObjectURL(cachedBlob);
-          tileImage.onload = function() {
-            URL.revokeObjectURL(tileImage.src);
-            done(null, tileImage);
-          };
-          return;
-        }
-        if (!navigator.onLine) {
-          tileImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-          return;
-        }
-        const fetchedBlob = await fetchAndCacheOfflineTile(coords.z, coords.x, coords.y, 'tile-render');
-        tileImage.src = URL.createObjectURL(fetchedBlob);
-        tileImage.onload = function() {
-          URL.revokeObjectURL(tileImage.src);
-          done(null, tileImage);
-        };
-      } catch (offlineError) {
-        console.warn('offline tile load failed', coords, offlineError);
-        tileImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-      }
-    })();
-    return tileImage;
-  };
-
   // right after creating osmLayer and googleSatellite
   const urlParams       = new URLSearchParams(window.location.search);
   const startLayerName  = decodeURIComponent(urlParams.get('layer') || defaultCfg.layer);
@@ -3906,8 +3938,6 @@ document.addEventListener('DOMContentLoaded', function () {
     startLayer = googleSatellite;
   } else if (startLayerName === 'Mapbox Satellite' && mapboxSatellite) {
     startLayer = mapboxSatellite;
-  } else if (startLayerName === 'Offline OSM') {
-    startLayer = offlineOsmLayer;
   }
 
   map = L.map('map', {
@@ -3930,8 +3960,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Layer control
   var baseLayers = {
     "OpenStreetMap": osmLayer,
-    "Google Satellite": googleSatellite,
-    "Offline OSM": offlineOsmLayer
+    "Google Satellite": googleSatellite
   };
   if (mapboxSatellite) {
     baseLayers["Mapbox Satellite"] = mapboxSatellite;
@@ -3942,32 +3971,9 @@ document.addEventListener('DOMContentLoaded', function () {
     collapsed: false
   }).addTo(map);
 
-  const OfflineStatusControl = L.Control.extend({
-    onAdd: function() {
-      const div = L.DomUtil.create('div', 'leaflet-control-layers');
-      div.style.padding = '6px 8px';
-      div.style.minWidth = '240px';
-      div.style.display = 'flex';
-      div.style.flexDirection = 'column';
-      div.style.gap = '3px';
-      div.style.borderRadius = '8px';
-      div.style.backdropFilter = 'blur(2px)';
-      const summaryLabel = L.DomUtil.create('div', '', div);
-      summaryLabel.style.fontSize = '10px';
-      summaryLabel.style.fontWeight = '600';
-      summaryLabel.style.lineHeight = '1.3';
-      summaryLabel.style.color = 'var(--modal-text)';
-      const detailsLabel = L.DomUtil.create('div', '', div);
-      detailsLabel.style.fontSize = '10px';
-      detailsLabel.style.lineHeight = '1.2';
-      detailsLabel.style.color = 'var(--modal-text)';
-      offlineStatusSummaryElement = summaryLabel;
-      offlineStatusDetailsElement = detailsLabel;
-      refreshOfflineStorageEstimate().finally(updateOfflineStatusPanel);
-      return div;
-    }
-  });
-  map.addControl(new OfflineStatusControl({ position: 'bottomleft' }));
+  offlineStatusSummaryElement = document.getElementById('offlineCacheStatusSummary');
+  offlineStatusDetailsElement = document.getElementById('offlineCacheStatusDetails');
+  refreshOfflineStorageEstimate().finally(updateOfflineStatusPanel);
 
   // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
@@ -4032,6 +4038,12 @@ document.addEventListener('DOMContentLoaded', function () {
   map.on('zoomend', function() {
     updateUrl();
     updateOfflineStatusPanel();
+  });
+  window.addEventListener('online', function() {
+    refreshOfflineStorageEstimate().finally(updateOfflineStatusPanel);
+  });
+  window.addEventListener('offline', function() {
+    refreshOfflineStorageEstimate().finally(updateOfflineStatusPanel);
   });
 
   // Initialize UI elements
@@ -6874,9 +6886,6 @@ function viewTrack(trackID) {
 
 
 function setBaseLayer(layerName) {
-  if (offlineOsmLayer && map.hasLayer(offlineOsmLayer)) {
-    map.removeLayer(offlineOsmLayer);
-  }
   if (mapboxSatellite && map.hasLayer(mapboxSatellite)) {
     map.removeLayer(mapboxSatellite);
   }
@@ -6889,12 +6898,6 @@ function setBaseLayer(layerName) {
   if (layerName === 'Mapbox Satellite' && mapboxSatellite) {
     mapboxSatellite.addTo(map);
     offlineCacheModel.activeBaseLayerName = 'Mapbox Satellite';
-    updateOfflineStatusPanel();
-    return;
-  }
-  if (layerName === 'Offline OSM') {
-    offlineOsmLayer.addTo(map);
-    offlineCacheModel.activeBaseLayerName = 'Offline OSM';
     updateOfflineStatusPanel();
     return;
   }
