@@ -1723,7 +1723,7 @@ body, html {
     <div id="mapCacheResetConfirmModal" aria-hidden="true">
       <div id="mapCacheResetConfirmCard" role="dialog" aria-modal="true" aria-labelledby="mapCacheResetConfirmTitle">
         <h3 id="mapCacheResetConfirmTitle" class="map-cache-reset-title">Reset offline cache?</h3>
-        <p class="map-cache-reset-text">This will remove saved map tiles and cached marker streams from this browser.</p>
+        <p id="mapCacheResetConfirmText" class="map-cache-reset-text">This will remove saved map tiles and cached marker streams from this browser.</p>
         <div class="map-cache-reset-actions">
           <button id="mapCacheResetCancelButton" class="map-cache-reset-btn" type="button">Cancel</button>
           <button id="mapCacheResetConfirmButton" class="map-cache-reset-btn" type="button">Reset</button>
@@ -2792,12 +2792,61 @@ const mapCacheStatusNode = document.getElementById('mapCacheStatus');
 const mapCacheResetConfirmModalNode = document.getElementById('mapCacheResetConfirmModal');
 const mapCacheResetConfirmButtonNode = document.getElementById('mapCacheResetConfirmButton');
 const mapCacheResetCancelButtonNode = document.getElementById('mapCacheResetCancelButton');
+const mapCacheResetConfirmTitleNode = document.getElementById('mapCacheResetConfirmTitle');
+const mapCacheResetConfirmTextNode = document.getElementById('mapCacheResetConfirmText');
 const offlineCacheDatabaseName = 'cim-offline-cache-v1';
 const offlineCacheStoreTiles = 'tiles';
 const offlineCacheStoreMarkerStreams = 'marker_streams';
 const offlineCacheStoreMeta = 'meta';
 let latestCacheTrafficMode = 'network';
 let offlineCacheStatsSnapshot = null;
+let desktopRuntimeStatusLine = '';
+
+const mapCacheLabelFallbacks = {
+  map: 'Map',
+  mode_network: 'network',
+  mode_cache_hit: 'cache hit',
+  mode_cache_mixed: 'cache+network',
+  provider_osm: 'OSM',
+  provider_google: 'Google',
+  provider_markers: 'Markers',
+  tiles_downloaded: 'Tiles',
+  hits_misses: 'H/M',
+  storage: 'Storage',
+  reset: 'reset',
+  unknown: 'unknown',
+  online: 'online',
+  offline: 'offline',
+  reset_title: 'Reset offline cache?',
+  reset_text: 'This will remove saved map tiles and cached marker streams from this browser.',
+  cancel: 'Cancel',
+  reset_button: 'Reset',
+};
+
+function mapCacheText(key) {
+  const translated = translate('map_cache_' + key);
+  if (translated && translated !== 'map_cache_' + key) {
+    return translated;
+  }
+  return mapCacheLabelFallbacks[key] || key;
+}
+
+function applyMapCacheLocalization() {
+  if (mapCacheResetConfirmTitleNode) {
+    mapCacheResetConfirmTitleNode.textContent = mapCacheText('reset_title');
+  }
+  if (mapCacheResetConfirmTextNode) {
+    mapCacheResetConfirmTextNode.textContent = mapCacheText('reset_text');
+  }
+  if (mapCacheResetCancelButtonNode) {
+    mapCacheResetCancelButtonNode.textContent = mapCacheText('cancel');
+  }
+  if (mapCacheResetConfirmButtonNode) {
+    mapCacheResetConfirmButtonNode.textContent = mapCacheText('reset_button');
+  }
+}
+
+applyMapCacheLocalization();
 
 function openMapCacheResetConfirmModal() {
   if (!mapCacheResetConfirmModalNode) {
@@ -3054,17 +3103,17 @@ async function renderOfflineCacheStatus() {
       indexedDBUsageBytes = 0;
     }
   }
-  const onlineLabel = navigator.onLine ? 'online' : 'offline';
-  const modeLabel = latestCacheTrafficMode === 'cache' ? 'cache hit' : latestCacheTrafficMode === 'mixed' ? 'cache+network' : 'network';
+  const onlineLabel = navigator.onLine ? mapCacheText('online') : mapCacheText('offline');
+  const modeLabel = latestCacheTrafficMode === 'cache' ? mapCacheText('mode_cache_hit') : latestCacheTrafficMode === 'mixed' ? mapCacheText('mode_cache_mixed') : mapCacheText('mode_network');
   const desktopMode = !!window.desktopWebViewMode;
   const tileTotal = stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox;
   const measuredTotal = Math.max(stats.total, indexedDBUsageBytes);
   const effectiveTotal = desktopMode ? Math.max(tileTotal, indexedDBUsageBytes) : measuredTotal;
-  const markersLine = desktopMode ? '' : ` · Markers ${formatBytes(stats.markers)}`;
   const hitMissLine = `${stats.tileHits}/${stats.tileMisses}`;
   const downloadsLine = Number(stats.tileDownloads) || 0;
+  const desktopStatusPrefix = desktopRuntimeStatusLine ? `${desktopRuntimeStatusLine} · ` : '';
   mapCacheStatusNode.innerHTML =
-    `<div class="cache-inline-line">Map: ${onlineLabel} · ${modeLabel} · OSM ${formatBytes(stats.tiles.osm)} · Google ${formatBytes(stats.tiles.google)}${markersLine} · Tiles ↓${downloadsLine} · H/M ${hitMissLine} · Storage ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : 'unknown'} <span id="resetMapCacheLink" class="cache-reset-link">reset</span></div>`;
+    `<div class="cache-inline-line">${desktopStatusPrefix}${mapCacheText('map')}: ${onlineLabel} · ${modeLabel} · ${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)} · ${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}${desktopMode ? '' : ` · ${mapCacheText('provider_markers')} ${formatBytes(stats.markers)}`} · ${mapCacheText('tiles_downloaded')} ↓${downloadsLine} · ${mapCacheText('hits_misses')} ${hitMissLine} · ${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')} <span id="resetMapCacheLink" class="cache-reset-link">${mapCacheText('reset')}</span></div>`;
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
     resetLink.onclick = function() {
@@ -3955,8 +4004,11 @@ async function saveDesktopServerSettings(adminModel) {
 function renderDesktopStatusLine(statusText) {
   const statusLineNode = document.getElementById('desktopStatusLine');
   if (!statusLineNode) return;
-  statusLineNode.style.display = 'block';
+  desktopRuntimeStatusLine = (statusText || '').trim();
+  // Keep legacy node hidden because status is now merged into cache status line.
+  statusLineNode.style.display = 'none';
   statusLineNode.textContent = statusText;
+  renderOfflineCacheStatus();
 }
 
 async function refreshDesktopStatusLine() {
