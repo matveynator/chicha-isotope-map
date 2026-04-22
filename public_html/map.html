@@ -3176,9 +3176,15 @@ async function applyMarkerStatsDelta(previousBytes, nextBytes) {
   await updateOfflineCacheStats(stats);
 }
 
-function splitCacheStatusSegmentsIntoBalancedLines(segmentEntries) {
+function splitCacheStatusSegmentsIntoBalancedLines(segmentEntries, forcedSecondLineStartIndex) {
   if (!Array.isArray(segmentEntries) || segmentEntries.length === 0) {
     return [''];
+  }
+  if (Number.isInteger(forcedSecondLineStartIndex) && forcedSecondLineStartIndex > 0 && forcedSecondLineStartIndex < segmentEntries.length) {
+    return [
+      segmentEntries.slice(0, forcedSecondLineStartIndex).map(function(segmentEntry) { return segmentEntry.html; }).join(' · '),
+      segmentEntries.slice(forcedSecondLineStartIndex).map(function(segmentEntry) { return segmentEntry.html; }).join(' · '),
+    ];
   }
   const totalLength = segmentEntries.reduce(function(accumulator, segmentEntry) {
     return accumulator + (segmentEntry.textLength || 0);
@@ -3267,6 +3273,7 @@ async function renderOfflineCacheStatus() {
   cacheStatusSegments.push({
     html: `${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`,
     textLength: (`${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`).length,
+    segmentKind: 'storage',
   });
   cacheStatusSegments.push({
     html: `<span id="resetMapCacheLink" class="cache-reset-link">${mapCacheText('reset')}</span>`,
@@ -3279,7 +3286,10 @@ async function renderOfflineCacheStatus() {
     });
   }
 
-  const balancedStatusLines = splitCacheStatusSegmentsIntoBalancedLines(cacheStatusSegments);
+  const storageSegmentIndex = cacheStatusSegments.findIndex(function(segmentEntry) {
+    return segmentEntry.segmentKind === 'storage';
+  });
+  const balancedStatusLines = splitCacheStatusSegmentsIntoBalancedLines(cacheStatusSegments, storageSegmentIndex);
   mapCacheStatusNode.innerHTML = balancedStatusLines
     .map(function(statusLine) { return `<div class="cache-inline-line">${statusLine}</div>`; })
     .join('');
