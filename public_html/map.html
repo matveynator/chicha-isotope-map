@@ -2675,41 +2675,26 @@ let waitForDangerFit = false;
 const shortLinkCache = new Map();
 const offlineTileDbName = 'cim_offline_tiles_v1';
 const offlineTileStoreName = 'osm_tiles';
-const offlineVectorStoreName = 'geofabrik_packages';
 const offlineTileSourceTemplate = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const offlineDownloadMinZoomLevel = 10;
-const offlineDownloadMaxZoomLevel = 18;
-const offlineAverageTileBytes = 32000;
-const offlineWorkerCount = 8;
-let offlineDownloadButtonElement = null;
-let offlineDownloadStatusElement = null;
-let offlineDownloadProgressElement = null;
-let offlineDownloadProgressLabelElement = null;
+let offlineStatusSummaryElement = null;
+let offlineStatusDetailsElement = null;
 const offlineCacheModel = {
-  downloadInProgress: false,
-  completedUnits: 0,
-  totalUnits: 0,
-  progressDescription: '',
   activeBaseLayerName: 'OpenStreetMap',
   networkFallbackTileRequests: 0,
-  lastRegionLabel: '',
-  lastEstimatedBytes: 0,
-  vectorPackageLabel: '',
-  vectorPackageLoadedFromDatabase: false,
+  networkFetchedBytes: 0,
+  storageUsageBytes: 0,
+  storageQuotaBytes: 0,
 };
 
 // IndexedDB keeps downloaded OSM tiles local so the offline layer can render
 // without hitting the network once a region has been cached.
 function openOfflineTileDatabase() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(offlineTileDbName, 2);
+    const request = indexedDB.open(offlineTileDbName, 1);
     request.onupgradeneeded = function(event) {
       const database = event.target.result;
       if (!database.objectStoreNames.contains(offlineTileStoreName)) {
         database.createObjectStore(offlineTileStoreName);
-      }
-      if (!database.objectStoreNames.contains(offlineVectorStoreName)) {
-        database.createObjectStore(offlineVectorStoreName, { keyPath: 'url' });
       }
     };
     request.onsuccess = function(event) {
@@ -2755,38 +2740,6 @@ async function writeOfflineTileBlob(z, x, y, blob) {
   });
 }
 
-async function saveOfflineVectorPackage(packageRecord) {
-  const database = await openOfflineTileDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(offlineVectorStoreName, 'readwrite');
-    const store = transaction.objectStore(offlineVectorStoreName);
-    const request = store.put(packageRecord);
-    request.onsuccess = function() {
-      resolve();
-    };
-    request.onerror = function(event) {
-      reject(event.target.error || new Error('failed to save offline vector package'));
-    };
-  });
-}
-
-async function findOfflineVectorPackageByPoint(latitude, longitude) {
-  const database = await openOfflineTileDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(offlineVectorStoreName, 'readonly');
-    const store = transaction.objectStore(offlineVectorStoreName);
-    const request = store.getAll();
-    request.onsuccess = function() {
-      const storedPackages = Array.isArray(request.result) ? request.result : [];
-      const matchedPackage = storedPackages.find((packageRecord) => bboxContainsPoint(packageRecord.bbox, latitude, longitude));
-      resolve(matchedPackage || null);
-    };
-    request.onerror = function(event) {
-      reject(event.target.error || new Error('failed to scan offline vector package store'));
-    };
-  });
-}
-
 function buildOfflineTileUrl(z, x, y) {
   return offlineTileSourceTemplate
     .replace('{z}', String(z))
@@ -2808,165 +2761,35 @@ function formatByteSize(byteCount) {
   return `${normalized.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-function updateOfflineDownloadControl() {
-  if (!offlineDownloadButtonElement || !offlineDownloadStatusElement || !offlineDownloadProgressElement || !offlineDownloadProgressLabelElement) {
+async function refreshOfflineStorageEstimate() {
+  if (!navigator.storage || typeof navigator.storage.estimate !== 'function') {
     return;
   }
-  const isDownloading = offlineCacheModel.downloadInProgress;
-  const progressFraction = offlineCacheModel.totalUnits > 0
-    ? offlineCacheModel.completedUnits / offlineCacheModel.totalUnits
-    : 0;
-  const progressPercent = Math.floor(progressFraction * 100);
-  offlineDownloadProgressElement.value = Math.max(0, Math.min(100, progressPercent));
-  offlineDownloadProgressLabelElement.textContent = `${progressPercent}%`;
-
-  if (isDownloading) {
-    offlineDownloadButtonElement.textContent = 'Скачивание оффлайн карты...';
-    offlineDownloadButtonElement.disabled = true;
-    offlineDownloadStatusElement.textContent = offlineCacheModel.progressDescription || `Скачано ${offlineCacheModel.completedUnits}/${offlineCacheModel.totalUnits}`;
-    return;
-  }
-
-  offlineDownloadButtonElement.disabled = false;
-  offlineDownloadButtonElement.textContent = 'Скачать оффлайн карту';
-  if (map && map.getZoom() < offlineDownloadMinZoomLevel) {
-    offlineDownloadStatusElement.textContent = `Оффлайн карта станет доступной после масштаба ${offlineDownloadMinZoomLevel}+`;
-    return;
-  }
-  if (offlineCacheModel.activeBaseLayerName === 'Offline OSM') {
-    if (offlineCacheModel.vectorPackageLoadedFromDatabase && offlineCacheModel.vectorPackageLabel) {
-      offlineDownloadStatusElement.textContent = `Используется локальная база: ${offlineCacheModel.vectorPackageLabel}`;
-      return;
-    }
-    if (offlineCacheModel.networkFallbackTileRequests === 0) {
-      offlineDownloadStatusElement.textContent = 'Offline OSM: сеть не используется, карта читается из локальной базы';
-    } else {
-      offlineDownloadStatusElement.textContent = `Offline OSM: были сетевые догрузки (${offlineCacheModel.networkFallbackTileRequests})`;
-    }
-    return;
-  }
-  offlineDownloadStatusElement.textContent = 'Выберите слой "Offline OSM" для проверки локального режима';
-}
-
-function estimateOfflineTileStorageBytes(tileEntryCount) {
-  return tileEntryCount * offlineAverageTileBytes;
-}
-
-function resolveRegionLabelFromReverseGeocode(reverseGeocodePayload) {
-  if (!reverseGeocodePayload || !reverseGeocodePayload.address) {
-    return '';
-  }
-  const addressObject = reverseGeocodePayload.address;
-  const preferredLocationName = addressObject.city || addressObject.town || addressObject.village || addressObject.municipality || '';
-  const preferredRegionName = addressObject.state || addressObject.region || addressObject.county || '';
-  const preferredCountryName = addressObject.country || '';
-  const regionSegments = [preferredLocationName, preferredRegionName, preferredCountryName].filter(Boolean);
-  return regionSegments.join(', ');
-}
-
-function bboxContainsPoint(boundsArray, latitude, longitude) {
-  if (!Array.isArray(boundsArray) || boundsArray.length !== 4) {
-    return false;
-  }
-  const [minimumLongitude, minimumLatitude, maximumLongitude, maximumLatitude] = boundsArray;
-  return longitude >= minimumLongitude &&
-    longitude <= maximumLongitude &&
-    latitude >= minimumLatitude &&
-    latitude <= maximumLatitude;
-}
-
-function bboxSquareDegrees(boundsArray) {
-  if (!Array.isArray(boundsArray) || boundsArray.length !== 4) {
-    return Number.POSITIVE_INFINITY;
-  }
-  const [minimumLongitude, minimumLatitude, maximumLongitude, maximumLatitude] = boundsArray;
-  return Math.abs(maximumLongitude - minimumLongitude) * Math.abs(maximumLatitude - minimumLatitude);
-}
-
-async function resolveClosestGeofabrikRegion(latitude, longitude) {
   try {
-    const indexResponse = await fetch('https://download.geofabrik.de/index-v1-nogeom.json', { cache: 'no-store' });
-    if (!indexResponse.ok) {
-      return null;
-    }
-    const indexPayload = await indexResponse.json();
-    const features = Array.isArray(indexPayload.features) ? indexPayload.features : [];
-    const matchingFeatures = features.filter((featureObject) => bboxContainsPoint(featureObject.bbox, latitude, longitude));
-    if (matchingFeatures.length === 0) {
-      return null;
-    }
-    matchingFeatures.sort((leftFeature, rightFeature) => bboxSquareDegrees(leftFeature.bbox) - bboxSquareDegrees(rightFeature.bbox));
-    const selectedFeature = matchingFeatures[0];
-    const propertiesObject = selectedFeature.properties || {};
-    const pbfUrl = propertiesObject.urls && propertiesObject.urls.pbf ? propertiesObject.urls.pbf : '';
-    let pbfBytes = 0;
-    if (pbfUrl) {
-      try {
-        const headResponse = await fetch(pbfUrl, { method: 'HEAD', cache: 'no-store' });
-        const contentLengthHeader = headResponse.headers.get('content-length');
-        pbfBytes = contentLengthHeader ? Number(contentLengthHeader) : 0;
-      } catch (headError) {
-        console.warn('geofabrik HEAD failed', headError);
-      }
-    }
-    return {
-      label: propertiesObject.name || '',
-      pbfUrl: pbfUrl,
-      pbfBytes: Number.isFinite(pbfBytes) ? pbfBytes : 0,
-      bbox: Array.isArray(selectedFeature.bbox) ? selectedFeature.bbox : null,
-    };
-  } catch (fetchError) {
-    console.warn('geofabrik index lookup failed', fetchError);
-    return null;
+    const storageEstimate = await navigator.storage.estimate();
+    offlineCacheModel.storageUsageBytes = Number(storageEstimate.usage || 0);
+    offlineCacheModel.storageQuotaBytes = Number(storageEstimate.quota || 0);
+  } catch (storageError) {
+    console.warn('offline storage estimate failed', storageError);
   }
 }
 
-async function resolveMapCenterHumanLabel(latitude, longitude) {
-  try {
-    const reverseUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&zoom=10&addressdetails=1`;
-    const reverseResponse = await fetch(reverseUrl, { cache: 'no-store' });
-    if (!reverseResponse.ok) {
-      return '';
-    }
-    const reversePayload = await reverseResponse.json();
-    return resolveRegionLabelFromReverseGeocode(reversePayload);
-  } catch (reverseError) {
-    console.warn('reverse geocode failed', reverseError);
-    return '';
+function updateOfflineStatusPanel() {
+  if (!offlineStatusSummaryElement || !offlineStatusDetailsElement) {
+    return;
   }
-}
-
-async function downloadGeofabrikPackageWithProgress(packageUrl) {
-  const packageResponse = await fetch(packageUrl, { cache: 'no-store' });
-  if (!packageResponse.ok) {
-    throw new Error(`geofabrik package download failed with ${packageResponse.status}`);
-  }
-  const contentLengthHeader = packageResponse.headers.get('content-length');
-  const totalBytes = contentLengthHeader ? Number(contentLengthHeader) : 0;
-  const streamReader = packageResponse.body ? packageResponse.body.getReader() : null;
-  if (!streamReader) {
-    const fallbackBlob = await packageResponse.blob();
-    return { blob: fallbackBlob, totalBytes: fallbackBlob.size, downloadedBytes: fallbackBlob.size };
-  }
-  const chunkList = [];
-  let downloadedBytes = 0;
-  while (true) {
-    const streamState = await streamReader.read();
-    if (streamState.done) {
-      break;
-    }
-    const receivedChunk = streamState.value;
-    chunkList.push(receivedChunk);
-    downloadedBytes += receivedChunk.byteLength;
-    if (totalBytes > 0) {
-      offlineCacheModel.totalUnits = totalBytes;
-      offlineCacheModel.completedUnits = downloadedBytes;
-      offlineCacheModel.progressDescription = `Загрузка векторной карты: ${formatByteSize(downloadedBytes)} / ${formatByteSize(totalBytes)}`;
-      updateOfflineDownloadControl();
-    }
-  }
-  const packageBlob = new Blob(chunkList, { type: 'application/octet-stream' });
-  return { blob: packageBlob, totalBytes: totalBytes, downloadedBytes: downloadedBytes };
+  const isOfflineLayerActive = offlineCacheModel.activeBaseLayerName === 'Offline OSM';
+  const networkLoads = offlineCacheModel.networkFallbackTileRequests;
+  const networkBytes = formatByteSize(offlineCacheModel.networkFetchedBytes);
+  const storageUsage = formatByteSize(offlineCacheModel.storageUsageBytes);
+  const storageQuota = formatByteSize(offlineCacheModel.storageQuotaBytes);
+  const storagePercent = offlineCacheModel.storageQuotaBytes > 0
+    ? ((offlineCacheModel.storageUsageBytes / offlineCacheModel.storageQuotaBytes) * 100).toFixed(1)
+    : '0.0';
+  offlineStatusSummaryElement.textContent = isOfflineLayerActive
+    ? `Offline OSM: сетевые загрузки ${networkLoads} (${networkBytes})`
+    : 'Offline OSM: готов к работе из локального кеша';
+  offlineStatusDetailsElement.textContent = `Хранилище: ${storageUsage} / ${storageQuota} (${storagePercent}%)`;
 }
 
 async function fetchAndCacheOfflineTile(z, x, y, requestReason) {
@@ -2978,7 +2801,8 @@ async function fetchAndCacheOfflineTile(z, x, y, requestReason) {
   await writeOfflineTileBlob(z, x, y, tileBlob);
   if (requestReason === 'tile-render') {
     offlineCacheModel.networkFallbackTileRequests += 1;
-    updateOfflineDownloadControl();
+    offlineCacheModel.networkFetchedBytes += tileBlob.size;
+    refreshOfflineStorageEstimate().finally(updateOfflineStatusPanel);
   }
   return tileBlob;
 }
@@ -2991,179 +2815,6 @@ function buildOfflineTileLayer() {
     noWrap: false,
     bounds: [[-85.05112878, -180], [85.05112878, 180]]
   });
-}
-
-function latLngToTileXY(lat, lon, zoom) {
-  const latClamped = Math.max(Math.min(lat, 85.05112878), -85.05112878);
-  const tilesPerAxis = Math.pow(2, zoom);
-  const xFloat = ((lon + 180) / 360) * tilesPerAxis;
-  const latRad = latClamped * Math.PI / 180;
-  const yFloat = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * tilesPerAxis;
-  return {
-    x: Math.floor(Math.max(0, Math.min(tilesPerAxis - 1, xFloat))),
-    y: Math.floor(Math.max(0, Math.min(tilesPerAxis - 1, yFloat))),
-  };
-}
-
-function collectTilesForBounds(bounds, minZoom, maxZoom) {
-  const tileEntries = [];
-  for (let zoom = minZoom; zoom <= maxZoom; zoom += 1) {
-    const southWest = latLngToTileXY(bounds.getSouth(), bounds.getWest(), zoom);
-    const northEast = latLngToTileXY(bounds.getNorth(), bounds.getEast(), zoom);
-    const minX = Math.min(southWest.x, northEast.x);
-    const maxX = Math.max(southWest.x, northEast.x);
-    const minY = Math.min(southWest.y, northEast.y);
-    const maxY = Math.max(southWest.y, northEast.y);
-    for (let tileX = minX; tileX <= maxX; tileX += 1) {
-      for (let tileY = minY; tileY <= maxY; tileY += 1) {
-        tileEntries.push({ z: zoom, x: tileX, y: tileY });
-      }
-    }
-  }
-  return tileEntries;
-}
-
-function findOfflineLayerInputElement() {
-  const layerLabelNodes = document.querySelectorAll('.leaflet-control-layers-base label');
-  for (const labelNode of layerLabelNodes) {
-    const labelText = (labelNode.textContent || '').trim();
-    if (labelText.includes('Offline OSM')) {
-      const inputNode = labelNode.querySelector('input[type="radio"]');
-      if (inputNode) {
-        return { labelNode: labelNode, inputNode: inputNode };
-      }
-    }
-  }
-  return null;
-}
-
-function enforceOfflineLayerAvailabilityByZoom() {
-  if (!map) return;
-  const isOfflineLayerAllowed = map.getZoom() >= offlineDownloadMinZoomLevel;
-  const offlineLayerInput = findOfflineLayerInputElement();
-  if (offlineLayerInput) {
-    offlineLayerInput.inputNode.disabled = !isOfflineLayerAllowed;
-    offlineLayerInput.labelNode.style.opacity = isOfflineLayerAllowed ? '1' : '0.45';
-    offlineLayerInput.labelNode.style.pointerEvents = isOfflineLayerAllowed ? 'auto' : 'none';
-    offlineLayerInput.labelNode.title = isOfflineLayerAllowed
-      ? ''
-      : `Offline OSM is available from zoom ${offlineDownloadMinZoomLevel}+`;
-  }
-  if (!isOfflineLayerAllowed && offlineCacheModel.activeBaseLayerName === 'Offline OSM') {
-    setBaseLayer('OpenStreetMap');
-  }
-  updateOfflineDownloadControl();
-}
-
-async function downloadOfflineTilesForCurrentView() {
-  if (!map) return;
-  const currentZoomLevel = map.getZoom();
-  if (currentZoomLevel < offlineDownloadMinZoomLevel) {
-    window.alert(`Для скачивания оффлайн карты увеличьте масштаб до ${offlineDownloadMinZoomLevel} или больше.`);
-    return;
-  }
-  const viewBounds = map.getBounds();
-  const startZoom = Math.max(0, currentZoomLevel);
-  const endZoom = offlineDownloadMaxZoomLevel;
-  const tileEntries = collectTilesForBounds(viewBounds, startZoom, endZoom);
-  if (tileEntries.length === 0) {
-    return;
-  }
-  const estimatedStorageBytes = estimateOfflineTileStorageBytes(tileEntries.length);
-  const mapCenter = map.getCenter();
-  const resolvedLabels = await Promise.all([
-    resolveMapCenterHumanLabel(mapCenter.lat, mapCenter.lng),
-    resolveClosestGeofabrikRegion(mapCenter.lat, mapCenter.lng),
-  ]);
-  const reverseLabel = resolvedLabels[0] || '';
-  const geofabrikRegion = resolvedLabels[1];
-  const chosenRegionLabel = geofabrikRegion && geofabrikRegion.label
-    ? geofabrikRegion.label
-    : (reverseLabel || 'Текущий регион карты');
-  const geofabrikSizeLabel = geofabrikRegion && geofabrikRegion.pbfBytes > 0
-    ? formatByteSize(geofabrikRegion.pbfBytes)
-    : 'размер недоступен';
-  if (!geofabrikRegion || !geofabrikRegion.pbfUrl) {
-    window.alert('Не удалось подобрать векторную карту Geofabrik для текущей точки. Попробуйте выбрать другой регион.');
-    return;
-  }
-  offlineCacheModel.lastRegionLabel = chosenRegionLabel;
-  offlineCacheModel.lastEstimatedBytes = estimatedStorageBytes;
-  const approved = window.confirm(
-    `Скачать оффлайн карту для региона: ${chosenRegionLabel}\n` +
-    `Векторная карта Geofabrik: ${geofabrikSizeLabel}\n` +
-    `Дополнительный кеш отображения: ${formatByteSize(estimatedStorageBytes)}\n` +
-    '\n\nНажмите ОК, чтобы начать скачивание.'
-  );
-  if (!approved) {
-    return;
-  }
-
-  offlineCacheModel.downloadInProgress = true;
-  offlineCacheModel.totalUnits = geofabrikRegion.pbfBytes > 0 ? geofabrikRegion.pbfBytes : 100;
-  offlineCacheModel.completedUnits = 0;
-  offlineCacheModel.progressDescription = 'Подготовка загрузки векторной карты...';
-  updateOfflineDownloadControl();
-
-  try {
-    const downloadedPackage = await downloadGeofabrikPackageWithProgress(geofabrikRegion.pbfUrl);
-    await saveOfflineVectorPackage({
-      url: geofabrikRegion.pbfUrl,
-      label: chosenRegionLabel,
-      bbox: geofabrikRegion.bbox || null,
-      bytes: downloadedPackage.blob.size,
-      downloadedAtUnix: Math.floor(Date.now() / 1000),
-      blob: downloadedPackage.blob,
-    });
-    offlineCacheModel.vectorPackageLabel = chosenRegionLabel;
-    offlineCacheModel.vectorPackageLoadedFromDatabase = true;
-  } catch (packageError) {
-    offlineCacheModel.downloadInProgress = false;
-    offlineCacheModel.progressDescription = '';
-    updateOfflineDownloadControl();
-    window.alert(`Ошибка загрузки векторной карты: ${packageError.message}`);
-    return;
-  }
-
-  offlineCacheModel.progressDescription = 'Сохранение кеша отображения текущей зоны...';
-  offlineCacheModel.totalUnits = tileEntries.length;
-  offlineCacheModel.completedUnits = 0;
-  updateOfflineDownloadControl();
-
-  let successCount = 0;
-  let failCount = 0;
-  const workerCount = offlineWorkerCount;
-  const queue = tileEntries.slice();
-  const workers = [];
-  for (let index = 0; index < workerCount; index += 1) {
-    workers.push((async () => {
-      while (queue.length > 0) {
-        const tileEntry = queue.shift();
-        if (!tileEntry) {
-          return;
-        }
-        try {
-          const existingBlob = await readOfflineTileBlob(tileEntry.z, tileEntry.x, tileEntry.y);
-          if (!existingBlob) {
-            await fetchAndCacheOfflineTile(tileEntry.z, tileEntry.x, tileEntry.y, 'prefetch');
-          }
-          successCount += 1;
-        } catch (downloadError) {
-          failCount += 1;
-          console.warn('offline tile download failed', tileEntry, downloadError);
-        } finally {
-          offlineCacheModel.completedUnits += 1;
-          offlineCacheModel.progressDescription = `Кеш отображения: ${offlineCacheModel.completedUnits}/${offlineCacheModel.totalUnits}`;
-          updateOfflineDownloadControl();
-        }
-      }
-    })());
-  }
-  await Promise.all(workers);
-  offlineCacheModel.downloadInProgress = false;
-  offlineCacheModel.progressDescription = '';
-  updateOfflineDownloadControl();
-  window.alert(`Оффлайн карта сохранена: векторная база "${chosenRegionLabel}" загружена, кеш отображения ${successCount} успешно, ${failCount} ошибок.`);
 }
 
 /* ---------------------------------------------------------------
@@ -4291,58 +3942,32 @@ document.addEventListener('DOMContentLoaded', function () {
     collapsed: false
   }).addTo(map);
 
-  const OfflineDownloadControl = L.Control.extend({
+  const OfflineStatusControl = L.Control.extend({
     onAdd: function() {
       const div = L.DomUtil.create('div', 'leaflet-control-layers');
-      div.style.padding = '6px 10px';
-      div.style.minWidth = '260px';
+      div.style.padding = '6px 8px';
+      div.style.minWidth = '240px';
       div.style.display = 'flex';
       div.style.flexDirection = 'column';
-      div.style.gap = '6px';
-      const button = L.DomUtil.create('button', '', div);
-      button.type = 'button';
-      button.textContent = 'Скачать оффлайн карту';
-      button.style.cursor = 'pointer';
-      button.style.border = '1px solid rgba(0,0,0,0.15)';
-      button.style.background = 'var(--control-bg)';
-      button.style.color = 'var(--modal-text)';
-      button.style.fontWeight = '600';
-      button.style.padding = '6px 8px';
-      button.style.borderRadius = '6px';
-      const statusLabel = L.DomUtil.create('div', '', div);
-      statusLabel.style.fontSize = '11px';
-      statusLabel.style.lineHeight = '1.3';
-      statusLabel.style.color = 'var(--modal-text)';
-      const progressWrap = L.DomUtil.create('div', '', div);
-      progressWrap.style.display = 'flex';
-      progressWrap.style.alignItems = 'center';
-      progressWrap.style.gap = '6px';
-      const progressBar = L.DomUtil.create('progress', '', progressWrap);
-      progressBar.max = 100;
-      progressBar.value = 0;
-      progressBar.style.flex = '1';
-      const progressLabel = L.DomUtil.create('span', '', progressWrap);
-      progressLabel.textContent = '0%';
-      progressLabel.style.fontSize = '11px';
-      progressLabel.style.minWidth = '34px';
-
-      offlineDownloadButtonElement = button;
-      offlineDownloadStatusElement = statusLabel;
-      offlineDownloadProgressElement = progressBar;
-      offlineDownloadProgressLabelElement = progressLabel;
-      updateOfflineDownloadControl();
-      L.DomEvent.on(button, 'click', function(event) {
-        L.DomEvent.stopPropagation(event);
-        L.DomEvent.preventDefault(event);
-        downloadOfflineTilesForCurrentView();
-      });
+      div.style.gap = '3px';
+      div.style.borderRadius = '8px';
+      div.style.backdropFilter = 'blur(2px)';
+      const summaryLabel = L.DomUtil.create('div', '', div);
+      summaryLabel.style.fontSize = '10px';
+      summaryLabel.style.fontWeight = '600';
+      summaryLabel.style.lineHeight = '1.3';
+      summaryLabel.style.color = 'var(--modal-text)';
+      const detailsLabel = L.DomUtil.create('div', '', div);
+      detailsLabel.style.fontSize = '10px';
+      detailsLabel.style.lineHeight = '1.2';
+      detailsLabel.style.color = 'var(--modal-text)';
+      offlineStatusSummaryElement = summaryLabel;
+      offlineStatusDetailsElement = detailsLabel;
+      refreshOfflineStorageEstimate().finally(updateOfflineStatusPanel);
       return div;
     }
   });
-  map.addControl(new OfflineDownloadControl({ position: 'topleft' }));
-  map.whenReady(function() {
-    enforceOfflineLayerAvailabilityByZoom();
-  });
+  map.addControl(new OfflineStatusControl({ position: 'bottomleft' }));
 
   // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
@@ -4401,30 +4026,12 @@ document.addEventListener('DOMContentLoaded', function () {
   map.on('baselayerchange', updateUrl);
   map.on('baselayerchange', function(event) {
     offlineCacheModel.activeBaseLayerName = event && event.name ? event.name : getActiveBaseLayerName();
-    if (offlineCacheModel.activeBaseLayerName === 'Offline OSM') {
-      const mapCenter = map.getCenter();
-      findOfflineVectorPackageByPoint(mapCenter.lat, mapCenter.lng)
-        .then(function(storedPackage) {
-          offlineCacheModel.vectorPackageLoadedFromDatabase = !!storedPackage;
-          offlineCacheModel.vectorPackageLabel = storedPackage && storedPackage.label ? storedPackage.label : '';
-          updateOfflineDownloadControl();
-        })
-        .catch(function(scanError) {
-          console.warn('offline vector package scan failed', scanError);
-          offlineCacheModel.vectorPackageLoadedFromDatabase = false;
-          offlineCacheModel.vectorPackageLabel = '';
-          updateOfflineDownloadControl();
-        });
-    }
-    updateOfflineDownloadControl();
-    if (event && event.name === 'Offline OSM') {
-      downloadOfflineTilesForCurrentView();
-    }
+    refreshOfflineStorageEstimate().finally(updateOfflineStatusPanel);
   });
   map.on('moveend', updateUrl);
   map.on('zoomend', function() {
     updateUrl();
-    enforceOfflineLayerAvailabilityByZoom();
+    updateOfflineStatusPanel();
   });
 
   // Initialize UI elements
@@ -7267,10 +6874,6 @@ function viewTrack(trackID) {
 
 
 function setBaseLayer(layerName) {
-  if (layerName === 'Offline OSM' && map && map.getZoom() < offlineDownloadMinZoomLevel) {
-    window.alert(`Offline OSM доступен только с масштаба ${offlineDownloadMinZoomLevel}+`);
-    layerName = 'OpenStreetMap';
-  }
   if (offlineOsmLayer && map.hasLayer(offlineOsmLayer)) {
     map.removeLayer(offlineOsmLayer);
   }
@@ -7286,24 +6889,24 @@ function setBaseLayer(layerName) {
   if (layerName === 'Mapbox Satellite' && mapboxSatellite) {
     mapboxSatellite.addTo(map);
     offlineCacheModel.activeBaseLayerName = 'Mapbox Satellite';
-    updateOfflineDownloadControl();
+    updateOfflineStatusPanel();
     return;
   }
   if (layerName === 'Offline OSM') {
     offlineOsmLayer.addTo(map);
     offlineCacheModel.activeBaseLayerName = 'Offline OSM';
-    updateOfflineDownloadControl();
+    updateOfflineStatusPanel();
     return;
   }
   if (layerName === 'Google Satellite') {
     googleSatellite.addTo(map);
     offlineCacheModel.activeBaseLayerName = 'Google Satellite';
-    updateOfflineDownloadControl();
+    updateOfflineStatusPanel();
     return;
   }
   osmLayer.addTo(map);
   offlineCacheModel.activeBaseLayerName = 'OpenStreetMap';
-  updateOfflineDownloadControl();
+  updateOfflineStatusPanel();
 }
 
 // markShortLinkFocusReady flips the readiness flag once the user keeps the
