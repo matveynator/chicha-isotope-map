@@ -61,6 +61,7 @@ import (
 	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
 	"chicha-isotope-map/pkg/safecastimport"
 	"chicha-isotope-map/pkg/setupwizard"
+	"chicha-isotope-map/pkg/spectrum"
 )
 
 // content bundles the UI and the license texts so single-file binaries still
@@ -4875,6 +4876,174 @@ type desktopUploadProgressEvent struct {
 	StatusCode int    `json:"statusCode,omitempty"`
 }
 
+// spectrumTrackCandidate keeps linking decisions explicit so XML uploads can
+// attach to the best matching track without hidden global state.
+type spectrumTrackCandidate struct {
+	TrackID         string
+	Bounds          database.Bounds
+	MatchedMarkers  int
+	DeviceNameMatch bool
+}
+
+// uploaderIdentityKey derives a lightweight user key for correlation between
+// uploads. We avoid database-specific auth coupling and keep the heuristic
+// stable across desktop/web by preferring explicit headers, then remote IP.
+func uploaderIdentityKey(r *http.Request) string {
+	if r == nil {
+		return "desktop-native"
+	}
+	for _, headerName := range []string{"X-Upload-User", "X-Forwarded-For", "CF-Connecting-IP"} {
+		value := strings.TrimSpace(r.Header.Get(headerName))
+		if value != "" {
+			return strings.ToLower(value)
+		}
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && strings.TrimSpace(host) != "" {
+		return strings.ToLower(strings.TrimSpace(host))
+	}
+	return strings.ToLower(strings.TrimSpace(r.RemoteAddr))
+}
+
+func deriveBoundsFromTrack(
+	ctx context.Context,
+	db *database.Database,
+	dbType string,
+	trackID string,
+) (database.Bounds, int, error) {
+	summary, err := db.GetTrackSummary(ctx, trackID, dbType)
+	if err != nil {
+		return database.Bounds{}, 0, err
+	}
+	if summary.MarkerCount == 0 {
+		return database.Bounds{}, 0, nil
+	}
+
+	markersCh, errCh := db.StreamMarkersByTrackRange(ctx, trackID, summary.FirstID, summary.LastID, 0, dbType)
+	bounds := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
+	matchedCount := 0
+	for marker := range markersCh {
+		matchedCount++
+		if marker.Lat < bounds.MinLat {
+			bounds.MinLat = marker.Lat
+		}
+		if marker.Lat > bounds.MaxLat {
+			bounds.MaxLat = marker.Lat
+		}
+		if marker.Lon < bounds.MinLon {
+			bounds.MinLon = marker.Lon
+		}
+		if marker.Lon > bounds.MaxLon {
+			bounds.MaxLon = marker.Lon
+		}
+	}
+	if streamErr := <-errCh; streamErr != nil {
+		return database.Bounds{}, 0, streamErr
+	}
+	if matchedCount == 0 {
+		return database.Bounds{}, 0, nil
+	}
+	return bounds, matchedCount, nil
+}
+
+func linkSpectrumToTrackByTime(
+	ctx context.Context,
+	db *database.Database,
+	dbType string,
+	analysis spectrum.Analysis,
+) (spectrumTrackCandidate, bool) {
+	if db == nil {
+		return spectrumTrackCandidate{}, false
+	}
+	startUnix := analysis.Measurement.StartTime.Unix() - 900
+	endUnix := analysis.Measurement.EndTime.Unix() + 900
+	tracksCh, errCh := db.StreamTrackSummariesByDateRange(ctx, "", 40, startUnix, endUnix, dbType)
+	bestCandidate := spectrumTrackCandidate{}
+	bestScore := -1
+	deviceNeedle := strings.ToLower(strings.TrimSpace(analysis.Measurement.DeviceName))
+	serialNeedle := strings.ToLower(strings.TrimSpace(analysis.Measurement.DeviceSerial))
+
+	for summary := range tracksCh {
+		trackBounds, markerCount, boundsErr := deriveBoundsFromTrack(ctx, db, dbType, summary.TrackID)
+		if boundsErr != nil || markerCount == 0 {
+			continue
+		}
+
+		trackDeviceName, _ := db.GetTrackDeviceName(ctx, summary.TrackID, dbType)
+		normalizedTrackDevice := strings.ToLower(strings.TrimSpace(trackDeviceName))
+		deviceMatch := false
+		if normalizedTrackDevice != "" && (normalizedTrackDevice == deviceNeedle || strings.Contains(normalizedTrackDevice, serialNeedle) || strings.Contains(serialNeedle, normalizedTrackDevice)) {
+			deviceMatch = true
+		}
+		score := markerCount
+		if deviceMatch {
+			score += 5000
+		}
+
+		if score > bestScore {
+			bestScore = score
+			bestCandidate = spectrumTrackCandidate{
+				TrackID:         summary.TrackID,
+				Bounds:          trackBounds,
+				MatchedMarkers:  markerCount,
+				DeviceNameMatch: deviceMatch,
+			}
+		}
+	}
+	if streamErr := <-errCh; streamErr != nil {
+		log.Printf("spectrum link track scan failed: %v", streamErr)
+		return spectrumTrackCandidate{}, false
+	}
+	if bestScore < 0 {
+		return spectrumTrackCandidate{}, false
+	}
+	return bestCandidate, true
+}
+
+func processSpectrumXMLUpload(
+	ctx context.Context,
+	reader io.Reader,
+	db *database.Database,
+	dbType string,
+	currentTrackID string,
+	currentBounds database.Bounds,
+	currentHasBounds bool,
+) (database.Bounds, string, bool, map[string]any, error) {
+	raw, err := io.ReadAll(reader)
+	if err != nil {
+		return database.Bounds{}, currentTrackID, currentHasBounds, nil, fmt.Errorf("read spectrum xml: %w", err)
+	}
+	analysis, err := spectrum.AnalyzeWithKnownDrivers(raw)
+	if err != nil {
+		return database.Bounds{}, currentTrackID, currentHasBounds, nil, fmt.Errorf("parse spectrum xml: %w", err)
+	}
+
+	detail := map[string]any{
+		"spectrum_format": analysis.Measurement.Format,
+		"device_name":     analysis.Measurement.DeviceName,
+		"device_serial":   analysis.Measurement.DeviceSerial,
+		"isotope_hits":    len(analysis.Isotopes),
+		"composites":      len(analysis.CompositeModels),
+	}
+
+	if currentTrackID != "" && currentHasBounds {
+		detail["linked_track_id"] = currentTrackID
+		detail["link_reason"] = "same-upload-batch"
+		return currentBounds, currentTrackID, true, detail, nil
+	}
+
+	candidate, ok := linkSpectrumToTrackByTime(ctx, db, dbType, analysis)
+	if !ok {
+		detail["link_reason"] = "no-track-candidate"
+		return currentBounds, currentTrackID, currentHasBounds, detail, nil
+	}
+	detail["linked_track_id"] = candidate.TrackID
+	detail["matched_markers"] = candidate.MatchedMarkers
+	detail["device_match"] = candidate.DeviceNameMatch
+	detail["link_reason"] = "time-and-device-heuristic"
+	return candidate.Bounds, candidate.TrackID, true, detail, nil
+}
+
 // uploadLocalFiles processes files selected by a desktop-native picker.
 // It mirrors uploadHandler logic so macOS desktop builds can import files even
 // when the embedded WebView blocks <input type="file">.
@@ -4939,6 +5108,13 @@ func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func
 			bbox, trackID, err = processAtomSwiftCSVFile(openedFile, trackID, db, *dbType)
 		case ".rctrk":
 			bbox, trackID, err = processRCTRKFile(openedFile, trackID, db, *dbType)
+		case ".xml":
+			var linked bool
+			linkedDetails := map[string]any{}
+			bbox, trackID, linked, linkedDetails, err = processSpectrumXMLUpload(ctx, openedFile, db, *dbType, trackID, global, hasBounds)
+			if err == nil {
+				logT(trackID, "Upload", "desktop spectrum linked=%t details=%v", linked, linkedDetails)
+			}
 		case ".cim":
 			var imported bool
 			bbox, trackID, imported, err = processTrackExportFile(ctx, openedFile, trackID, db, *dbType)
@@ -5443,6 +5619,14 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			bbox, trackID, err = processAtomSwiftCSVFile(f, trackID, db, *dbType)
 		case ".rctrk":
 			bbox, trackID, err = processRCTRKFile(f, trackID, db, *dbType)
+		case ".xml":
+			var linked bool
+			linkedDetails := map[string]any{}
+			bbox, trackID, linked, linkedDetails, err = processSpectrumXMLUpload(r.Context(), f, db, *dbType, trackID, global, hasBounds)
+			if err == nil {
+				linkedDetails["uploader_key"] = uploaderIdentityKey(r)
+				logT(trackID, "Upload", "spectrum linked=%t details=%v", linked, linkedDetails)
+			}
 		case ".cim":
 			var imported bool
 			bbox, trackID, imported, err = processTrackExportFile(r.Context(), f, trackID, db, *dbType)
