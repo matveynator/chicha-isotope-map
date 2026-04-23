@@ -17,7 +17,29 @@ type Nuclide struct {
 	DecaySeries   string
 	Category      string
 	TypicalSource string
+	AlphaLinesKeV []float64
+	BetaMaxKeV    []float64
 	GammaLinesKeV []float64
+}
+
+// RadiationLine describes one emission line that can participate in spectral matching.
+type RadiationLine struct {
+	RadiationType string
+	EnergyKeV     float64
+}
+
+func (nuclide Nuclide) RadiationLines() []RadiationLine {
+	lines := make([]RadiationLine, 0, len(nuclide.AlphaLinesKeV)+len(nuclide.BetaMaxKeV)+len(nuclide.GammaLinesKeV))
+	for _, energy := range nuclide.AlphaLinesKeV {
+		lines = append(lines, RadiationLine{RadiationType: "alpha", EnergyKeV: energy})
+	}
+	for _, energy := range nuclide.BetaMaxKeV {
+		lines = append(lines, RadiationLine{RadiationType: "beta", EnergyKeV: energy})
+	}
+	for _, energy := range nuclide.GammaLinesKeV {
+		lines = append(lines, RadiationLine{RadiationType: "gamma", EnergyKeV: energy})
+	}
+	return lines
 }
 
 // DefaultCatalog returns a broad catalog with natural chains, NORM and key artificial isotopes.
@@ -107,8 +129,8 @@ func normalizeNuclideToken(input string) (string, bool) {
 }
 
 var defaultNuclides = []Nuclide{
-	{NuclideID: "H-3", DisplayName: "Tritium", Element: "H", MassNumber: 3, HalfLife: "12.32 y", Category: "cosmogenic", TypicalSource: "water, tritium signs"},
-	{NuclideID: "C-14", DisplayName: "Carbon-14", Element: "C", MassNumber: 14, HalfLife: "5730 y", Category: "cosmogenic"},
+	{NuclideID: "H-3", DisplayName: "Tritium", Element: "H", MassNumber: 3, HalfLife: "12.32 y", Category: "cosmogenic", TypicalSource: "water, tritium signs", BetaMaxKeV: []float64{18.6}},
+	{NuclideID: "C-14", DisplayName: "Carbon-14", Element: "C", MassNumber: 14, HalfLife: "5730 y", Category: "cosmogenic", BetaMaxKeV: []float64{156.5}},
 	{NuclideID: "K-40", DisplayName: "Potassium-40", Element: "K", MassNumber: 40, HalfLife: "1.248e9 y", Category: "NORM", TypicalSource: "fertilizers, food, concrete", GammaLinesKeV: []float64{1460.8}},
 	{NuclideID: "Rb-87", DisplayName: "Rubidium-87", Element: "Rb", MassNumber: 87, HalfLife: "4.88e10 y", Category: "NORM"},
 	{NuclideID: "La-138", DisplayName: "Lanthanum-138", Element: "La", MassNumber: 138, HalfLife: "1.02e11 y", Category: "NORM", GammaLinesKeV: []float64{1435.8}},
@@ -140,7 +162,7 @@ var defaultNuclides = []Nuclide{
 	{NuclideID: "Pa-234m", DisplayName: "Protactinium-234m", Element: "Pa", MassNumber: 234, HalfLife: "1.17 min", DecaySeries: "U-238", Category: "NORM"},
 	{NuclideID: "U-234", DisplayName: "Uranium-234", Element: "U", MassNumber: 234, HalfLife: "2.455e5 y", DecaySeries: "U-238", Category: "NORM"},
 	{NuclideID: "Th-230", DisplayName: "Thorium-230", Element: "Th", MassNumber: 230, HalfLife: "75380 y", DecaySeries: "U-238", Category: "NORM"},
-	{NuclideID: "Ra-226", DisplayName: "Radium-226", Element: "Ra", MassNumber: 226, HalfLife: "1600 y", DecaySeries: "U-238", Category: "NORM", GammaLinesKeV: []float64{186.2}},
+	{NuclideID: "Ra-226", DisplayName: "Radium-226", Element: "Ra", MassNumber: 226, HalfLife: "1600 y", DecaySeries: "U-238", Category: "NORM", AlphaLinesKeV: []float64{4784.3}, GammaLinesKeV: []float64{186.2}},
 	{NuclideID: "Rn-222", DisplayName: "Radon-222", Element: "Rn", MassNumber: 222, HalfLife: "3.82 d", DecaySeries: "U-238", Category: "NORM", TypicalSource: "indoor air"},
 	{NuclideID: "Po-218", DisplayName: "Polonium-218", Element: "Po", MassNumber: 218, HalfLife: "3.1 min", DecaySeries: "U-238", Category: "NORM"},
 	{NuclideID: "Pb-214", DisplayName: "Lead-214", Element: "Pb", MassNumber: 214, HalfLife: "26.8 min", DecaySeries: "U-238", Category: "NORM", GammaLinesKeV: []float64{295.2, 351.9}},
@@ -148,7 +170,7 @@ var defaultNuclides = []Nuclide{
 	{NuclideID: "Po-214", DisplayName: "Polonium-214", Element: "Po", MassNumber: 214, HalfLife: "164 us", DecaySeries: "U-238", Category: "NORM"},
 	{NuclideID: "Pb-210", DisplayName: "Lead-210", Element: "Pb", MassNumber: 210, HalfLife: "22.3 y", DecaySeries: "U-238", Category: "NORM", GammaLinesKeV: []float64{46.5}},
 	{NuclideID: "Bi-210", DisplayName: "Bismuth-210", Element: "Bi", MassNumber: 210, HalfLife: "5.01 d", DecaySeries: "U-238", Category: "NORM"},
-	{NuclideID: "Po-210", DisplayName: "Polonium-210", Element: "Po", MassNumber: 210, HalfLife: "138.4 d", DecaySeries: "U-238", Category: "NORM"},
+	{NuclideID: "Po-210", DisplayName: "Polonium-210", Element: "Po", MassNumber: 210, HalfLife: "138.4 d", DecaySeries: "U-238", Category: "NORM", AlphaLinesKeV: []float64{5304.5}},
 	{NuclideID: "Pb-206", DisplayName: "Lead-206", Element: "Pb", MassNumber: 206, HalfLife: "stable", DecaySeries: "U-238", Category: "stable-end"},
 
 	// Uranium-235 / actinium series (4n+3)
@@ -191,8 +213,8 @@ var defaultNuclides = []Nuclide{
 	{NuclideID: "Se-75", DisplayName: "Selenium-75", Element: "Se", MassNumber: 75, HalfLife: "119.8 d", Category: "industrial", GammaLinesKeV: []float64{136.0, 264.7}},
 	{NuclideID: "Kr-85", DisplayName: "Krypton-85", Element: "Kr", MassNumber: 85, HalfLife: "10.7 y", Category: "reprocessing"},
 	{NuclideID: "Sr-89", DisplayName: "Strontium-89", Element: "Sr", MassNumber: 89, HalfLife: "50.5 d", Category: "medical"},
-	{NuclideID: "Sr-90", DisplayName: "Strontium-90", Element: "Sr", MassNumber: 90, HalfLife: "28.8 y", Category: "fallout"},
-	{NuclideID: "Y-90", DisplayName: "Yttrium-90", Element: "Y", MassNumber: 90, HalfLife: "64 h", Category: "medical"},
+	{NuclideID: "Sr-90", DisplayName: "Strontium-90", Element: "Sr", MassNumber: 90, HalfLife: "28.8 y", Category: "fallout", BetaMaxKeV: []float64{546.0}},
+	{NuclideID: "Y-90", DisplayName: "Yttrium-90", Element: "Y", MassNumber: 90, HalfLife: "64 h", Category: "medical", BetaMaxKeV: []float64{2280.1}},
 	{NuclideID: "Zr-95", DisplayName: "Zirconium-95", Element: "Zr", MassNumber: 95, HalfLife: "64 d", Category: "fission", GammaLinesKeV: []float64{724.2, 756.7}},
 	{NuclideID: "Nb-95", DisplayName: "Niobium-95", Element: "Nb", MassNumber: 95, HalfLife: "35 d", Category: "fission", GammaLinesKeV: []float64{765.8}},
 	{NuclideID: "Mo-99", DisplayName: "Molybdenum-99", Element: "Mo", MassNumber: 99, HalfLife: "66 h", Category: "medical", GammaLinesKeV: []float64{739.5}},
@@ -209,7 +231,7 @@ var defaultNuclides = []Nuclide{
 	{NuclideID: "I-131", DisplayName: "Iodine-131", Element: "I", MassNumber: 131, HalfLife: "8.02 d", Category: "fission", GammaLinesKeV: []float64{364.5, 637.0}},
 	{NuclideID: "Cs-134", DisplayName: "Cesium-134", Element: "Cs", MassNumber: 134, HalfLife: "2.06 y", Category: "reactor", GammaLinesKeV: []float64{569.3, 604.7, 795.8, 801.9}},
 	{NuclideID: "Cs-136", DisplayName: "Cesium-136", Element: "Cs", MassNumber: 136, HalfLife: "13.2 d", Category: "reactor", GammaLinesKeV: []float64{818.5, 1048.1}},
-	{NuclideID: "Cs-137", DisplayName: "Cesium-137", Element: "Cs", MassNumber: 137, HalfLife: "30.1 y", Category: "fallout", GammaLinesKeV: []float64{661.7}},
+	{NuclideID: "Cs-137", DisplayName: "Cesium-137", Element: "Cs", MassNumber: 137, HalfLife: "30.1 y", Category: "fallout", BetaMaxKeV: []float64{1176.0, 514.0}, GammaLinesKeV: []float64{661.7}},
 	{NuclideID: "Ba-133", DisplayName: "Barium-133", Element: "Ba", MassNumber: 133, HalfLife: "10.5 y", Category: "calibration", GammaLinesKeV: []float64{81.0, 356.0, 383.8}},
 	{NuclideID: "Ba-140", DisplayName: "Barium-140", Element: "Ba", MassNumber: 140, HalfLife: "12.8 d", Category: "fission", GammaLinesKeV: []float64{537.3}},
 	{NuclideID: "La-140", DisplayName: "Lanthanum-140", Element: "La", MassNumber: 140, HalfLife: "1.68 d", Category: "fission", GammaLinesKeV: []float64{487.0, 1596.2}},
@@ -229,7 +251,7 @@ var defaultNuclides = []Nuclide{
 	{NuclideID: "Po-210", DisplayName: "Polonium-210", Element: "Po", MassNumber: 210, HalfLife: "138.4 d", Category: "NORM"},
 	{NuclideID: "Ra-226", DisplayName: "Radium-226", Element: "Ra", MassNumber: 226, HalfLife: "1600 y", Category: "NORM", GammaLinesKeV: []float64{186.2}},
 	{NuclideID: "Ra-228", DisplayName: "Radium-228", Element: "Ra", MassNumber: 228, HalfLife: "5.75 y", Category: "NORM"},
-	{NuclideID: "Am-241", DisplayName: "Americium-241", Element: "Am", MassNumber: 241, HalfLife: "432.2 y", Category: "industrial", TypicalSource: "smoke detectors", GammaLinesKeV: []float64{59.5}},
+	{NuclideID: "Am-241", DisplayName: "Americium-241", Element: "Am", MassNumber: 241, HalfLife: "432.2 y", Category: "industrial", TypicalSource: "smoke detectors", AlphaLinesKeV: []float64{5485.6}, GammaLinesKeV: []float64{59.5}},
 	{NuclideID: "Am-243", DisplayName: "Americium-243", Element: "Am", MassNumber: 243, HalfLife: "7370 y", Category: "actinide"},
 	{NuclideID: "Cm-242", DisplayName: "Curium-242", Element: "Cm", MassNumber: 242, HalfLife: "163 d", Category: "actinide"},
 	{NuclideID: "Cm-244", DisplayName: "Curium-244", Element: "Cm", MassNumber: 244, HalfLife: "18.1 y", Category: "actinide"},

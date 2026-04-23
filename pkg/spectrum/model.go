@@ -31,20 +31,32 @@ type Peak struct {
 
 // IsotopeHit keeps a matched isotope candidate with confidence score.
 type IsotopeHit struct {
-	Name       string
-	NuclideID  string
-	EnergyKeV  float64
-	PeakEnergy float64
-	DeltaKeV   float64
-	Confidence float64
-	Series     string
+	Name          string
+	NuclideID     string
+	RadiationType string
+	EnergyKeV     float64
+	PeakEnergy    float64
+	DeltaKeV      float64
+	Confidence    float64
+	Series        string
+}
+
+// CompositeHit describes a mixed-spectrum hypothesis where multiple nuclides
+// explain one measured peak set.
+type CompositeHit struct {
+	NuclideIDs   []string
+	Coverage     float64
+	ResidualKeV  float64
+	TotalScore   float64
+	MatchedPeaks int
 }
 
 // Analysis bundles parsed spectrum and lookup results.
 type Analysis struct {
-	Measurement   SpectrumMeasurement
-	DetectedPeaks []Peak
-	Isotopes      []IsotopeHit
+	Measurement     SpectrumMeasurement
+	DetectedPeaks   []Peak
+	Isotopes        []IsotopeHit
+	CompositeModels []CompositeHit
 }
 
 // MarkerMatch reports which marker is closest in time to the spectrum window.

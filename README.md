@@ -138,7 +138,8 @@ The project now has a device-agnostic spectrum pipeline in `pkg/spectrum/`:
 - Common `Driver` interface for instrument parsers (`CanParse` + `Parse`).
 - Built-in Radiacode XML driver as the first implementation.
 - Shared `SpectrumMeasurement` model so AtomSpectra and other devices can be plugged in without rewriting isotope analysis.
-- Shared analyzer that detects peaks and maps energies to nuclides from one common catalog.
+- Shared analyzer that detects peaks and maps alpha/beta/gamma energies to nuclides from one common catalog.
+- Composite-spectrum estimator that ranks two- and three-nuclide mixtures when peaks overlap in scintillation detectors.
 
 Catalog scope in the built-in dataset:
 - Cosmogenic and primordial isotopes (`H-3`, `C-14`, `K-40`, etc.).

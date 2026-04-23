@@ -90,3 +90,33 @@ func TestFindNuclideAlias(t *testing.T) {
 		t.Fatalf("expected normalized Cs-137, got %+v", nuclide)
 	}
 }
+
+func TestRadiationTypesAndCompositeModel(t *testing.T) {
+	measurement := SpectrumMeasurement{
+		Coefficients: []float64{0, 1},
+		Channels:     make([]float64, 1700),
+	}
+	measurement.Channels[59] = 10 // Am-241 gamma 59.5
+	measurement.Channels[60] = 1
+	measurement.Channels[661] = 9 // Cs-137 gamma 661.7
+	measurement.Channels[662] = 1
+	measurement.Channels[1460] = 8 // K-40 gamma 1460.8 (clipped by channel size in this synthetic test)
+
+	analysis := AnalyzeMeasurement(measurement)
+	if len(analysis.Isotopes) == 0 {
+		t.Fatalf("expected isotope hits")
+	}
+	foundGamma := false
+	for _, hit := range analysis.Isotopes {
+		if hit.RadiationType == "gamma" {
+			foundGamma = true
+			break
+		}
+	}
+	if !foundGamma {
+		t.Fatalf("expected gamma radiation type in hits")
+	}
+	if len(analysis.CompositeModels) == 0 {
+		t.Fatalf("expected composite models for mixed spectrum")
+	}
+}

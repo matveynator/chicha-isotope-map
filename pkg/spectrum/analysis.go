@@ -9,7 +9,8 @@ import (
 func AnalyzeMeasurement(measurement SpectrumMeasurement) Analysis {
 	peaks := findPeaks(measurement.Channels, measurement.Coefficients)
 	isotopes := matchIsotopes(peaks, DefaultCatalog())
-	return Analysis{Measurement: measurement, DetectedPeaks: peaks, Isotopes: isotopes}
+	composites := buildCompositeModels(peaks, isotopes, 3)
+	return Analysis{Measurement: measurement, DetectedPeaks: peaks, Isotopes: isotopes, CompositeModels: composites}
 }
 
 // AnalyzeWithKnownDrivers parses with known drivers and analyzes the result.
@@ -92,33 +93,38 @@ func findPeaks(channels []float64, coeffs []float64) []Peak {
 }
 
 func matchIsotopes(peaks []Peak, nuclides []Nuclide) []IsotopeHit {
-	hits := make([]IsotopeHit, 0, 32)
+	hits := make([]IsotopeHit, 0, 64)
 	if len(peaks) == 0 || len(nuclides) == 0 {
 		return hits
 	}
 
 	for _, nuclide := range nuclides {
-		for _, gammaLine := range nuclide.GammaLinesKeV {
-			peak, ok := closestPeakForEnergy(peaks, gammaLine)
+		for _, line := range nuclide.RadiationLines() {
+			peak, ok := closestPeakForEnergy(peaks, line.EnergyKeV)
 			if !ok {
 				continue
 			}
-			delta := math.Abs(peak.Energy - gammaLine)
-			if delta > 25 {
+			delta := math.Abs(peak.Energy - line.EnergyKeV)
+			tolerance := 25.0
+			if line.RadiationType == "alpha" {
+				tolerance = 60.0
+			}
+			if delta > tolerance {
 				continue
 			}
-			confidence := 1.0 - delta/25.0
+			confidence := 1.0 - delta/tolerance
 			if confidence < 0 {
 				confidence = 0
 			}
 			hits = append(hits, IsotopeHit{
-				Name:       nuclide.DisplayName,
-				NuclideID:  nuclide.NuclideID,
-				EnergyKeV:  gammaLine,
-				PeakEnergy: peak.Energy,
-				DeltaKeV:   delta,
-				Confidence: confidence,
-				Series:     nuclide.DecaySeries,
+				Name:          nuclide.DisplayName,
+				NuclideID:     nuclide.NuclideID,
+				RadiationType: line.RadiationType,
+				EnergyKeV:     line.EnergyKeV,
+				PeakEnergy:    peak.Energy,
+				DeltaKeV:      delta,
+				Confidence:    confidence,
+				Series:        nuclide.DecaySeries,
 			})
 		}
 	}
@@ -130,10 +136,134 @@ func matchIsotopes(peaks []Peak, nuclides []Nuclide) []IsotopeHit {
 		return hits[i].Confidence > hits[j].Confidence
 	})
 
-	if len(hits) > 50 {
-		return hits[:50]
+	if len(hits) > 80 {
+		return hits[:80]
 	}
 	return hits
+}
+
+func buildCompositeModels(peaks []Peak, hits []IsotopeHit, maxComponents int) []CompositeHit {
+	if len(peaks) == 0 || len(hits) == 0 || maxComponents < 2 {
+		return nil
+	}
+
+	candidates := topNuclideCandidates(hits, 12)
+	if len(candidates) < 2 {
+		return nil
+	}
+
+	combos := enumerateNuclideCombos(candidates, maxComponents)
+	if len(combos) == 0 {
+		return nil
+	}
+
+	resultsChannel := make(chan CompositeHit, len(combos))
+	for _, combo := range combos {
+		comboCopy := append([]string(nil), combo...)
+		go func() {
+			resultsChannel <- evaluateCombo(peaks, hits, comboCopy)
+		}()
+	}
+
+	models := make([]CompositeHit, 0, len(combos))
+	for range combos {
+		model := <-resultsChannel
+		if model.MatchedPeaks == 0 {
+			continue
+		}
+		models = append(models, model)
+	}
+
+	sort.Slice(models, func(i, j int) bool {
+		if models[i].TotalScore == models[j].TotalScore {
+			return models[i].ResidualKeV < models[j].ResidualKeV
+		}
+		return models[i].TotalScore > models[j].TotalScore
+	})
+	if len(models) > 20 {
+		return models[:20]
+	}
+	return models
+}
+
+func topNuclideCandidates(hits []IsotopeHit, limit int) []string {
+	scoreByNuclide := make(map[string]float64)
+	for _, hit := range hits {
+		scoreByNuclide[hit.NuclideID] += hit.Confidence
+	}
+	type scored struct {
+		nuclide string
+		score   float64
+	}
+	rows := make([]scored, 0, len(scoreByNuclide))
+	for nuclide, score := range scoreByNuclide {
+		rows = append(rows, scored{nuclide: nuclide, score: score})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].score > rows[j].score })
+	if len(rows) > limit {
+		rows = rows[:limit]
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.nuclide)
+	}
+	return out
+}
+
+func enumerateNuclideCombos(nuclides []string, maxComponents int) [][]string {
+	combos := make([][]string, 0, 64)
+	for size := 2; size <= maxComponents; size++ {
+		collectCombos(nuclides, size, 0, nil, &combos)
+	}
+	return combos
+}
+
+func collectCombos(nuclides []string, size, start int, prefix []string, combos *[][]string) {
+	if len(prefix) == size {
+		item := append([]string(nil), prefix...)
+		*combos = append(*combos, item)
+		return
+	}
+	for index := start; index < len(nuclides); index++ {
+		prefix = append(prefix, nuclides[index])
+		collectCombos(nuclides, size, index+1, prefix, combos)
+		prefix = prefix[:len(prefix)-1]
+	}
+}
+
+func evaluateCombo(peaks []Peak, hits []IsotopeHit, combo []string) CompositeHit {
+	inCombo := make(map[string]struct{}, len(combo))
+	for _, nuclide := range combo {
+		inCombo[nuclide] = struct{}{}
+	}
+	bestByPeak := make(map[int]IsotopeHit)
+	for _, hit := range hits {
+		if _, ok := inCombo[hit.NuclideID]; !ok {
+			continue
+		}
+		peakKey := int(math.Round(hit.PeakEnergy * 10))
+		current, exists := bestByPeak[peakKey]
+		if !exists || hit.Confidence > current.Confidence {
+			bestByPeak[peakKey] = hit
+		}
+	}
+	if len(bestByPeak) == 0 {
+		return CompositeHit{NuclideIDs: combo}
+	}
+	var residual float64
+	var score float64
+	for _, hit := range bestByPeak {
+		residual += hit.DeltaKeV
+		score += hit.Confidence
+	}
+	coverage := float64(len(bestByPeak)) / float64(len(peaks))
+	return CompositeHit{
+		NuclideIDs:   combo,
+		Coverage:     coverage,
+		ResidualKeV:  residual / float64(len(bestByPeak)),
+		TotalScore:   score + coverage,
+		MatchedPeaks: len(bestByPeak),
+	}
 }
 
 func closestPeakForEnergy(peaks []Peak, targetEnergy float64) (Peak, bool) {
