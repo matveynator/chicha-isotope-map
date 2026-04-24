@@ -8652,6 +8652,14 @@ function centerMapToLocation() {
         composition.innerHTML = `<strong>Qualitative isotopes:</strong> ${escapeHtml(qualitativeSummaryText || 'isotopes detected')}`;
         panel.appendChild(composition);
 
+        const componentText = String(contextObject.component_text || '').trim();
+        if (componentText) {
+          const componentBox = document.createElement('div');
+          componentBox.style.marginTop = '8px';
+          componentBox.innerHTML = `<strong>Estimated components:</strong> ${escapeHtml(componentText)}`;
+          panel.appendChild(componentBox);
+        }
+
         if (contextObject.start_unix && contextObject.end_unix) {
           const timeBox = document.createElement('div');
           timeBox.style.marginTop = '8px';

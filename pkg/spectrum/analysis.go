@@ -10,7 +10,14 @@ func AnalyzeMeasurement(measurement SpectrumMeasurement) Analysis {
 	peaks := findPeaks(measurement.Channels, measurement.Coefficients)
 	isotopes := matchIsotopes(peaks, DefaultCatalog())
 	composites := buildCompositeModels(peaks, isotopes, 3)
-	return Analysis{Measurement: measurement, DetectedPeaks: peaks, Isotopes: isotopes, CompositeModels: composites}
+	components := estimateSpectrumComponents(peaks)
+	return Analysis{
+		Measurement:     measurement,
+		DetectedPeaks:   peaks,
+		Isotopes:        isotopes,
+		CompositeModels: composites,
+		Components:      components,
+	}
 }
 
 // AnalyzeWithKnownDrivers parses with known drivers and analyzes the result.
@@ -280,4 +287,85 @@ func closestPeakForEnergy(peaks []Peak, targetEnergy float64) (Peak, bool) {
 		}
 	}
 	return best, true
+}
+
+type componentTemplate struct {
+	ComponentID  string
+	DisplayName  string
+	LineEnergies []float64
+}
+
+func estimateSpectrumComponents(peaks []Peak) []SpectrumComponent {
+	if len(peaks) == 0 {
+		return []SpectrumComponent{{ComponentID: "unknown", DisplayName: "Unknown / background", Contribution: 1}}
+	}
+
+	templates := []componentTemplate{
+		{ComponentID: "k40", DisplayName: "K-40", LineEnergies: []float64{1460.8}},
+		{ComponentID: "u_ra_series", DisplayName: "U/Ra series", LineEnergies: []float64{186.2, 295.2, 351.9, 609.3, 1120.3, 1764.5}},
+		{ComponentID: "th_series", DisplayName: "Th series", LineEnergies: []float64{238.6, 338.3, 583.2, 911.2, 969.0, 2614.5}},
+		{ComponentID: "cs137", DisplayName: "Cs-137", LineEnergies: []float64{661.7}},
+		{ComponentID: "co60", DisplayName: "Co-60", LineEnergies: []float64{1173.2, 1332.5}},
+		{ComponentID: "am241", DisplayName: "Am-241", LineEnergies: []float64{59.5}},
+		{ComponentID: "i123", DisplayName: "I-123", LineEnergies: []float64{159.0}},
+		{ComponentID: "tc99m", DisplayName: "Tc-99m", LineEnergies: []float64{140.5}},
+	}
+
+	components := make([]SpectrumComponent, 0, len(templates)+1)
+	totalScore := 0.0
+	for _, template := range templates {
+		score := 0.0
+		matchedLines := 0
+		totalError := 0.0
+		for _, lineEnergy := range template.LineEnergies {
+			peak, ok := closestPeakForEnergy(peaks, lineEnergy)
+			if !ok {
+				continue
+			}
+			delta := math.Abs(peak.Energy - lineEnergy)
+			tolerance := 40.0
+			if lineEnergy < 200 {
+				tolerance = 30.0
+			}
+			if delta > tolerance {
+				continue
+			}
+			lineScore := (1.0 - delta/tolerance) * math.Sqrt(math.Max(peak.Counts, 1))
+			score += lineScore
+			matchedLines++
+			totalError += delta
+		}
+		if matchedLines == 0 || score <= 0 {
+			continue
+		}
+		component := SpectrumComponent{
+			ComponentID:  template.ComponentID,
+			DisplayName:  template.DisplayName,
+			Contribution: score,
+			MatchedLines: matchedLines,
+		}
+		component.AverageLineError = totalError / float64(matchedLines)
+		components = append(components, component)
+		totalScore += score
+	}
+
+	if totalScore <= 0 {
+		return []SpectrumComponent{{ComponentID: "unknown", DisplayName: "Unknown / background", Contribution: 1}}
+	}
+
+	const unknownFloor = 0.08
+	scale := 1.0 - unknownFloor
+	for index := range components {
+		components[index].Contribution = (components[index].Contribution / totalScore) * scale
+	}
+	components = append(components, SpectrumComponent{
+		ComponentID:  "unknown",
+		DisplayName:  "Unknown / background",
+		Contribution: unknownFloor,
+	})
+
+	sort.Slice(components, func(i, j int) bool {
+		return components[i].Contribution > components[j].Contribution
+	})
+	return components
 }

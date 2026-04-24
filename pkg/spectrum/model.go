@@ -51,12 +51,24 @@ type CompositeHit struct {
 	MatchedPeaks int
 }
 
+// SpectrumComponent keeps a coarse-grained component estimate that is stable
+// on low-resolution detectors. We intentionally model families (K-40, U/Ra,
+// Th-series, etc.) rather than claiming exact isotope fractions.
+type SpectrumComponent struct {
+	ComponentID      string
+	DisplayName      string
+	Contribution     float64
+	MatchedLines     int
+	AverageLineError float64
+}
+
 // Analysis bundles parsed spectrum and lookup results.
 type Analysis struct {
 	Measurement     SpectrumMeasurement
 	DetectedPeaks   []Peak
 	Isotopes        []IsotopeHit
 	CompositeModels []CompositeHit
+	Components      []SpectrumComponent
 }
 
 // MarkerMatch reports which marker is closest in time to the spectrum window.

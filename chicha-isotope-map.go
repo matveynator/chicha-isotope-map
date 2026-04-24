@@ -4938,6 +4938,24 @@ func spectrumQualitativeSummary(analysis spectrum.Analysis) string {
 	return "qualitative composition: " + strings.Join(parts, ", ")
 }
 
+func spectrumComponentSummary(analysis spectrum.Analysis) string {
+	if len(analysis.Components) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(analysis.Components))
+	for _, component := range analysis.Components {
+		percent := int(math.Round(component.Contribution * 100))
+		if percent <= 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s (%d%%)", component.DisplayName, percent))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, ", ")
+}
+
 // uploaderIdentityKey derives a lightweight user key for correlation between
 // uploads. We avoid database-specific auth coupling and keep the heuristic
 // stable across desktop/web by preferring explicit headers, then remote IP.
@@ -5164,6 +5182,8 @@ func processSpectrumXMLUpload(
 		"isotope_hits":    len(analysis.Isotopes),
 		"composites":      len(analysis.CompositeModels),
 		"qualitative":     spectrumQualitativeSummary(analysis),
+		"components":      analysis.Components,
+		"component_text":  spectrumComponentSummary(analysis),
 	}
 
 	if currentTrackID != "" && currentHasBounds {

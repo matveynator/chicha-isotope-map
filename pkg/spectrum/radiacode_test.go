@@ -134,4 +134,10 @@ func TestRadiationTypesAndCompositeModel(t *testing.T) {
 	if len(analysis.CompositeModels) == 0 {
 		t.Fatalf("expected composite models for mixed spectrum")
 	}
+	if len(analysis.Components) == 0 {
+		t.Fatalf("expected coarse component estimation")
+	}
+	if analysis.Components[0].Contribution <= 0 {
+		t.Fatalf("expected non-zero leading component contribution")
+	}
 }
