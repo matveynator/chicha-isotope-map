@@ -5792,6 +5792,10 @@ function createDateRangeSlider(){
     const deviceLabel = deviceName
       ? `<div><strong>${translate('live_marker_device_label')}:</strong> ${escapeHtml(deviceName)}</div>`
       : '';
+    const qualitativeSpectrum = marker.radiation ? String(marker.radiation).trim() : '';
+    const qualitativeBlock = qualitativeSpectrum
+      ? `<div><strong>Spectrum composition:</strong> ${escapeHtml(qualitativeSpectrum)}</div>`
+      : '';
 
     return `
       <div class="custom-tooltip">
@@ -5802,6 +5806,7 @@ function createDateRangeSlider(){
           </a>)
         </div>
         ${deviceLabel}
+        ${qualitativeBlock}
         <div><strong>${translate('speed')}:</strong> ${speedText}</div>
         <div style="margin-top:4px">
           <!-- clicking the link switches to track mode -->
@@ -8374,6 +8379,8 @@ function centerMapToLocation() {
         let completedUploads = 0;
         const totalFiles     = files.length;
         let lastTrackURL     = null;
+        let pendingSpectrumSummary = '';
+        let pendingSpectrumManualPoint = false;
 
         /* Create an XHR for each file but redirect only once */
         [...files].forEach(file => {
@@ -8414,6 +8421,10 @@ function centerMapToLocation() {
                 lastTrackURL               = response.trackURL;   // remember
                 serverProcessing.innerText = translate('processing_complete');
                 serverProcessing.style.color = 'green';
+                if (response.spectrumNeedsManualPoint) {
+                  pendingSpectrumManualPoint = true;
+                  pendingSpectrumSummary = response.spectrumQualitative || 'qualitative composition: isotopes detected';
+                }
               } else if (response.status === 'processing') {
                 lastTrackURL               = null;
                 serverProcessing.innerText = translate('processing_complete');
@@ -8436,6 +8447,8 @@ function centerMapToLocation() {
                 /* redirect to last successfully processed track */
                   if (lastTrackURL) {
                     window.location.href = lastTrackURL;
+                  } else if (pendingSpectrumManualPoint) {
+                    promptSpectrumManualPointSelection(pendingSpectrumSummary);
                   } else {
                     updateMarkers(true);   // keep the map open for background imports
                   }
@@ -8504,6 +8517,15 @@ function centerMapToLocation() {
           rowState.serverProcessing.style.color = '';
         }
 
+        function promptNativeManualSpectrumPlacement(payload) {
+          if (!payload || !payload.spectrumNeedsManualPoint) {
+            return false;
+          }
+          const summary = payload.spectrumQualitative || 'qualitative composition: isotopes detected';
+          promptSpectrumManualPointSelection(summary);
+          return true;
+        }
+
         function finalizeNativeUpload(payload) {
           if (!payload || payload.status === 'cancelled') {
             fileOverlay.style.display = 'none';
@@ -8513,6 +8535,12 @@ function centerMapToLocation() {
             setTimeout(() => {
               fileOverlay.style.display = 'none';
               window.location.href = payload.trackURL;
+            }, 700);
+            return;
+          }
+          if (payload.status === 'success' && promptNativeManualSpectrumPlacement(payload)) {
+            setTimeout(() => {
+              fileOverlay.style.display = 'none';
             }, 700);
             return;
           }
@@ -8589,6 +8617,38 @@ function centerMapToLocation() {
           .catch(() => {
             markGlobalNativeUploadError();
           });
+      }
+
+      function promptSpectrumManualPointSelection(qualitativeSummaryText) {
+        if (!map) {
+          alert('Spectrum uploaded but map is not ready for manual placement.');
+          return;
+        }
+        alert('Spectrum was uploaded but no time-matched track was found. Click one point on the map to save this spectrum.');
+        const clickHandler = function(event) {
+          map.off('click', clickHandler);
+          fetch('/api/spectrum/manual-point', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lat: event.latlng.lat,
+              lon: event.latlng.lng,
+              qualitative: qualitativeSummaryText
+            })
+          })
+          .then(function(response) { return response.json(); })
+          .then(function(payload) {
+            if (payload && payload.status === 'success' && payload.trackURL) {
+              window.location.href = payload.trackURL;
+              return;
+            }
+            updateMarkers(true);
+          })
+          .catch(function() {
+            updateMarkers(true);
+          });
+        };
+        map.on('click', clickHandler);
       }
     </script>
 

@@ -4885,6 +4885,29 @@ type spectrumTrackCandidate struct {
 	DeviceNameMatch bool
 }
 
+func spectrumQualitativeSummary(analysis spectrum.Analysis) string {
+	seen := make(map[string]struct{})
+	names := make([]string, 0, 6)
+	for _, hit := range analysis.Isotopes {
+		name := strings.TrimSpace(hit.NuclideID)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+		if len(names) >= 6 {
+			break
+		}
+	}
+	if len(names) == 0 {
+		return "qualitative composition: isotopes detected"
+	}
+	return "qualitative composition: " + strings.Join(names, ", ")
+}
+
 // uploaderIdentityKey derives a lightweight user key for correlation between
 // uploads. We avoid database-specific auth coupling and keep the heuristic
 // stable across desktop/web by preferring explicit headers, then remote IP.
@@ -5024,9 +5047,11 @@ func processSpectrumXMLUpload(
 		"device_serial":   analysis.Measurement.DeviceSerial,
 		"isotope_hits":    len(analysis.Isotopes),
 		"composites":      len(analysis.CompositeModels),
+		"qualitative":     spectrumQualitativeSummary(analysis),
 	}
 
 	if currentTrackID != "" && currentHasBounds {
+		_ = db.AnnotateTrackRadiationWindow(ctx, currentTrackID, analysis.Measurement.StartTime.Unix()-60, analysis.Measurement.EndTime.Unix()+60, spectrumQualitativeSummary(analysis), dbType)
 		detail["linked_track_id"] = currentTrackID
 		detail["link_reason"] = "same-upload-batch"
 		return currentBounds, currentTrackID, true, detail, nil
@@ -5041,6 +5066,7 @@ func processSpectrumXMLUpload(
 	detail["matched_markers"] = candidate.MatchedMarkers
 	detail["device_match"] = candidate.DeviceNameMatch
 	detail["link_reason"] = "time-and-device-heuristic"
+	_ = db.AnnotateTrackRadiationWindow(ctx, candidate.TrackID, analysis.Measurement.StartTime.Unix()-60, analysis.Measurement.EndTime.Unix()+60, spectrumQualitativeSummary(analysis), dbType)
 	return candidate.Bounds, candidate.TrackID, true, detail, nil
 }
 
@@ -5062,6 +5088,8 @@ func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func
 	hasBounds := false
 	backgroundImport := false
 	fileTypes := map[string]int{}
+	spectrumNeedsManualPoint := false
+	spectrumManualSummary := ""
 
 	for fileIndex, currentPath := range filePaths {
 		filename := filepath.Base(currentPath)
@@ -5114,6 +5142,12 @@ func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func
 			bbox, trackID, linked, linkedDetails, err = processSpectrumXMLUpload(ctx, openedFile, db, *dbType, trackID, global, hasBounds)
 			if err == nil {
 				logT(trackID, "Upload", "desktop spectrum linked=%t details=%v", linked, linkedDetails)
+				if !linked {
+					spectrumNeedsManualPoint = true
+					if text, ok := linkedDetails["qualitative"].(string); ok {
+						spectrumManualSummary = text
+					}
+				}
 			}
 		case ".cim":
 			var imported bool
@@ -5250,11 +5284,13 @@ func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func
 		)
 	}
 	return map[string]interface{}{
-		"status":       "success",
-		"trackID":      trackID,
-		"trackURL":     trackURL,
-		"mapBounds":    global,
-		"hasMapBounds": hasBounds,
+		"status":                   "success",
+		"trackID":                  trackID,
+		"trackURL":                 trackURL,
+		"mapBounds":                global,
+		"hasMapBounds":             hasBounds,
+		"spectrumNeedsManualPoint": spectrumNeedsManualPoint,
+		"spectrumQualitative":      spectrumManualSummary,
 	}, http.StatusOK, nil
 }
 
@@ -5589,6 +5625,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	hasBounds := false
 	backgroundImport := false
 	fileTypes := map[string]int{}
+	spectrumNeedsManualPoint := false
+	spectrumManualSummary := ""
 
 	for _, fh := range files {
 		logT(trackID, "Upload", "file received: %s", fh.Filename)
@@ -5626,6 +5664,12 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			if err == nil {
 				linkedDetails["uploader_key"] = uploaderIdentityKey(r)
 				logT(trackID, "Upload", "spectrum linked=%t details=%v", linked, linkedDetails)
+				if !linked {
+					spectrumNeedsManualPoint = true
+					if text, ok := linkedDetails["qualitative"].(string); ok {
+						spectrumManualSummary = text
+					}
+				}
 			}
 		case ".cim":
 			var imported bool
@@ -5753,6 +5797,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		"file_types":        fileTypes,
 		"background_import": backgroundImport,
 		"status":            status,
+		"spectrum_manual":   spectrumNeedsManualPoint,
 	}
 	if deviceSummary.Detector != "" {
 		detail["detector"] = deviceSummary.Detector
@@ -5775,8 +5820,10 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{
-		"status":   status,
-		"trackURL": trackURL,
+		"status":                   status,
+		"trackURL":                 trackURL,
+		"spectrumNeedsManualPoint": spectrumNeedsManualPoint,
+		"spectrumQualitative":      spectrumManualSummary,
 	}); err != nil {
 		if isClientDisconnect(err) {
 			log.Printf("client disconnected while writing upload response")
@@ -5784,6 +5831,49 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("upload response write error: %v", err)
 		}
 	}
+}
+
+func manualSpectrumPointHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var payload struct {
+		Lat         float64 `json:"lat"`
+		Lon         float64 `json:"lon"`
+		Qualitative string  `json:"qualitative"`
+		DeviceName  string  `json:"deviceName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	if math.IsNaN(payload.Lat) || math.IsNaN(payload.Lon) || payload.Lat < -90 || payload.Lat > 90 || payload.Lon < -180 || payload.Lon > 180 {
+		http.Error(w, "invalid coordinates", http.StatusBadRequest)
+		return
+	}
+	trackID := "spectrum-manual-" + GenerateSerialNumber()
+	markers := []database.Marker{
+		{
+			Date:      time.Now().Unix(),
+			Lat:       payload.Lat,
+			Lon:       payload.Lon,
+			DoseRate:  0.01,
+			CountRate: 0.01,
+			TrackID:   trackID,
+			Detector:  strings.TrimSpace(payload.DeviceName),
+			Radiation: strings.TrimSpace(payload.Qualitative),
+		},
+	}
+	bbox, finalTrackID, err := processAndStoreMarkers(markers, trackID, db, *dbType)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	trackURL := fmt.Sprintf("/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s", finalTrackID, bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon, "OpenStreetMap")
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "trackURL": trackURL})
 }
 
 // =====================
@@ -7925,6 +8015,7 @@ func main() {
 	http.HandleFunc("/licenses/", licenseHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/desktop/upload-native", desktopNativeUploadHandler)
+	http.HandleFunc("/api/spectrum/manual-point", manualSpectrumPointHandler)
 	http.HandleFunc("/desktop/download-track/", desktopTrackDownloadHandler)
 	http.HandleFunc("/desktop/admin/bootstrap-import", desktopAdminBootstrapImportHandler)
 	http.HandleFunc("/desktop/admin/settings", desktopAdminSettingsHandler)
