@@ -8690,6 +8690,28 @@ function centerMapToLocation() {
           candidateTracks.forEach(function(trackCandidate) {
             const row = document.createElement('div');
             row.style.marginTop = '8px';
+            row.style.border = '1px solid #ddd';
+            row.style.borderRadius = '8px';
+            row.style.padding = '8px';
+
+            const trackMeta = document.createElement('div');
+            const overlapSeconds = Number(trackCandidate.overlapSec || 0);
+            const overlapMinutes = Math.round(overlapSeconds / 60);
+            const centerDeltaSeconds = Number(trackCandidate.centerDeltaSec || 0);
+            const centerDeltaMinutes = Math.round(centerDeltaSeconds / 60);
+            let candidateLabel = `Track ${trackCandidate.trackID}`;
+            if (trackCandidate.trackStartUnix && trackCandidate.trackEndUnix) {
+              candidateLabel += ` · ${formatDateTime(trackCandidate.trackStartUnix)} → ${formatDateTime(trackCandidate.trackEndUnix)}`;
+            }
+            candidateLabel += ` · overlap ${overlapMinutes} min · center delta ${centerDeltaMinutes} min`;
+            trackMeta.textContent = candidateLabel;
+            row.appendChild(trackMeta);
+
+            const actionRow = document.createElement('div');
+            actionRow.style.display = 'flex';
+            actionRow.style.gap = '8px';
+            actionRow.style.marginTop = '6px';
+
             const attachButton = document.createElement('button');
             attachButton.textContent = `Attach to ${trackCandidate.trackID}`;
             attachButton.onclick = function() {
@@ -8702,19 +8724,99 @@ function centerMapToLocation() {
                   startUnix: contextObject.start_unix || 0,
                   endUnix: contextObject.end_unix || 0
                 })
-              }).then(function(response) { return response.json(); })
+              }).then(function(response) {
+                if (!response.ok) {
+                  throw new Error('attach-track failed');
+                }
+                return response.json();
+              })
                 .then(function(payload) {
                   if (payload && payload.status === 'success' && payload.trackURL) {
                     window.location.href = payload.trackURL;
                     return;
                   }
                   updateMarkers(true);
+                })
+                .catch(function() {
+                  alert('Unable to attach spectrum to this track candidate.');
                 });
             };
-            row.appendChild(attachButton);
+            actionRow.appendChild(attachButton);
+
+            const previewButton = document.createElement('button');
+            previewButton.textContent = 'Preview candidate';
+            previewButton.onclick = function() {
+              const hasBounds = Number.isFinite(Number(trackCandidate.minLat)) &&
+                Number.isFinite(Number(trackCandidate.minLon)) &&
+                Number.isFinite(Number(trackCandidate.maxLat)) &&
+                Number.isFinite(Number(trackCandidate.maxLon));
+              if (hasBounds && map) {
+                map.fitBounds([
+                  [Number(trackCandidate.minLat), Number(trackCandidate.minLon)],
+                  [Number(trackCandidate.maxLat), Number(trackCandidate.maxLon)]
+                ]);
+              }
+            };
+            actionRow.appendChild(previewButton);
+
+            row.appendChild(actionRow);
             panel.appendChild(row);
           });
         }
+
+        const manualTrackTitle = document.createElement('h4');
+        manualTrackTitle.style.marginTop = '16px';
+        manualTrackTitle.textContent = 'Attach to specific track ID';
+        panel.appendChild(manualTrackTitle);
+
+        const manualTrackRow = document.createElement('div');
+        manualTrackRow.style.display = 'flex';
+        manualTrackRow.style.gap = '8px';
+        manualTrackRow.style.alignItems = 'center';
+
+        const manualTrackInput = document.createElement('input');
+        manualTrackInput.type = 'text';
+        manualTrackInput.placeholder = 'e.g. safecast-70845';
+        manualTrackInput.style.flex = '1';
+        manualTrackRow.appendChild(manualTrackInput);
+
+        const manualTrackAttachButton = document.createElement('button');
+        manualTrackAttachButton.textContent = 'Attach by track ID';
+        manualTrackAttachButton.onclick = function() {
+          const selectedTrackID = String(manualTrackInput.value || '').trim();
+          if (!selectedTrackID) {
+            alert('Please enter a track ID.');
+            return;
+          }
+          fetch('/api/spectrum/attach-track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              trackID: selectedTrackID,
+              qualitative: qualitativeSummaryText,
+              startUnix: contextObject.start_unix || 0,
+              endUnix: contextObject.end_unix || 0
+            })
+          })
+          .then(function(response) {
+            if (!response.ok) {
+              throw new Error('attach-track failed');
+            }
+            return response.json();
+          })
+          .then(function(payload) {
+            if (payload && payload.status === 'success' && payload.trackURL) {
+              window.location.href = payload.trackURL;
+              return;
+            }
+            updateMarkers(true);
+          })
+          .catch(function() {
+            alert('Unable to attach spectrum to this track ID.');
+          });
+        };
+        manualTrackRow.appendChild(manualTrackAttachButton);
+        panel.appendChild(manualTrackRow);
 
         const closeButton = document.createElement('button');
         closeButton.style.marginTop = '12px';

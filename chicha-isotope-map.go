@@ -4886,29 +4886,56 @@ type spectrumTrackCandidate struct {
 	Bounds          database.Bounds
 	MatchedMarkers  int
 	DeviceNameMatch bool
+	TrackStartUnix  int64
+	TrackEndUnix    int64
+	OverlapSec      int64
+	CenterDeltaSec  int64
+	Score           int64
 }
 
 func spectrumQualitativeSummary(analysis spectrum.Analysis) string {
-	seen := make(map[string]struct{})
-	names := make([]string, 0, 6)
+	scoreByNuclide := make(map[string]float64)
 	for _, hit := range analysis.Isotopes {
-		name := strings.TrimSpace(hit.NuclideID)
-		if name == "" {
+		nuclideID := strings.TrimSpace(hit.NuclideID)
+		if nuclideID == "" {
 			continue
 		}
-		if _, exists := seen[name]; exists {
-			continue
-		}
-		seen[name] = struct{}{}
-		names = append(names, name)
-		if len(names) >= 6 {
-			break
-		}
+		scoreByNuclide[nuclideID] += hit.Confidence
 	}
-	if len(names) == 0 {
+	if len(scoreByNuclide) == 0 {
 		return "qualitative composition: isotopes detected"
 	}
-	return "qualitative composition: " + strings.Join(names, ", ")
+
+	type nuclideShare struct {
+		NuclideID string
+		Score     float64
+	}
+	shares := make([]nuclideShare, 0, len(scoreByNuclide))
+	totalScore := 0.0
+	for nuclideID, score := range scoreByNuclide {
+		totalScore += score
+		shares = append(shares, nuclideShare{NuclideID: nuclideID, Score: score})
+	}
+	sort.Slice(shares, func(i, j int) bool {
+		if shares[i].Score == shares[j].Score {
+			return shares[i].NuclideID < shares[j].NuclideID
+		}
+		return shares[i].Score > shares[j].Score
+	})
+
+	if totalScore <= 0 {
+		return "qualitative composition: isotopes detected"
+	}
+
+	parts := make([]string, 0, 6)
+	for index, share := range shares {
+		if index >= 6 {
+			break
+		}
+		percent := int(math.Round((share.Score / totalScore) * 100))
+		parts = append(parts, fmt.Sprintf("%s (%d%%)", share.NuclideID, percent))
+	}
+	return "qualitative composition: " + strings.Join(parts, ", ")
 }
 
 // uploaderIdentityKey derives a lightweight user key for correlation between
@@ -4972,25 +4999,77 @@ func deriveBoundsFromTrack(
 	return bounds, matchedCount, nil
 }
 
+func deriveTrackMatchDetails(
+	ctx context.Context,
+	db *database.Database,
+	dbType string,
+	trackID string,
+) (database.Bounds, int, int64, int64, error) {
+	summary, err := db.GetTrackSummary(ctx, trackID, dbType)
+	if err != nil {
+		return database.Bounds{}, 0, 0, 0, err
+	}
+	if summary.MarkerCount == 0 {
+		return database.Bounds{}, 0, 0, 0, nil
+	}
+
+	markersCh, errCh := db.StreamMarkersByTrackRange(ctx, trackID, summary.FirstID, summary.LastID, 0, dbType)
+	bounds := database.Bounds{MinLat: 90, MinLon: 180, MaxLat: -90, MaxLon: -180}
+	matchedCount := 0
+	trackStartUnix := int64(0)
+	trackEndUnix := int64(0)
+
+	for marker := range markersCh {
+		matchedCount++
+		if marker.Lat < bounds.MinLat {
+			bounds.MinLat = marker.Lat
+		}
+		if marker.Lat > bounds.MaxLat {
+			bounds.MaxLat = marker.Lat
+		}
+		if marker.Lon < bounds.MinLon {
+			bounds.MinLon = marker.Lon
+		}
+		if marker.Lon > bounds.MaxLon {
+			bounds.MaxLon = marker.Lon
+		}
+		if trackStartUnix == 0 || marker.Date < trackStartUnix {
+			trackStartUnix = marker.Date
+		}
+		if trackEndUnix == 0 || marker.Date > trackEndUnix {
+			trackEndUnix = marker.Date
+		}
+	}
+	if streamErr := <-errCh; streamErr != nil {
+		return database.Bounds{}, 0, 0, 0, streamErr
+	}
+	if matchedCount == 0 {
+		return database.Bounds{}, 0, 0, 0, nil
+	}
+	return bounds, matchedCount, trackStartUnix, trackEndUnix, nil
+}
+
 func linkSpectrumToTrackByTime(
 	ctx context.Context,
 	db *database.Database,
 	dbType string,
 	analysis spectrum.Analysis,
-) (spectrumTrackCandidate, bool) {
+) ([]spectrumTrackCandidate, bool) {
 	if db == nil {
-		return spectrumTrackCandidate{}, false
+		return nil, false
 	}
-	startUnix := analysis.Measurement.StartTime.Unix() - 900
-	endUnix := analysis.Measurement.EndTime.Unix() + 900
+	measurementStartUnix := analysis.Measurement.StartTime.Unix()
+	measurementEndUnix := analysis.Measurement.EndTime.Unix()
+	startUnix := measurementStartUnix - 7200
+	endUnix := measurementEndUnix + 7200
 	tracksCh, errCh := db.StreamTrackSummariesByDateRange(ctx, "", 40, startUnix, endUnix, dbType)
-	bestCandidate := spectrumTrackCandidate{}
-	bestScore := -1
+	candidates := make([]spectrumTrackCandidate, 0, 5)
 	deviceNeedle := strings.ToLower(strings.TrimSpace(analysis.Measurement.DeviceName))
 	serialNeedle := strings.ToLower(strings.TrimSpace(analysis.Measurement.DeviceSerial))
+	measurementCenterUnix := measurementStartUnix + (measurementEndUnix-measurementStartUnix)/2
 
 	for summary := range tracksCh {
-		trackBounds, markerCount, boundsErr := deriveBoundsFromTrack(ctx, db, dbType, summary.TrackID)
+		trackBounds, markerCount, trackStartUnix, trackEndUnix, boundsErr := deriveTrackMatchDetails(ctx, db, dbType, summary.TrackID)
 		if boundsErr != nil || markerCount == 0 {
 			continue
 		}
@@ -5001,29 +5080,63 @@ func linkSpectrumToTrackByTime(
 		if normalizedTrackDevice != "" && (normalizedTrackDevice == deviceNeedle || strings.Contains(normalizedTrackDevice, serialNeedle) || strings.Contains(serialNeedle, normalizedTrackDevice)) {
 			deviceMatch = true
 		}
-		score := markerCount
-		if deviceMatch {
-			score += 5000
+
+		overlapStart := measurementStartUnix
+		if trackStartUnix > overlapStart {
+			overlapStart = trackStartUnix
+		}
+		overlapEnd := measurementEndUnix
+		if trackEndUnix < overlapEnd {
+			overlapEnd = trackEndUnix
+		}
+		overlapSec := overlapEnd - overlapStart
+		if overlapSec < 0 {
+			overlapSec = 0
 		}
 
-		if score > bestScore {
-			bestScore = score
-			bestCandidate = spectrumTrackCandidate{
-				TrackID:         summary.TrackID,
-				Bounds:          trackBounds,
-				MatchedMarkers:  markerCount,
-				DeviceNameMatch: deviceMatch,
-			}
+		trackCenterUnix := trackStartUnix + (trackEndUnix-trackStartUnix)/2
+		centerDeltaSec := trackCenterUnix - measurementCenterUnix
+		if centerDeltaSec < 0 {
+			centerDeltaSec = -centerDeltaSec
 		}
+
+		score := overlapSec*20 + int64(markerCount)
+		if deviceMatch {
+			score += 120000
+		}
+		score -= centerDeltaSec / 3
+
+		candidate := spectrumTrackCandidate{
+			TrackID:         summary.TrackID,
+			Bounds:          trackBounds,
+			MatchedMarkers:  markerCount,
+			DeviceNameMatch: deviceMatch,
+			TrackStartUnix:  trackStartUnix,
+			TrackEndUnix:    trackEndUnix,
+			OverlapSec:      overlapSec,
+			CenterDeltaSec:  centerDeltaSec,
+			Score:           score,
+		}
+		candidates = append(candidates, candidate)
 	}
+
 	if streamErr := <-errCh; streamErr != nil {
 		log.Printf("spectrum link track scan failed: %v", streamErr)
-		return spectrumTrackCandidate{}, false
+		return nil, false
 	}
-	if bestScore < 0 {
-		return spectrumTrackCandidate{}, false
+	if len(candidates) == 0 {
+		return nil, false
 	}
-	return bestCandidate, true
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Score == candidates[j].Score {
+			return candidates[i].TrackID < candidates[j].TrackID
+		}
+		return candidates[i].Score > candidates[j].Score
+	})
+	if len(candidates) > 5 {
+		candidates = candidates[:5]
+	}
+	return candidates, true
 }
 
 func processSpectrumXMLUpload(
@@ -5060,26 +5173,51 @@ func processSpectrumXMLUpload(
 		return currentBounds, currentTrackID, true, detail, nil
 	}
 
-	candidate, ok := linkSpectrumToTrackByTime(ctx, db, dbType, analysis)
+	candidates, ok := linkSpectrumToTrackByTime(ctx, db, dbType, analysis)
 	if !ok {
 		detail["link_reason"] = "no-track-candidate"
 		detail["start_unix"] = analysis.Measurement.StartTime.Unix()
 		detail["end_unix"] = analysis.Measurement.EndTime.Unix()
 		return currentBounds, currentTrackID, currentHasBounds, detail, nil
 	}
-	detail["linked_track_id"] = candidate.TrackID
-	detail["matched_markers"] = candidate.MatchedMarkers
-	detail["device_match"] = candidate.DeviceNameMatch
+	bestCandidate := candidates[0]
+	detail["linked_track_id"] = bestCandidate.TrackID
+	detail["matched_markers"] = bestCandidate.MatchedMarkers
+	detail["device_match"] = bestCandidate.DeviceNameMatch
+	detail["track_start_unix"] = bestCandidate.TrackStartUnix
+	detail["track_end_unix"] = bestCandidate.TrackEndUnix
+	detail["overlap_sec"] = bestCandidate.OverlapSec
+	detail["center_delta_sec"] = bestCandidate.CenterDeltaSec
 	detail["link_reason"] = "candidate-required-confirmation"
 	detail["start_unix"] = analysis.Measurement.StartTime.Unix()
 	detail["end_unix"] = analysis.Measurement.EndTime.Unix()
-	detail["candidate_tracks"] = []map[string]any{
-		{
-			"trackID":       candidate.TrackID,
-			"matchedPoints": candidate.MatchedMarkers,
-			"deviceMatch":   candidate.DeviceNameMatch,
-		},
+	candidateTracks := make([]map[string]any, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidateTracks = append(candidateTracks, map[string]any{
+			"trackID":        candidate.TrackID,
+			"matchedPoints":  candidate.MatchedMarkers,
+			"deviceMatch":    candidate.DeviceNameMatch,
+			"trackStartUnix": candidate.TrackStartUnix,
+			"trackEndUnix":   candidate.TrackEndUnix,
+			"overlapSec":     candidate.OverlapSec,
+			"centerDeltaSec": candidate.CenterDeltaSec,
+			"score":          candidate.Score,
+			"minLat":         candidate.Bounds.MinLat,
+			"minLon":         candidate.Bounds.MinLon,
+			"maxLat":         candidate.Bounds.MaxLat,
+			"maxLon":         candidate.Bounds.MaxLon,
+			"trackURL": fmt.Sprintf(
+				"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
+				candidate.TrackID,
+				candidate.Bounds.MinLat,
+				candidate.Bounds.MinLon,
+				candidate.Bounds.MaxLat,
+				candidate.Bounds.MaxLon,
+				"OpenStreetMap",
+			),
+		})
 	}
+	detail["candidate_tracks"] = candidateTracks
 	return currentBounds, currentTrackID, currentHasBounds, detail, nil
 }
 
@@ -5929,6 +6067,15 @@ func attachSpectrumToTrackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(payload.TrackID) == "" {
 		http.Error(w, "track id required", http.StatusBadRequest)
+		return
+	}
+	trackSummary, err := db.GetTrackSummary(r.Context(), payload.TrackID, *dbType)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if trackSummary.MarkerCount == 0 {
+		http.Error(w, "track id not found", http.StatusBadRequest)
 		return
 	}
 	if err := db.AnnotateTrackRadiationWindow(r.Context(), payload.TrackID, payload.StartUnix-60, payload.EndUnix+60, payload.Qualitative, *dbType); err != nil {
