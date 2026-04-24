@@ -45,10 +45,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -96,7 +96,7 @@ jobs:
                    -o "dist/$bin"
 
       - name: Upload portable artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
@@ -115,12 +115,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # --- macOS нативно ---
       - name: Set up Go (macOS)
         if: matrix.in_container == false
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -150,7 +150,7 @@ jobs:
                    -o "dist/${BIN}"
 
       - name: Upload duckdb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-${{ matrix.target }}
           path: dist/
@@ -178,10 +178,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -368,7 +368,7 @@ jobs:
           Compress-Archive -Path "dist/$bin" -DestinationPath "dist/chicha-isotope-map_${{ matrix.goos }}_${{ matrix.goarch }}_desktop.zip" -Force
 
       - name: Upload desktop artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-desktop-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.desktop_variant }}
           path: |
@@ -376,7 +376,7 @@ jobs:
 
       - name: Upload desktop icon artifact (single copy for release assets)
         if: runner.os == 'Windows' && matrix.goarch == 'amd64'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-desktop-icon-windows
           path: dist/windows-desktop-icon.ico
@@ -387,10 +387,10 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download macOS desktop artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: bin-desktop-darwin-*
           merge-multiple: true
@@ -483,7 +483,7 @@ jobs:
             "${DMG_PATH}"
 
       - name: Upload macOS universal desktop artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-desktop-darwin-universal
           path: |
@@ -496,15 +496,15 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: dist-raw/
 
       - name: Publish GitHub Release (stable tag)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
