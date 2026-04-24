@@ -27,28 +27,28 @@ jobs:
       matrix:
         include:
           # Linux
-          - { goos: linux,  goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: linux,  goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: linux,  goarch: 386,   goversion: "1.23", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: 386,   goversion: "1.24", runner: "ubuntu-22.04" }
           # macOS
-          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14" }
-          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14" }
+          - { goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14" }
+          - { goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14" }
           # *BSD
-          - { goos: freebsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: freebsd, goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: openbsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: openbsd, goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: netbsd,  goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
+          - { goos: freebsd, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: freebsd, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: openbsd, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: openbsd, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: netbsd,  goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
           # Windows
-          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest" }
-          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest" }
+          - { goos: windows, goarch: amd64, goversion: "1.24", runner: "windows-latest" }
+          - { goos: windows, goarch: arm64, goversion: "1.24", runner: "windows-latest" }
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -96,7 +96,7 @@ jobs:
                    -o "dist/$bin"
 
       - name: Upload portable artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
@@ -110,17 +110,17 @@ jobs:
       matrix:
         include:
           # macOS amd64/arm64: нативно
-          - { target: darwin_amd64_duckdb, goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14", in_container: false }
-          - { target: darwin_arm64_duckdb, goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14", in_container: false }
+          - { target: darwin_amd64_duckdb, goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14", in_container: false }
+          - { target: darwin_arm64_duckdb, goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14", in_container: false }
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # --- macOS нативно ---
       - name: Set up Go (macOS)
         if: matrix.in_container == false
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -150,7 +150,7 @@ jobs:
                    -o "dist/${BIN}"
 
       - name: Upload duckdb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-${{ matrix.target }}
           path: dist/
@@ -165,23 +165,23 @@ jobs:
         include:
           # go-webview-selector resolves webkit2gtk via pkg-config name "webkit2gtk-4.0",
           # so Linux desktop builds provide a webkit2gtk-4.0 pkg-config target.
-          - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04", desktop_variant: "gtk40" }
-          - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", desktop_variant: "gtk41" }
-          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04-arm", desktop_variant: "gtk40" }
-          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04-arm", desktop_variant: "gtk41" }
+          - { goos: linux, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04", desktop_variant: "gtk40" }
+          - { goos: linux, goarch: amd64, goversion: "1.24", runner: "ubuntu-24.04", desktop_variant: "gtk41" }
+          - { goos: linux, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04-arm", desktop_variant: "gtk40" }
+          - { goos: linux, goarch: arm64, goversion: "1.24", runner: "ubuntu-24.04-arm", desktop_variant: "gtk41" }
           # Build both macOS desktop targets on macos-14 to avoid queue stalls on scarce macos-13 runners.
           # amd64 output is cross-compiled with explicit x86_64 toolchain flags and old deployment target.
-          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14", desktop_variant: "default" }
-          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14", desktop_variant: "default" }
-          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest", desktop_variant: "default" }
-          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest", desktop_variant: "default" }
+          - { goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14", desktop_variant: "default" }
+          - { goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14", desktop_variant: "default" }
+          - { goos: windows, goarch: amd64, goversion: "1.24", runner: "windows-latest", desktop_variant: "default" }
+          - { goos: windows, goarch: arm64, goversion: "1.24", runner: "windows-latest", desktop_variant: "default" }
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -368,7 +368,7 @@ jobs:
           Compress-Archive -Path "dist/$bin" -DestinationPath "dist/chicha-isotope-map_${{ matrix.goos }}_${{ matrix.goarch }}_desktop.zip" -Force
 
       - name: Upload desktop artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-desktop-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.desktop_variant }}
           path: |
@@ -376,7 +376,7 @@ jobs:
 
       - name: Upload desktop icon artifact (single copy for release assets)
         if: runner.os == 'Windows' && matrix.goarch == 'amd64'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-desktop-icon-windows
           path: dist/windows-desktop-icon.ico
@@ -387,10 +387,10 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download macOS desktop artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: bin-desktop-darwin-*
           merge-multiple: true
@@ -483,7 +483,7 @@ jobs:
             "${DMG_PATH}"
 
       - name: Upload macOS universal desktop artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bin-desktop-darwin-universal
           path: |
@@ -496,15 +496,15 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: dist-raw/
 
       - name: Publish GitHub Release (stable tag)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
