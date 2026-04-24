@@ -376,6 +376,16 @@ body, html {
           margin-left: 6px;
         }
 
+        /* Keep bottom-right controls stacked vertically above the cache status card. */
+        #legend {
+          bottom: calc(20px + var(--bottom-controls-offset, 0px)) !important;
+          z-index: 1060 !important;
+        }
+
+        #themeToggle {
+          bottom: calc(140px + var(--bottom-controls-offset, 0px));
+        }
+
         /* Keep cache status compact on narrow phone screens. */
         @media (max-width: 767px) {
           #mapCacheStatus {
@@ -391,15 +401,6 @@ body, html {
             font-size: var(--font-size-xs);
             white-space: normal;
             overflow-wrap: anywhere;
-          }
-
-          #legend {
-            bottom: calc(20px + var(--mobile-cache-offset, 0px)) !important;
-            z-index: 1060 !important;
-          }
-
-          #themeToggle {
-            bottom: calc(140px + var(--mobile-cache-offset, 0px));
           }
         }
 
@@ -3385,18 +3386,14 @@ function splitCacheStatusSegmentsIntoBalancedLines(segmentEntries, forcedSecondL
   return [firstLineSegments.join(' · '), secondLineSegments.join(' · ')];
 }
 
-function updateMobileControlOffsetsFromCacheStatus() {
+function updateBottomControlOffsetsFromCacheStatus() {
   if (!mapCacheStatusNode) {
     return;
   }
-  if (window.matchMedia('(max-width: 767px)').matches) {
-    const cachePanelHeight = mapCacheStatusNode.offsetHeight || 0;
-    const verticalGap = 12;
-    const offsetValue = Math.max(0, cachePanelHeight + verticalGap);
-    document.documentElement.style.setProperty('--mobile-cache-offset', offsetValue + 'px');
-    return;
-  }
-  document.documentElement.style.setProperty('--mobile-cache-offset', '0px');
+  const cachePanelHeight = mapCacheStatusNode.offsetHeight || 0;
+  const verticalGap = 12;
+  const offsetValue = Math.max(0, cachePanelHeight + verticalGap);
+  document.documentElement.style.setProperty('--bottom-controls-offset', offsetValue + 'px');
 }
 
 async function renderOfflineCacheStatus() {
@@ -3465,7 +3462,7 @@ async function renderOfflineCacheStatus() {
   mapCacheStatusNode.innerHTML =
     `<div class="cache-inline-line">${firstLine}</div>` +
     `<div class="cache-inline-line">${secondLine}</div>`;
-  updateMobileControlOffsetsFromCacheStatus();
+  updateBottomControlOffsetsFromCacheStatus();
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
     resetLink.onclick = function() {
@@ -3482,7 +3479,7 @@ window.addEventListener('offline', function() {
   updateInternetConnectivityState(false);
 });
 window.addEventListener('resize', function() {
-  updateMobileControlOffsetsFromCacheStatus();
+  updateBottomControlOffsetsFromCacheStatus();
 });
 
 L.CachedTileLayer = L.TileLayer.extend({
