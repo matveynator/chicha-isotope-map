@@ -474,8 +474,9 @@ jobs:
           ln -s /Applications "${DMG_STAGING_DIR}/Applications"
 
           rm -f "${DMG_PATH}"
+          # Use a unique temporary volume name per run to avoid collisions with previously mounted volumes on shared runners.
           hdiutil create \
-            -volname "Chicha Isotope Map" \
+            -volname "Chicha Isotope Map ${{ github.run_id }}-${{ github.run_attempt }}" \
             -srcfolder "${DMG_STAGING_DIR}" \
             -ov \
             -format UDZO \
