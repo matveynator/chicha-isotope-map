@@ -2050,8 +2050,8 @@ body, html {
 
       // Compute marker color from radiation level
       function getGradientColor(doseRate) {
-        if (doseRate <= 0.04) return '#006400'; // Dark green
-        else if (doseRate <= 0.08) return interpolateColor([0, 100, 0], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
+        if (doseRate <= 0.04) return '#228B22'; // Brighter forest green for low-zoom readability
+        else if (doseRate <= 0.08) return interpolateColor([34, 139, 34], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
         else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
         else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
         else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
@@ -2079,7 +2079,6 @@ function getRadius(doseRate, zoomLevel) {
   return Math.max(r, 2);                       // prevent tiny circles
 }
 
-const MARKER_CONTRAST_RING_COLOR = '#000000';
 const MARKER_CONTRAST_RING_WIDTH = 0.5;
 
 function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLevel) {
@@ -2092,7 +2091,7 @@ function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLeve
   const doseMarker = L.circleMarker([lat, lon], {
     radius: markerRadius,
     fillColor: markerColor,
-    color: MARKER_CONTRAST_RING_COLOR,
+    color: markerColor,
     weight: MARKER_CONTRAST_RING_WIDTH,
     opacity: 1,
     fillOpacity: markerFillOpacity
