@@ -5287,7 +5287,7 @@ func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func
 		}, http.StatusOK, nil
 	}
 
-	trackURL := fmt.Sprintf("/trackid/%s", trackID)
+	trackURL := "/"
 	if hasBounds {
 		trackURL = fmt.Sprintf(
 			"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
