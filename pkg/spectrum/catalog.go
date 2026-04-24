@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Nuclide stores isotope metadata independent from vendor format.
@@ -86,11 +87,11 @@ func normalizeNuclideToken(input string) (string, bool) {
 			return "", false
 		}
 		element := strings.Title(parts[0])
-		mass, err := strconv.Atoi(parts[1])
+		mass, metastableSuffix, err := parseMassAndMetastableSuffix(parts[1])
 		if err != nil {
 			return "", false
 		}
-		return fmt.Sprintf("%s-%d", element, mass), true
+		return fmt.Sprintf("%s-%d%s", element, mass, metastableSuffix), true
 	}
 
 	firstDigit := -1
@@ -105,27 +106,106 @@ func normalizeNuclideToken(input string) (string, bool) {
 	}
 
 	if firstDigit == 0 {
-		j := 0
-		for j < len(cleaned) && cleaned[j] >= '0' && cleaned[j] <= '9' {
-			j++
-		}
-		mass, err := strconv.Atoi(cleaned[:j])
+		mass, metastableSuffix, element, err := parseLeadingMassNotation(cleaned)
 		if err != nil {
 			return "", false
 		}
-		element := strings.Title(cleaned[j:])
 		if element == "" {
 			return "", false
 		}
-		return fmt.Sprintf("%s-%d", element, mass), true
+		return fmt.Sprintf("%s-%d%s", element, mass, metastableSuffix), true
 	}
 
 	element := strings.Title(cleaned[:firstDigit])
-	mass, err := strconv.Atoi(cleaned[firstDigit:])
+	mass, metastableSuffix, err := parseMassAndMetastableSuffix(cleaned[firstDigit:])
 	if err != nil {
 		return "", false
 	}
-	return fmt.Sprintf("%s-%d", element, mass), true
+	return fmt.Sprintf("%s-%d%s", element, mass, metastableSuffix), true
+}
+
+func parseMassAndMetastableSuffix(token string) (int, string, error) {
+	if token == "" {
+		return 0, "", fmt.Errorf("empty mass token")
+	}
+
+	digitEnd := 0
+	for digitEnd < len(token) && token[digitEnd] >= '0' && token[digitEnd] <= '9' {
+		digitEnd++
+	}
+	if digitEnd == 0 {
+		return 0, "", fmt.Errorf("missing mass number")
+	}
+
+	mass, err := strconv.Atoi(token[:digitEnd])
+	if err != nil {
+		return 0, "", err
+	}
+	if digitEnd == len(token) {
+		return mass, "", nil
+	}
+
+	suffix := strings.ToLower(token[digitEnd:])
+	if suffix != "m" {
+		return 0, "", fmt.Errorf("unsupported mass suffix")
+	}
+	return mass, suffix, nil
+}
+
+func splitElementAndMetastableSuffix(token string) (string, string, error) {
+	if token == "" {
+		return "", "", fmt.Errorf("empty element token")
+	}
+
+	metastableSuffix := ""
+	elementToken := token
+	if strings.HasSuffix(token, "m") {
+		elementToken = token[:len(token)-1]
+		metastableSuffix = "m"
+	}
+	if elementToken == "" {
+		return "", "", fmt.Errorf("missing element symbol")
+	}
+	for _, symbolRune := range elementToken {
+		if !unicode.IsLetter(symbolRune) {
+			return "", "", fmt.Errorf("invalid element symbol")
+		}
+	}
+
+	return strings.Title(elementToken), metastableSuffix, nil
+}
+
+func parseLeadingMassNotation(token string) (int, string, string, error) {
+	digitEnd := 0
+	for digitEnd < len(token) && token[digitEnd] >= '0' && token[digitEnd] <= '9' {
+		digitEnd++
+	}
+	if digitEnd == 0 || digitEnd == len(token) {
+		return 0, "", "", fmt.Errorf("invalid leading mass notation")
+	}
+
+	metastableSuffix := ""
+	elementStart := digitEnd
+	if token[elementStart] == 'm' {
+		metastableSuffix = "m"
+		elementStart++
+		if elementStart == len(token) {
+			return 0, "", "", fmt.Errorf("missing element symbol")
+		}
+	}
+
+	mass, err := strconv.Atoi(token[:digitEnd])
+	if err != nil {
+		return 0, "", "", err
+	}
+	element, extraMetastableSuffix, err := splitElementAndMetastableSuffix(token[elementStart:])
+	if err != nil {
+		return 0, "", "", err
+	}
+	if metastableSuffix == "" {
+		metastableSuffix = extraMetastableSuffix
+	}
+	return mass, metastableSuffix, element, nil
 }
 
 var defaultNuclides = []Nuclide{

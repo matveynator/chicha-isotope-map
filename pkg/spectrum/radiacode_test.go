@@ -89,6 +89,21 @@ func TestFindNuclideAlias(t *testing.T) {
 	if !ok || nuclide.NuclideID != "Cs-137" {
 		t.Fatalf("expected normalized Cs-137, got %+v", nuclide)
 	}
+
+	nuclide, ok = FindNuclide("Tc-99m")
+	if !ok || nuclide.NuclideID != "Tc-99m" {
+		t.Fatalf("expected normalized Tc-99m, got %+v", nuclide)
+	}
+
+	nuclide, ok = FindNuclide("99mTc")
+	if !ok || nuclide.NuclideID != "Tc-99m" {
+		t.Fatalf("expected normalized 99mTc -> Tc-99m, got %+v", nuclide)
+	}
+
+	nuclide, ok = FindNuclide("Pa-234m")
+	if !ok || nuclide.NuclideID != "Pa-234m" {
+		t.Fatalf("expected normalized Pa-234m, got %+v", nuclide)
+	}
 }
 
 func TestRadiationTypesAndCompositeModel(t *testing.T) {

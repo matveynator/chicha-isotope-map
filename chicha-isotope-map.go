@@ -4865,15 +4865,18 @@ func formatFileTypeSummary(fileTypes map[string]int) string {
 }
 
 type desktopUploadProgressEvent struct {
-	Type       string `json:"type"`
-	FileName   string `json:"fileName,omitempty"`
-	Index      int    `json:"index,omitempty"`
-	Total      int    `json:"total,omitempty"`
-	Percent    int    `json:"percent,omitempty"`
-	Status     string `json:"status,omitempty"`
-	Message    string `json:"message,omitempty"`
-	TrackURL   string `json:"trackURL,omitempty"`
-	StatusCode int    `json:"statusCode,omitempty"`
+	Type                     string         `json:"type"`
+	FileName                 string         `json:"fileName,omitempty"`
+	Index                    int            `json:"index,omitempty"`
+	Total                    int            `json:"total,omitempty"`
+	Percent                  int            `json:"percent,omitempty"`
+	Status                   string         `json:"status,omitempty"`
+	Message                  string         `json:"message,omitempty"`
+	TrackURL                 string         `json:"trackURL,omitempty"`
+	StatusCode               int            `json:"statusCode,omitempty"`
+	SpectrumNeedsManualPoint bool           `json:"spectrumNeedsManualPoint,omitempty"`
+	SpectrumQualitative      string         `json:"spectrumQualitative,omitempty"`
+	SpectrumContext          map[string]any `json:"spectrumContext,omitempty"`
 }
 
 // spectrumTrackCandidate keeps linking decisions explicit so XML uploads can
@@ -5295,6 +5298,10 @@ func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func
 			"OpenStreetMap",
 		)
 	}
+	if spectrumNeedsManualPoint {
+		// Force modal-first UX for spectrum uploads that require an explicit user decision.
+		trackURL = "/"
+	}
 	return map[string]interface{}{
 		"status":                   "success",
 		"trackID":                  trackID,
@@ -5354,12 +5361,19 @@ func desktopNativeUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	payloadStatus, _ := response["status"].(string)
 	trackURL, _ := response["trackURL"].(string)
+	spectrumNeedsManualPoint, _ := response["spectrumNeedsManualPoint"].(bool)
+	spectrumQualitative, _ := response["spectrumQualitative"].(string)
+	spectrumContext, _ := response["spectrumContext"].(map[string]any)
 	writeEvent(desktopUploadProgressEvent{
-		Type:     "result",
-		Status:   payloadStatus,
-		TrackURL: trackURL,
-		Message:  "desktop upload completed",
-		Percent:  100,
+		Type:                     "result",
+		Status:                   payloadStatus,
+		TrackURL:                 trackURL,
+		Message:                  "desktop upload completed",
+		Percent:                  100,
+		StatusCode:               status,
+		SpectrumNeedsManualPoint: spectrumNeedsManualPoint,
+		SpectrumQualitative:      spectrumQualitative,
+		SpectrumContext:          spectrumContext,
 	})
 }
 
@@ -5787,6 +5801,10 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			"/trackid/%s?minLat=%f&minLon=%f&maxLat=%f&maxLon=%f&zoom=14&layer=%s",
 			trackID, global.MinLat, global.MinLon, global.MaxLat, global.MaxLon,
 			"OpenStreetMap")
+	}
+	if spectrumNeedsManualPoint {
+		// Force modal-first UX for spectrum uploads that require an explicit user decision.
+		trackURL = "/"
 	}
 
 	status := "success"

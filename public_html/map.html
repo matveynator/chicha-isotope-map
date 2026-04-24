@@ -8446,13 +8446,13 @@ function centerMapToLocation() {
               setTimeout(() => {
                 fileOverlay.style.display = 'none';
                 /* redirect to last successfully processed track */
-                  if (lastTrackURL) {
-                    window.location.href = lastTrackURL;
-                  } else if (pendingSpectrumManualPoint) {
-                    showSpectrumResultModal(window.__pendingSpectrumContext, pendingSpectrumSummary);
-                  } else {
-                    updateMarkers(true);   // keep the map open for background imports
-                  }
+                if (pendingSpectrumManualPoint) {
+                  showSpectrumResultModal(window.__pendingSpectrumContext, pendingSpectrumSummary);
+                } else if (lastTrackURL) {
+                  window.location.href = lastTrackURL;
+                } else {
+                  updateMarkers(true);   // keep the map open for background imports
+                }
               }, 700);
             }
           };
@@ -8532,16 +8532,16 @@ function centerMapToLocation() {
             fileOverlay.style.display = 'none';
             return;
           }
+          if (payload.status === 'success' && promptNativeManualSpectrumPlacement(payload)) {
+            setTimeout(() => {
+              fileOverlay.style.display = 'none';
+            }, 700);
+            return;
+          }
           if (payload.status === 'success' && payload.trackURL && payload.trackURL !== '/') {
             setTimeout(() => {
               fileOverlay.style.display = 'none';
               window.location.href = payload.trackURL;
-            }, 700);
-            return;
-          }
-          if (payload.status === 'success' && promptNativeManualSpectrumPlacement(payload)) {
-            setTimeout(() => {
-              fileOverlay.style.display = 'none';
             }, 700);
             return;
           }
