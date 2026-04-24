@@ -8418,12 +8418,13 @@ function centerMapToLocation() {
             if (xhr.status === 200) {
               const response = JSON.parse(xhr.responseText);
               if (response.status === 'success') {
-                lastTrackURL               = response.trackURL;   // remember
+                lastTrackURL               = (response.trackURL && response.trackURL !== '/') ? response.trackURL : null;   // remember
                 serverProcessing.innerText = translate('processing_complete');
                 serverProcessing.style.color = 'green';
                 if (response.spectrumNeedsManualPoint) {
                   pendingSpectrumManualPoint = true;
                   pendingSpectrumSummary = response.spectrumQualitative || 'qualitative composition: isotopes detected';
+                  window.__pendingSpectrumContext = response.spectrumContext || null;
                 }
               } else if (response.status === 'processing') {
                 lastTrackURL               = null;
@@ -8448,7 +8449,7 @@ function centerMapToLocation() {
                   if (lastTrackURL) {
                     window.location.href = lastTrackURL;
                   } else if (pendingSpectrumManualPoint) {
-                    promptSpectrumManualPointSelection(pendingSpectrumSummary);
+                    showSpectrumResultModal(window.__pendingSpectrumContext, pendingSpectrumSummary);
                   } else {
                     updateMarkers(true);   // keep the map open for background imports
                   }
@@ -8522,7 +8523,7 @@ function centerMapToLocation() {
             return false;
           }
           const summary = payload.spectrumQualitative || 'qualitative composition: isotopes detected';
-          promptSpectrumManualPointSelection(summary);
+          showSpectrumResultModal(payload.spectrumContext || null, summary);
           return true;
         }
 
@@ -8531,7 +8532,7 @@ function centerMapToLocation() {
             fileOverlay.style.display = 'none';
             return;
           }
-          if (payload.status === 'success' && payload.trackURL) {
+          if (payload.status === 'success' && payload.trackURL && payload.trackURL !== '/') {
             setTimeout(() => {
               fileOverlay.style.display = 'none';
               window.location.href = payload.trackURL;
@@ -8619,7 +8620,117 @@ function centerMapToLocation() {
           });
       }
 
-      function promptSpectrumManualPointSelection(qualitativeSummaryText) {
+      function showSpectrumResultModal(spectrumContext, qualitativeSummaryText) {
+        const contextObject = (spectrumContext && typeof spectrumContext === 'object') ? spectrumContext : {};
+        const candidateTracks = Array.isArray(contextObject.candidate_tracks) ? contextObject.candidate_tracks : [];
+        const modal = document.createElement('div');
+        modal.style.position = 'fixed';
+        modal.style.left = '0';
+        modal.style.top = '0';
+        modal.style.right = '0';
+        modal.style.bottom = '0';
+        modal.style.zIndex = '99999';
+        modal.style.background = 'rgba(0,0,0,0.55)';
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        const panel = document.createElement('div');
+        panel.style.background = '#fff';
+        panel.style.color = '#111';
+        panel.style.maxWidth = '680px';
+        panel.style.width = '92%';
+        panel.style.maxHeight = '80vh';
+        panel.style.overflow = 'auto';
+        panel.style.borderRadius = '12px';
+        panel.style.padding = '16px';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Spectrum analysis result';
+        panel.appendChild(title);
+
+        const composition = document.createElement('div');
+        composition.innerHTML = `<strong>Qualitative isotopes:</strong> ${escapeHtml(qualitativeSummaryText || 'isotopes detected')}`;
+        panel.appendChild(composition);
+
+        if (contextObject.start_unix && contextObject.end_unix) {
+          const timeBox = document.createElement('div');
+          timeBox.style.marginTop = '8px';
+          timeBox.innerHTML = `<strong>Measurement window:</strong> ${escapeHtml(formatDateTime(contextObject.start_unix))} → ${escapeHtml(formatDateTime(contextObject.end_unix))}`;
+          panel.appendChild(timeBox);
+        }
+
+        const actions = document.createElement('div');
+        actions.style.marginTop = '14px';
+        actions.style.display = 'flex';
+        actions.style.flexWrap = 'wrap';
+        actions.style.gap = '8px';
+
+        const pointButton = document.createElement('button');
+        pointButton.textContent = 'Choose point on map';
+        pointButton.onclick = function() {
+          document.body.removeChild(modal);
+          promptSpectrumManualPointSelection(qualitativeSummaryText, contextObject.start_unix || 0, contextObject.end_unix || 0);
+        };
+        actions.appendChild(pointButton);
+
+        const areaButton = document.createElement('button');
+        areaButton.textContent = 'Select area on map';
+        areaButton.onclick = function() {
+          document.body.removeChild(modal);
+          promptSpectrumAreaSelection(qualitativeSummaryText, contextObject.start_unix || 0, contextObject.end_unix || 0);
+        };
+        actions.appendChild(areaButton);
+        panel.appendChild(actions);
+
+        if (candidateTracks.length > 0) {
+          const listTitle = document.createElement('h4');
+          listTitle.style.marginTop = '16px';
+          listTitle.textContent = 'Possible track candidates';
+          panel.appendChild(listTitle);
+          candidateTracks.forEach(function(trackCandidate) {
+            const row = document.createElement('div');
+            row.style.marginTop = '8px';
+            const attachButton = document.createElement('button');
+            attachButton.textContent = `Attach to ${trackCandidate.trackID}`;
+            attachButton.onclick = function() {
+              fetch('/api/spectrum/attach-track', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  trackID: trackCandidate.trackID,
+                  qualitative: qualitativeSummaryText,
+                  startUnix: contextObject.start_unix || 0,
+                  endUnix: contextObject.end_unix || 0
+                })
+              }).then(function(response) { return response.json(); })
+                .then(function(payload) {
+                  if (payload && payload.status === 'success' && payload.trackURL) {
+                    window.location.href = payload.trackURL;
+                    return;
+                  }
+                  updateMarkers(true);
+                });
+            };
+            row.appendChild(attachButton);
+            panel.appendChild(row);
+          });
+        }
+
+        const closeButton = document.createElement('button');
+        closeButton.style.marginTop = '12px';
+        closeButton.textContent = 'Close';
+        closeButton.onclick = function() {
+          if (document.body.contains(modal)) {
+            document.body.removeChild(modal);
+          }
+          updateMarkers(true);
+        };
+        panel.appendChild(closeButton);
+        modal.appendChild(panel);
+        document.body.appendChild(modal);
+      }
+
+      function promptSpectrumManualPointSelection(qualitativeSummaryText, startUnix, endUnix) {
         if (!map) {
           alert('Spectrum uploaded but map is not ready for manual placement.');
           return;
@@ -8633,7 +8744,9 @@ function centerMapToLocation() {
             body: JSON.stringify({
               lat: event.latlng.lat,
               lon: event.latlng.lng,
-              qualitative: qualitativeSummaryText
+              qualitative: qualitativeSummaryText,
+              startUnix: startUnix || 0,
+              endUnix: endUnix || 0
             })
           })
           .then(function(response) { return response.json(); })
@@ -8649,6 +8762,42 @@ function centerMapToLocation() {
           });
         };
         map.on('click', clickHandler);
+      }
+
+      function promptSpectrumAreaSelection(qualitativeSummaryText, startUnix, endUnix) {
+        if (!map) {
+          alert('Map is not ready for area selection.');
+          return;
+        }
+        alert('Click two points on the map to define area rectangle.');
+        let firstPoint = null;
+        const areaClickHandler = function(event) {
+          if (!firstPoint) {
+            firstPoint = event.latlng;
+            return;
+          }
+          map.off('click', areaClickHandler);
+          const minLat = Math.min(firstPoint.lat, event.latlng.lat);
+          const maxLat = Math.max(firstPoint.lat, event.latlng.lat);
+          const minLon = Math.min(firstPoint.lng, event.latlng.lng);
+          const maxLon = Math.max(firstPoint.lng, event.latlng.lng);
+          fetch('/api/spectrum/attach-area', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              minLat: minLat,
+              minLon: minLon,
+              maxLat: maxLat,
+              maxLon: maxLon,
+              qualitative: qualitativeSummaryText,
+              startUnix: startUnix || 0,
+              endUnix: endUnix || 0
+            })
+          }).then(function(response) { return response.json(); })
+            .then(function() { updateMarkers(true); })
+            .catch(function() { updateMarkers(true); });
+        };
+        map.on('click', areaClickHandler);
       }
     </script>
 
