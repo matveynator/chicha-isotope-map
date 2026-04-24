@@ -2555,14 +2555,12 @@ function shouldDisplayBySpeed(speed) {
 
 // Compute marker fill opacity based on speed
 function getFillOpacity(speed) {
-  if (speed <= 5) {
-    return 0.8;
-  } else if (speed >= 6) {
+  if (speed <= 7) { 
     return 0.7;
-  } else if (speed >= 100) {
+  } else if (speed <= 200) {
     return 0.6;
   } else {
-    return 0.8;
+    return 0.2;
   }
 }
 
