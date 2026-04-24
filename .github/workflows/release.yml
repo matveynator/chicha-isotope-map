@@ -27,21 +27,21 @@ jobs:
       matrix:
         include:
           # Linux
-          - { goos: linux,  goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: linux,  goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: linux,  goarch: 386,   goversion: "1.23", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: 386,   goversion: "1.24", runner: "ubuntu-22.04" }
           # macOS
-          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14" }
-          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14" }
+          - { goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14" }
+          - { goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14" }
           # *BSD
-          - { goos: freebsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: freebsd, goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: openbsd, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: openbsd, goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04" }
-          - { goos: netbsd,  goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04" }
+          - { goos: freebsd, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: freebsd, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: openbsd, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: openbsd, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: netbsd,  goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
           # Windows
-          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest" }
-          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest" }
+          - { goos: windows, goarch: amd64, goversion: "1.24", runner: "windows-latest" }
+          - { goos: windows, goarch: arm64, goversion: "1.24", runner: "windows-latest" }
 
     steps:
       - name: Checkout
@@ -110,8 +110,8 @@ jobs:
       matrix:
         include:
           # macOS amd64/arm64: нативно
-          - { target: darwin_amd64_duckdb, goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14", in_container: false }
-          - { target: darwin_arm64_duckdb, goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14", in_container: false }
+          - { target: darwin_amd64_duckdb, goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14", in_container: false }
+          - { target: darwin_arm64_duckdb, goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14", in_container: false }
 
     steps:
       - name: Checkout
@@ -165,16 +165,16 @@ jobs:
         include:
           # go-webview-selector resolves webkit2gtk via pkg-config name "webkit2gtk-4.0",
           # so Linux desktop builds provide a webkit2gtk-4.0 pkg-config target.
-          - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-22.04", desktop_variant: "gtk40" }
-          - { goos: linux, goarch: amd64, goversion: "1.23", runner: "ubuntu-24.04", desktop_variant: "gtk41" }
-          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-22.04-arm", desktop_variant: "gtk40" }
-          - { goos: linux, goarch: arm64, goversion: "1.23", runner: "ubuntu-24.04-arm", desktop_variant: "gtk41" }
+          - { goos: linux, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04", desktop_variant: "gtk40" }
+          - { goos: linux, goarch: amd64, goversion: "1.24", runner: "ubuntu-24.04", desktop_variant: "gtk41" }
+          - { goos: linux, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04-arm", desktop_variant: "gtk40" }
+          - { goos: linux, goarch: arm64, goversion: "1.24", runner: "ubuntu-24.04-arm", desktop_variant: "gtk41" }
           # Build both macOS desktop targets on macos-14 to avoid queue stalls on scarce macos-13 runners.
           # amd64 output is cross-compiled with explicit x86_64 toolchain flags and old deployment target.
-          - { goos: darwin, goarch: amd64, goversion: "1.23", runner: "macos-14", desktop_variant: "default" }
-          - { goos: darwin, goarch: arm64, goversion: "1.23", runner: "macos-14", desktop_variant: "default" }
-          - { goos: windows, goarch: amd64, goversion: "1.23", runner: "windows-latest", desktop_variant: "default" }
-          - { goos: windows, goarch: arm64, goversion: "1.23", runner: "windows-latest", desktop_variant: "default" }
+          - { goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14", desktop_variant: "default" }
+          - { goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14", desktop_variant: "default" }
+          - { goos: windows, goarch: amd64, goversion: "1.24", runner: "windows-latest", desktop_variant: "default" }
+          - { goos: windows, goarch: arm64, goversion: "1.24", runner: "windows-latest", desktop_variant: "default" }
 
     steps:
       - name: Checkout
