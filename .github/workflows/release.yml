@@ -373,7 +373,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bin-desktop-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.desktop_variant }}
-          path: dist/
+          path: |
+            dist/chicha-isotope-map_${{ matrix.goos }}_${{ matrix.goarch }}_desktop*
+
+      - name: Upload desktop icon artifact (single copy for release assets)
+        if: runner.os == 'Windows' && matrix.goarch == 'amd64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-desktop-icon-windows
+          path: dist/windows-desktop-icon.ico
 
   build_desktop_macos_universal:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/stable-release') || contains(join(github.event.commits.*.message, ' || '), 'stable release') || contains(join(github.event.commits.*.message, ' || '), 'Stable Release')
@@ -488,6 +496,9 @@ jobs:
     needs: [build_portable, build_duckdb, build_desktop, build_desktop_macos_universal]
     runs-on: ubuntu-22.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
