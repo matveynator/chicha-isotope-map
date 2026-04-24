@@ -172,13 +172,7 @@ body, html {
 				.leaflet-container .leaflet-control-attribution {
 					font-family: var(--font-family-base);
 					font-size: var(--font-size-xxs);
-				}
-
-				/* Increase font size only on screens wider than 768px (tablets, laptops, desktops) */
-				@media (min-width: 768px) {
-					.leaflet-container .leaflet-control-attribution {
-						font-size: var(--font-size-xs);
-					}
+          line-height: 1.1;
 				}
 
         /* Manual theme overrides */
@@ -319,7 +313,7 @@ body, html {
 
         #mapCacheStatus {
           position: absolute;
-          bottom: 10px;
+          bottom: var(--map-cache-bottom, 10px);
           right: 10px;
           left: auto;
           transform: none;
@@ -378,12 +372,12 @@ body, html {
 
         /* Keep bottom-right controls stacked vertically above the cache status card. */
         #legend {
-          bottom: calc(20px + var(--bottom-controls-offset, 0px)) !important;
+          bottom: var(--legend-bottom, 20px) !important;
           z-index: 1060 !important;
         }
 
         #themeToggle {
-          bottom: calc(140px + var(--bottom-controls-offset, 0px));
+          bottom: var(--theme-toggle-bottom, 140px);
         }
 
         /* Keep cache status compact on narrow phone screens. */
@@ -3386,14 +3380,24 @@ function splitCacheStatusSegmentsIntoBalancedLines(segmentEntries, forcedSecondL
   return [firstLineSegments.join(' · '), secondLineSegments.join(' · ')];
 }
 
-function updateBottomControlOffsetsFromCacheStatus() {
-  if (!mapCacheStatusNode) {
+function updateBottomRightControlStackLayout() {
+  const rootNode = document.documentElement;
+  if (!rootNode || !mapCacheStatusNode) {
     return;
   }
+  const attributionNode = document.querySelector('.leaflet-control-attribution');
+  const legendNode = document.getElementById('legend');
+  const verticalGap = 6;
+  const attributionHeight = attributionNode ? (attributionNode.offsetHeight || 0) : 0;
+  const cacheBottom = attributionHeight + verticalGap;
   const cachePanelHeight = mapCacheStatusNode.offsetHeight || 0;
-  const verticalGap = 12;
-  const offsetValue = Math.max(0, cachePanelHeight + verticalGap);
-  document.documentElement.style.setProperty('--bottom-controls-offset', offsetValue + 'px');
+  const legendBottom = cacheBottom + cachePanelHeight + verticalGap;
+  const legendHeight = legendNode ? (legendNode.offsetHeight || 0) : 0;
+  const themeToggleBottom = legendBottom + legendHeight + verticalGap;
+
+  rootNode.style.setProperty('--map-cache-bottom', Math.max(0, cacheBottom) + 'px');
+  rootNode.style.setProperty('--legend-bottom', Math.max(0, legendBottom) + 'px');
+  rootNode.style.setProperty('--theme-toggle-bottom', Math.max(0, themeToggleBottom) + 'px');
 }
 
 async function renderOfflineCacheStatus() {
@@ -3462,7 +3466,7 @@ async function renderOfflineCacheStatus() {
   mapCacheStatusNode.innerHTML =
     `<div class="cache-inline-line">${firstLine}</div>` +
     `<div class="cache-inline-line">${secondLine}</div>`;
-  updateBottomControlOffsetsFromCacheStatus();
+  updateBottomRightControlStackLayout();
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
     resetLink.onclick = function() {
@@ -3479,7 +3483,7 @@ window.addEventListener('offline', function() {
   updateInternetConnectivityState(false);
 });
 window.addEventListener('resize', function() {
-  updateBottomControlOffsetsFromCacheStatus();
+  updateBottomRightControlStackLayout();
 });
 
 L.CachedTileLayer = L.TileLayer.extend({
