@@ -5028,6 +5028,8 @@ type spectrumImportHistoryPayload struct {
 	ComponentText string                `json:"component_text,omitempty"`
 	Explanation   string                `json:"explanation,omitempty"`
 	GroupChecks   []spectrum.GroupCheck `json:"group_checks,omitempty"`
+	StartUnix     int64                 `json:"start_unix,omitempty"`
+	EndUnix       int64                 `json:"end_unix,omitempty"`
 }
 
 func buildSpectrumImportHistoryMessage(
@@ -5036,6 +5038,8 @@ func buildSpectrumImportHistoryMessage(
 	componentText string,
 	explanationText string,
 	groupChecks []spectrum.GroupCheck,
+	startUnix int64,
+	endUnix int64,
 ) string {
 	payload := spectrumImportHistoryPayload{
 		Qualitative:   strings.TrimSpace(qualitativeText),
@@ -5043,10 +5047,21 @@ func buildSpectrumImportHistoryMessage(
 		ComponentText: strings.TrimSpace(componentText),
 		Explanation:   strings.TrimSpace(explanationText),
 		GroupChecks:   groupChecks,
+		StartUnix:     startUnix,
+		EndUnix:       endUnix,
 	}
 	encodedPayload, err := json.Marshal(payload)
 	if err != nil {
 		return strings.TrimSpace(qualitativeText)
+	}
+	const maxSpectrumHistoryMessageBytes = 8192
+	if len(encodedPayload) > maxSpectrumHistoryMessageBytes {
+		payload.IsotopeCards = nil
+		payload.GroupChecks = nil
+		encodedPayload, err = json.Marshal(payload)
+		if err != nil {
+			return strings.TrimSpace(qualitativeText)
+		}
 	}
 	return string(encodedPayload)
 }
@@ -5061,6 +5076,56 @@ func readSpectrumImportHistoryMessage(rawMessage string) spectrumImportHistoryPa
 		return decodedPayload
 	}
 	return spectrumImportHistoryPayload{Qualitative: trimmedMessage}
+}
+
+func buildSpectrumMarkerTimeline(
+	ctx context.Context,
+	db *database.Database,
+	dbType string,
+	trackID string,
+	startUnix int64,
+	endUnix int64,
+	maxPoints int,
+) []map[string]any {
+	if db == nil || strings.TrimSpace(trackID) == "" || startUnix <= 0 || endUnix <= 0 || maxPoints <= 0 {
+		return nil
+	}
+	summary, err := db.GetTrackSummary(ctx, trackID, dbType)
+	if err != nil || summary.MarkerCount == 0 {
+		return nil
+	}
+	markersCh, errCh := db.StreamMarkersByTrackRange(ctx, trackID, summary.FirstID, summary.LastID, 0, dbType)
+	points := make([]map[string]any, 0, maxPoints)
+	for marker := range markersCh {
+		if marker.Date < startUnix || marker.Date > endUnix {
+			continue
+		}
+		points = append(points, map[string]any{
+			"date_unix": marker.Date,
+			"lat":       marker.Lat,
+			"lon":       marker.Lon,
+			"dose_rate": marker.DoseRate,
+		})
+	}
+	if streamErr := <-errCh; streamErr != nil {
+		return nil
+	}
+	if len(points) <= maxPoints {
+		return points
+	}
+	step := float64(len(points)-1) / float64(maxPoints-1)
+	sampled := make([]map[string]any, 0, maxPoints)
+	for index := 0; index < maxPoints; index++ {
+		sourceIndex := int(math.Round(float64(index) * step))
+		if sourceIndex < 0 {
+			sourceIndex = 0
+		}
+		if sourceIndex >= len(points) {
+			sourceIndex = len(points) - 1
+		}
+		sampled = append(sampled, points[sourceIndex])
+	}
+	return sampled
 }
 
 // uploaderIdentityKey derives a lightweight user key for correlation between
@@ -5325,8 +5390,18 @@ func processSpectrumXMLUpload(
 		if len(storedPayload.GroupChecks) > 0 {
 			detail["group_checks"] = storedPayload.GroupChecks
 		}
+		if storedPayload.StartUnix > 0 {
+			detail["start_unix"] = storedPayload.StartUnix
+		}
+		if storedPayload.EndUnix > 0 {
+			detail["end_unix"] = storedPayload.EndUnix
+		}
 		if strings.TrimSpace(existingImport.TrackID) != "" {
 			detail["linked_track_id"] = strings.TrimSpace(existingImport.TrackID)
+			timeline := buildSpectrumMarkerTimeline(ctx, db, dbType, existingImport.TrackID, storedPayload.StartUnix, storedPayload.EndUnix, 16)
+			if len(timeline) > 0 {
+				detail["marker_timeline"] = timeline
+			}
 			if existingBounds, existingCount, boundsErr := deriveBoundsFromTrack(ctx, db, dbType, existingImport.TrackID); boundsErr == nil && existingCount > 0 {
 				detail["candidate_tracks"] = []map[string]any{
 					{
@@ -5374,6 +5449,8 @@ func processSpectrumXMLUpload(
 		spectrumComponentSummary(analysis),
 		analysis.Explanation,
 		analysis.GroupChecks,
+		analysis.Measurement.StartTime.Unix(),
+		analysis.Measurement.EndTime.Unix(),
 	)
 
 	if currentTrackID != "" && currentHasBounds {
@@ -5403,6 +5480,7 @@ func processSpectrumXMLUpload(
 	detail["link_reason"] = "candidate-required-confirmation"
 	detail["start_unix"] = analysis.Measurement.StartTime.Unix()
 	detail["end_unix"] = analysis.Measurement.EndTime.Unix()
+	detail["marker_timeline"] = buildSpectrumMarkerTimeline(ctx, db, dbType, bestCandidate.TrackID, analysis.Measurement.StartTime.Unix(), analysis.Measurement.EndTime.Unix(), 16)
 	candidateTracks := make([]map[string]any, 0, len(candidates))
 	for _, candidate := range candidates {
 		candidateTracks = append(candidateTracks, map[string]any{

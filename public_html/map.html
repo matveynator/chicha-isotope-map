@@ -8857,6 +8857,26 @@ function centerMapToLocation() {
           panel.appendChild(timeBox);
         }
 
+        const markerTimeline = Array.isArray(contextObject.marker_timeline) ? contextObject.marker_timeline : [];
+        if (markerTimeline.length > 0) {
+          const timelineTitle = document.createElement('h4');
+          timelineTitle.style.marginTop = '12px';
+          timelineTitle.textContent = 'Marker timeline in measurement window';
+          panel.appendChild(timelineTitle);
+          markerTimeline.slice(0, 16).forEach(function(timelinePoint) {
+            const timelineRow = document.createElement('div');
+            timelineRow.style.fontSize = '12px';
+            timelineRow.style.marginTop = '3px';
+            const timelineDateUnix = Number(timelinePoint.date_unix || 0);
+            const timelineDoseRate = Number(timelinePoint.dose_rate || 0);
+            const timelineLat = Number(timelinePoint.lat || 0);
+            const timelineLon = Number(timelinePoint.lon || 0);
+            const timelineDateLabel = timelineDateUnix > 0 ? formatDateTime(timelineDateUnix) : 'unknown time';
+            timelineRow.textContent = `${timelineDateLabel} · ${(timelineDoseRate * 100).toFixed(2)} µR/h · [${timelineLat.toFixed(5)}, ${timelineLon.toFixed(5)}]`;
+            panel.appendChild(timelineRow);
+          });
+        }
+
         const actions = document.createElement('div');
         actions.style.marginTop = '14px';
         actions.style.display = 'flex';
