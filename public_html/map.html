@@ -5682,6 +5682,30 @@ function createDateRangeSlider(){
 
 // ---------- Marker popups and tooltips ----------
 // Build HTML once so popups and tooltips share identical content.
+  const spectrumCompositionTextByKey = new Map();
+
+  function computeSpectrumCompositionKey(compositionText) {
+    const normalizedCompositionText = String(compositionText || '').trim();
+    let rollingHash = 5381;
+    for (let characterIndex = 0; characterIndex < normalizedCompositionText.length; characterIndex++) {
+      rollingHash = ((rollingHash << 5) + rollingHash) + normalizedCompositionText.charCodeAt(characterIndex);
+      rollingHash |= 0;
+    }
+    return 'spectrum-' + Math.abs(rollingHash);
+  }
+
+  function cacheSpectrumCompositionText(compositionText) {
+    const normalizedCompositionText = String(compositionText || '').trim();
+    if (!normalizedCompositionText) {
+      return '';
+    }
+    const compositionKey = computeSpectrumCompositionKey(normalizedCompositionText);
+    if (!spectrumCompositionTextByKey.has(compositionKey)) {
+      spectrumCompositionTextByKey.set(compositionKey, normalizedCompositionText);
+    }
+    return compositionKey;
+  }
+
   function buildLiveMarkerPopup(marker) {
     const doseRate = marker.doseRate || 0;
     const microValue = formatMicroRoentgen(doseRate);
@@ -5713,9 +5737,9 @@ function createDateRangeSlider(){
     const climateHtml = climateParts.length ? `<div class="live-popup-climate">${climateParts.join(' · ')}</div>` : '';
     const qualitativeSpectrumText = marker.radiation ? String(marker.radiation).trim() : '';
     const qualitativeSpectrumPreview = buildSpectrumCompositionPreview(qualitativeSpectrumText);
-    const qualitativeSpectrumAttribute = escapeHtml(qualitativeSpectrumText);
+    const qualitativeSpectrumKey = cacheSpectrumCompositionText(qualitativeSpectrumText);
     const qualitativeSpectrumBlock = qualitativeSpectrumText
-      ? `<div class="live-popup-meta"><div><strong>Spectrum composition:</strong> <a href="#" class="spectrum-composition-link" data-spectrum-full="${qualitativeSpectrumAttribute}" data-track="${escapeHtml(marker.trackID || '')}" title="Open full qualitative spectrum details">${escapeHtml(qualitativeSpectrumPreview)}</a></div></div>`
+      ? `<div class="live-popup-meta"><div><strong>Spectrum composition:</strong> <a href="#" class="spectrum-composition-link" data-spectrum-key="${escapeHtml(qualitativeSpectrumKey)}" data-track="${escapeHtml(marker.trackID || '')}" title="Open full qualitative spectrum details">${escapeHtml(qualitativeSpectrumPreview)}</a></div></div>`
       : '';
     // Tie the chart button styling to the current radiation color so it is
     // obvious that tapping it opens the dose history for this sensor.
@@ -5788,9 +5812,9 @@ function createDateRangeSlider(){
       : '';
     const qualitativeSpectrum = marker.radiation ? String(marker.radiation).trim() : '';
     const qualitativePreview = buildSpectrumCompositionPreview(qualitativeSpectrum);
-    const spectrumCompositionAttribute = escapeHtml(qualitativeSpectrum);
+    const spectrumCompositionKey = cacheSpectrumCompositionText(qualitativeSpectrum);
     const qualitativeBlock = qualitativeSpectrum
-      ? `<div><strong>Spectrum composition:</strong> <a href="#" class="spectrum-composition-link" data-spectrum-full="${spectrumCompositionAttribute}" data-track="${escapeHtml(marker.trackID || '')}" title="Open full qualitative spectrum details">${escapeHtml(qualitativePreview)}</a></div>`
+      ? `<div><strong>Spectrum composition:</strong> <a href="#" class="spectrum-composition-link" data-spectrum-key="${escapeHtml(spectrumCompositionKey)}" data-track="${escapeHtml(marker.trackID || '')}" title="Open full qualitative spectrum details">${escapeHtml(qualitativePreview)}</a></div>`
       : '';
 
     return `
@@ -9464,7 +9488,8 @@ function centerMapToLocation() {
     const spectrumCompositionLink = ev.target.closest('.spectrum-composition-link');
     if (spectrumCompositionLink) {
       ev.preventDefault();
-      const fullSpectrumText = String(spectrumCompositionLink.dataset.spectrumFull || '').trim();
+      const compositionKey = String(spectrumCompositionLink.dataset.spectrumKey || '').trim();
+      const fullSpectrumText = compositionKey ? String(spectrumCompositionTextByKey.get(compositionKey) || '').trim() : '';
       openSpectrumCompositionModal(fullSpectrumText, spectrumCompositionLink.dataset.track || '');
     }
     // switch to track view when track link clicked
