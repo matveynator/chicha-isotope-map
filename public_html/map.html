@@ -8660,6 +8660,30 @@ function centerMapToLocation() {
           panel.appendChild(componentBox);
         }
 
+        const explanationText = String(contextObject.explanation || '').trim();
+        if (explanationText) {
+          const explanationBox = document.createElement('div');
+          explanationBox.style.marginTop = '8px';
+          explanationBox.innerHTML = `<strong>Interpretation:</strong> ${escapeHtml(explanationText)}`;
+          panel.appendChild(explanationBox);
+        }
+
+        const groupChecks = Array.isArray(contextObject.group_checks) ? contextObject.group_checks : [];
+        if (groupChecks.length > 0) {
+          const groupTitle = document.createElement('h4');
+          groupTitle.style.marginTop = '14px';
+          groupTitle.textContent = 'Group confirmation';
+          panel.appendChild(groupTitle);
+          groupChecks.slice(0, 6).forEach(function(groupCheck) {
+            const groupRow = document.createElement('div');
+            groupRow.style.marginTop = '4px';
+            const confidencePercent = Math.round(Number(groupCheck.confidence || 0) * 100);
+            const statusText = groupCheck.isConfirmed ? 'confirmed' : 'not confirmed';
+            groupRow.textContent = `${groupCheck.displayName || groupCheck.groupID}: ${statusText} (${confidencePercent}%)`;
+            panel.appendChild(groupRow);
+          });
+        }
+
         if (contextObject.start_unix && contextObject.end_unix) {
           const timeBox = document.createElement('div');
           timeBox.style.marginTop = '8px';

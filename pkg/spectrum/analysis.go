@@ -3,6 +3,7 @@ package spectrum
 import (
 	"math"
 	"sort"
+	"strings"
 )
 
 // AnalyzeMeasurement runs generic peak detection and isotope matching.
@@ -11,12 +12,16 @@ func AnalyzeMeasurement(measurement SpectrumMeasurement) Analysis {
 	isotopes := matchIsotopes(peaks, DefaultCatalog())
 	composites := buildCompositeModels(peaks, isotopes, 3)
 	components := estimateSpectrumComponents(peaks)
+	groupChecks := evaluatePracticalGroups(peaks)
+	explanation := buildPlainLanguageExplanation(components, groupChecks)
 	return Analysis{
 		Measurement:     measurement,
 		DetectedPeaks:   peaks,
 		Isotopes:        isotopes,
 		CompositeModels: composites,
 		Components:      components,
+		GroupChecks:     groupChecks,
+		Explanation:     explanation,
 	}
 }
 
@@ -368,4 +373,127 @@ func estimateSpectrumComponents(peaks []Peak) []SpectrumComponent {
 		return components[i].Contribution > components[j].Contribution
 	})
 	return components
+}
+
+type practicalGroupRule struct {
+	GroupID       string
+	DisplayName   string
+	RequiredLines []float64
+	MinMatches    int
+}
+
+func evaluatePracticalGroups(peaks []Peak) []GroupCheck {
+	rules := []practicalGroupRule{
+		{GroupID: "k40", DisplayName: "K-40", RequiredLines: []float64{1460.8}, MinMatches: 1},
+		{GroupID: "cs137", DisplayName: "Cs-137", RequiredLines: []float64{661.7}, MinMatches: 1},
+		{GroupID: "co60", DisplayName: "Co-60", RequiredLines: []float64{1173.2, 1332.5}, MinMatches: 2},
+		{GroupID: "u_ra", DisplayName: "U/Ra series", RequiredLines: []float64{186.2, 295.2, 351.9, 609.3}, MinMatches: 2},
+		{GroupID: "th232", DisplayName: "Th-232 series", RequiredLines: []float64{238.6, 583.2, 911.2, 2614.5}, MinMatches: 2},
+		{GroupID: "am241", DisplayName: "Am-241", RequiredLines: []float64{59.5}, MinMatches: 1},
+	}
+
+	checks := make([]GroupCheck, 0, len(rules))
+	for _, rule := range rules {
+		matched := make([]float64, 0, len(rule.RequiredLines))
+		missing := make([]float64, 0, len(rule.RequiredLines))
+		for _, lineEnergy := range rule.RequiredLines {
+			peak, ok := closestPeakForEnergy(peaks, lineEnergy)
+			if !ok {
+				missing = append(missing, lineEnergy)
+				continue
+			}
+			tolerance := 35.0
+			if lineEnergy < 120 {
+				tolerance = 25.0
+			}
+			if math.Abs(peak.Energy-lineEnergy) <= tolerance {
+				matched = append(matched, lineEnergy)
+			} else {
+				missing = append(missing, lineEnergy)
+			}
+		}
+		confidence := float64(len(matched)) / float64(len(rule.RequiredLines))
+		isConfirmed := len(matched) >= rule.MinMatches
+		comment := "not confirmed by group lines"
+		if isConfirmed {
+			comment = "confirmed by group line pattern"
+		}
+		checks = append(checks, GroupCheck{
+			GroupID:      rule.GroupID,
+			DisplayName:  rule.DisplayName,
+			MatchedLines: matched,
+			MissingLines: missing,
+			Confidence:   confidence,
+			IsConfirmed:  isConfirmed,
+			Comment:      comment,
+		})
+	}
+	sort.Slice(checks, func(i, j int) bool {
+		if checks[i].Confidence == checks[j].Confidence {
+			return checks[i].DisplayName < checks[j].DisplayName
+		}
+		return checks[i].Confidence > checks[j].Confidence
+	})
+	return checks
+}
+
+func buildPlainLanguageExplanation(components []SpectrumComponent, groupChecks []GroupCheck) string {
+	if len(components) == 0 {
+		return "Spectrum does not contain enough stable evidence for component interpretation."
+	}
+
+	leading := make([]string, 0, 2)
+	for _, component := range components {
+		if component.ComponentID == "unknown" {
+			continue
+		}
+		percent := int(math.Round(component.Contribution * 100))
+		if percent < 8 {
+			continue
+		}
+		leading = append(leading, component.DisplayName)
+		if len(leading) == 2 {
+			break
+		}
+	}
+
+	confirmed := make([]string, 0, 3)
+	rejected := make([]string, 0, 3)
+	for _, check := range groupChecks {
+		if check.IsConfirmed {
+			confirmed = append(confirmed, check.DisplayName)
+			continue
+		}
+		if check.Confidence < 0.35 {
+			rejected = append(rejected, check.DisplayName)
+		}
+	}
+
+	sentenceParts := make([]string, 0, 3)
+	if len(leading) > 0 {
+		sentenceParts = append(sentenceParts, "Rise is best explained by "+joinHumanList(leading)+".")
+	}
+	if len(confirmed) > 0 {
+		sentenceParts = append(sentenceParts, "Confirmed groups: "+joinHumanList(confirmed)+".")
+	}
+	if len(rejected) > 0 {
+		sentenceParts = append(sentenceParts, "Not confirmed by key lines: "+joinHumanList(rejected)+".")
+	}
+	if len(sentenceParts) == 0 {
+		return "Spectrum fit remains uncertain; key group lines are incomplete."
+	}
+	return strings.Join(sentenceParts, " ")
+}
+
+func joinHumanList(items []string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	if len(items) == 1 {
+		return items[0]
+	}
+	if len(items) == 2 {
+		return items[0] + " and " + items[1]
+	}
+	return items[0] + ", " + items[1] + ", and " + items[2]
 }

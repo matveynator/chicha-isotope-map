@@ -140,4 +140,10 @@ func TestRadiationTypesAndCompositeModel(t *testing.T) {
 	if analysis.Components[0].Contribution <= 0 {
 		t.Fatalf("expected non-zero leading component contribution")
 	}
+	if len(analysis.GroupChecks) == 0 {
+		t.Fatalf("expected practical group checks")
+	}
+	if analysis.Explanation == "" {
+		t.Fatalf("expected plain-language explanation")
+	}
 }

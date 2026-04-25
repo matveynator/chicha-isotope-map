@@ -5184,6 +5184,8 @@ func processSpectrumXMLUpload(
 		"qualitative":     spectrumQualitativeSummary(analysis),
 		"components":      analysis.Components,
 		"component_text":  spectrumComponentSummary(analysis),
+		"group_checks":    analysis.GroupChecks,
+		"explanation":     analysis.Explanation,
 	}
 
 	if currentTrackID != "" && currentHasBounds {

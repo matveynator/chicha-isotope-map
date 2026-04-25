@@ -62,6 +62,18 @@ type SpectrumComponent struct {
 	AverageLineError float64
 }
 
+// GroupCheck tracks whether a practical isotope group has enough line evidence
+// to be considered confirmed on low-resolution detectors.
+type GroupCheck struct {
+	GroupID      string
+	DisplayName  string
+	MatchedLines []float64
+	MissingLines []float64
+	Confidence   float64
+	IsConfirmed  bool
+	Comment      string
+}
+
 // Analysis bundles parsed spectrum and lookup results.
 type Analysis struct {
 	Measurement     SpectrumMeasurement
@@ -69,6 +81,8 @@ type Analysis struct {
 	Isotopes        []IsotopeHit
 	CompositeModels []CompositeHit
 	Components      []SpectrumComponent
+	GroupChecks     []GroupCheck
+	Explanation     string
 }
 
 // MarkerMatch reports which marker is closest in time to the spectrum window.
