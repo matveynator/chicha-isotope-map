@@ -8700,6 +8700,55 @@ function centerMapToLocation() {
       function showSpectrumResultModal(spectrumContext, qualitativeSummaryText) {
         const contextObject = (spectrumContext && typeof spectrumContext === 'object') ? spectrumContext : {};
         const candidateTracks = Array.isArray(contextObject.candidate_tracks) ? contextObject.candidate_tracks : [];
+        const isotopeCards = Array.isArray(contextObject.isotope_cards) ? contextObject.isotope_cards : [];
+
+        function normalizeQualitativeCompositionText(rawCompositionText) {
+          return String(rawCompositionText || '').replace(/^qualitative composition:\s*/i, '').trim();
+        }
+
+        function buildCompactCompositionText(isotopeCardRows, fallbackText) {
+          if (!Array.isArray(isotopeCardRows) || isotopeCardRows.length === 0) {
+            return normalizeQualitativeCompositionText(fallbackText) || 'isotopes detected';
+          }
+          const groupedByShare = new Map();
+          isotopeCardRows.forEach(function(isotopeCardRow) {
+            const nuclideID = String(isotopeCardRow.nuclide_id || '').trim();
+            const sharePercent = Number(isotopeCardRow.share_percent || 0);
+            if (!nuclideID || sharePercent <= 0) {
+              return;
+            }
+            const sourceHint = String(isotopeCardRow.origin || '').trim();
+            const groupKey = String(sharePercent);
+            if (!groupedByShare.has(groupKey)) {
+              groupedByShare.set(groupKey, []);
+            }
+            groupedByShare.get(groupKey).push({ nuclideID: nuclideID, sourceHint: sourceHint });
+          });
+          if (groupedByShare.size === 0) {
+            return normalizeQualitativeCompositionText(fallbackText) || 'isotopes detected';
+          }
+          const compactParts = [];
+          Array.from(groupedByShare.keys()).sort(function(leftKey, rightKey) {
+            return Number(rightKey) - Number(leftKey);
+          }).slice(0, 8).forEach(function(groupKey) {
+            const variants = groupedByShare.get(groupKey) || [];
+            if (variants.length === 0) {
+              return;
+            }
+            const names = variants.map(function(variant) { return variant.nuclideID; }).slice(0, 3).join(' / ');
+            let partText = names + ' ' + groupKey + '%';
+            if (variants.length > 1) {
+              partText += ' (either)';
+            }
+            const firstSource = String(variants[0].sourceHint || '').trim();
+            if (firstSource) {
+              partText += ' · ' + firstSource;
+            }
+            compactParts.push(partText);
+          });
+          return compactParts.join(', ');
+        }
+
         const modal = document.createElement('div');
         modal.style.position = 'fixed';
         modal.style.left = '0';
@@ -8726,10 +8775,9 @@ function centerMapToLocation() {
         panel.appendChild(title);
 
         const composition = document.createElement('div');
-        composition.innerHTML = `<strong>Qualitative isotopes:</strong> ${escapeHtml(qualitativeSummaryText || 'isotopes detected')}`;
+        const compactCompositionText = buildCompactCompositionText(isotopeCards, qualitativeSummaryText);
+        composition.innerHTML = `<strong>Composition:</strong> ${escapeHtml(compactCompositionText)}`;
         panel.appendChild(composition);
-
-        const isotopeCards = Array.isArray(contextObject.isotope_cards) ? contextObject.isotope_cards : [];
         if (isotopeCards.length > 0) {
           const isotopeTitle = document.createElement('h4');
           isotopeTitle.style.marginTop = '12px';
@@ -8776,18 +8824,28 @@ function centerMapToLocation() {
           panel.appendChild(explanationBox);
         }
 
-        const groupChecks = Array.isArray(contextObject.group_checks) ? contextObject.group_checks : [];
-        if (groupChecks.length > 0) {
+        const groupChecksRaw = Array.isArray(contextObject.group_checks) ? contextObject.group_checks : [];
+        const visibleGroupChecks = groupChecksRaw.filter(function(groupCheck) {
+          const matchedLines = Array.isArray(groupCheck.matched_lines) ? groupCheck.matched_lines : (Array.isArray(groupCheck.MatchedLines) ? groupCheck.MatchedLines : []);
+          const confidenceValue = Number(groupCheck.confidence ?? groupCheck.Confidence ?? 0);
+          const isConfirmed = Boolean(groupCheck.is_confirmed ?? groupCheck.IsConfirmed ?? false);
+          return isConfirmed || matchedLines.length > 0 || confidenceValue > 0;
+        });
+        if (visibleGroupChecks.length > 0) {
           const groupTitle = document.createElement('h4');
           groupTitle.style.marginTop = '14px';
           groupTitle.textContent = 'Group confirmation';
           panel.appendChild(groupTitle);
-          groupChecks.slice(0, 6).forEach(function(groupCheck) {
+          visibleGroupChecks.slice(0, 6).forEach(function(groupCheck) {
             const groupRow = document.createElement('div');
             groupRow.style.marginTop = '4px';
-            const confidencePercent = Math.round(Number(groupCheck.confidence || 0) * 100);
-            const statusText = groupCheck.isConfirmed ? 'confirmed' : 'not confirmed';
-            groupRow.textContent = `${groupCheck.displayName || groupCheck.groupID}: ${statusText} (${confidencePercent}%)`;
+            const confidencePercent = Math.round(Number(groupCheck.confidence ?? groupCheck.Confidence ?? 0) * 100);
+            const statusText = Boolean(groupCheck.is_confirmed ?? groupCheck.IsConfirmed ?? false) ? 'confirmed' : 'not confirmed';
+            const groupTitleText = String(groupCheck.display_name || groupCheck.DisplayName || groupCheck.group_id || groupCheck.GroupID || '').trim();
+            if (!groupTitleText) {
+              return;
+            }
+            groupRow.textContent = `${groupTitleText}: ${statusText} (${confidencePercent}%)`;
             panel.appendChild(groupRow);
           });
         }

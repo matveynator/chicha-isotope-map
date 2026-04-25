@@ -5022,6 +5022,47 @@ func spectrumIsotopeCards(analysis spectrum.Analysis, limit int) []map[string]an
 	return cards
 }
 
+type spectrumImportHistoryPayload struct {
+	Qualitative   string                `json:"qualitative"`
+	IsotopeCards  []map[string]any      `json:"isotope_cards,omitempty"`
+	ComponentText string                `json:"component_text,omitempty"`
+	Explanation   string                `json:"explanation,omitempty"`
+	GroupChecks   []spectrum.GroupCheck `json:"group_checks,omitempty"`
+}
+
+func buildSpectrumImportHistoryMessage(
+	qualitativeText string,
+	isotopeCards []map[string]any,
+	componentText string,
+	explanationText string,
+	groupChecks []spectrum.GroupCheck,
+) string {
+	payload := spectrumImportHistoryPayload{
+		Qualitative:   strings.TrimSpace(qualitativeText),
+		IsotopeCards:  isotopeCards,
+		ComponentText: strings.TrimSpace(componentText),
+		Explanation:   strings.TrimSpace(explanationText),
+		GroupChecks:   groupChecks,
+	}
+	encodedPayload, err := json.Marshal(payload)
+	if err != nil {
+		return strings.TrimSpace(qualitativeText)
+	}
+	return string(encodedPayload)
+}
+
+func readSpectrumImportHistoryMessage(rawMessage string) spectrumImportHistoryPayload {
+	trimmedMessage := strings.TrimSpace(rawMessage)
+	if trimmedMessage == "" {
+		return spectrumImportHistoryPayload{}
+	}
+	decodedPayload := spectrumImportHistoryPayload{}
+	if err := json.Unmarshal([]byte(trimmedMessage), &decodedPayload); err == nil && strings.TrimSpace(decodedPayload.Qualitative) != "" {
+		return decodedPayload
+	}
+	return spectrumImportHistoryPayload{Qualitative: trimmedMessage}
+}
+
 // uploaderIdentityKey derives a lightweight user key for correlation between
 // uploads. We avoid database-specific auth coupling and keep the heuristic
 // stable across desktop/web by preferring explicit headers, then remote IP.
@@ -5265,15 +5306,28 @@ func processSpectrumXMLUpload(
 	}
 	spectrumFingerprint := fingerprintSpectrumXML(raw)
 	if existingImport, found, findErr := db.FindImportHistory(ctx, "spectrum-xml", spectrumFingerprint, dbType); findErr == nil && found {
+		storedPayload := readSpectrumImportHistoryMessage(existingImport.Message)
 		detail := map[string]any{
-			"qualitative":     strings.TrimSpace(existingImport.Message),
+			"qualitative":     strings.TrimSpace(storedPayload.Qualitative),
 			"spectrum_hash":   spectrumFingerprint,
 			"duplicate":       true,
 			"link_reason":     "duplicate-spectrum-existing",
 			"linked_track_id": strings.TrimSpace(existingImport.TrackID),
 		}
+		if len(storedPayload.IsotopeCards) > 0 {
+			detail["isotope_cards"] = storedPayload.IsotopeCards
+		}
+		if strings.TrimSpace(storedPayload.ComponentText) != "" {
+			detail["component_text"] = strings.TrimSpace(storedPayload.ComponentText)
+		}
+		if strings.TrimSpace(storedPayload.Explanation) != "" {
+			detail["explanation"] = strings.TrimSpace(storedPayload.Explanation)
+		}
+		if len(storedPayload.GroupChecks) > 0 {
+			detail["group_checks"] = storedPayload.GroupChecks
+		}
 		if currentTrackID != "" && currentHasBounds {
-			_ = annotateWholeTrackWithSpectrum(ctx, db, dbType, currentTrackID, existingImport.Message)
+			_ = annotateWholeTrackWithSpectrum(ctx, db, dbType, currentTrackID, storedPayload.Qualitative)
 			detail["linked_track_id"] = currentTrackID
 			detail["link_reason"] = "duplicate-spectrum-same-upload-batch"
 			return currentBounds, currentTrackID, true, detail, nil
@@ -5306,10 +5360,17 @@ func processSpectrumXMLUpload(
 		"group_checks":    analysis.GroupChecks,
 		"explanation":     analysis.Explanation,
 	}
+	historyMessage := buildSpectrumImportHistoryMessage(
+		qualitativeSummary,
+		detail["isotope_cards"].([]map[string]any),
+		spectrumComponentSummary(analysis),
+		analysis.Explanation,
+		analysis.GroupChecks,
+	)
 
 	if currentTrackID != "" && currentHasBounds {
 		_ = annotateWholeTrackWithSpectrum(ctx, db, dbType, currentTrackID, qualitativeSummary)
-		_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, currentTrackID, "linked", qualitativeSummary, dbType)
+		_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, currentTrackID, "linked", historyMessage, dbType)
 		detail["linked_track_id"] = currentTrackID
 		detail["link_reason"] = "same-upload-batch"
 		return currentBounds, currentTrackID, true, detail, nil
@@ -5317,7 +5378,7 @@ func processSpectrumXMLUpload(
 
 	candidates, ok := linkSpectrumToTrackByTime(ctx, db, dbType, analysis)
 	if !ok {
-		_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, "", "pending-manual", qualitativeSummary, dbType)
+		_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, "", "pending-manual", historyMessage, dbType)
 		detail["link_reason"] = "no-track-candidate"
 		detail["start_unix"] = analysis.Measurement.StartTime.Unix()
 		detail["end_unix"] = analysis.Measurement.EndTime.Unix()
@@ -5361,7 +5422,7 @@ func processSpectrumXMLUpload(
 		})
 	}
 	detail["candidate_tracks"] = candidateTracks
-	_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, bestCandidate.TrackID, "candidate", qualitativeSummary, dbType)
+	_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, bestCandidate.TrackID, "candidate", historyMessage, dbType)
 	return currentBounds, currentTrackID, currentHasBounds, detail, nil
 }
 
