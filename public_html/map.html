@@ -5781,9 +5781,9 @@ function createDateRangeSlider(){
       : '';
     const qualitativeSpectrum = marker.radiation ? String(marker.radiation).trim() : '';
     const qualitativePreview = buildSpectrumCompositionPreview(qualitativeSpectrum);
-    const encodedFullComposition = encodeURIComponent(qualitativeSpectrum);
+    const spectrumCompositionAttribute = escapeHtml(qualitativeSpectrum);
     const qualitativeBlock = qualitativeSpectrum
-      ? `<div><strong>Spectrum composition:</strong> <a href="#" class="spectrum-composition-link" data-spectrum-full="${encodedFullComposition}" data-track="${escapeHtml(marker.trackID || '')}" title="Open full qualitative spectrum details">${escapeHtml(qualitativePreview)}</a></div>`
+      ? `<div><strong>Spectrum composition:</strong> <a href="#" class="spectrum-composition-link" data-spectrum-full="${spectrumCompositionAttribute}" data-track="${escapeHtml(marker.trackID || '')}" title="Open full qualitative spectrum details">${escapeHtml(qualitativePreview)}</a></div>`
       : '';
 
     return `
@@ -9379,16 +9379,8 @@ function centerMapToLocation() {
     const spectrumCompositionLink = ev.target.closest('.spectrum-composition-link');
     if (spectrumCompositionLink) {
       ev.preventDefault();
-      const encodedSpectrumText = String(spectrumCompositionLink.dataset.spectrumFull || '').trim();
-      let decodedSpectrumText = encodedSpectrumText;
-      if (encodedSpectrumText) {
-        try {
-          decodedSpectrumText = decodeURIComponent(encodedSpectrumText);
-        } catch (decodeError) {
-          decodedSpectrumText = encodedSpectrumText;
-        }
-      }
-      openSpectrumCompositionModal(decodedSpectrumText, spectrumCompositionLink.dataset.track || '');
+      const fullSpectrumText = String(spectrumCompositionLink.dataset.spectrumFull || '').trim();
+      openSpectrumCompositionModal(fullSpectrumText, spectrumCompositionLink.dataset.track || '');
     }
     // switch to track view when track link clicked
     if (ev.target.classList.contains('track-link')) {
