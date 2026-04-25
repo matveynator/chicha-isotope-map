@@ -8639,6 +8639,37 @@ function centerMapToLocation() {
         composition.innerHTML = `<strong>Qualitative isotopes:</strong> ${escapeHtml(qualitativeSummaryText || 'isotopes detected')}`;
         panel.appendChild(composition);
 
+        const isotopeCards = Array.isArray(contextObject.isotope_cards) ? contextObject.isotope_cards : [];
+        if (isotopeCards.length > 0) {
+          const isotopeTitle = document.createElement('h4');
+          isotopeTitle.style.marginTop = '12px';
+          isotopeTitle.textContent = 'Most likely isotopes (human-readable)';
+          panel.appendChild(isotopeTitle);
+          isotopeCards.forEach(function(isotopeCard) {
+            const card = document.createElement('div');
+            card.style.marginTop = '6px';
+            card.style.padding = '8px';
+            card.style.border = '1px solid #ddd';
+            card.style.borderRadius = '8px';
+            const cardName = String(isotopeCard.display_name || isotopeCard.nuclide_id || 'unknown isotope').trim();
+            const sharePercent = Number(isotopeCard.share_percent || 0);
+            const sourcePath = String(isotopeCard.origin || '').trim();
+            const accumulationPath = String(isotopeCard.accumulation || '').trim();
+            let cardBody = `<strong>${escapeHtml(cardName)}</strong>`;
+            if (sharePercent > 0) {
+              cardBody += ` · ${sharePercent}%`;
+            }
+            if (sourcePath) {
+              cardBody += `<br><small><strong>Likely source:</strong> ${escapeHtml(sourcePath)}</small>`;
+            }
+            if (accumulationPath) {
+              cardBody += `<br><small><strong>Common accumulation:</strong> ${escapeHtml(accumulationPath)}</small>`;
+            }
+            card.innerHTML = cardBody;
+            panel.appendChild(card);
+          });
+        }
+
         const componentText = String(contextObject.component_text || '').trim();
         if (componentText) {
           const componentBox = document.createElement('div');

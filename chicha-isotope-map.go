@@ -4956,6 +4956,70 @@ func spectrumComponentSummary(analysis spectrum.Analysis) string {
 	return strings.Join(parts, ", ")
 }
 
+func spectrumIsotopeCards(analysis spectrum.Analysis, limit int) []map[string]any {
+	if limit <= 0 {
+		return nil
+	}
+	scoreByNuclide := make(map[string]float64)
+	for _, hit := range analysis.Isotopes {
+		nuclideID := strings.TrimSpace(hit.NuclideID)
+		if nuclideID == "" {
+			continue
+		}
+		scoreByNuclide[nuclideID] += hit.Confidence
+	}
+	if len(scoreByNuclide) == 0 {
+		return nil
+	}
+
+	type nuclideScore struct {
+		NuclideID string
+		Score     float64
+	}
+	ordered := make([]nuclideScore, 0, len(scoreByNuclide))
+	totalScore := 0.0
+	for nuclideID, score := range scoreByNuclide {
+		ordered = append(ordered, nuclideScore{NuclideID: nuclideID, Score: score})
+		totalScore += score
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].Score == ordered[j].Score {
+			return ordered[i].NuclideID < ordered[j].NuclideID
+		}
+		return ordered[i].Score > ordered[j].Score
+	})
+
+	if len(ordered) > limit {
+		ordered = ordered[:limit]
+	}
+	cards := make([]map[string]any, 0, len(ordered))
+	for _, row := range ordered {
+		nuclide, ok := spectrum.FindNuclide(row.NuclideID)
+		displayName := row.NuclideID
+		origin := ""
+		accumulation := ""
+		if ok {
+			if strings.TrimSpace(nuclide.DisplayName) != "" {
+				displayName = fmt.Sprintf("%s (%s)", nuclide.DisplayName, nuclide.NuclideID)
+			}
+			origin = strings.TrimSpace(nuclide.TypicalSource)
+			accumulation = strings.TrimSpace(nuclide.Accumulation)
+		}
+		share := 0
+		if totalScore > 0 {
+			share = int(math.Round(row.Score / totalScore * 100))
+		}
+		cards = append(cards, map[string]any{
+			"nuclide_id":   row.NuclideID,
+			"display_name": displayName,
+			"share_percent": share,
+			"origin":       origin,
+			"accumulation": accumulation,
+		})
+	}
+	return cards
+}
+
 // uploaderIdentityKey derives a lightweight user key for correlation between
 // uploads. We avoid database-specific auth coupling and keep the heuristic
 // stable across desktop/web by preferring explicit headers, then remote IP.
@@ -5182,6 +5246,7 @@ func processSpectrumXMLUpload(
 		"isotope_hits":    len(analysis.Isotopes),
 		"composites":      len(analysis.CompositeModels),
 		"qualitative":     spectrumQualitativeSummary(analysis),
+		"isotope_cards":   spectrumIsotopeCards(analysis, 8),
 		"components":      analysis.Components,
 		"component_text":  spectrumComponentSummary(analysis),
 		"group_checks":    analysis.GroupChecks,

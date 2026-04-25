@@ -147,3 +147,36 @@ func TestRadiationTypesAndCompositeModel(t *testing.T) {
 		t.Fatalf("expected plain-language explanation")
 	}
 }
+
+func TestCatalogContainsRequiredImportIsotopes(t *testing.T) {
+	requiredNuclideIDs := []string{
+		"H-3", "C-14", "Be-7", "Be-10", "Na-22", "Na-24", "Mg-28", "Al-26", "Si-31", "P-32",
+		"P-33", "S-35", "Cl-36", "Ar-37", "Ar-39", "Ar-41", "K-40", "K-42", "Ca-45", "Ca-47",
+		"Sc-46", "Sc-47", "Sc-48", "Ti-44", "V-48", "Cr-51", "Mn-52", "Mn-54", "Mn-56", "Fe-55",
+		"Fe-59", "Co-56", "Co-57", "Co-58", "Co-60", "Ni-59", "Ni-63", "Cu-64", "Cu-67", "Zn-65",
+		"Ga-67", "Ga-68", "Ge-68", "As-72", "As-74", "As-76", "Se-75", "Br-82", "Kr-85", "Rb-86",
+		"Rb-87", "Sr-85", "Sr-89", "Sr-90", "Y-88", "Y-90", "Zr-89", "Zr-95", "Nb-94", "Nb-95",
+		"Mo-99", "Tc-99", "Tc-99m", "Ru-103", "Ru-106", "Rh-106", "Pd-103", "Ag-108m", "Ag-110m", "Cd-109",
+		"Cd-115m", "In-111", "In-113m", "Sn-113", "Sn-117m", "Sn-125", "Sb-122", "Sb-124", "Sb-125", "Te-125m",
+		"Te-127m", "Te-129m", "Te-132", "I-123", "I-125", "I-129", "I-131", "I-132", "I-133", "I-135",
+		"Xe-131m", "Xe-133", "Xe-135", "Cs-134", "Cs-135", "Cs-137", "Ba-133", "Ba-140", "La-140", "Ce-139",
+		"Ce-141", "Ce-144", "Pr-144", "Nd-147", "Pm-147", "Pm-148m", "Sm-151", "Sm-153", "Eu-152", "Eu-154",
+		"Eu-155", "Gd-153", "Tb-160", "Dy-165", "Ho-166", "Er-169", "Tm-170", "Yb-169", "Lu-176", "Lu-177",
+		"Hf-181", "Ta-182", "W-181", "W-185", "W-187", "Re-186", "Re-188", "Ir-192", "Au-198", "Hg-203",
+		"Tl-201", "Pb-210", "Bi-207", "Bi-210", "Po-210", "Ra-223", "Ra-224", "Ra-226", "Ra-228", "Ac-225",
+		"Ac-227", "Ac-228", "Th-227", "Th-228", "Th-230", "Th-232", "Pa-231", "Pa-234m", "U-232", "U-233",
+		"U-234", "U-235", "U-238", "Np-237", "Np-239", "Pu-238", "Pu-239", "Pu-240", "Pu-241", "Am-241",
+		"Am-243", "Cm-242", "Cm-244", "Cf-252",
+	}
+
+	missing := make([]string, 0)
+	for _, nuclideID := range requiredNuclideIDs {
+		_, found := FindNuclide(nuclideID)
+		if !found {
+			missing = append(missing, nuclideID)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("required nuclides missing from catalog: %v", missing)
+	}
+}
