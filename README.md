@@ -129,6 +129,30 @@ Ports 80/443 must be open.
 ./chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
 ```
 
+
+
+## Universal isotope catalog and spectrum drivers
+
+The project now has a device-agnostic spectrum pipeline in `pkg/spectrum/`:
+
+- Common `Driver` interface for instrument parsers (`CanParse` + `Parse`).
+- Built-in Radiacode XML driver as the first implementation.
+- Shared `SpectrumMeasurement` model so AtomSpectra and other devices can be plugged in without rewriting isotope analysis.
+- Shared analyzer that detects peaks and maps alpha/beta/gamma energies to nuclides from one common catalog.
+- Composite-spectrum estimator that ranks two- and three-nuclide mixtures when peaks overlap in scintillation detectors.
+
+Catalog scope in the built-in dataset:
+- Cosmogenic and primordial isotopes (`H-3`, `C-14`, `K-40`, etc.).
+- Full natural decay families used in field dosimetry:
+  - Thorium-232 chain,
+  - Uranium-238 chain,
+  - Uranium-235 (actinium) chain,
+  - Neptunium-237 family.
+- Common environmental/industrial/medical/fallout isotopes (`Cs-137`, `Co-60`, `I-131`, `Am-241`, `Eu-152`, ...).
+- Heavy transuranics up to `Og-294` for completeness of identifier parsing.
+
+This gives one universal parser entrypoint and one extensible isotope catalog, while keeping drivers isolated by format.
+
 ---
 
 ## History and contributors

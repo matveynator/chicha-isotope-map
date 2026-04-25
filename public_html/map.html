@@ -5779,6 +5779,10 @@ function createDateRangeSlider(){
     const deviceLabel = deviceName
       ? `<div><strong>${translate('live_marker_device_label')}:</strong> ${escapeHtml(deviceName)}</div>`
       : '';
+    const qualitativeSpectrum = marker.radiation ? String(marker.radiation).trim() : '';
+    const qualitativeBlock = qualitativeSpectrum
+      ? `<div><strong>Spectrum composition:</strong> ${escapeHtml(qualitativeSpectrum)}</div>`
+      : '';
 
     return `
       <div class="custom-tooltip">
@@ -5789,6 +5793,7 @@ function createDateRangeSlider(){
           </a>)
         </div>
         ${deviceLabel}
+        ${qualitativeBlock}
         <div><strong>${translate('speed')}:</strong> ${speedText}</div>
         <div style="margin-top:4px">
           <!-- clicking the link switches to track mode -->
@@ -8361,6 +8366,8 @@ function centerMapToLocation() {
         let completedUploads = 0;
         const totalFiles     = files.length;
         let lastTrackURL     = null;
+        let pendingSpectrumSummary = '';
+        let pendingSpectrumManualPoint = false;
 
         /* Create an XHR for each file but redirect only once */
         [...files].forEach(file => {
@@ -8398,9 +8405,14 @@ function centerMapToLocation() {
             if (xhr.status === 200) {
               const response = JSON.parse(xhr.responseText);
               if (response.status === 'success') {
-                lastTrackURL               = response.trackURL;   // remember
+                lastTrackURL               = (response.trackURL && response.trackURL !== '/') ? response.trackURL : null;   // remember
                 serverProcessing.innerText = translate('processing_complete');
                 serverProcessing.style.color = 'green';
+                if (response.spectrumNeedsManualPoint) {
+                  pendingSpectrumManualPoint = true;
+                  pendingSpectrumSummary = response.spectrumQualitative || 'qualitative composition: isotopes detected';
+                  window.__pendingSpectrumContext = response.spectrumContext || null;
+                }
               } else if (response.status === 'processing') {
                 lastTrackURL               = null;
                 serverProcessing.innerText = translate('processing_complete');
@@ -8421,11 +8433,13 @@ function centerMapToLocation() {
               setTimeout(() => {
                 fileOverlay.style.display = 'none';
                 /* redirect to last successfully processed track */
-                  if (lastTrackURL) {
-                    window.location.href = lastTrackURL;
-                  } else {
-                    updateMarkers(true);   // keep the map open for background imports
-                  }
+                if (pendingSpectrumManualPoint) {
+                  showSpectrumResultModal(window.__pendingSpectrumContext, pendingSpectrumSummary);
+                } else if (lastTrackURL) {
+                  window.location.href = lastTrackURL;
+                } else {
+                  updateMarkers(true);   // keep the map open for background imports
+                }
               }, 700);
             }
           };
@@ -8491,12 +8505,27 @@ function centerMapToLocation() {
           rowState.serverProcessing.style.color = '';
         }
 
+        function promptNativeManualSpectrumPlacement(payload) {
+          if (!payload || !payload.spectrumNeedsManualPoint) {
+            return false;
+          }
+          const summary = payload.spectrumQualitative || 'qualitative composition: isotopes detected';
+          showSpectrumResultModal(payload.spectrumContext || null, summary);
+          return true;
+        }
+
         function finalizeNativeUpload(payload) {
           if (!payload || payload.status === 'cancelled') {
             fileOverlay.style.display = 'none';
             return;
           }
-          if (payload.status === 'success' && payload.trackURL) {
+          if (payload.status === 'success' && promptNativeManualSpectrumPlacement(payload)) {
+            setTimeout(() => {
+              fileOverlay.style.display = 'none';
+            }, 700);
+            return;
+          }
+          if (payload.status === 'success' && payload.trackURL && payload.trackURL !== '/') {
             setTimeout(() => {
               fileOverlay.style.display = 'none';
               window.location.href = payload.trackURL;
@@ -8576,6 +8605,320 @@ function centerMapToLocation() {
           .catch(() => {
             markGlobalNativeUploadError();
           });
+      }
+
+      function showSpectrumResultModal(spectrumContext, qualitativeSummaryText) {
+        const contextObject = (spectrumContext && typeof spectrumContext === 'object') ? spectrumContext : {};
+        const candidateTracks = Array.isArray(contextObject.candidate_tracks) ? contextObject.candidate_tracks : [];
+        const modal = document.createElement('div');
+        modal.style.position = 'fixed';
+        modal.style.left = '0';
+        modal.style.top = '0';
+        modal.style.right = '0';
+        modal.style.bottom = '0';
+        modal.style.zIndex = '99999';
+        modal.style.background = 'rgba(0,0,0,0.55)';
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        const panel = document.createElement('div');
+        panel.style.background = '#fff';
+        panel.style.color = '#111';
+        panel.style.maxWidth = '680px';
+        panel.style.width = '92%';
+        panel.style.maxHeight = '80vh';
+        panel.style.overflow = 'auto';
+        panel.style.borderRadius = '12px';
+        panel.style.padding = '16px';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Spectrum analysis result';
+        panel.appendChild(title);
+
+        const composition = document.createElement('div');
+        composition.innerHTML = `<strong>Qualitative isotopes:</strong> ${escapeHtml(qualitativeSummaryText || 'isotopes detected')}`;
+        panel.appendChild(composition);
+
+        const componentText = String(contextObject.component_text || '').trim();
+        if (componentText) {
+          const componentBox = document.createElement('div');
+          componentBox.style.marginTop = '8px';
+          componentBox.innerHTML = `<strong>Estimated components:</strong> ${escapeHtml(componentText)}`;
+          panel.appendChild(componentBox);
+        }
+
+        const explanationText = String(contextObject.explanation || '').trim();
+        if (explanationText) {
+          const explanationBox = document.createElement('div');
+          explanationBox.style.marginTop = '8px';
+          explanationBox.innerHTML = `<strong>Interpretation:</strong> ${escapeHtml(explanationText)}`;
+          panel.appendChild(explanationBox);
+        }
+
+        const groupChecks = Array.isArray(contextObject.group_checks) ? contextObject.group_checks : [];
+        if (groupChecks.length > 0) {
+          const groupTitle = document.createElement('h4');
+          groupTitle.style.marginTop = '14px';
+          groupTitle.textContent = 'Group confirmation';
+          panel.appendChild(groupTitle);
+          groupChecks.slice(0, 6).forEach(function(groupCheck) {
+            const groupRow = document.createElement('div');
+            groupRow.style.marginTop = '4px';
+            const confidencePercent = Math.round(Number(groupCheck.confidence || 0) * 100);
+            const statusText = groupCheck.isConfirmed ? 'confirmed' : 'not confirmed';
+            groupRow.textContent = `${groupCheck.displayName || groupCheck.groupID}: ${statusText} (${confidencePercent}%)`;
+            panel.appendChild(groupRow);
+          });
+        }
+
+        if (contextObject.start_unix && contextObject.end_unix) {
+          const timeBox = document.createElement('div');
+          timeBox.style.marginTop = '8px';
+          timeBox.innerHTML = `<strong>Measurement window:</strong> ${escapeHtml(formatDateTime(contextObject.start_unix))} → ${escapeHtml(formatDateTime(contextObject.end_unix))}`;
+          panel.appendChild(timeBox);
+        }
+
+        const actions = document.createElement('div');
+        actions.style.marginTop = '14px';
+        actions.style.display = 'flex';
+        actions.style.flexWrap = 'wrap';
+        actions.style.gap = '8px';
+
+        const pointButton = document.createElement('button');
+        pointButton.textContent = 'Choose point on map';
+        pointButton.onclick = function() {
+          document.body.removeChild(modal);
+          promptSpectrumManualPointSelection(qualitativeSummaryText, contextObject.start_unix || 0, contextObject.end_unix || 0);
+        };
+        actions.appendChild(pointButton);
+
+        const areaButton = document.createElement('button');
+        areaButton.textContent = 'Select area on map';
+        areaButton.onclick = function() {
+          document.body.removeChild(modal);
+          promptSpectrumAreaSelection(qualitativeSummaryText, contextObject.start_unix || 0, contextObject.end_unix || 0);
+        };
+        actions.appendChild(areaButton);
+        panel.appendChild(actions);
+
+        if (candidateTracks.length > 0) {
+          const listTitle = document.createElement('h4');
+          listTitle.style.marginTop = '16px';
+          listTitle.textContent = 'Possible track candidates';
+          panel.appendChild(listTitle);
+          candidateTracks.forEach(function(trackCandidate) {
+            const row = document.createElement('div');
+            row.style.marginTop = '8px';
+            row.style.border = '1px solid #ddd';
+            row.style.borderRadius = '8px';
+            row.style.padding = '8px';
+
+            const trackMeta = document.createElement('div');
+            const overlapSeconds = Number(trackCandidate.overlapSec || 0);
+            const overlapMinutes = Math.round(overlapSeconds / 60);
+            const centerDeltaSeconds = Number(trackCandidate.centerDeltaSec || 0);
+            const centerDeltaMinutes = Math.round(centerDeltaSeconds / 60);
+            let candidateLabel = `Track ${trackCandidate.trackID}`;
+            if (trackCandidate.trackStartUnix && trackCandidate.trackEndUnix) {
+              candidateLabel += ` · ${formatDateTime(trackCandidate.trackStartUnix)} → ${formatDateTime(trackCandidate.trackEndUnix)}`;
+            }
+            candidateLabel += ` · overlap ${overlapMinutes} min · center delta ${centerDeltaMinutes} min`;
+            trackMeta.textContent = candidateLabel;
+            row.appendChild(trackMeta);
+
+            const actionRow = document.createElement('div');
+            actionRow.style.display = 'flex';
+            actionRow.style.gap = '8px';
+            actionRow.style.marginTop = '6px';
+
+            const attachButton = document.createElement('button');
+            attachButton.textContent = `Attach to ${trackCandidate.trackID}`;
+            attachButton.onclick = function() {
+              fetch('/api/spectrum/attach-track', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  trackID: trackCandidate.trackID,
+                  qualitative: qualitativeSummaryText,
+                  startUnix: contextObject.start_unix || 0,
+                  endUnix: contextObject.end_unix || 0
+                })
+              }).then(function(response) {
+                if (!response.ok) {
+                  throw new Error('attach-track failed');
+                }
+                return response.json();
+              })
+                .then(function(payload) {
+                  if (payload && payload.status === 'success' && payload.trackURL) {
+                    window.location.href = payload.trackURL;
+                    return;
+                  }
+                  updateMarkers(true);
+                })
+                .catch(function() {
+                  alert('Unable to attach spectrum to this track candidate.');
+                });
+            };
+            actionRow.appendChild(attachButton);
+
+            const previewButton = document.createElement('button');
+            previewButton.textContent = 'Preview candidate';
+            previewButton.onclick = function() {
+              const hasBounds = Number.isFinite(Number(trackCandidate.minLat)) &&
+                Number.isFinite(Number(trackCandidate.minLon)) &&
+                Number.isFinite(Number(trackCandidate.maxLat)) &&
+                Number.isFinite(Number(trackCandidate.maxLon));
+              if (hasBounds && map) {
+                map.fitBounds([
+                  [Number(trackCandidate.minLat), Number(trackCandidate.minLon)],
+                  [Number(trackCandidate.maxLat), Number(trackCandidate.maxLon)]
+                ]);
+              }
+            };
+            actionRow.appendChild(previewButton);
+
+            row.appendChild(actionRow);
+            panel.appendChild(row);
+          });
+        }
+
+        const manualTrackTitle = document.createElement('h4');
+        manualTrackTitle.style.marginTop = '16px';
+        manualTrackTitle.textContent = 'Attach to specific track ID';
+        panel.appendChild(manualTrackTitle);
+
+        const manualTrackRow = document.createElement('div');
+        manualTrackRow.style.display = 'flex';
+        manualTrackRow.style.gap = '8px';
+        manualTrackRow.style.alignItems = 'center';
+
+        const manualTrackInput = document.createElement('input');
+        manualTrackInput.type = 'text';
+        manualTrackInput.placeholder = 'e.g. safecast-70845';
+        manualTrackInput.style.flex = '1';
+        manualTrackRow.appendChild(manualTrackInput);
+
+        const manualTrackAttachButton = document.createElement('button');
+        manualTrackAttachButton.textContent = 'Attach by track ID';
+        manualTrackAttachButton.onclick = function() {
+          const selectedTrackID = String(manualTrackInput.value || '').trim();
+          if (!selectedTrackID) {
+            alert('Please enter a track ID.');
+            return;
+          }
+          fetch('/api/spectrum/attach-track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              trackID: selectedTrackID,
+              qualitative: qualitativeSummaryText,
+              startUnix: contextObject.start_unix || 0,
+              endUnix: contextObject.end_unix || 0
+            })
+          })
+          .then(function(response) {
+            if (!response.ok) {
+              throw new Error('attach-track failed');
+            }
+            return response.json();
+          })
+          .then(function(payload) {
+            if (payload && payload.status === 'success' && payload.trackURL) {
+              window.location.href = payload.trackURL;
+              return;
+            }
+            updateMarkers(true);
+          })
+          .catch(function() {
+            alert('Unable to attach spectrum to this track ID.');
+          });
+        };
+        manualTrackRow.appendChild(manualTrackAttachButton);
+        panel.appendChild(manualTrackRow);
+
+        const closeButton = document.createElement('button');
+        closeButton.style.marginTop = '12px';
+        closeButton.textContent = 'Close';
+        closeButton.onclick = function() {
+          if (document.body.contains(modal)) {
+            document.body.removeChild(modal);
+          }
+          updateMarkers(true);
+        };
+        panel.appendChild(closeButton);
+        modal.appendChild(panel);
+        document.body.appendChild(modal);
+      }
+
+      function promptSpectrumManualPointSelection(qualitativeSummaryText, startUnix, endUnix) {
+        if (!map) {
+          alert('Spectrum uploaded but map is not ready for manual placement.');
+          return;
+        }
+        alert('Spectrum was uploaded but no time-matched track was found. Click one point on the map to save this spectrum.');
+        const clickHandler = function(event) {
+          map.off('click', clickHandler);
+          fetch('/api/spectrum/manual-point', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lat: event.latlng.lat,
+              lon: event.latlng.lng,
+              qualitative: qualitativeSummaryText,
+              startUnix: startUnix || 0,
+              endUnix: endUnix || 0
+            })
+          })
+          .then(function(response) { return response.json(); })
+          .then(function(payload) {
+            if (payload && payload.status === 'success' && payload.trackURL) {
+              window.location.href = payload.trackURL;
+              return;
+            }
+            updateMarkers(true);
+          })
+          .catch(function() {
+            updateMarkers(true);
+          });
+        };
+        map.on('click', clickHandler);
+      }
+
+      function promptSpectrumAreaSelection(qualitativeSummaryText, startUnix, endUnix) {
+        if (!map) {
+          alert('Map is not ready for area selection.');
+          return;
+        }
+        alert('Click two points on the map to define area rectangle.');
+        let firstPoint = null;
+        const areaClickHandler = function(event) {
+          if (!firstPoint) {
+            firstPoint = event.latlng;
+            return;
+          }
+          map.off('click', areaClickHandler);
+          const minLat = Math.min(firstPoint.lat, event.latlng.lat);
+          const maxLat = Math.max(firstPoint.lat, event.latlng.lat);
+          const minLon = Math.min(firstPoint.lng, event.latlng.lng);
+          const maxLon = Math.max(firstPoint.lng, event.latlng.lng);
+          fetch('/api/spectrum/attach-area', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              minLat: minLat,
+              minLon: minLon,
+              maxLat: maxLat,
+              maxLon: maxLon,
+              qualitative: qualitativeSummaryText,
+              startUnix: startUnix || 0,
+              endUnix: endUnix || 0
+            })
+          }).then(function(response) { return response.json(); })
+            .then(function() { updateMarkers(true); })
+            .catch(function() { updateMarkers(true); });
+        };
+        map.on('click', areaClickHandler);
       }
     </script>
 

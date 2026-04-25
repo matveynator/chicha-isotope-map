@@ -1,0 +1,94 @@
+package spectrum
+
+import "time"
+
+// MarkerTimePoint keeps the minimum track fields needed to link a spectrum to map points.
+type MarkerTimePoint struct {
+	Date int64
+	Lat  float64
+	Lon  float64
+}
+
+// SpectrumMeasurement is the common model produced by all instrument drivers.
+// Keeping one shape lets isotope analysis stay device-agnostic.
+type SpectrumMeasurement struct {
+	Format         string
+	DeviceName     string
+	DeviceSerial   string
+	StartTime      time.Time
+	EndTime        time.Time
+	MeasurementSec int64
+	Channels       []float64
+	Coefficients   []float64
+}
+
+// Peak describes one identified spectral peak candidate.
+type Peak struct {
+	Channel int
+	Energy  float64
+	Counts  float64
+}
+
+// IsotopeHit keeps a matched isotope candidate with confidence score.
+type IsotopeHit struct {
+	Name          string
+	NuclideID     string
+	RadiationType string
+	EnergyKeV     float64
+	PeakEnergy    float64
+	DeltaKeV      float64
+	Confidence    float64
+	Series        string
+}
+
+// CompositeHit describes a mixed-spectrum hypothesis where multiple nuclides
+// explain one measured peak set.
+type CompositeHit struct {
+	NuclideIDs   []string
+	Coverage     float64
+	ResidualKeV  float64
+	TotalScore   float64
+	MatchedPeaks int
+}
+
+// SpectrumComponent keeps a coarse-grained component estimate that is stable
+// on low-resolution detectors. We intentionally model families (K-40, U/Ra,
+// Th-series, etc.) rather than claiming exact isotope fractions.
+type SpectrumComponent struct {
+	ComponentID      string
+	DisplayName      string
+	Contribution     float64
+	MatchedLines     int
+	AverageLineError float64
+}
+
+// GroupCheck tracks whether a practical isotope group has enough line evidence
+// to be considered confirmed on low-resolution detectors.
+type GroupCheck struct {
+	GroupID      string
+	DisplayName  string
+	MatchedLines []float64
+	MissingLines []float64
+	Confidence   float64
+	IsConfirmed  bool
+	Comment      string
+}
+
+// Analysis bundles parsed spectrum and lookup results.
+type Analysis struct {
+	Measurement     SpectrumMeasurement
+	DetectedPeaks   []Peak
+	Isotopes        []IsotopeHit
+	CompositeModels []CompositeHit
+	Components      []SpectrumComponent
+	GroupChecks     []GroupCheck
+	Explanation     string
+}
+
+// MarkerMatch reports which marker is closest in time to the spectrum window.
+type MarkerMatch struct {
+	Marker             MarkerTimePoint
+	AbsoluteDeltaSec   int64
+	WithinWindow       bool
+	WithinWindowMargin bool
+}

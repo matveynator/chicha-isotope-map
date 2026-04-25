@@ -474,6 +474,90 @@ WHERE trackID = %s AND (device_name IS NULL OR device_name = '');`, ph, ph2)
 	return nil
 }
 
+// AnnotateTrackRadiationWindow writes qualitative isotope composition into the
+// radiation field for markers captured in a time window.
+func (db *Database) AnnotateTrackRadiationWindow(ctx context.Context, trackID string, fromUnix, toUnix int64, radiationText, dbType string) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	trackID = strings.TrimSpace(trackID)
+	radiationText = strings.TrimSpace(radiationText)
+	if trackID == "" || radiationText == "" {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if fromUnix > toUnix {
+		fromUnix, toUnix = toUnix, fromUnix
+	}
+
+	ph1 := placeholder(dbType, 1)
+	ph2 := placeholder(dbType, 2)
+	ph3 := placeholder(dbType, 3)
+	ph4 := placeholder(dbType, 4)
+	stmt := fmt.Sprintf(`UPDATE markers
+SET radiation = %s
+WHERE trackID = %s AND date >= %s AND date <= %s;`, ph1, ph2, ph3, ph4)
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	return db.withSerializedConnectionFor(ctx, WorkloadUserUpload, func(runCtx context.Context, conn *sql.DB) error {
+		if _, err := conn.ExecContext(runCtx, stmt, radiationText, trackID, fromUnix, toUnix); err != nil {
+			return fmt.Errorf("annotate track radiation window: %w", err)
+		}
+		return nil
+	})
+}
+
+// AnnotateAreaRadiationWindow writes qualitative isotope composition into
+// markers inside a bounding box and time window.
+func (db *Database) AnnotateAreaRadiationWindow(ctx context.Context, fromUnix, toUnix int64, minLat, minLon, maxLat, maxLon float64, radiationText, dbType string) error {
+	if db == nil || db.DB == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	radiationText = strings.TrimSpace(radiationText)
+	if radiationText == "" {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if fromUnix > toUnix {
+		fromUnix, toUnix = toUnix, fromUnix
+	}
+	if minLat > maxLat {
+		minLat, maxLat = maxLat, minLat
+	}
+	if minLon > maxLon {
+		minLon, maxLon = maxLon, minLon
+	}
+
+	ph1 := placeholder(dbType, 1)
+	ph2 := placeholder(dbType, 2)
+	ph3 := placeholder(dbType, 3)
+	ph4 := placeholder(dbType, 4)
+	ph5 := placeholder(dbType, 5)
+	ph6 := placeholder(dbType, 6)
+	ph7 := placeholder(dbType, 7)
+	stmt := fmt.Sprintf(`UPDATE markers
+SET radiation = %s
+WHERE date >= %s AND date <= %s
+  AND lat >= %s AND lat <= %s
+  AND lon >= %s AND lon <= %s;`, ph1, ph2, ph3, ph4, ph5, ph6, ph7)
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	return db.withSerializedConnectionFor(ctx, WorkloadUserUpload, func(runCtx context.Context, conn *sql.DB) error {
+		if _, err := conn.ExecContext(runCtx, stmt, radiationText, fromUnix, toUnix, minLat, maxLat, minLon, maxLon); err != nil {
+			return fmt.Errorf("annotate area radiation window: %w", err)
+		}
+		return nil
+	})
+}
+
 // TrackHasDeviceName checks whether any marker in the track already carries a device label.
 // We use it to avoid downloading full track payloads when only the device name is missing.
 func (db *Database) TrackHasDeviceName(ctx context.Context, trackID, dbType string) (bool, error) {
