@@ -5780,8 +5780,10 @@ function createDateRangeSlider(){
       ? `<div><strong>${translate('live_marker_device_label')}:</strong> ${escapeHtml(deviceName)}</div>`
       : '';
     const qualitativeSpectrum = marker.radiation ? String(marker.radiation).trim() : '';
+    const qualitativePreview = buildSpectrumCompositionPreview(qualitativeSpectrum);
+    const encodedFullComposition = encodeURIComponent(qualitativeSpectrum);
     const qualitativeBlock = qualitativeSpectrum
-      ? `<div><strong>Spectrum composition:</strong> ${escapeHtml(qualitativeSpectrum)}</div>`
+      ? `<div><strong>Spectrum composition:</strong> <a href="#" class="spectrum-composition-link" data-spectrum-full="${encodedFullComposition}" data-track="${escapeHtml(marker.trackID || '')}" title="Open full qualitative spectrum details">${escapeHtml(qualitativePreview)}</a></div>`
       : '';
 
     return `
@@ -5812,6 +5814,94 @@ function getPopupContent(marker) {
 // Tooltip uses the same builder for hover previews.
 function getTooltipContent(marker) {
   return buildMarkerContent(marker);
+}
+
+function buildSpectrumCompositionPreview(qualitativeSpectrumText) {
+  const normalizedText = String(qualitativeSpectrumText || '')
+    .replace(/^qualitative composition:\s*/i, '')
+    .trim();
+  if (!normalizedText) {
+    return '';
+  }
+  const compositionParts = normalizedText
+    .split(',')
+    .map(function(partText) {
+      return partText.trim();
+    })
+    .filter(function(partText) {
+      return partText.length > 0;
+    });
+  if (compositionParts.length === 0) {
+    return normalizedText;
+  }
+  const previewParts = compositionParts.slice(0, 3);
+  const previewText = previewParts.join(', ');
+  if (compositionParts.length <= 3) {
+    return previewText;
+  }
+  return previewText + ' …';
+}
+
+function openSpectrumCompositionModal(compositionText, trackIdentifier) {
+  const normalizedCompositionText = String(compositionText || '').trim();
+  if (!normalizedCompositionText) {
+    return;
+  }
+  const safeTrackIdentifier = String(trackIdentifier || '').trim();
+  const modal = document.createElement('div');
+  modal.style.position = 'fixed';
+  modal.style.left = '0';
+  modal.style.top = '0';
+  modal.style.right = '0';
+  modal.style.bottom = '0';
+  modal.style.zIndex = '99999';
+  modal.style.background = 'rgba(0,0,0,0.55)';
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
+
+  const panel = document.createElement('div');
+  panel.style.background = '#fff';
+  panel.style.color = '#111';
+  panel.style.maxWidth = '640px';
+  panel.style.width = '92%';
+  panel.style.maxHeight = '80vh';
+  panel.style.overflow = 'auto';
+  panel.style.borderRadius = '12px';
+  panel.style.padding = '16px';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Marker spectrum composition';
+  panel.appendChild(title);
+
+  if (safeTrackIdentifier) {
+    const trackLine = document.createElement('div');
+    trackLine.style.marginBottom = '8px';
+    trackLine.innerHTML = `<strong>${escapeHtml(translate('track_id'))}:</strong> ${escapeHtml(safeTrackIdentifier)}`;
+    panel.appendChild(trackLine);
+  }
+
+  const body = document.createElement('div');
+  body.style.whiteSpace = 'normal';
+  body.style.lineHeight = '1.5';
+  body.innerHTML = `<strong>Full qualitative composition:</strong><br>${escapeHtml(normalizedCompositionText)}`;
+  panel.appendChild(body);
+
+  const closeButton = document.createElement('button');
+  closeButton.textContent = 'Close';
+  closeButton.style.marginTop = '14px';
+  closeButton.onclick = function() {
+    document.body.removeChild(modal);
+  };
+  panel.appendChild(closeButton);
+
+  modal.onclick = function(mouseEvent) {
+    if (mouseEvent.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
+  modal.appendChild(panel);
+  document.body.appendChild(modal);
 }
 
 
@@ -9283,6 +9373,13 @@ function centerMapToLocation() {
         lon: dataset.lon || '',
       };
       openLiveModal(dataset.device, fallback);
+    }
+    const spectrumCompositionLink = ev.target.closest('.spectrum-composition-link');
+    if (spectrumCompositionLink) {
+      ev.preventDefault();
+      const encodedSpectrumText = String(spectrumCompositionLink.dataset.spectrumFull || '').trim();
+      const decodedSpectrumText = encodedSpectrumText ? decodeURIComponent(encodedSpectrumText) : '';
+      openSpectrumCompositionModal(decodedSpectrumText, spectrumCompositionLink.dataset.track || '');
     }
     // switch to track view when track link clicked
     if (ev.target.classList.contains('track-link')) {
