@@ -14,10 +14,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"database/sql"
 	"embed"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -5010,11 +5012,11 @@ func spectrumIsotopeCards(analysis spectrum.Analysis, limit int) []map[string]an
 			share = int(math.Round(row.Score / totalScore * 100))
 		}
 		cards = append(cards, map[string]any{
-			"nuclide_id":   row.NuclideID,
-			"display_name": displayName,
+			"nuclide_id":    row.NuclideID,
+			"display_name":  displayName,
 			"share_percent": share,
-			"origin":       origin,
-			"accumulation": accumulation,
+			"origin":        origin,
+			"accumulation":  accumulation,
 		})
 	}
 	return cards
@@ -5131,6 +5133,33 @@ func deriveTrackMatchDetails(
 	return bounds, matchedCount, trackStartUnix, trackEndUnix, nil
 }
 
+func annotateWholeTrackWithSpectrum(
+	ctx context.Context,
+	db *database.Database,
+	dbType string,
+	trackID string,
+	qualitativeText string,
+) error {
+	trimmedTrackID := strings.TrimSpace(trackID)
+	trimmedQualitativeText := strings.TrimSpace(qualitativeText)
+	if trimmedTrackID == "" || trimmedQualitativeText == "" {
+		return nil
+	}
+	_, matchedMarkers, trackStartUnix, trackEndUnix, err := deriveTrackMatchDetails(ctx, db, dbType, trimmedTrackID)
+	if err != nil {
+		return err
+	}
+	if matchedMarkers == 0 {
+		return nil
+	}
+	return db.AnnotateTrackRadiationWindow(ctx, trimmedTrackID, trackStartUnix-60, trackEndUnix+60, trimmedQualitativeText, dbType)
+}
+
+func fingerprintSpectrumXML(rawSpectrumXML []byte) string {
+	spectrumHash := sha256.Sum256(rawSpectrumXML)
+	return hex.EncodeToString(spectrumHash[:])
+}
+
 func linkSpectrumToTrackByTime(
 	ctx context.Context,
 	db *database.Database,
@@ -5234,10 +5263,34 @@ func processSpectrumXMLUpload(
 	if err != nil {
 		return database.Bounds{}, currentTrackID, currentHasBounds, nil, fmt.Errorf("read spectrum xml: %w", err)
 	}
+	spectrumFingerprint := fingerprintSpectrumXML(raw)
+	if existingImport, found, findErr := db.FindImportHistory(ctx, "spectrum-xml", spectrumFingerprint, dbType); findErr == nil && found {
+		detail := map[string]any{
+			"qualitative":     strings.TrimSpace(existingImport.Message),
+			"spectrum_hash":   spectrumFingerprint,
+			"duplicate":       true,
+			"link_reason":     "duplicate-spectrum-existing",
+			"linked_track_id": strings.TrimSpace(existingImport.TrackID),
+		}
+		if currentTrackID != "" && currentHasBounds {
+			_ = annotateWholeTrackWithSpectrum(ctx, db, dbType, currentTrackID, existingImport.Message)
+			detail["linked_track_id"] = currentTrackID
+			detail["link_reason"] = "duplicate-spectrum-same-upload-batch"
+			return currentBounds, currentTrackID, true, detail, nil
+		}
+		if strings.TrimSpace(existingImport.TrackID) != "" {
+			existingBounds, existingCount, boundsErr := deriveBoundsFromTrack(ctx, db, dbType, existingImport.TrackID)
+			if boundsErr == nil && existingCount > 0 {
+				return existingBounds, existingImport.TrackID, true, detail, nil
+			}
+		}
+		return currentBounds, currentTrackID, currentHasBounds, detail, nil
+	}
 	analysis, err := spectrum.AnalyzeWithKnownDrivers(raw)
 	if err != nil {
 		return database.Bounds{}, currentTrackID, currentHasBounds, nil, fmt.Errorf("parse spectrum xml: %w", err)
 	}
+	qualitativeSummary := spectrumQualitativeSummary(analysis)
 
 	detail := map[string]any{
 		"spectrum_format": analysis.Measurement.Format,
@@ -5245,8 +5298,9 @@ func processSpectrumXMLUpload(
 		"device_serial":   analysis.Measurement.DeviceSerial,
 		"isotope_hits":    len(analysis.Isotopes),
 		"composites":      len(analysis.CompositeModels),
-		"qualitative":     spectrumQualitativeSummary(analysis),
+		"qualitative":     qualitativeSummary,
 		"isotope_cards":   spectrumIsotopeCards(analysis, 8),
+		"spectrum_hash":   spectrumFingerprint,
 		"components":      analysis.Components,
 		"component_text":  spectrumComponentSummary(analysis),
 		"group_checks":    analysis.GroupChecks,
@@ -5254,7 +5308,8 @@ func processSpectrumXMLUpload(
 	}
 
 	if currentTrackID != "" && currentHasBounds {
-		_ = db.AnnotateTrackRadiationWindow(ctx, currentTrackID, analysis.Measurement.StartTime.Unix()-60, analysis.Measurement.EndTime.Unix()+60, spectrumQualitativeSummary(analysis), dbType)
+		_ = annotateWholeTrackWithSpectrum(ctx, db, dbType, currentTrackID, qualitativeSummary)
+		_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, currentTrackID, "linked", qualitativeSummary, dbType)
 		detail["linked_track_id"] = currentTrackID
 		detail["link_reason"] = "same-upload-batch"
 		return currentBounds, currentTrackID, true, detail, nil
@@ -5262,6 +5317,7 @@ func processSpectrumXMLUpload(
 
 	candidates, ok := linkSpectrumToTrackByTime(ctx, db, dbType, analysis)
 	if !ok {
+		_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, "", "pending-manual", qualitativeSummary, dbType)
 		detail["link_reason"] = "no-track-candidate"
 		detail["start_unix"] = analysis.Measurement.StartTime.Unix()
 		detail["end_unix"] = analysis.Measurement.EndTime.Unix()
@@ -5305,6 +5361,7 @@ func processSpectrumXMLUpload(
 		})
 	}
 	detail["candidate_tracks"] = candidateTracks
+	_ = db.EnsureImportHistory(ctx, "spectrum-xml", spectrumFingerprint, bestCandidate.TrackID, "candidate", qualitativeSummary, dbType)
 	return currentBounds, currentTrackID, currentHasBounds, detail, nil
 }
 
@@ -6143,10 +6200,11 @@ func attachSpectrumToTrackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		TrackID     string `json:"trackID"`
-		Qualitative string `json:"qualitative"`
-		StartUnix   int64  `json:"startUnix"`
-		EndUnix     int64  `json:"endUnix"`
+		TrackID      string `json:"trackID"`
+		Qualitative  string `json:"qualitative"`
+		SpectrumHash string `json:"spectrumHash"`
+		StartUnix    int64  `json:"startUnix"`
+		EndUnix      int64  `json:"endUnix"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "invalid payload", http.StatusBadRequest)
@@ -6165,9 +6223,12 @@ func attachSpectrumToTrackHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "track id not found", http.StatusBadRequest)
 		return
 	}
-	if err := db.AnnotateTrackRadiationWindow(r.Context(), payload.TrackID, payload.StartUnix-60, payload.EndUnix+60, payload.Qualitative, *dbType); err != nil {
+	if err := annotateWholeTrackWithSpectrum(r.Context(), db, *dbType, payload.TrackID, payload.Qualitative); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if strings.TrimSpace(payload.SpectrumHash) != "" {
+		_ = db.EnsureImportHistory(r.Context(), "spectrum-xml", strings.TrimSpace(payload.SpectrumHash), payload.TrackID, "linked", strings.TrimSpace(payload.Qualitative), *dbType)
 	}
 	bounds, _, err := deriveBoundsFromTrack(r.Context(), db, *dbType, payload.TrackID)
 	if err != nil {

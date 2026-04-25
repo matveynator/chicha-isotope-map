@@ -8861,6 +8861,7 @@ function centerMapToLocation() {
                 body: JSON.stringify({
                   trackID: trackCandidate.trackID,
                   qualitative: qualitativeSummaryText,
+                  spectrumHash: String(contextObject.spectrum_hash || '').trim(),
                   startUnix: contextObject.start_unix || 0,
                   endUnix: contextObject.end_unix || 0
                 })
@@ -8934,6 +8935,7 @@ function centerMapToLocation() {
             body: JSON.stringify({
               trackID: selectedTrackID,
               qualitative: qualitativeSummaryText,
+              spectrumHash: String(contextObject.spectrum_hash || '').trim(),
               startUnix: contextObject.start_unix || 0,
               endUnix: contextObject.end_unix || 0
             })
@@ -9378,7 +9380,14 @@ function centerMapToLocation() {
     if (spectrumCompositionLink) {
       ev.preventDefault();
       const encodedSpectrumText = String(spectrumCompositionLink.dataset.spectrumFull || '').trim();
-      const decodedSpectrumText = encodedSpectrumText ? decodeURIComponent(encodedSpectrumText) : '';
+      let decodedSpectrumText = encodedSpectrumText;
+      if (encodedSpectrumText) {
+        try {
+          decodedSpectrumText = decodeURIComponent(encodedSpectrumText);
+        } catch (decodeError) {
+          decodedSpectrumText = encodedSpectrumText;
+        }
+      }
       openSpectrumCompositionModal(decodedSpectrumText, spectrumCompositionLink.dataset.track || '');
     }
     // switch to track view when track link clicked
