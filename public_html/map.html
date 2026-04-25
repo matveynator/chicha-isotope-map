@@ -5711,6 +5711,12 @@ function createDateRangeSlider(){
     }
 
     const climateHtml = climateParts.length ? `<div class="live-popup-climate">${climateParts.join(' · ')}</div>` : '';
+    const qualitativeSpectrumText = marker.radiation ? String(marker.radiation).trim() : '';
+    const qualitativeSpectrumPreview = buildSpectrumCompositionPreview(qualitativeSpectrumText);
+    const qualitativeSpectrumAttribute = escapeHtml(qualitativeSpectrumText);
+    const qualitativeSpectrumBlock = qualitativeSpectrumText
+      ? `<div class="live-popup-meta"><div><strong>Spectrum composition:</strong> <a href="#" class="spectrum-composition-link" data-spectrum-full="${qualitativeSpectrumAttribute}" data-track="${escapeHtml(marker.trackID || '')}" title="Open full qualitative spectrum details">${escapeHtml(qualitativeSpectrumPreview)}</a></div></div>`
+      : '';
     // Tie the chart button styling to the current radiation color so it is
     // obvious that tapping it opens the dose history for this sensor.
     const chartBg = colorWithAlpha(doseColor, 0.18);
@@ -5762,6 +5768,7 @@ function createDateRangeSlider(){
           </div>
         </div>
         ${climateHtml}
+        ${qualitativeSpectrumBlock}
         ${metaHtmlBlock}
       </div>`;
   }

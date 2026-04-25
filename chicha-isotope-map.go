@@ -5054,15 +5054,6 @@ func buildSpectrumImportHistoryMessage(
 	if err != nil {
 		return strings.TrimSpace(qualitativeText)
 	}
-	const maxSpectrumHistoryMessageBytes = 8192
-	if len(encodedPayload) > maxSpectrumHistoryMessageBytes {
-		payload.IsotopeCards = nil
-		payload.GroupChecks = nil
-		encodedPayload, err = json.Marshal(payload)
-		if err != nil {
-			return strings.TrimSpace(qualitativeText)
-		}
-	}
 	return string(encodedPayload)
 }
 
