@@ -5308,11 +5308,10 @@ func processSpectrumXMLUpload(
 	if existingImport, found, findErr := db.FindImportHistory(ctx, "spectrum-xml", spectrumFingerprint, dbType); findErr == nil && found {
 		storedPayload := readSpectrumImportHistoryMessage(existingImport.Message)
 		detail := map[string]any{
-			"qualitative":     strings.TrimSpace(storedPayload.Qualitative),
-			"spectrum_hash":   spectrumFingerprint,
-			"duplicate":       true,
-			"link_reason":     "duplicate-spectrum-existing",
-			"linked_track_id": strings.TrimSpace(existingImport.TrackID),
+			"qualitative":   strings.TrimSpace(storedPayload.Qualitative),
+			"spectrum_hash": spectrumFingerprint,
+			"duplicate":     true,
+			"link_reason":   "duplicate-spectrum-needs-confirmation",
 		}
 		if len(storedPayload.IsotopeCards) > 0 {
 			detail["isotope_cards"] = storedPayload.IsotopeCards
@@ -5326,19 +5325,28 @@ func processSpectrumXMLUpload(
 		if len(storedPayload.GroupChecks) > 0 {
 			detail["group_checks"] = storedPayload.GroupChecks
 		}
-		if currentTrackID != "" && currentHasBounds {
-			_ = annotateWholeTrackWithSpectrum(ctx, db, dbType, currentTrackID, storedPayload.Qualitative)
-			detail["linked_track_id"] = currentTrackID
-			detail["link_reason"] = "duplicate-spectrum-same-upload-batch"
-			return currentBounds, currentTrackID, true, detail, nil
-		}
 		if strings.TrimSpace(existingImport.TrackID) != "" {
-			existingBounds, existingCount, boundsErr := deriveBoundsFromTrack(ctx, db, dbType, existingImport.TrackID)
-			if boundsErr == nil && existingCount > 0 {
-				return existingBounds, existingImport.TrackID, true, detail, nil
+			detail["linked_track_id"] = strings.TrimSpace(existingImport.TrackID)
+			if existingBounds, existingCount, boundsErr := deriveBoundsFromTrack(ctx, db, dbType, existingImport.TrackID); boundsErr == nil && existingCount > 0 {
+				detail["candidate_tracks"] = []map[string]any{
+					{
+						"trackID":        existingImport.TrackID,
+						"matchedPoints":  existingCount,
+						"deviceMatch":    false,
+						"trackStartUnix": int64(0),
+						"trackEndUnix":   int64(0),
+						"overlapSec":     int64(0),
+						"centerDeltaSec": int64(0),
+						"score":          int64(0),
+						"minLat":         existingBounds.MinLat,
+						"minLon":         existingBounds.MinLon,
+						"maxLat":         existingBounds.MaxLat,
+						"maxLon":         existingBounds.MaxLon,
+					},
+				}
 			}
 		}
-		return currentBounds, currentTrackID, currentHasBounds, detail, nil
+		return currentBounds, currentTrackID, false, detail, nil
 	}
 	analysis, err := spectrum.AnalyzeWithKnownDrivers(raw)
 	if err != nil {
