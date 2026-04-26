@@ -1672,6 +1672,8 @@ body, html {
         <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width:20px;">
       </button>
       <br>
+      <button id="radiacodeBluetoothButton" class="locate-btn" type="button" aria-label="Radiacode Bluetooth">📶</button>
+      <br>
       {{if not .DesktopWebView}}
         <!-- Small QR button under geolocate -->
         <button id="qrButton" class="qr-btn" aria-label="{{translate "qr_button_tooltip"}}">
@@ -9471,7 +9473,100 @@ function centerMapToLocation() {
     }
   });
 
+  const radiacodeBluetoothModel = { activeTrackID: '', connectedDeviceName: '', connectedDeviceID: '' };
+  const radiacodeServiceUUID = 'e63215e5-7003-49d8-96b0-b024798fb901';
+  const radiacodeWriteUUID = 'e63215e6-7003-49d8-96b0-b024798fb901';
+  const radiacodeNotifyUUID = 'e63215e7-7003-49d8-96b0-b024798fb901';
+
+  function ensureRadiacodeTrackID() {
+    if (radiacodeBluetoothModel.activeTrackID) return radiacodeBluetoothModel.activeTrackID;
+    radiacodeBluetoothModel.activeTrackID = 'radiacode-live-' + String(Date.now());
+    return radiacodeBluetoothModel.activeTrackID;
+  }
+
+  function inferIsotopeHintsFromSpectrumPayload(rawPayloadHex) {
+    const payloadHex = String(rawPayloadHex || '').toLowerCase();
+    const isotopeHints = [];
+    if (payloadHex.includes('0662')) isotopeHints.push('Cs-137 (possible)');
+    if (payloadHex.includes('1173') || payloadHex.includes('1332')) isotopeHints.push('Co-60 (possible)');
+    if (payloadHex.includes('0609')) isotopeHints.push('Bi-214 (possible)');
+    return isotopeHints;
+  }
+
+  async function pushRadiacodePointToServer(pointPayload) {
+    const response = await fetch('/api/radiacode/live-point', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pointPayload)
+    });
+    if (!response.ok) throw new Error('save failed with HTTP ' + response.status);
+  }
+
+  async function connectRadiacodeBluetoothAndStream() {
+    if (!navigator.bluetooth) {
+      alert('Web Bluetooth is not available in this runtime.');
+      return;
+    }
+
+    const radiacodeDevice = await navigator.bluetooth.requestDevice({
+      filters: [{namePrefix: 'RadiaCode'}, {namePrefix: 'Radiacode'}, {namePrefix: 'RC-'}],
+      optionalServices: [radiacodeServiceUUID]
+    });
+    const gattServer = await radiacodeDevice.gatt.connect();
+    const radiacodeService = await gattServer.getPrimaryService(radiacodeServiceUUID);
+    const notifyCharacteristic = await radiacodeService.getCharacteristic(radiacodeNotifyUUID);
+    const writeCharacteristic = await radiacodeService.getCharacteristic(radiacodeWriteUUID);
+
+    radiacodeBluetoothModel.connectedDeviceName = radiacodeDevice.name || 'RadiaCode';
+    radiacodeBluetoothModel.connectedDeviceID = radiacodeDevice.id || '';
+    const activeTrackID = ensureRadiacodeTrackID();
+
+    notifyCharacteristic.addEventListener('characteristicvaluechanged', async function(event) {
+      const bytes = [];
+      const valueBuffer = event.target.value;
+      for (let offset = 0; offset < valueBuffer.byteLength; offset++) bytes.push(valueBuffer.getUint8(offset));
+      const payloadHex = bytes.map(function(currentByte) { return currentByte.toString(16).padStart(2, '0'); }).join('');
+      const doseRate = bytes.length >= 2 ? ((bytes[0] | (bytes[1] << 8)) / 100) : 0;
+      const countRate = bytes.length >= 4 ? (bytes[2] | (bytes[3] << 8)) : 0;
+
+      let geoposition;
+      try {
+        geoposition = await new Promise(function(resolve, reject) {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {enableHighAccuracy: true, timeout: 5000});
+        });
+      } catch (geolocationError) {
+        return;
+      }
+
+      await pushRadiacodePointToServer({
+        trackID: activeTrackID,
+        date: Math.floor(Date.now() / 1000),
+        lat: geoposition.coords.latitude,
+        lon: geoposition.coords.longitude,
+        doseRate: doseRate,
+        countRate: countRate,
+        deviceID: radiacodeBluetoothModel.connectedDeviceID,
+        deviceName: radiacodeBluetoothModel.connectedDeviceName,
+        detector: radiacodeBluetoothModel.connectedDeviceName,
+        isotopeHints: inferIsotopeHintsFromSpectrumPayload(payloadHex)
+      });
+    });
+
+    await notifyCharacteristic.startNotifications();
+    await writeCharacteristic.writeValue(new Uint8Array([0x07, 0x00, 0x01, 0xff, 0x12, 0xff]));
+  }
+
   (function(){
+    var btButton = document.getElementById('radiacodeBluetoothButton');
+    if (btButton) {
+      btButton.addEventListener('click', function() {
+        connectRadiacodeBluetoothAndStream().catch(function(connectError) {
+          console.error('Radiacode Bluetooth connect failed', connectError);
+          alert('Radiacode Bluetooth error: ' + connectError.message);
+        });
+      });
+    }
+
     var el = document.getElementById('legend');
     if (el) {
       el.addEventListener('click', openLegendModal);

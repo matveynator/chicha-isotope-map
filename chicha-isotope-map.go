@@ -6028,6 +6028,77 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// radiacodeLivePointHandler accepts realtime points from Web Bluetooth sessions.
+// The endpoint keeps one marker per coordinate (within epsilon) and updates that
+// marker with the highest seen dose/CPS values, which makes hotspot mapping stable
+// during stationary measurements.
+func radiacodeLivePointHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if db == nil {
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	defer r.Body.Close()
+	var payload struct {
+		TrackID      string   `json:"trackID"`
+		Date         int64    `json:"date"`
+		Lat          float64  `json:"lat"`
+		Lon          float64  `json:"lon"`
+		DoseRate     float64  `json:"doseRate"`
+		CountRate    float64  `json:"countRate"`
+		Speed        float64  `json:"speed"`
+		DeviceID     string   `json:"deviceID"`
+		DeviceName   string   `json:"deviceName"`
+		Detector     string   `json:"detector"`
+		IsotopeHints []string `json:"isotopeHints"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&payload); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	if math.IsNaN(payload.Lat) || math.IsNaN(payload.Lon) || payload.Lat < -90 || payload.Lat > 90 || payload.Lon < -180 || payload.Lon > 180 {
+		http.Error(w, "invalid coordinates", http.StatusBadRequest)
+		return
+	}
+	if payload.DoseRate < 0 || payload.CountRate < 0 {
+		http.Error(w, "negative values are not allowed", http.StatusBadRequest)
+		return
+	}
+
+	marker := database.Marker{
+		TrackID:    strings.TrimSpace(payload.TrackID),
+		Date:       payload.Date,
+		Lat:        payload.Lat,
+		Lon:        payload.Lon,
+		DoseRate:   payload.DoseRate,
+		CountRate:  payload.CountRate,
+		Speed:      payload.Speed,
+		Zoom:       0,
+		DeviceID:   strings.TrimSpace(payload.DeviceID),
+		DeviceName: strings.TrimSpace(payload.DeviceName),
+		Detector:   strings.TrimSpace(payload.Detector),
+		Radiation:  strings.Join(payload.IsotopeHints, ", "),
+	}
+
+	savedMarker, err := db.UpsertRadiacodeLivePoint(r.Context(), marker, 1e-6)
+	if err != nil {
+		log.Printf("radiacode live upsert failed: %v", err)
+		http.Error(w, "save failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":     true,
+		"marker": savedMarker,
+	})
+}
+
 func manualSpectrumPointHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -8283,6 +8354,7 @@ func main() {
 	http.HandleFunc("/api/spectrum/manual-point", manualSpectrumPointHandler)
 	http.HandleFunc("/api/spectrum/attach-track", attachSpectrumToTrackHandler)
 	http.HandleFunc("/api/spectrum/attach-area", attachSpectrumToAreaHandler)
+	http.HandleFunc("/api/radiacode/live-point", radiacodeLivePointHandler)
 	http.HandleFunc("/desktop/download-track/", desktopTrackDownloadHandler)
 	http.HandleFunc("/desktop/admin/bootstrap-import", desktopAdminBootstrapImportHandler)
 	http.HandleFunc("/desktop/admin/settings", desktopAdminSettingsHandler)
