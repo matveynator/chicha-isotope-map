@@ -4935,21 +4935,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const languageCode = (typeof currentLang !== 'undefined' && currentLang ? currentLang : 'en').toLowerCase();
         const isRussianLanguage = languageCode.indexOf('ru') === 0;
-        const transportPlaneTitle = compactPhraseFromKey('live_marker_transport_air', 'Plane', 1);
-        const transportCarTitle = compactPhraseFromKey('live_marker_transport_car', 'Car', 1);
-        const transportPedTitle = compactPhraseFromKey('live_marker_transport_walk', 'Walk', 1);
+        const transportPlaneTitle = isRussianLanguage
+          ? 'самолет'
+          : compactPhraseFromKey('live_marker_transport_air', 'plane', 1).toLowerCase();
+        const transportCarTitle = isRussianLanguage
+          ? 'автомобиль'
+          : compactPhraseFromKey('live_marker_transport_car', 'car', 1).toLowerCase();
+        const transportPedTitle = isRussianLanguage
+          ? 'пешеход'
+          : compactPhraseFromKey('live_marker_transport_walk', 'walk', 1).toLowerCase();
         const realtimeTitle = isRussianLanguage
-          ? 'Онлайн'
-          : compactPhraseFromKey('live_marker_title', 'Live', 1);
+          ? 'онлайн'
+          : compactPhraseFromKey('live_marker_title', 'live', 1).toLowerCase();
         const realtimeSubtitle = isRussianLanguage
-          ? 'Радиационные метеостанции'
-          : compactPhraseFromKey('live_marker_desc_radiation_sensor', 'Radiation stations', 2);
+          ? 'метео'
+          : compactPhraseFromKey('live_marker_desc_radiation_sensor', 'meteo', 1).toLowerCase();
         if (window.safecastRealtimeEnabled) {
           pieces.push(row('sfLive', 'live', state.live, realtimeTitle, realtimeSubtitle));
         }
         pieces.push(
           row('sfPlane', 'plane', state.plane, transportPlaneTitle, '> 250 km/h'),
-          row('sfCar', 'car', state.car, transportCarTitle, '25 – 250 km/h'),
+          row('sfCar', 'car', state.car, transportCarTitle, '25 - 250 km/h'),
           row('sfPed', 'ped', state.ped, transportPedTitle, '< 25 km/h')
         );
         div.innerHTML = pieces.join('');
