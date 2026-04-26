@@ -1249,12 +1249,12 @@ body, html {
 
         /* Render speed filter rows as compact cards with icon + two-line label. */
         .speed-filter-control {
-          padding: 6px 8px;
+          padding: 4px 6px;
           background: rgba(255, 255, 255, 0.82);
           border: 1px solid rgba(0, 0, 0, 0.14);
-          border-radius: 12px;
-          min-width: 240px;
-          max-width: 280px;
+          border-radius: 10px;
+          min-width: 188px;
+          max-width: 220px;
         }
 
         :root[data-theme='dark'] .speed-filter-control {
@@ -1263,12 +1263,12 @@ body, html {
         }
 
         .speed-filter-row {
-          display: flex;
+          display: grid;
+          grid-template-columns: 14px 24px minmax(0, 1fr);
           align-items: center;
-          gap: 10px;
+          column-gap: 6px;
           cursor: pointer;
-          padding: 10px 2px;
-          white-space: nowrap;
+          padding: 6px 1px;
         }
 
         .speed-filter-row + .speed-filter-row {
@@ -1279,11 +1279,18 @@ body, html {
           border-top: 1px solid rgba(255, 255, 255, 0.12);
         }
 
+        .speed-filter-check {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 14px;
+          height: 14px;
+        }
+
         .speed-filter-row input[type='checkbox'] {
           display: block;
-          flex: 0 0 18px;
-          width: 18px;
-          height: 18px;
+          width: 14px;
+          height: 14px;
           margin: 0;
         }
 
@@ -1291,17 +1298,18 @@ body, html {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          flex: 0 0 46px;
+          width: 24px;
+          height: 24px;
         }
 
         .speed-filter-icon img {
           display: block;
-          width: 44px;
-          height: 44px;
+          width: 22px;
+          height: 22px;
           object-fit: contain;
         }
 
-        .speed-filter-row > span:last-child {
+        .speed-filter-text {
           display: inline-flex;
           flex-direction: column;
           justify-content: center;
@@ -1322,29 +1330,30 @@ body, html {
 
         @media (max-width: 480px) {
           .speed-filter-control {
-            min-width: 180px;
-            max-width: 210px;
-            padding: 4px 6px;
+            min-width: 170px;
+            max-width: 196px;
+            padding: 4px 5px;
           }
 
           .speed-filter-row {
-            gap: 6px;
-            padding: 8px 1px;
+            grid-template-columns: 12px 20px minmax(0, 1fr);
+            column-gap: 5px;
+            padding: 6px 0;
+          }
+
+          .speed-filter-check {
+            width: 12px;
+            height: 12px;
           }
 
           .speed-filter-row input[type='checkbox'] {
-            flex-basis: 14px;
-            width: 14px;
-            height: 14px;
-          }
-
-          .speed-filter-icon {
-            flex-basis: 34px;
+            width: 12px;
+            height: 12px;
           }
 
           .speed-filter-icon img {
-            width: 32px;
-            height: 32px;
+            width: 18px;
+            height: 18px;
           }
 
           .speed-filter-title {
@@ -4885,11 +4894,13 @@ document.addEventListener('DOMContentLoaded', function () {
         function row(id, iconName, checked, title, subtitle) {
           return `
             <label class="speed-filter-row">
-              <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
+              <span class="speed-filter-check">
+                <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
+              </span>
               <span class="speed-filter-icon">
                 <img data-speed-icon="${iconName}" src="${speedFilterIconPath(iconName)}" alt="${title}"/>
               </span>
-              <span>
+              <span class="speed-filter-text">
                 <div class="speed-filter-title">${escapeHtml(title)}</div>
                 <div class="speed-filter-subtitle">${escapeHtml(subtitle)}</div>
               </span>
