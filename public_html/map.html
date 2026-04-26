@@ -1249,12 +1249,12 @@ body, html {
 
         /* Render speed filter rows as compact cards with icon + two-line label. */
         .speed-filter-control {
-          padding: 4px 6px;
+          padding: 2px 4px;
           background: rgba(255, 255, 255, 0.8);
           border: 1px solid rgba(0, 0, 0, 0.14);
-          border-radius: 10px;
-          min-width: 170px;
-          max-width: 210px;
+          border-radius: 8px;
+          min-width: 126px;
+          max-width: 146px;
         }
 
         :root[data-theme='dark'] .speed-filter-control {
@@ -1264,11 +1264,11 @@ body, html {
 
         .speed-filter-row {
           display: grid;
-          grid-template-columns: 18px 30px minmax(0, 1fr);
+          grid-template-columns: 12px 16px minmax(0, 1fr);
           align-items: center;
-          gap: 6px;
+          gap: 4px;
           cursor: pointer;
-          padding: 5px 1px;
+          padding: 3px 0;
           white-space: normal;
         }
 
@@ -1281,59 +1281,59 @@ body, html {
         }
 
         .speed-filter-row input[type='checkbox'] {
-          width: 14px;
-          height: 14px;
+          width: 11px;
+          height: 11px;
           margin: 0;
         }
 
         .speed-filter-icon img {
           display: block;
-          width: 30px;
-          height: 30px;
+          width: 16px;
+          height: 16px;
           object-fit: contain;
         }
 
         .speed-filter-title {
-          font-size: var(--font-size-base);
-          line-height: 1.2;
+          font-size: 9px;
+          line-height: 1.1;
           font-weight: 600;
         }
 
         .speed-filter-subtitle {
-          font-size: var(--font-size-sm);
-          line-height: 1.25;
+          font-size: 8px;
+          line-height: 1.15;
           opacity: 0.8;
         }
 
         @media (max-width: 480px) {
           .speed-filter-control {
-            min-width: 152px;
-            max-width: 180px;
-            padding: 3px 5px;
+            min-width: 118px;
+            max-width: 136px;
+            padding: 2px 3px;
           }
 
           .speed-filter-row {
-            grid-template-columns: 16px 24px minmax(0, 1fr);
-            gap: 5px;
-            padding: 4px 1px;
+            grid-template-columns: 11px 14px minmax(0, 1fr);
+            gap: 3px;
+            padding: 3px 0;
           }
 
           .speed-filter-row input[type='checkbox'] {
-            width: 13px;
-            height: 13px;
+            width: 10px;
+            height: 10px;
           }
 
           .speed-filter-icon img {
-            width: 24px;
-            height: 24px;
+            width: 14px;
+            height: 14px;
           }
 
           .speed-filter-title {
-            font-size: 11px;
+            font-size: 8px;
           }
 
           .speed-filter-subtitle {
-            font-size: 10px;
+            font-size: 7px;
           }
         }
 
