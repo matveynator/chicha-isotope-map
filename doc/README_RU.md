@@ -1,274 +1,117 @@
-[![Последний стабильный релиз](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
+[🇬🇧 English](/README.md) | [🇫🇷 Français](/doc/README_FR.md) | [🇯🇵 日本語](/doc/README_JP.md) | [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md) | [🇮🇹 Italiano](/doc/README_IT.md) | [🇨🇳 中文](/doc/README_ZH.md) | [🇮🇳 हिन्दी](/doc/README_HI.md) | [🇮🇷 فارسی](/doc/README_FA.md) | [🇷🇺 Русский](/doc/README_RU.md) | [🇲🇳 Монгол](/doc/README_MN.md) | [🇰🇿 Қазақша](/doc/README_KK.md)
 
-<img width="30%" align="left" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/39bfa7b1-03fb-43dd-89bd-8d6c516fd4db" />
+# Chicha Isotope Map (Русский)
 
-* [🇬🇧 English](/README.md)
-* [🇫🇷 Français](/doc/README_FR.md)
-* [🇯🇵 日本語](/doc/README_JP.md)
-* [🇷🇺 Русский](/doc/README_RU.md)
-* [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md)
-* [🇮🇹 Italiano](/doc/README_IT.md)
-* [🇨🇳 中文](/doc/README_ZH.md)
-* [🇮🇳 हिन्दी](/doc/README_HI.md)
-* [🇮🇷 فارسی](/doc/README_FA.md)
-* [🇲🇳 Монгол](/doc/README_MN.md)
-* [🇰🇿 Қазақша](/doc/README_KK.md)
+Эта версия переведена на русский и синхронизирована с актуальным английским README.
 
-# ☢️ Мировая карта радиации
-Мы хотели создать карту, которая помогла бы каждому человеку сразу понять, безопасно ли место, где он живёт или работает. Ведь многие выращивают овощи, держат скот, пьют воду из родников — и не всегда знают, благополучна ли окружающая среда.
+<div align="center">
+  <img src="https://raw.githubusercontent.com/matveynator/chicha-isotope-map/main/public_html/images/chicha-isotope-map-round-logo.png" alt="Chicha Isotope Map logo" width="120" />
 
-Обычный природный уровень радиации невысок. Опасность возникает лишь там, где показатели заметно превышены — из-за техногенных причин или особенностей местности. В таких местах вода, воздух и почва могут со временем повлиять на здоровье: вызвать болезни лёгких, желудка и других органов.
+Download page for the latest stable build: <a href="https://matveynator.github.io/chicha-isotope-map/">matveynator.github.io/chicha-isotope-map</a> <br>
+Radiacode, AtomFast, BGeigie Safecast devices supported.
 
-Если эта карта убережёт хотя бы одного человека или одно живое существо, значит, она создана не напрасно. Пусть она послужит простым и понятным ориентиром, помогающим выбирать безопасный путь.
+[![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
-Живая демо: [https://pelora.org/](https://pelora.org/) — ваш узел будет выглядеть так же.
+[Live demo](https://pelora.org/)
 
-👉 [Страница Stable Release](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) (постоянный URL, всегда ведёт на актуальные стабильные бинарники)
+</div>
 
-👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
+## Downloads (Stable Release)
 
----
+Use the **Stable Release** channel so one constant link always points to the newest binaries built from commits containing `stable release`.
 
-### 📸 Пример
-<p>
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Fukushima view in chicha-isotope-map" src="https://github.com/user-attachments/assets/617a0ced-4280-41c2-9320-de1cfd33a61f" /></a><br />
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Safecast realtime radiation sensors in chicha-isotope-map" src="https://github.com/user-attachments/assets/13256b23-744d-4d02-a26c-ae9aef5b0d87" /></a><br />
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Air flights radiation in chicha-isotope-map" src="https://github.com/user-attachments/assets/cf0189c9-534f-4ff5-9d7a-ed5836e91ef5" /></a>
-</p>
+- **Smart download page (recommended):** https://matveynator.github.io/chicha-isotope-map/
+- **Stable Release tag (all artifacts):** https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release
 
----
+### Desktop app (GUI)
 
-Вот весь текст целиком, включая обновлённый пункт — в спокойном, культурном и понятном стиле:
+| OS | Architecture / Variant | Artifact |
+|---|---|---|
+| macOS | Universal (Intel + Apple Silicon) | [chicha-isotope-map_darwin_universal_desktop.dmg](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_universal_desktop.dmg) |
+| Windows | amd64 | [chicha-isotope-map_windows_amd64_desktop.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.zip) |
+| Windows | arm64 | [chicha-isotope-map_windows_arm64_desktop.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.zip) |
+| Linux GTK 4.0 (Ubuntu 22.04 / Mint 21.x) | amd64 | [chicha-isotope-map_linux_amd64_desktop_gtk40.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk40.zip) |
+| Linux GTK 4.0 (Ubuntu 22.04 / Mint 21.x) | arm64 | [chicha-isotope-map_linux_arm64_desktop_gtk40.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk40.zip) |
+| Linux GTK 4.1 (Ubuntu 24.04+ / Mint 22+) | amd64 | [chicha-isotope-map_linux_amd64_desktop_gtk41.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip) |
+| Linux GTK 4.1 (Ubuntu 24.04+ / Mint 22+) | arm64 | [chicha-isotope-map_linux_arm64_desktop_gtk41.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk41.zip) |
 
----
+### Server binaries (self-hosted)
 
-## 🧭 Что внутри
+| OS | Architecture | Artifact |
+|---|---|---|
+| Linux | amd64 | [chicha-isotope-map_linux_amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64) |
+| Linux | arm64 | [chicha-isotope-map_linux_arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64) |
+| Windows | amd64 | [chicha-isotope-map_windows_amd64.exe](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64.exe) |
+| Windows | arm64 | [chicha-isotope-map_windows_arm64.exe](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64.exe) |
+| macOS | amd64 | [chicha-isotope-map_darwin_amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64) |
+| macOS | arm64 | [chicha-isotope-map_darwin_arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64) |
+| FreeBSD | amd64 / arm64 | [Stable Release assets](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) |
+| OpenBSD | amd64 / arm64 | [Stable Release assets](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) |
 
-* Карта собирает измерения с разных приборов; слои аккуратно разделены по скорости движения — пешком, на машине, в полёте.
-* Можно загрузить свои треки: новые точки сразу появляются на карте и помогают лучше понять обстановку.
-* Можно импортировать архив данных по ссылке или файлом, а также сохранить свои данные в архив (удобно для бекапа).
-* Есть возможность проследить, как менялся уровень радиации в выбранном месте со временем — становилась ситуация лучше или хуже.
-* Можно создать короткую ссылку на нужный участок карты.
-* Есть режим печати: можно отмечать опасные участки QR-кодами. Это удобно для предупреждающих знаков — человек сканирует код и сразу видит уровень радиации в конкретной точке. Такой подход помогает обозначать места экологического неблагополучия, где нежелательно пить воду, длительно находиться или вести хозяйство. Это полезно экологам, специалистам по мониторингу и службам, отвечающим за предупреждение людей об опасности.
-* У Карты есть API для интеграции ее данных во внешние сервисы на условии открытой лицензии CC.
+### Quick run
 
-Проект развивается благодаря внимательной поддержке сообщества **Safecast**, огромной работе **Rob Oudendijk**, а также усилиям людей по всему миру, занимающихся открытой дозиметрией. Мы благодарим Safecast, AtomFast, Radiacode, DoseMap и другие  инициативы за их вклад и участие.
+Windows:
+1. Download a `.zip` desktop build (or `.exe` server build).
+2. Extract if needed.
+3. Run the binary. If SmartScreen appears: **More info → Run anyway**.
 
-
----
-
-## 🚀 Быстрый старт
-Самый быстрый путь — готовый бинарник. Никакой Docker, БД или внешние инструменты не нужны: скачали, запустили, карта готова.
-
-### Вариант 1. Готовый бинарник (рекомендуется)
-1. Откройте [страницу Stable Release](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) и скачайте файл под свою систему.
-
-Постоянные ссылки на серверные бинарники (не меняются между релизами):
-- FreeBSD amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_amd64`
-- FreeBSD arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_arm64`
-- OpenBSD amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_amd64`
-- OpenBSD arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_arm64`
-- macOS amd64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64`
-- macOS arm64: `https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64`
-2. Сделайте файл исполняемым и запустите:
-   ```bash
-   chmod +x ./chicha-isotope-map
-   ./chicha-isotope-map
-   ```
-3. Откройте [http://localhost:8765](http://localhost:8765) — карта уже работает.
-
-### 🔧 Автозапуск: готовые скрипты (Linux, FreeBSD, OpenBSD, NetBSD)
-Ниже — copy/paste варианты под **stable-release**. Основано на официальной странице загрузки проекта: Linux systemd setup, FreeBSD/OpenBSD quick install и стабильные имена бинарников.
-
-#### Linux + systemd (amd64)
+macOS (server binary example):
 ```bash
-sudo bash -c 'set -euo pipefail
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
-chmod +x /usr/local/bin/chicha-isotope-map
-cat >/etc/systemd/system/chicha-isotope-map.service <<"UNIT"
-[Unit]
-Description=Chicha Isotope Map
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/chicha-isotope-map -port 8765
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload
-systemctl enable --now chicha-isotope-map
-systemctl status --no-pager chicha-isotope-map || true'
+chmod +x ./chicha-isotope-map_darwin_*
+./chicha-isotope-map_darwin_*
 ```
 
-#### Linux + systemd (arm64)
+Linux desktop (GTK 4.1 amd64 example):
 ```bash
-sudo bash -c 'set -euo pipefail
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64 -o /usr/local/bin/chicha-isotope-map
-chmod +x /usr/local/bin/chicha-isotope-map
-cat >/etc/systemd/system/chicha-isotope-map.service <<"UNIT"
-[Unit]
-Description=Chicha Isotope Map
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/chicha-isotope-map -port 8765
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload
-systemctl enable --now chicha-isotope-map
-systemctl status --no-pager chicha-isotope-map || true'
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip -o chicha-isotope-map-desktop.zip
+unzip chicha-isotope-map-desktop.zip
+chmod +x ./chicha-isotope-map_linux_amd64_desktop_gtk41
+./chicha-isotope-map_linux_amd64_desktop_gtk41
 ```
 
-#### FreeBSD (rc.d, amd64/arm64)
+Linux server quick install:
 ```bash
-# amd64: замените URL на *_arm64 если у вас arm64
-sudo sh -c 'set -eu
-fetch -o /usr/local/bin/chicha-isotope-map https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_amd64
-chmod +x /usr/local/bin/chicha-isotope-map
-cat >/usr/local/etc/rc.d/chicha_isotope_map <<"RC"
-#!/bin/sh
-# PROVIDE: chicha_isotope_map
-# REQUIRE: NETWORKING
-# KEYWORD: shutdown
+sudo curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
+sudo chmod +x /usr/local/bin/chicha-isotope-map
+/usr/local/bin/chicha-isotope-map
+```
+Open: http://localhost:8765
 
-. /etc/rc.subr
+## Configuration and deployment
 
-name="chicha_isotope_map"
-rcvar="${name}_enable"
-command="/usr/local/bin/chicha-isotope-map"
-command_args="-port 8765 >> /var/log/chicha-isotope-map.log 2>&1"
-pidfile="/var/run/${name}.pid"
+### Useful flags
+- `-port 8765`
+- `-domain your-domain.example`
+- `-default-lat`, `-default-lon`, `-default-zoom`, `-default-layer`
+- `-mapbox-token YOUR_TOKEN`
+- `-setup` (Linux only)
+- `-import-tgz-url URL`
+- `-import-tgz-path /path/to/file.tgz`
 
-load_rc_config $name
-: ${chicha_isotope_map_enable:=NO}
+### Database flags
+- `-db-type sqlite|duckdb|chai|clickhouse|pgx`
+- `-db-path /path/to/file`
+- `-db-conn CONNECTION_STRING`
 
-run_rc_command "$1"
-RC
-chmod +x /usr/local/etc/rc.d/chicha_isotope_map
-sysrc chicha_isotope_map_enable=YES
-service chicha_isotope_map start'
+### Build from source
+
+Desktop WebView builds require CGO.
+
+```bash
+CGO_ENABLED=1 go build -tags desktop .
+./chicha-isotope-map -desktop
 ```
 
-#### OpenBSD (rc.d, amd64/arm64)
+Server-only binary (no embedded desktop window):
 ```bash
-# amd64: замените URL на *_arm64 если у вас arm64
-sudo sh -c 'set -eu
-ftp -o /usr/local/bin/chicha-isotope-map https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_amd64
-chmod +x /usr/local/bin/chicha-isotope-map
-cat >/etc/rc.d/chicha_isotope_map <<"RC"
-#!/bin/ksh
-
-daemon="/usr/local/bin/chicha-isotope-map"
-daemon_flags="-port 8765"
-
-. /etc/rc.d/rc.subr
-
-rc_bg=YES
-rc_cmd $1
-RC
-chmod +x /etc/rc.d/chicha_isotope_map
-rcctl enable chicha_isotope_map
-rcctl start chicha_isotope_map'
+CGO_ENABLED=0 go build .
+./chicha-isotope-map
 ```
 
-#### NetBSD (rc.d, amd64/arm64)
-```bash
-# В релизах нет отдельного netbsd артефакта, поэтому соберите бинарник на NetBSD:
-# GOOS=netbsd GOARCH=amd64 go build -o chicha-isotope-map .
-# (или GOARCH=arm64)
+## Universal isotope catalog and spectrum drivers
 
-sudo sh -c 'set -eu
-install -m 0755 ./chicha-isotope-map /usr/pkg/bin/chicha-isotope-map
-cat >/etc/rc.d/chicha_isotope_map <<"RC"
-#!/bin/sh
-# PROVIDE: chicha_isotope_map
-# REQUIRE: NETWORKING
-# KEYWORD: shutdown
+The project now has a device-agnostic spectrum pipeline in `pkg/spectrum/` with a common driver interface and shared isotope analyzer/catalog.
 
-. /etc/rc.subr
+## Acknowledgements
 
-name="chicha_isotope_map"
-rcvar=$name
-command="/usr/pkg/bin/chicha-isotope-map"
-command_args="-port 8765"
-pidfile="/var/run/${name}.pid"
-
-load_rc_config $name
-: ${chicha_isotope_map:=NO}
-
-run_rc_command "$1"
-RC
-chmod +x /etc/rc.d/chicha_isotope_map
-if ! grep -q '^chicha_isotope_map=YES' /etc/rc.conf; then echo chicha_isotope_map=YES >> /etc/rc.conf; fi
-service chicha_isotope_map start'
-```
-
-Минимальная настройка (по желанию):
-- `-port 8765` — порт для локального запуска.
-- `-domain maps.example.org` — подключить домен и HTTPS (потребуются 80/443).
-- `-default-lat` / `-default-lon` / `-default-zoom` / `-default-layer` — стартовый вид карты.
-- Хранилище: `-db-type sqlite|duckdb|chai|clickhouse|pgx`, `-db-path` для файловых баз, `-db-conn` для сетевых.
-
-### Вариант 2. Публичный узел с доменом
-1. Запустите бинарник с вашим доменом:
-   ```bash
-   ./chicha-isotope-map -domain example.org
-   ```
-2. Порты 80/443 понадобятся для сертификата Let’s Encrypt. После выпуска карта будет по адресу [https://example.org](https://example.org).
-
-### Вариант 3. Docker (всё уже упаковано)
-1. Установите приложение Docker (Desktop или CLI).
-2. Найдите образ **matveynator/chicha-isotope-map** на Docker Hub и нажмите **Run** (или выполните одну команду):
-   ```bash
-   docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-map:latest
-   ```
-3. Откройте [http://localhost:8765](http://localhost:8765) — готово.
-
----
-
-## 📥 Как наполнить данными
-- На странице карты нажмите зелёную кнопку **Upload** и загрузите свои треки (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, логи bGeigie Nano/Zen `$BNRDD`, экспорт AtomFast, RadiaCode, Safecast и др.).
-- Хотите полную копию pelora.org? Один раз выполните `chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz` — он скачает еженедельный архив, заполнит базу и завершится, чтобы следующий запуск сразу показывал живые точки.
-- Если удобнее скачать архив заранее: возьмите [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz), запустите с `-import-tgz-path /путь/к/weekly.tgz` и поднимайте карту с локальной копией.
-
-### 🗺️ Первый запуск с живыми данными одной командой
-На чистой системе введите только это — и карта сразу наполнится и откроется:
-```bash
-chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
-```
-После импорта перезапустите обычным способом (или оставьте эту же команду в сервисе systemd). Откройте [http://localhost:8765](http://localhost:8765) — на карте сразу видны реальные измерения.
-
-### 🛢️ Вариции с базами данных при импорте и в обычной работе:
-- **PostgreSQL (`pgx`)** — самая быстрая и удобная при нескольких пользователях. Пример: `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
-- **DuckDB / SQLite / Chai** — простые файловые базы для одного пользователя. При параллельной записи возможны конфликты, поэтому оставляйте их для персональных карт. Пример: `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
-
-## 📤 Экспорт
-- Один трек: `/api/track/{trackID}.json` (старые `.cim` тоже работают).
-- Архив по расписанию: `/api/json/weekly.tgz` (или `/daily.tgz`, `/monthly.tgz`, `/yearly.tgz`). Внутри — отдельный JSON-файл на каждый трек.
-
----
-
-## 🧠 Продвинутые опции
-- Базы данных: по умолчанию встроенная SQLite; можно переключить на DuckDB, Chai, ClickHouse или PostgreSQL (`pgx`).
-- Импорт: по URL или файлом, можно подавать сразу архив.
-- Экспорт: JSON-архивы, один трек, старые `.cim` поддерживаются.
-- Настройка внешнего вида: стартовые координаты и слой (`-default-*`).
-
----
-
-## 🤝 Зачем свой узел и немного истории
-- Мы хотели, чтобы человек без подготовки мог увидеть: есть ли радиация там, где он живёт, растит еду или берёт воду.
-- Чем больше узлов, тем надёжнее общая картина и меньше шанс пропустить загрязнение.
-
-Chicha‑Isotope‑Map вдохновлена шагами **Дмитрия Игнатенко** в полевых исследованиях, а также идеями **Rob Oudendijk** и проекта **Safecast**. Открытые данные сообществ AtomFast и Radiacode помогают делать карту полезной. Если карта поможет спасти чью-то жизнь, значит, она сделана не зря.
+This project was conceived to grant people a clear and immediate understanding of radiation safety in the very places they inhabit.

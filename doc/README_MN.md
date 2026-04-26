@@ -1,116 +1,117 @@
-[![Сүүлийн тогтвортой бүтээц](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
+[🇬🇧 English](/README.md) | [🇫🇷 Français](/doc/README_FR.md) | [🇯🇵 日本語](/doc/README_JP.md) | [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md) | [🇮🇹 Italiano](/doc/README_IT.md) | [🇨🇳 中文](/doc/README_ZH.md) | [🇮🇳 हिन्दी](/doc/README_HI.md) | [🇮🇷 فارسی](/doc/README_FA.md) | [🇷🇺 Русский](/doc/README_RU.md) | [🇲🇳 Монгол](/doc/README_MN.md) | [🇰🇿 Қазақша](/doc/README_KK.md)
 
-<img width="30%" align="left" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/39bfa7b1-03fb-43dd-89bd-8d6c516fd4db" />
+# Chicha Isotope Map (Монгол)
 
-- [🇬🇧 English](/README.md)
-- [🇫🇷 Français](/doc/README_FR.md)
-- [🇯🇵 日本語](/doc/README_JP.md)
-- [🇷🇺 Русский](/doc/README_RU.md)
-- [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md)
-- [🇮🇹 Italiano](/doc/README_IT.md)
-- [🇨🇳 中文](/doc/README_ZH.md)
-- [🇮🇳 हिन्दी](/doc/README_HI.md)
-- [🇮🇷 فارسی](/doc/README_FA.md)
-- [🇲🇳 Монгол](/doc/README_MN.md)
-- [🇰🇿 Қазақша](/doc/README_KK.md)
+Энэ хувилбар нь монгол орчуулгатай бөгөөд одоогийн англи README-тэй агуулгын хувьд синк хийгдсэн.
 
-# ☢️ Дэлхийн цацрагийн газрын зураг
-Энэ зураг нь тусгай бэлтгэлгүй хүнд ч ойролцоох байшин, тариалан, ой, усны эх цацрагийн аюулд өртөж байгаа эсэхийг шууд харах боломж олгох зорилготой. Цэвэр бүсүүд ихэвчлэн 2–3 µR/h орчим байдаг; бараан толбонууд ихэнхдээ хүний үйл ажиллагаанаас үүдэлтэй. Газрын зураг Чех, Орос, Казахстан, Монголын ураны уурхайнууд хэрхэн урт мөр үлдээснийг; Фукушима Японы эрэг дээр хар-улаан “хавдар” мэт харагддагийг; Чернобыль, Брянскийн бүс нутаг хэрхэн ул мөр үлдээдгийг; Франц, Чех, Кавказын эрдэс усны бүсэд радоны судлууд эрсдэлийг хэрхэн нэмэгдүүлдгийг харуулна. Уран, ховор элементийн уусалт уусдаг давс үлдээж, усны давхаргад нэвчин эцэст нь ус, хоол хүнсэнд ордог. Хэрэв энэ зураг нэг ч гэсэн хүн эсвэл амьтныг хамгаалбал бүтээх нь утгатай.
+<div align="center">
+  <img src="https://raw.githubusercontent.com/matveynator/chicha-isotope-map/main/public_html/images/chicha-isotope-map-round-logo.png" alt="Chicha Isotope Map logo" width="120" />
 
-Онлайн демо: [https://pelora.org/](https://pelora.org/) — таны зангилаа яг ийм харагдана.
+Download page for the latest stable build: <a href="https://matveynator.github.io/chicha-isotope-map/">matveynator.github.io/chicha-isotope-map</a> <br>
+Radiacode, AtomFast, BGeigie Safecast devices supported.
 
-👉 [Нэгтгэсэн татах хуудас](https://github.com/matveynator/chicha-isotope-map/releases) (бүх платформ, хамгийн сүүлийн бүтээц)
+[![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
-👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
+[Live demo](https://pelora.org/)
 
----
+</div>
 
-### 📸 Жишээ харагдац
-<p>
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Fukushima view in chicha-isotope-map" src="https://github.com/user-attachments/assets/617a0ced-4280-41c2-9320-de1cfd33a61f" /></a><br />
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Safecast realtime radiation sensors in chicha-isotope-map" src="https://github.com/user-attachments/assets/13256b23-744d-4d02-a26c-ae9aef5b0d87" /></a><br />
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Air flights radiation in chicha-isotope-map" src="https://github.com/user-attachments/assets/cf0189c9-534f-4ff5-9d7a-ed5836e91ef5" /></a>
-</p>
+## Downloads (Stable Release)
 
----
+Use the **Stable Release** channel so one constant link always points to the newest binaries built from commits containing `stable release`.
 
-## 🧭 Дотор нь юу байна
-- Олон детектортой шууд газрын зураг; таалагдсан давхаргаа сонгоно уу.
-- Өөрийн трекүүдийг байршуулаарай; шинэ цэгүүд таны үзэж буй бүсийн ойролцоо даруй гарч ирнэ.
-- URL эсвэл файлаа ашиглан импортлох, архив болгон экспортлох.
-- Нэг зангилаа эсвэл сүлжээгээр ажиллуулна: зангилаа олон байх тусам ил тод байдал нэмэгдэнэ.
+- **Smart download page (recommended):** https://matveynator.github.io/chicha-isotope-map/
+- **Stable Release tag (all artifacts):** https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release
 
-Төсөл **Safecast** болон олон нийтийн дэмжлэгтэй өсөж байна: олон чухал санааг **Rob Oudendijk** болон дэлхий даяарх нээлттэй дозиметрийн найзууд санал болгосон (Greenpeace болон бусад байгаль орчны багуудад баярлалаа).
+### Desktop app (GUI)
 
----
+| OS | Architecture / Variant | Artifact |
+|---|---|---|
+| macOS | Universal (Intel + Apple Silicon) | [chicha-isotope-map_darwin_universal_desktop.dmg](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_universal_desktop.dmg) |
+| Windows | amd64 | [chicha-isotope-map_windows_amd64_desktop.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.zip) |
+| Windows | arm64 | [chicha-isotope-map_windows_arm64_desktop.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.zip) |
+| Linux GTK 4.0 (Ubuntu 22.04 / Mint 21.x) | amd64 | [chicha-isotope-map_linux_amd64_desktop_gtk40.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk40.zip) |
+| Linux GTK 4.0 (Ubuntu 22.04 / Mint 21.x) | arm64 | [chicha-isotope-map_linux_arm64_desktop_gtk40.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk40.zip) |
+| Linux GTK 4.1 (Ubuntu 24.04+ / Mint 22+) | amd64 | [chicha-isotope-map_linux_amd64_desktop_gtk41.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip) |
+| Linux GTK 4.1 (Ubuntu 24.04+ / Mint 22+) | arm64 | [chicha-isotope-map_linux_arm64_desktop_gtk41.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk41.zip) |
 
-## 🚀 Түргэн эхлэх (шинэчүүдэд)
-Хамгийн хурдан зам: бэлэн бинарийг тат. Docker, өгөгдлийн сан, нэмэлт хэрэгсэл хэрэггүй — тат, ажиллуул, боллоо.
+### Server binaries (self-hosted)
 
-### Сонголт 1. Бинар (санал болгодог)
-1) [Релизийн хуудас](https://github.com/matveynator/chicha-isotope-map/releases)-ыг нээгээд өөрийн системд тохирох бүтээцийг тат.
-2) Гүйцэтгэх эрх өгөөд ажиллуул:
+| OS | Architecture | Artifact |
+|---|---|---|
+| Linux | amd64 | [chicha-isotope-map_linux_amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64) |
+| Linux | arm64 | [chicha-isotope-map_linux_arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64) |
+| Windows | amd64 | [chicha-isotope-map_windows_amd64.exe](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64.exe) |
+| Windows | arm64 | [chicha-isotope-map_windows_arm64.exe](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64.exe) |
+| macOS | amd64 | [chicha-isotope-map_darwin_amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64) |
+| macOS | arm64 | [chicha-isotope-map_darwin_arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64) |
+| FreeBSD | amd64 / arm64 | [Stable Release assets](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) |
+| OpenBSD | amd64 / arm64 | [Stable Release assets](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) |
+
+### Quick run
+
+Windows:
+1. Download a `.zip` desktop build (or `.exe` server build).
+2. Extract if needed.
+3. Run the binary. If SmartScreen appears: **More info → Run anyway**.
+
+macOS (server binary example):
 ```bash
-chmod +x ./chicha-isotope-map
+chmod +x ./chicha-isotope-map_darwin_*
+./chicha-isotope-map_darwin_*
+```
+
+Linux desktop (GTK 4.1 amd64 example):
+```bash
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip -o chicha-isotope-map-desktop.zip
+unzip chicha-isotope-map-desktop.zip
+chmod +x ./chicha-isotope-map_linux_amd64_desktop_gtk41
+./chicha-isotope-map_linux_amd64_desktop_gtk41
+```
+
+Linux server quick install:
+```bash
+sudo curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
+sudo chmod +x /usr/local/bin/chicha-isotope-map
+/usr/local/bin/chicha-isotope-map
+```
+Open: http://localhost:8765
+
+## Configuration and deployment
+
+### Useful flags
+- `-port 8765`
+- `-domain your-domain.example`
+- `-default-lat`, `-default-lon`, `-default-zoom`, `-default-layer`
+- `-mapbox-token YOUR_TOKEN`
+- `-setup` (Linux only)
+- `-import-tgz-url URL`
+- `-import-tgz-path /path/to/file.tgz`
+
+### Database flags
+- `-db-type sqlite|duckdb|chai|clickhouse|pgx`
+- `-db-path /path/to/file`
+- `-db-conn CONNECTION_STRING`
+
+### Build from source
+
+Desktop WebView builds require CGO.
+
+```bash
+CGO_ENABLED=1 go build -tags desktop .
+./chicha-isotope-map -desktop
+```
+
+Server-only binary (no embedded desktop window):
+```bash
+CGO_ENABLED=0 go build .
 ./chicha-isotope-map
 ```
-3) [http://localhost:8765](http://localhost:8765)-ыг нээгээд — зураг аль хэдийн ажиллаж байна.
 
-Нэмэлт тохиргоо:
-- `-port 8765` — локал порт.
-- `-domain maps.example.org` — Let’s Encrypt-тэй HTTPS (80/443 хэрэгтэй).
-- `-default-lat` / `-default-lon` / `-default-zoom` / `-default-layer` — эхний харагдац.
-- Хадгалалт: `-db-type sqlite|duckdb|chai|clickhouse|pgx`, файлд суурилсан DB-д `-db-path`, сүлжээнийхэд `-db-conn`.
+## Universal isotope catalog and spectrum drivers
 
-### Сонголт 2. Домэйнтай олон нийтэд нээлттэй зангилаа
-1) Бинарийг өөрийн домэйнтэй ажиллуул:
-```bash
-./chicha-isotope-map -domain example.org
-```
-2) Let’s Encrypt-д зориулж 80/443 портыг нээлттэй байлга. Дуусмагц сайт [https://example.org](https://example.org)-д байна.
+The project now has a device-agnostic spectrum pipeline in `pkg/spectrum/` with a common driver interface and shared isotope analyzer/catalog.
 
-### Сонголт 3. Docker (бүгд багцлагдсан)
-1) Docker-ийг суулга (Desktop эсвэл CLI).
-2) Docker Hub дээр **matveynator/chicha-isotope-map**-ийг хайж **Run** дээр дар (эсвэл энэ командыг ашигла):
-```bash
-docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-map:latest
-```
-3) [http://localhost:8765](http://localhost:8765)-ыг нээ — бэлэн.
+## Acknowledgements
 
----
-
-## 📥 Өгөгдөл импортлох
-- Газрын зургийн хуудсан дээрх ногоон **Upload** товчийг дарж трекээ байршуул (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, bGeigie Nano/Zen `$BNRDD`, AtomFast экспорт, RadiaCode, Safecast гэх мэт).
-- pelora.org-ийн толь хэрэгтэй юу? `chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz`-ийг нэг удаа ажиллуул — долоо хоногийн архивыг татаж, өгөгдлийн санг дүүргээд гарах тул дараагийн эхлэл шууд өгөгдөлтэй болно.
-- Архивыг урьдчилж татахыг хүсвэл [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz)-ийг авч, `-import-tgz-path /path/to/weekly.tgz`-тай ажиллуулж, локал хуулбараа ашигла.
-
-### 🗺️ Нэг командaar анхны ажиллуулалт ба амьд өгөгдөл
-Шинэ систем дээр дараахыг ажиллуул:
-```bash
-chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
-```
-Импортын дараа хэвийн маягаар дахин ажиллуул (эсвэл мөн командыг systemd-д тавь) — [http://localhost:8765](http://localhost:8765) дээр бодит хэмжилтүүд шууд харагдана.
-
-### 🛢️ Импорт ба өдөр тутмын хэрэглээнд тохирох өгөгдлийн сан
-- **PostgreSQL (`pgx`)** — хамгийн хурдан, олон хэрэглэгчтэй үед сайн. Жишээ: `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
-- **DuckDB / SQLite / Chai** — нэг хэрэглэгчид тохирох файлын шийдлүүд. Давхар бичилт зөрчилдөх тул хувийн зурагт тохиромжтой. Жишээ: `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
-
-## 📤 Экспорт
-- Нэг трек: `/api/track/{trackID}.json` (хуучин `.cim` бас дэмжинэ).
-- Төлөвлөсөн архив: `/api/json/weekly.tgz` (эсвэл `/daily.tgz`, `/monthly.tgz`, `/yearly.tgz`). Дотор нь: трек бүрийн нэг JSON.
-
----
-
-## 🧠 Дэвшилтэт тохиргоо
-- Өгөгдлийн сан: анхдагч нь суурилуулсан SQLite; DuckDB, Chai, ClickHouse эсвэл PostgreSQL (`pgx`) руу шилжүүлж болно.
-- Импорт: URL эсвэл файл, архив ч мөн шууд өгч болно.
-- Экспорт: JSON архив, ганц трек, `.cim` нийцтэй.
-- Гадаад төрх: эхний координат, давхарга (`-default-*`).
-
----
-
-## 🤝 Өөрийн зангилаа яагаад хэрэгтэй вэ, бага зэрэг түүх
-- Бид хүн бүр сургалтгүйгээр өөрийн амьдардаг, тариалдаг, ус авч буй газарт цацрагийн аюул байгаа эсэхийг хараасай гэж хүссэн.
-- Зангилаа олшрох тусам нийт зураг илүү найдвартай болж, бохирдлыг алдах магадлал багасна.
-
-Chicha‑Isotope‑Map нь **Dmitry Ignatenko**-гийн талбайн судалгаанаас урам авч, **Rob Oudendijk** болон **Safecast**-ын нөлөөгөөр хөгжсөн. AtomFast, Radiacode олон нийтийн нээлттэй өгөгдөл энэ зургийг хэрэгтэй байлгана. Хэрэв энэ зураг нэг амь аварвал хий дэмий бүтээгдээгүй.
+This project was conceived to grant people a clear and immediate understanding of radiation safety in the very places they inhabit.
