@@ -1250,7 +1250,7 @@ body, html {
         /* Render speed filter rows as compact cards with icon + two-line label. */
         .speed-filter-control {
           padding: 2px 4px;
-          background: rgba(255, 255, 255, 0.8);
+          background: rgba(255, 255, 255, 0.7);
           border: 1px solid rgba(0, 0, 0, 0.14);
           border-radius: 8px;
           min-width: 126px;
@@ -1258,18 +1258,17 @@ body, html {
         }
 
         :root[data-theme='dark'] .speed-filter-control {
-          background: rgba(24, 28, 34, 0.8);
+          background: rgba(24, 28, 34, 0.7);
           border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .speed-filter-row {
-          display: grid;
-          grid-template-columns: 12px 16px minmax(0, 1fr);
+          display: flex;
           align-items: center;
-          gap: 4px;
+          gap: 3px;
           cursor: pointer;
           padding: 3px 0;
-          white-space: normal;
+          white-space: nowrap;
         }
 
         .speed-filter-row + .speed-filter-row {
@@ -1281,9 +1280,18 @@ body, html {
         }
 
         .speed-filter-row input[type='checkbox'] {
+          display: block;
+          flex: 0 0 11px;
           width: 11px;
           height: 11px;
           margin: 0;
+        }
+
+        .speed-filter-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 16px;
         }
 
         .speed-filter-icon img {
@@ -1291,6 +1299,13 @@ body, html {
           width: 16px;
           height: 16px;
           object-fit: contain;
+        }
+
+        .speed-filter-row > span:last-child {
+          display: inline-flex;
+          flex-direction: column;
+          justify-content: center;
+          min-width: 0;
         }
 
         .speed-filter-title {
@@ -1313,14 +1328,18 @@ body, html {
           }
 
           .speed-filter-row {
-            grid-template-columns: 11px 14px minmax(0, 1fr);
-            gap: 3px;
+            gap: 2px;
             padding: 3px 0;
           }
 
           .speed-filter-row input[type='checkbox'] {
+            flex-basis: 10px;
             width: 10px;
             height: 10px;
+          }
+
+          .speed-filter-icon {
+            flex-basis: 14px;
           }
 
           .speed-filter-icon img {
