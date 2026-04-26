@@ -79,6 +79,142 @@ sudo chmod +x /usr/local/bin/chicha-isotope-map
 ```
 Open: http://localhost:8765
 
+### Autostart service scripts (copy/paste)
+The commands below follow the stable download page conventions (Linux systemd setup and FreeBSD/OpenBSD quick install) and use stable-release artifact names.
+
+#### Linux + systemd (amd64)
+```bash
+sudo bash -c 'set -euo pipefail
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
+chmod +x /usr/local/bin/chicha-isotope-map
+cat >/etc/systemd/system/chicha-isotope-map.service <<"UNIT"
+[Unit]
+Description=Chicha Isotope Map
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/chicha-isotope-map -port 8765
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now chicha-isotope-map
+systemctl status --no-pager chicha-isotope-map || true'
+```
+
+#### Linux + systemd (arm64)
+```bash
+sudo bash -c 'set -euo pipefail
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64 -o /usr/local/bin/chicha-isotope-map
+chmod +x /usr/local/bin/chicha-isotope-map
+cat >/etc/systemd/system/chicha-isotope-map.service <<"UNIT"
+[Unit]
+Description=Chicha Isotope Map
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/chicha-isotope-map -port 8765
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now chicha-isotope-map
+systemctl status --no-pager chicha-isotope-map || true'
+```
+
+#### FreeBSD (rc.d, amd64/arm64)
+```bash
+# amd64: change URL to *_arm64 for arm64 hosts
+sudo sh -c 'set -eu
+fetch -o /usr/local/bin/chicha-isotope-map https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_amd64
+chmod +x /usr/local/bin/chicha-isotope-map
+cat >/usr/local/etc/rc.d/chicha_isotope_map <<"RC"
+#!/bin/sh
+# PROVIDE: chicha_isotope_map
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="chicha_isotope_map"
+rcvar="${name}_enable"
+command="/usr/local/bin/chicha-isotope-map"
+command_args="-port 8765 >> /var/log/chicha-isotope-map.log 2>&1"
+pidfile="/var/run/${name}.pid"
+
+load_rc_config $name
+: ${chicha_isotope_map_enable:=NO}
+
+run_rc_command "$1"
+RC
+chmod +x /usr/local/etc/rc.d/chicha_isotope_map
+sysrc chicha_isotope_map_enable=YES
+service chicha_isotope_map start'
+```
+
+#### OpenBSD (rc.d, amd64/arm64)
+```bash
+# amd64: change URL to *_arm64 for arm64 hosts
+sudo sh -c 'set -eu
+ftp -o /usr/local/bin/chicha-isotope-map https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_amd64
+chmod +x /usr/local/bin/chicha-isotope-map
+cat >/etc/rc.d/chicha_isotope_map <<"RC"
+#!/bin/ksh
+
+daemon="/usr/local/bin/chicha-isotope-map"
+daemon_flags="-port 8765"
+
+. /etc/rc.d/rc.subr
+
+rc_bg=YES
+rc_cmd $1
+RC
+chmod +x /etc/rc.d/chicha_isotope_map
+rcctl enable chicha_isotope_map
+rcctl start chicha_isotope_map'
+```
+
+#### NetBSD (rc.d, amd64/arm64)
+```bash
+# Build binary on NetBSD first (replace GOARCH with arm64 when needed):
+# GOOS=netbsd GOARCH=amd64 go build -o chicha-isotope-map .
+
+sudo sh -c 'set -eu
+install -m 0755 ./chicha-isotope-map /usr/pkg/bin/chicha-isotope-map
+cat >/etc/rc.d/chicha_isotope_map <<"RC"
+#!/bin/sh
+# PROVIDE: chicha_isotope_map
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="chicha_isotope_map"
+rcvar=$name
+command="/usr/pkg/bin/chicha-isotope-map"
+command_args="-port 8765"
+pidfile="/var/run/${name}.pid"
+
+load_rc_config $name
+: ${chicha_isotope_map:=NO}
+
+run_rc_command "$1"
+RC
+chmod +x /etc/rc.d/chicha_isotope_map
+if ! grep -q '^chicha_isotope_map=YES' /etc/rc.conf; then echo chicha_isotope_map=YES >> /etc/rc.conf; fi
+service chicha_isotope_map start'
+```
+
 ---
 
 ## Program screenshots
