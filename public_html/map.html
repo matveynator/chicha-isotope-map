@@ -1072,9 +1072,7 @@ body, html {
 
         /* Keep base layer chooser and zoom control in one visual family. */
         .leaflet-control-layers,
-        .leaflet-control-layers-expanded,
-        .leaflet-control-zoom,
-        .leaflet-control-zoom a {
+        .leaflet-control-layers-expanded {
           border-radius: 10px;
           border: 1px solid rgba(0, 0, 0, 0.14);
           box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
@@ -1082,9 +1080,7 @@ body, html {
         }
 
         :root[data-theme='dark'] .leaflet-control-layers,
-        :root[data-theme='dark'] .leaflet-control-layers-expanded,
-        :root[data-theme='dark'] .leaflet-control-zoom,
-        :root[data-theme='dark'] .leaflet-control-zoom a {
+        :root[data-theme='dark'] .leaflet-control-layers-expanded {
           border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
@@ -1267,26 +1263,27 @@ body, html {
 
         /* Render speed filter rows as compact cards with icon + two-line label. */
         .speed-filter-control {
-          padding: 4px 6px;
-          background: rgba(255, 255, 255, 0.82);
+          padding: 3px 4px;
+          background: rgba(255, 255, 255, 0.6);
           border: 1px solid rgba(0, 0, 0, 0.14);
           border-radius: 10px;
-          min-width: 154px;
-          max-width: 176px;
+          width: fit-content;
+          min-width: 0;
+          max-width: none;
         }
 
         :root[data-theme='dark'] .speed-filter-control {
-          background: rgba(24, 28, 34, 0.82);
+          background: rgba(24, 28, 34, 0.6);
           border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .speed-filter-row {
           display: grid;
-          grid-template-columns: 12px 20px minmax(0, 1fr);
+          grid-template-columns: 11px 18px auto;
           align-items: center;
-          column-gap: 5px;
+          column-gap: 4px;
           cursor: pointer;
-          padding: 5px 1px;
+          padding: 4px 0;
         }
 
         .speed-filter-row + .speed-filter-row {
@@ -1316,14 +1313,14 @@ body, html {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 20px;
-          height: 20px;
+          width: 18px;
+          height: 18px;
         }
 
         .speed-filter-icon img {
           display: block;
-          width: 18px;
-          height: 18px;
+          width: 16px;
+          height: 16px;
           object-fit: contain;
         }
 
@@ -1335,27 +1332,27 @@ body, html {
         }
 
         .speed-filter-title {
-          font-size: 12px;
+          font-size: 11px;
           line-height: 1.15;
           font-weight: 600;
+          white-space: nowrap;
         }
 
         .speed-filter-subtitle {
-          font-size: 9px;
+          font-size: 8px;
           line-height: 1.15;
           opacity: 0.8;
+          white-space: nowrap;
         }
 
         @media (max-width: 480px) {
           .speed-filter-control {
-            min-width: 146px;
-            max-width: 166px;
-            padding: 4px 5px;
+            padding: 3px 4px;
           }
 
           .speed-filter-row {
-            grid-template-columns: 11px 17px minmax(0, 1fr);
-            column-gap: 4px;
+            grid-template-columns: 10px 16px auto;
+            column-gap: 3px;
             padding: 4px 0;
           }
 
@@ -1370,16 +1367,16 @@ body, html {
           }
 
           .speed-filter-icon img {
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
           }
 
           .speed-filter-title {
-            font-size: 11px;
+            font-size: 10px;
           }
 
           .speed-filter-subtitle {
-            font-size: 9px;
+            font-size: 8px;
           }
         }
 
