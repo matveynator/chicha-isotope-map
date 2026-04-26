@@ -6099,6 +6099,36 @@ func radiacodeLivePointHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// desktopBluetoothScanHandler exposes host-side discovery for desktop runtimes
+// where Web Bluetooth is unavailable in the embedded webview. Keeping scan logic
+// in the backend mirrors existing native file-dialog handlers.
+func desktopBluetoothScanHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	devices, err := desktop.ScanRadiacodeDevices(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":      true,
+		"devices": devices,
+	})
+}
+
 func manualSpectrumPointHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -8351,6 +8381,7 @@ func main() {
 	http.HandleFunc("/licenses/", licenseHandler)
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/desktop/upload-native", desktopNativeUploadHandler)
+	http.HandleFunc("/desktop/bluetooth/scan", desktopBluetoothScanHandler)
 	http.HandleFunc("/api/spectrum/manual-point", manualSpectrumPointHandler)
 	http.HandleFunc("/api/spectrum/attach-track", attachSpectrumToTrackHandler)
 	http.HandleFunc("/api/spectrum/attach-area", attachSpectrumToAreaHandler)

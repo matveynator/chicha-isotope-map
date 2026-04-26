@@ -9502,9 +9502,34 @@ function centerMapToLocation() {
     if (!response.ok) throw new Error('save failed with HTTP ' + response.status);
   }
 
+  async function scanRadiacodeDevicesViaDesktopBridge() {
+    const response = await fetch('/desktop/bluetooth/scan');
+    if (!response.ok) throw new Error('desktop scan failed with HTTP ' + response.status);
+    const payload = await response.json();
+    const discoveredDevices = Array.isArray(payload.devices) ? payload.devices : [];
+    if (!discoveredDevices.length) {
+      alert('Desktop Bluetooth scan finished: Radiacode devices not found.');
+      return;
+    }
+    const lines = discoveredDevices.map(function(discoveredDevice, index) {
+      const nameText = discoveredDevice && discoveredDevice.name ? String(discoveredDevice.name) : 'unknown name';
+      const addressText = discoveredDevice && discoveredDevice.address ? String(discoveredDevice.address) : 'unknown address';
+      return String(index + 1) + '. ' + nameText + ' [' + addressText + ']';
+    });
+    alert('Desktop Bluetooth scan found:\\n' + lines.join('\\n') + '\\n\\nNext step: select a device in native desktop bridge (planned in next patch).');
+  }
+
   async function connectRadiacodeBluetoothAndStream() {
+    if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      alert('Web Bluetooth requires HTTPS (secure context).');
+      return;
+    }
     if (!navigator.bluetooth) {
-      alert('Web Bluetooth is not available in this runtime.');
+      if (window.desktopWebViewMode) {
+        await scanRadiacodeDevicesViaDesktopBridge();
+        return;
+      }
+      alert('Web Bluetooth is not available. Open the site over HTTPS or localhost, or use desktop mode with native bridge.');
       return;
     }
 
