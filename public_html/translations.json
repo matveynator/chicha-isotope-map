@@ -153,7 +153,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "بيانات realtime"
+    "desktop_admin_option_realtime_updates": "بيانات realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "cs": {
     "api_example_archive_desc": "Stáhne archiv tgz se všemi zveřejněnými soubory .json, pokud je JSON archiv zapnutý.",
@@ -327,7 +335,15 @@
     "map_cache_reset_title": "Reset offline cache?",
     "map_cache_reset_text": "This will remove saved map tiles and cached marker streams from this browser.",
     "map_cache_cancel": "Cancel",
-    "map_cache_reset_button": "Reset"
+    "map_cache_reset_button": "Reset",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "da": {
     "api_example_archive_desc": "Downloader en tgz-pakke med alle offentliggjorte .json-filer når JSON-arkivet er aktiveret.",
@@ -483,7 +499,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime-data"
+    "desktop_admin_option_realtime_updates": "Realtime-data",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "de": {
     "api_example_archive_desc": "Lädt ein tgz-Paket mit allen veröffentlichten .json-Dateien, sofern das JSON-Archiv aktiv ist.",
@@ -639,7 +663,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime-Daten"
+    "desktop_admin_option_realtime_updates": "Realtime-Daten",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "el": {
     "api_example_archive_desc": "Κατεβάζει ένα αρχείο tgz με όλα τα δημοσιευμένα αρχεία .json όταν είναι ενεργό το JSON αρχείο.",
@@ -795,7 +827,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Δεδομένα realtime"
+    "desktop_admin_option_realtime_updates": "Δεδομένα realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "en": {
     "api_example_archive_desc": "Downloads a tgz bundle with every published .json file when the server enables the JSON archive.",
@@ -972,7 +1012,15 @@
     "map_cache_reset_title": "Reset offline cache?",
     "map_cache_reset_text": "This will remove saved map tiles and cached marker streams from this browser.",
     "map_cache_cancel": "Cancel",
-    "map_cache_reset_button": "Reset"
+    "map_cache_reset_button": "Reset",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "es": {
     "api_example_archive_desc": "Descarga un paquete tgz con todos los archivos .json publicados cuando el archivo JSON está activado.",
@@ -1128,7 +1176,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Datos realtime"
+    "desktop_admin_option_realtime_updates": "Datos realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "fa": {
     "api_example_archive_desc": "وقتی آرشیو JSON فعال باشد یک بسته tgz شامل تمام فایل‌های .json منتشرشده را دانلود می‌کند.",
@@ -1284,7 +1340,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "داده‌های realtime"
+    "desktop_admin_option_realtime_updates": "داده‌های realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "fi": {
     "api_example_archive_desc": "Lataa tgz-paketin, jossa on kaikki julkaistut .json-tiedostot, kun JSON-arkisto on käytössä.",
@@ -1440,7 +1504,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime-data"
+    "desktop_admin_option_realtime_updates": "Realtime-data",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "fr": {
     "api_example_archive_desc": "Télécharge une archive tgz avec tous les fichiers .json publiés lorsque l’archive JSON est activée.",
@@ -1596,7 +1668,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Données realtime"
+    "desktop_admin_option_realtime_updates": "Données realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "he": {
     "api_example_archive_desc": "מורידה חבילת tgz עם כל קבצי .json שפורסמו כאשר ארכיון ה-JSON מופעל.",
@@ -1752,7 +1832,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "נתוני realtime"
+    "desktop_admin_option_realtime_updates": "נתוני realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "hi": {
     "api_example_archive_desc": "JSON संग्रह सक्षम होने पर सभी प्रकाशित .json फ़ाइलों वाला tgz पैकेज डाउनलोड करता है।",
@@ -1908,7 +1996,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "realtime डेटा"
+    "desktop_admin_option_realtime_updates": "realtime डेटा",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "hu": {
     "api_example_archive_desc": "Letölt egy tgz csomagot az összes közzétett .json fájllal, ha a JSON archívum engedélyezett.",
@@ -2064,7 +2160,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime adatok"
+    "desktop_admin_option_realtime_updates": "Realtime adatok",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "id": {
     "api_example_archive_desc": "Mengunduh paket tgz dengan semua berkas .json yang dipublikasikan saat arsip JSON diaktifkan.",
@@ -2220,7 +2324,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Data realtime"
+    "desktop_admin_option_realtime_updates": "Data realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "it": {
     "api_example_archive_desc": "Scarica un archivio tgz con tutti i file .json pubblicati quando l’archivio JSON è attivo.",
@@ -2376,7 +2488,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Dati realtime"
+    "desktop_admin_option_realtime_updates": "Dati realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "ja": {
     "api_example_archive_desc": "JSON アーカイブが有効な場合、公開済みの .json ファイルをすべて含む tgz バンドルをダウンロードします。",
@@ -2532,7 +2652,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "realtime データ"
+    "desktop_admin_option_realtime_updates": "realtime データ",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "ko": {
     "api_example_archive_desc": "JSON 아카이브가 활성화된 경우 게시된 모든 .json 파일이 포함된 tgz 번들을 다운로드합니다.",
@@ -2688,7 +2816,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "realtime 데이터"
+    "desktop_admin_option_realtime_updates": "realtime 데이터",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "ms": {
     "api_example_archive_desc": "Memuat turun pakej tgz dengan semua fail .json yang diterbitkan apabila arkib JSON diaktifkan.",
@@ -2844,7 +2980,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Data realtime"
+    "desktop_admin_option_realtime_updates": "Data realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "nl": {
     "api_example_archive_desc": "Downloadt een tgz-pakket met alle gepubliceerde .json-bestanden wanneer het JSON-archief is ingeschakeld.",
@@ -3000,7 +3144,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime-gegevens"
+    "desktop_admin_option_realtime_updates": "Realtime-gegevens",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "no": {
     "api_example_archive_desc": "Laster ned en tgz-pakke med alle publiserte .json-filer når JSON-arkivet er aktivert.",
@@ -3156,7 +3308,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime-data"
+    "desktop_admin_option_realtime_updates": "Realtime-data",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "pl": {
     "api_example_archive_desc": "Pobiera paczkę tgz ze wszystkimi opublikowanymi plikami .json, gdy archiwum JSON jest włączone.",
@@ -3312,7 +3472,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Dane realtime"
+    "desktop_admin_option_realtime_updates": "Dane realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "pt": {
     "api_example_archive_desc": "Baixa um pacote tgz com todos os arquivos .json publicados quando o arquivo JSON está ativado.",
@@ -3468,7 +3636,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Dados realtime"
+    "desktop_admin_option_realtime_updates": "Dados realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "ru": {
     "api_example_archive_desc": "Скачивает архив tgz со всеми опубликованными файлами .json, если включён JSON‑архив.",
@@ -3642,7 +3818,15 @@
     "map_cache_reset_title": "Сбросить офлайн-кэш?",
     "map_cache_reset_text": "Это удалит сохранённые тайлы карты и кэшированные потоки маркеров в этом браузере.",
     "map_cache_cancel": "Отмена",
-    "map_cache_reset_button": "Сбросить"
+    "map_cache_reset_button": "Сбросить",
+    "speed_filter_button_live_title": "онлайн",
+    "speed_filter_button_live_subtitle": "метео",
+    "speed_filter_button_plane_title": "самолет",
+    "speed_filter_button_car_title": "автомобиль",
+    "speed_filter_button_ped_title": "пешеход",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "sv": {
     "api_example_archive_desc": "Hämtar ett tgz-paket med alla publicerade .json-filer när JSON-arkivet är aktiverat.",
@@ -3798,7 +3982,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime-data"
+    "desktop_admin_option_realtime_updates": "Realtime-data",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "th": {
     "api_example_archive_desc": "ดาวน์โหลดแพ็กเกจ tgz ที่มีไฟล์ .json ทั้งหมดเมื่อเปิดใช้งานคลัง JSON",
@@ -3954,7 +4146,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "ข้อมูล realtime"
+    "desktop_admin_option_realtime_updates": "ข้อมูล realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "tr": {
     "api_example_archive_desc": "JSON arşivi etkinse yayımlanmış tüm .json dosyalarıyla bir tgz paketi indirir.",
@@ -4110,7 +4310,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime veriler"
+    "desktop_admin_option_realtime_updates": "Realtime veriler",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "uk": {
     "api_example_archive_desc": "Завантажує tgz-пакет з усіма опублікованими файлами .json, коли JSON-архів увімкнено.",
@@ -4266,7 +4474,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Realtime дані"
+    "desktop_admin_option_realtime_updates": "Realtime дані",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "vi": {
     "api_example_archive_desc": "Tải gói tgz chứa mọi tệp .json đã công bố khi bật lưu trữ JSON.",
@@ -4422,7 +4638,15 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "Dữ liệu realtime"
+    "desktop_admin_option_realtime_updates": "Dữ liệu realtime",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   },
   "zh": {
     "api_example_archive_desc": "在启用 JSON 归档时，下载包含所有已发布 .json 文件的 tgz 包。",
@@ -4578,6 +4802,14 @@
     "desktop_admin_option_mapbox_token": "Mapbox API token",
     "desktop_admin_option_default_layer": "Default map layer",
     "desktop_admin_option_mapbox_enable": "Enable Mapbox layer",
-    "desktop_admin_option_realtime_updates": "realtime 数据"
+    "desktop_admin_option_realtime_updates": "realtime 数据",
+    "speed_filter_button_live_title": "Safecast",
+    "speed_filter_button_live_subtitle": "meteo",
+    "speed_filter_button_plane_title": "Aircraft",
+    "speed_filter_button_car_title": "Car",
+    "speed_filter_button_ped_title": "On",
+    "speed_filter_button_plane_range": "> 250 km/h",
+    "speed_filter_button_car_range": "25 - 250 km/h",
+    "speed_filter_button_ped_range": "< 25 km/h"
   }
 }

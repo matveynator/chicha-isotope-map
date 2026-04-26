@@ -4917,46 +4917,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Build rows dynamically so the realtime checkbox only appears when supported server-side.
         const pieces = [];
-        function compactPhraseFromKey(translationKey, fallbackText, maxWords) {
-          const rawText = String(translate(translationKey) || '').trim();
-          if (!rawText) {
-            return fallbackText;
-          }
-          const tokens = rawText
-            .replace(/[:;.!?]+/g, ' ')
-            .split(/[\s,/–-]+/)
-            .map(function(token) { return token.trim(); })
-            .filter(function(token) { return token.length > 0; });
-          if (!tokens.length) {
-            return fallbackText;
-          }
-          return tokens.slice(0, Math.max(1, maxWords || 1)).join(' ');
-        }
-
-        const languageCode = (typeof currentLang !== 'undefined' && currentLang ? currentLang : 'en').toLowerCase();
-        const isRussianLanguage = languageCode.indexOf('ru') === 0;
-        const transportPlaneTitle = isRussianLanguage
-          ? 'самолет'
-          : compactPhraseFromKey('live_marker_transport_air', 'plane', 1).toLowerCase();
-        const transportCarTitle = isRussianLanguage
-          ? 'автомобиль'
-          : compactPhraseFromKey('live_marker_transport_car', 'car', 1).toLowerCase();
-        const transportPedTitle = isRussianLanguage
-          ? 'пешеход'
-          : compactPhraseFromKey('live_marker_transport_walk', 'walk', 1).toLowerCase();
-        const realtimeTitle = isRussianLanguage
-          ? 'онлайн'
-          : compactPhraseFromKey('live_marker_title', 'live', 1).toLowerCase();
-        const realtimeSubtitle = isRussianLanguage
-          ? 'метео'
-          : compactPhraseFromKey('live_marker_desc_radiation_sensor', 'meteo', 1).toLowerCase();
+        const realtimeTitle = translate('speed_filter_button_live_title');
+        const realtimeSubtitle = translate('speed_filter_button_live_subtitle');
+        const transportPlaneTitle = translate('speed_filter_button_plane_title');
+        const transportCarTitle = translate('speed_filter_button_car_title');
+        const transportPedTitle = translate('speed_filter_button_ped_title');
         if (window.safecastRealtimeEnabled) {
           pieces.push(row('sfLive', 'live', state.live, realtimeTitle, realtimeSubtitle));
         }
         pieces.push(
-          row('sfPlane', 'plane', state.plane, transportPlaneTitle, '> 250 km/h'),
-          row('sfCar', 'car', state.car, transportCarTitle, '25 - 250 km/h'),
-          row('sfPed', 'ped', state.ped, transportPedTitle, '< 25 km/h')
+          row('sfPlane', 'plane', state.plane, transportPlaneTitle, translate('speed_filter_button_plane_range')),
+          row('sfCar', 'car', state.car, transportCarTitle, translate('speed_filter_button_car_range')),
+          row('sfPed', 'ped', state.ped, transportPedTitle, translate('speed_filter_button_ped_range'))
         );
         div.innerHTML = pieces.join('');
 
