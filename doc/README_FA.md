@@ -1,116 +1,117 @@
-[![آخرین نسخه پایدار](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
+[🇬🇧 English](/README.md) | [🇫🇷 Français](/doc/README_FR.md) | [🇯🇵 日本語](/doc/README_JP.md) | [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md) | [🇮🇹 Italiano](/doc/README_IT.md) | [🇨🇳 中文](/doc/README_ZH.md) | [🇮🇳 हिन्दी](/doc/README_HI.md) | [🇮🇷 فارسی](/doc/README_FA.md) | [🇷🇺 Русский](/doc/README_RU.md) | [🇲🇳 Монгол](/doc/README_MN.md) | [🇰🇿 Қазақша](/doc/README_KK.md)
 
-<img width="30%" align="left" alt="chicha-isotope-map" src="https://github.com/user-attachments/assets/39bfa7b1-03fb-43dd-89bd-8d6c516fd4db" />
+# Chicha Isotope Map (فارسی)
 
-- [🇬🇧 English](/README.md)
-- [🇫🇷 Français](/doc/README_FR.md)
-- [🇯🇵 日本語](/doc/README_JP.md)
-- [🇷🇺 Русский](/doc/README_RU.md)
-- [🇨🇭 Schwiizerdütsch](/doc/README_DE_CH.md)
-- [🇮🇹 Italiano](/doc/README_IT.md)
-- [🇨🇳 中文](/doc/README_ZH.md)
-- [🇮🇳 हिन्दी](/doc/README_HI.md)
-- [🇮🇷 فارسی](/doc/README_FA.md)
-- [🇲🇳 Монгол](/doc/README_MN.md)
-- [🇰🇿 Қазақша](/doc/README_KK.md)
+این نسخه به فارسی ترجمه شده و از نظر محتوا با README انگلیسیِ فعلی همگام است.
 
-# ☢️ نقشه جهانی پرتوگیری
-هدف این نقشه این است که هر کسی بدون دانش تخصصی فوراً ببیند آیا خانه‌ها، زمین‌های کشاورزی، جنگل‌ها یا منابع آب اطراف در معرض پرتوگیری هستند یا نه. مناطق پاک معمولاً around 2–3 µR/h باقی می‌مانند؛ نقاط تیره‌تر تقریباً همیشه ناشی از فعالیت انسانی‌اند. نقشه نشان می‌دهد چگونه معادن اورانیوم در چک، روسیه، قزاقستان و مغولستان ردهای طولانی گذاشته‌اند؛ چگونه فوکوشیما مانند «توموری» سیاه‌ و سرخ در ساحل ژاپن نمایان است؛ چگونه چرنوبیل و منطقه بریانسک زمین را نشان‌گذاری کرده‌اند؛ و چگونه رگه‌های رادون در فرانسه، چک و آب‌های معدنی قفقاز خطر را بالا می‌برند. شسته شدن اورانیوم و عناصر نادر، نمک‌های محلول برجای می‌گذارد که به سفره‌های آب نفوذ می‌کنند و در نهایت به آب و غذای ما می‌رسند. اگر این نقشه حتی از یک انسان یا حیوان محافظت کند، ساختنش ارزش داشت.
+<div align="center">
+  <img src="https://raw.githubusercontent.com/matveynator/chicha-isotope-map/main/public_html/images/chicha-isotope-map-round-logo.png" alt="Chicha Isotope Map logo" width="120" />
 
-دموی آنلاین: [https://pelora.org/](https://pelora.org/) — گرهٔ شما هم همین‌طور دیده می‌شود.
+Download page for the latest stable build: <a href="https://matveynator.github.io/chicha-isotope-map/">matveynator.github.io/chicha-isotope-map</a> <br>
+Radiacode, AtomFast, BGeigie Safecast devices supported.
 
-👉 [صفحه واحد دانلود](https://github.com/matveynator/chicha-isotope-map/releases) (همه سکوها، آخرین بیلدها)
+[![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 
-👉 [DeepWiki: Chicha Isotope Map](https://deepwiki.com/matveynator/chicha-isotope-map)
+[Live demo](https://pelora.org/)
 
----
+</div>
 
-### 📸 نمای نمونه
-<p>
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Fukushima view in chicha-isotope-map" src="https://github.com/user-attachments/assets/617a0ced-4280-41c2-9320-de1cfd33a61f" /></a><br />
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Safecast realtime radiation sensors in chicha-isotope-map" src="https://github.com/user-attachments/assets/13256b23-744d-4d02-a26c-ae9aef5b0d87" /></a><br />
-  <a href="https://pelora.org" target="_blank"><img width="100%" alt="Air flights radiation in chicha-isotope-map" src="https://github.com/user-attachments/assets/cf0189c9-534f-4ff5-9d7a-ed5836e91ef5" /></a>
-</p>
+## Downloads (Stable Release)
 
----
+Use the **Stable Release** channel so one constant link always points to the newest binaries built from commits containing `stable release`.
 
-## 🧭 چه چیزهایی دارد
-- نقشه زنده با اندازه‌گیری‌های بسیاری از آشکارسازها؛ لایه دلخواه را برگزینید.
-- مسیرهای خود را بارگذاری کنید؛ نقاط تازه بلافاصله پیرامون ناحیهٔ نمایش داده‌شده ظاهر می‌شوند.
-- وارد کردن از طریق URL یا فایل، و صادر کردن به‌صورت آرشیو.
-- می‌تواند به صورت تک گره یا شبکه اجرا شود: گره‌های بیشتر ⇒ شفافیت بیشتر.
+- **Smart download page (recommended):** https://matveynator.github.io/chicha-isotope-map/
+- **Stable Release tag (all artifacts):** https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release
 
-این پروژه با پشتیبانی **Safecast** و جامعه رشد می‌کند: ایده‌های ارزشمند بسیاری از **Rob Oudendijk** و دوستان دوزیمتری باز در سراسر جهان آمده است (سپاس از Greenpeace و دیگر تیم‌های زیست‌محیطی).
+### Desktop app (GUI)
 
----
+| OS | Architecture / Variant | Artifact |
+|---|---|---|
+| macOS | Universal (Intel + Apple Silicon) | [chicha-isotope-map_darwin_universal_desktop.dmg](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_universal_desktop.dmg) |
+| Windows | amd64 | [chicha-isotope-map_windows_amd64_desktop.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.zip) |
+| Windows | arm64 | [chicha-isotope-map_windows_arm64_desktop.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.zip) |
+| Linux GTK 4.0 (Ubuntu 22.04 / Mint 21.x) | amd64 | [chicha-isotope-map_linux_amd64_desktop_gtk40.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk40.zip) |
+| Linux GTK 4.0 (Ubuntu 22.04 / Mint 21.x) | arm64 | [chicha-isotope-map_linux_arm64_desktop_gtk40.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk40.zip) |
+| Linux GTK 4.1 (Ubuntu 24.04+ / Mint 22+) | amd64 | [chicha-isotope-map_linux_amd64_desktop_gtk41.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip) |
+| Linux GTK 4.1 (Ubuntu 24.04+ / Mint 22+) | arm64 | [chicha-isotope-map_linux_arm64_desktop_gtk41.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk41.zip) |
 
-## 🚀 شروع سریع (مناسب تازه‌کاران)
-ساده‌ترین مسیر: باینری را دانلود کنید. نیازی به Docker، پایگاه‌داده یا ابزار اضافه نیست — دانلود، اجرا، تمام.
+### Server binaries (self-hosted)
 
-### گزینه ۱. باینری (پیشنهاد می‌شود)
-1) [صفحهٔ انتشارها](https://github.com/matveynator/chicha-isotope-map/releases) را باز کنید و بیلد مناسب سیستم خود را بگیرید.
-2) فایل را اجرایی کنید و اجرا نمایید:
+| OS | Architecture | Artifact |
+|---|---|---|
+| Linux | amd64 | [chicha-isotope-map_linux_amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64) |
+| Linux | arm64 | [chicha-isotope-map_linux_arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64) |
+| Windows | amd64 | [chicha-isotope-map_windows_amd64.exe](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64.exe) |
+| Windows | arm64 | [chicha-isotope-map_windows_arm64.exe](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64.exe) |
+| macOS | amd64 | [chicha-isotope-map_darwin_amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64) |
+| macOS | arm64 | [chicha-isotope-map_darwin_arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64) |
+| FreeBSD | amd64 / arm64 | [Stable Release assets](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) |
+| OpenBSD | amd64 / arm64 | [Stable Release assets](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) |
+
+### Quick run
+
+Windows:
+1. Download a `.zip` desktop build (or `.exe` server build).
+2. Extract if needed.
+3. Run the binary. If SmartScreen appears: **More info → Run anyway**.
+
+macOS (server binary example):
 ```bash
-chmod +x ./chicha-isotope-map
+chmod +x ./chicha-isotope-map_darwin_*
+./chicha-isotope-map_darwin_*
+```
+
+Linux desktop (GTK 4.1 amd64 example):
+```bash
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip -o chicha-isotope-map-desktop.zip
+unzip chicha-isotope-map-desktop.zip
+chmod +x ./chicha-isotope-map_linux_amd64_desktop_gtk41
+./chicha-isotope-map_linux_amd64_desktop_gtk41
+```
+
+Linux server quick install:
+```bash
+sudo curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
+sudo chmod +x /usr/local/bin/chicha-isotope-map
+/usr/local/bin/chicha-isotope-map
+```
+Open: http://localhost:8765
+
+## Configuration and deployment
+
+### Useful flags
+- `-port 8765`
+- `-domain your-domain.example`
+- `-default-lat`, `-default-lon`, `-default-zoom`, `-default-layer`
+- `-mapbox-token YOUR_TOKEN`
+- `-setup` (Linux only)
+- `-import-tgz-url URL`
+- `-import-tgz-path /path/to/file.tgz`
+
+### Database flags
+- `-db-type sqlite|duckdb|chai|clickhouse|pgx`
+- `-db-path /path/to/file`
+- `-db-conn CONNECTION_STRING`
+
+### Build from source
+
+Desktop WebView builds require CGO.
+
+```bash
+CGO_ENABLED=1 go build -tags desktop .
+./chicha-isotope-map -desktop
+```
+
+Server-only binary (no embedded desktop window):
+```bash
+CGO_ENABLED=0 go build .
 ./chicha-isotope-map
 ```
-3) [http://localhost:8765](http://localhost:8765) را باز کنید — نقشه فعال است.
 
-تنظیمات اختیاری:
-- `-port 8765` — پورت محلی.
-- `-domain maps.example.org` — HTTPS با Let’s Encrypt (نیازمند 80/443).
-- `-default-lat` / `-default-lon` / `-default-zoom` / `-default-layer` — نمای آغازین.
-- ذخیره‌سازی: `-db-type sqlite|duckdb|chai|clickhouse|pgx`، برای پایگاه‌های فایل `-db-path` و برای شبکه `-db-conn`.
+## Universal isotope catalog and spectrum drivers
 
-### گزینه ۲. گره عمومی با دامنه
-1) باینری را با دامنهٔ خود اجرا کنید:
-```bash
-./chicha-isotope-map -domain example.org
-```
-2) پورت‌های 80/443 را برای Let’s Encrypt باز بگذارید. پس از صدور، سایت روی [https://example.org](https://example.org) است.
+The project now has a device-agnostic spectrum pipeline in `pkg/spectrum/` with a common driver interface and shared isotope analyzer/catalog.
 
-### گزینه ۳. Docker (همه‌چیز بسته‌بندی شده)
-1) Docker را نصب کنید (Desktop یا CLI).
-2) در Docker Hub جستجو کنید **matveynator/chicha-isotope-map** و روی **Run** کلیک کنید (یا فرمان زیر را اجرا کنید):
-```bash
-docker run -d -p 8765:8765 --name chicha-isotope-map matveynator/chicha-isotope-map:latest
-```
-3) [http://localhost:8765](http://localhost:8765) را باز کنید — تمام.
+## Acknowledgements
 
----
-
-## 📥 وارد کردن داده
-- در صفحهٔ نقشه روی دکمهٔ سبز **Upload** کلیک کنید و مسیرها را بارگذاری کنید (`.kml`, `.kmz`, `.json`, `.rctrk`, `.csv`, `.gpx`, لاگ bGeigie Nano/Zen `$BNRDD`, خروجی AtomFast, RadiaCode, Safecast و غیره).
-- آینهٔ pelora.org را می‌خواهید؟ یک بار `chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz` را اجرا کنید — آرشیو هفتگی را می‌گیرد، پایگاه‌داده را پر می‌کند و خارج می‌شود تا شروع بعدی آماده باشد.
-- ترجیح می‌دهید آرشیو را اول بگیرید؟ [https://pelora.org/api/json/weekly.tgz](https://pelora.org/api/json/weekly.tgz) را دریافت کنید، با `-import-tgz-path /path/to/weekly.tgz` اجرا کنید و از کپی محلی بهره ببرید.
-
-### 🗺️ نخستین اجرا با دادهٔ زنده تنها با یک فرمان
-روی سیستم تازه این را بزنید:
-```bash
-chicha-isotope-map -import-tgz-url https://pelora.org/api/json/weekly.tgz
-```
-پس از وارد کردن، به‌طور معمول دوباره اجرا کنید (یا همین فرمان را در سرویس systemd بگذارید) — [http://localhost:8765](http://localhost:8765) را باز کنید و اندازه‌گیری‌های واقعی را ببینید.
-
-### 🛢️ انتخاب پایگاه‌داده برای وارد کردن و کار روزانه
-- **PostgreSQL (`pgx`)** — سریع‌ترین و مناسب برای چند کاربر. نمونه: `chicha-isotope-map -db-type pgx -db-conn postgres://USER:PASS@HOST:PORT/DATABASE?sslmode=allow -import-tgz-url https://pelora.org/api/json/weekly.tgz`
-- **DuckDB / SQLite / Chai** — راهکار فایل‌محور برای یک کاربر. نوشتن همزمان می‌تواند تضاد ایجاد کند؛ برای نقشه‌های شخصی بهتر است. نمونه: `chicha-isotope-map -db-type duckdb -import-tgz-url https://pelora.org/api/json/weekly.tgz`
-
-## 📤 صادر کردن
-- یک مسیر: `/api/track/{trackID}.json` (فرمت قدیمی `.cim` هم پشتیبانی می‌شود).
-- آرشیو زمان‌بندی‌شده: `/api/json/weekly.tgz` (یا `/daily.tgz`, `/monthly.tgz`, `/yearly.tgz`). داخل هر مسیر یک JSON است.
-
----
-
-## 🧠 گزینه‌های پیشرفته
-- پایگاه‌داده: به صورت پیش‌فرض SQLite تعبیه‌شده؛ می‌توانید به DuckDB، Chai، ClickHouse یا PostgreSQL (`pgx`) تغییر دهید.
-- وارد کردن: از طریق URL یا فایل، حتی آرشیو.
-- صادر کردن: آرشیو JSON، مسیر تکی، سازگار با `.cim`.
-- ظاهر: مختصات و لایهٔ آغازین (`-default-*`).
-
----
-
-## 🤝 چرا گرهٔ خودتان و اندکی تاریخچه
-- می‌خواستیم هرکس بدون آموزش ببیند آیا جایی که زندگی، کشاورزی یا آب جمع می‌کند در معرض پرتوگیری هست یا نه.
-- هرچه گره‌ها بیشتر، تصویر کلی مطمئن‌تر و احتمال نادیده گرفتن آلودگی کمتر.
-
-Chicha‑Isotope‑Map از تلاش‌های میدانی **Dmitry Ignatenko** الهام گرفته و از **Rob Oudendijk** و **Safecast** تاثیر پذیرفته است. داده‌های باز از جوامع AtomFast و Radiacode این نقشه را کاربردی نگه می‌دارند. اگر نقشه بتواند حتی یک جان را نجات دهد، بیهوده ساخته نشده است.
+This project was conceived to grant people a clear and immediate understanding of radiation safety in the very places they inhabit.
