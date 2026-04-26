@@ -2081,6 +2081,18 @@ function getRadius(doseRate, zoomLevel) {
 
 const MARKER_CONTRAST_RING_COLOR = '#000000';
 const MARKER_CONTRAST_RING_WIDTH = 0.5;
+let doseMarkerCanvasRenderer = null;
+
+function getDoseMarkerRenderer() {
+  if (!map || !L || typeof L.canvas !== 'function') {
+    return null;
+  }
+  if (!doseMarkerCanvasRenderer) {
+    // Canvas renderer avoids thousands of SVG DOM nodes and keeps panning smooth on phones.
+    doseMarkerCanvasRenderer = L.canvas({ padding: 0.25 });
+  }
+  return doseMarkerCanvasRenderer;
+}
 
 function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLevel) {
   const markerRadius = getRadius(doseRate, zoomLevel);
@@ -2095,7 +2107,8 @@ function createDoseMarkerWithContrastOutline(lat, lon, doseRate, speed, zoomLeve
     color: MARKER_CONTRAST_RING_COLOR,
     weight: MARKER_CONTRAST_RING_WIDTH,
     opacity: 1,
-    fillOpacity: markerFillOpacity
+    fillOpacity: markerFillOpacity,
+    renderer: getDoseMarkerRenderer()
   });
 
   // Preserve radius access pattern used by overlap-pruning logic.
@@ -2776,8 +2789,6 @@ var markerRenderState = null;
 var markerFilterState = null;
 // Guard async callbacks so stale marker loads cannot mutate shared loading UI.
 var markerLoadToken = 0;
-var renderedMarkerOrder = [];
-var renderedMarkerKeys = new Set();
 var isTrackView = false;
 var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
@@ -2813,18 +2824,6 @@ let offlineCacheStatsSnapshot = null;
 let desktopRuntimeStatusLine = '';
 let internetConnectivityState = navigator.onLine ? 'online' : 'offline';
 let desktopExternalLinkRoutingBound = false;
-const markerHardLimitMobile = 2200;
-const markerHardLimitDesktop = 6500;
-
-function isLikelyMobileDevice() {
-  const touchPoints = Number(navigator.maxTouchPoints) || 0;
-  const compactScreen = Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 900;
-  return /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent || '') || (touchPoints > 1 && compactScreen);
-}
-
-function getRenderedMarkerHardLimit() {
-  return isLikelyMobileDevice() ? markerHardLimitMobile : markerHardLimitDesktop;
-}
 
 function applyTopOverlayLayoutByRuntimeMode() {
   const rootNode = document.documentElement;
@@ -3768,8 +3767,6 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
   removeMarkerByKey(markerKey);
   rendered.markerKey = markerKey;
   circleMarkers[markerKey] = rendered;
-  rememberRenderedMarkerKey(markerKey);
-  enforceRenderedMarkerHardLimit();
 }
 
 function renderTrackViewSnapshot() {
@@ -5255,8 +5252,6 @@ function createDateRangeSlider(){
     circle.isRealtime = false;
     circle.markerKey = markerKey;
     circleMarkers[markerKey] = circle;
-    rememberRenderedMarkerKey(markerKey);
-    enforceRenderedMarkerHardLimit();
     playbackMarkersRendered = true;
   }
 
@@ -5933,21 +5928,6 @@ function closeMarkerLayerStream(name) {
   markerLayerState[name].source = null;
 }
 
-function forgetRenderedMarkerKey(markerKey) {
-  if (!markerKey) {
-    return;
-  }
-  renderedMarkerKeys.delete(markerKey);
-}
-
-function rememberRenderedMarkerKey(markerKey) {
-  if (!markerKey || renderedMarkerKeys.has(markerKey)) {
-    return;
-  }
-  renderedMarkerKeys.add(markerKey);
-  renderedMarkerOrder.push(markerKey);
-}
-
 function removeMarkerByKey(markerKey) {
   if (!markerKey) {
     return;
@@ -5961,18 +5941,6 @@ function removeMarkerByKey(markerKey) {
   }
   if (layer) {
     delete circleMarkers[markerKey];
-  }
-  forgetRenderedMarkerKey(markerKey);
-}
-
-function enforceRenderedMarkerHardLimit() {
-  const hardLimit = getRenderedMarkerHardLimit();
-  while (renderedMarkerKeys.size > hardLimit && renderedMarkerOrder.length > 0) {
-    const oldestMarkerKey = renderedMarkerOrder.shift();
-    if (!oldestMarkerKey || !renderedMarkerKeys.has(oldestMarkerKey)) {
-      continue;
-    }
-    removeMarkerByKey(oldestMarkerKey);
   }
 }
 
@@ -6276,9 +6244,7 @@ function updateLiveLayerOnly(state, options) {
             marker.markerKey = markerKey;
             marker.layerGroupName = entry.layerName;
             circleMarkers[markerKey] = marker;
-            rememberRenderedMarkerKey(markerKey);
             group.addLayer(marker);
-            enforceRenderedMarkerHardLimit();
           });
         }
       },
@@ -6406,12 +6372,10 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     marker.markerKey = markerKey;
     marker.layerGroupName = layerName;
     circleMarkers[markerKey] = marker;
-    rememberRenderedMarkerKey(markerKey);
     group.addLayer(marker);
     if (m.speed >= 0 && markerRenderState.pruneOverlap) {
       markerRenderState.pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
     }
-    enforceRenderedMarkerHardLimit();
   }
 
   const tracks = new Set();
@@ -6631,8 +6595,6 @@ function updateMarkers(forceReload){
 
   for (const key in circleMarkers) removeMarkerByKey(key);
   circleMarkers = {};
-  renderedMarkerOrder = [];
-  renderedMarkerKeys.clear();
   if (isTrackView) {
     trackViewMarkers = [];
     trackViewMarkersReady = false;
@@ -6718,11 +6680,9 @@ function updateMarkers(forceReload){
     removeMarkerByKey(markerKey);
     marker.markerKey = markerKey;
     circleMarkers[markerKey] = marker;
-    rememberRenderedMarkerKey(markerKey);
     if (m.speed >= 0) {
       pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
     }
-    enforceRenderedMarkerHardLimit();
   }
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
