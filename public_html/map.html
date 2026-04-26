@@ -1070,6 +1070,24 @@ body, html {
           color: var(--modal-text);
         }
 
+        /* Keep base layer chooser and zoom control in one visual family. */
+        .leaflet-control-layers,
+        .leaflet-control-layers-expanded,
+        .leaflet-control-zoom,
+        .leaflet-control-zoom a {
+          border-radius: 10px;
+          border: 1px solid rgba(0, 0, 0, 0.14);
+          box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
+          backdrop-filter: blur(2px);
+        }
+
+        :root[data-theme='dark'] .leaflet-control-layers,
+        :root[data-theme='dark'] .leaflet-control-layers-expanded,
+        :root[data-theme='dark'] .leaflet-control-zoom,
+        :root[data-theme='dark'] .leaflet-control-zoom a {
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
         .leaflet-control-layers-toggle:hover,
         .leaflet-bar a:hover {
           background-color: var(--control-bg-hover);
@@ -1253,8 +1271,8 @@ body, html {
           background: rgba(255, 255, 255, 0.82);
           border: 1px solid rgba(0, 0, 0, 0.14);
           border-radius: 10px;
-          min-width: 188px;
-          max-width: 220px;
+          min-width: 154px;
+          max-width: 176px;
         }
 
         :root[data-theme='dark'] .speed-filter-control {
@@ -1264,11 +1282,11 @@ body, html {
 
         .speed-filter-row {
           display: grid;
-          grid-template-columns: 14px 24px minmax(0, 1fr);
+          grid-template-columns: 12px 20px minmax(0, 1fr);
           align-items: center;
-          column-gap: 6px;
+          column-gap: 5px;
           cursor: pointer;
-          padding: 6px 1px;
+          padding: 5px 1px;
         }
 
         .speed-filter-row + .speed-filter-row {
@@ -1283,14 +1301,14 @@ body, html {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 14px;
-          height: 14px;
+          width: 12px;
+          height: 12px;
         }
 
         .speed-filter-row input[type='checkbox'] {
           display: block;
-          width: 14px;
-          height: 14px;
+          width: 12px;
+          height: 12px;
           margin: 0;
         }
 
@@ -1298,14 +1316,14 @@ body, html {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 24px;
-          height: 24px;
+          width: 20px;
+          height: 20px;
         }
 
         .speed-filter-icon img {
           display: block;
-          width: 22px;
-          height: 22px;
+          width: 18px;
+          height: 18px;
           object-fit: contain;
         }
 
@@ -1317,28 +1335,28 @@ body, html {
         }
 
         .speed-filter-title {
-          font-size: 14px;
+          font-size: 12px;
           line-height: 1.15;
           font-weight: 600;
         }
 
         .speed-filter-subtitle {
-          font-size: 11px;
+          font-size: 9px;
           line-height: 1.15;
           opacity: 0.8;
         }
 
         @media (max-width: 480px) {
           .speed-filter-control {
-            min-width: 170px;
-            max-width: 196px;
+            min-width: 146px;
+            max-width: 166px;
             padding: 4px 5px;
           }
 
           .speed-filter-row {
-            grid-template-columns: 12px 20px minmax(0, 1fr);
-            column-gap: 5px;
-            padding: 6px 0;
+            grid-template-columns: 11px 17px minmax(0, 1fr);
+            column-gap: 4px;
+            padding: 4px 0;
           }
 
           .speed-filter-check {
@@ -1352,16 +1370,16 @@ body, html {
           }
 
           .speed-filter-icon img {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
           }
 
           .speed-filter-title {
-            font-size: 12px;
+            font-size: 11px;
           }
 
           .speed-filter-subtitle {
-            font-size: 10px;
+            font-size: 9px;
           }
         }
 
