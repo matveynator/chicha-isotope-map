@@ -1249,24 +1249,26 @@ body, html {
 
         /* Render speed filter rows as compact cards with icon + two-line label. */
         .speed-filter-control {
-          padding: 8px 10px;
+          padding: 4px 6px;
           background: rgba(255, 255, 255, 0.8);
-          border-radius: 12px;
-          min-width: 250px;
-          backdrop-filter: blur(3px);
+          border: 1px solid rgba(0, 0, 0, 0.14);
+          border-radius: 10px;
+          min-width: 170px;
+          max-width: 210px;
         }
 
         :root[data-theme='dark'] .speed-filter-control {
-          background: rgba(30, 30, 30, 0.8);
+          background: rgba(24, 28, 34, 0.8);
+          border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .speed-filter-row {
           display: grid;
-          grid-template-columns: 22px 44px minmax(0, 1fr);
+          grid-template-columns: 18px 30px minmax(0, 1fr);
           align-items: center;
-          gap: 10px;
+          gap: 6px;
           cursor: pointer;
-          padding: 8px 2px;
+          padding: 5px 1px;
           white-space: normal;
         }
 
@@ -1279,28 +1281,60 @@ body, html {
         }
 
         .speed-filter-row input[type='checkbox'] {
-          width: 18px;
-          height: 18px;
+          width: 14px;
+          height: 14px;
           margin: 0;
         }
 
         .speed-filter-icon img {
           display: block;
-          width: 42px;
-          height: 42px;
+          width: 30px;
+          height: 30px;
           object-fit: contain;
         }
 
         .speed-filter-title {
-          font-size: var(--font-size-lg);
+          font-size: var(--font-size-base);
           line-height: 1.2;
           font-weight: 600;
         }
 
         .speed-filter-subtitle {
-          font-size: var(--font-size-lg);
+          font-size: var(--font-size-sm);
           line-height: 1.25;
-          opacity: 0.75;
+          opacity: 0.8;
+        }
+
+        @media (max-width: 480px) {
+          .speed-filter-control {
+            min-width: 152px;
+            max-width: 180px;
+            padding: 3px 5px;
+          }
+
+          .speed-filter-row {
+            grid-template-columns: 16px 24px minmax(0, 1fr);
+            gap: 5px;
+            padding: 4px 1px;
+          }
+
+          .speed-filter-row input[type='checkbox'] {
+            width: 13px;
+            height: 13px;
+          }
+
+          .speed-filter-icon img {
+            width: 24px;
+            height: 24px;
+          }
+
+          .speed-filter-title {
+            font-size: 11px;
+          }
+
+          .speed-filter-subtitle {
+            font-size: 10px;
+          }
         }
 
         #liveModal {
