@@ -2776,6 +2776,8 @@ var markerRenderState = null;
 var markerFilterState = null;
 // Guard async callbacks so stale marker loads cannot mutate shared loading UI.
 var markerLoadToken = 0;
+var renderedMarkerOrder = [];
+var renderedMarkerKeys = new Set();
 var isTrackView = false;
 var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
@@ -2811,6 +2813,18 @@ let offlineCacheStatsSnapshot = null;
 let desktopRuntimeStatusLine = '';
 let internetConnectivityState = navigator.onLine ? 'online' : 'offline';
 let desktopExternalLinkRoutingBound = false;
+const markerHardLimitMobile = 2200;
+const markerHardLimitDesktop = 6500;
+
+function isLikelyMobileDevice() {
+  const touchPoints = Number(navigator.maxTouchPoints) || 0;
+  const compactScreen = Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 900;
+  return /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent || '') || (touchPoints > 1 && compactScreen);
+}
+
+function getRenderedMarkerHardLimit() {
+  return isLikelyMobileDevice() ? markerHardLimitMobile : markerHardLimitDesktop;
+}
 
 function applyTopOverlayLayoutByRuntimeMode() {
   const rootNode = document.documentElement;
@@ -3720,8 +3734,7 @@ function createTrackViewPlaybackControl() {
 
 function clearTrackViewPlaybackMarkers() {
   Object.keys(circleMarkers).forEach(function(key) {
-    map.removeLayer(circleMarkers[key]);
-    delete circleMarkers[key];
+    removeMarkerByKey(key);
   });
 }
 
@@ -3751,7 +3764,12 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
   rendered.date = marker.date;
   rendered.isRealtime = isLive;
   const trackKey = marker.trackID || currentTrackID || 'track';
-  circleMarkers[marker.id || trackKey + ':' + marker.date + ':' + index] = rendered;
+  const markerKey = marker.id || trackKey + ':' + marker.date + ':' + index;
+  removeMarkerByKey(markerKey);
+  rendered.markerKey = markerKey;
+  circleMarkers[markerKey] = rendered;
+  rememberRenderedMarkerKey(markerKey);
+  enforceRenderedMarkerHardLimit();
 }
 
 function renderTrackViewSnapshot() {
@@ -3766,22 +3784,41 @@ function renderTrackViewSnapshot() {
 }
 
 function createMarkerOverlapPruner(map) {
-  // Keep a small per-bucket history so only nearly identical overlaps are pruned.
+  // Keep a small per-bucket history so only near-identical overlaps are pruned.
   const bucketSize = 12;
   const overlapBuckets = new Map();
-  const overlapThreshold = 0.2;
+  // 60% area overlap threshold keeps only heavy stacks while preserving nearby detail.
+  const overlapThreshold = 0.6;
   const maxLayers = 3;
 
   function bucketKey(point) {
     return `${Math.floor(point.x / bucketSize)}:${Math.floor(point.y / bucketSize)}`;
   }
 
-  function isNearOverlap(a, b) {
+  function circleIntersectionArea(r1, r2, distance) {
+    if (distance >= r1 + r2) return 0;
+    if (distance <= Math.abs(r1 - r2)) return Math.PI * Math.min(r1, r2) * Math.min(r1, r2);
+    const first = r1 * r1 * Math.acos((distance * distance + r1 * r1 - r2 * r2) / (2 * distance * r1));
+    const second = r2 * r2 * Math.acos((distance * distance + r2 * r2 - r1 * r1) / (2 * distance * r2));
+    const third = 0.5 * Math.sqrt(
+      (-distance + r1 + r2) *
+      (distance + r1 - r2) *
+      (distance - r1 + r2) *
+      (distance + r1 + r2)
+    );
+    return first + second - third;
+  }
+
+  function overlapRatio(a, b) {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const maxRadius = Math.max(a.r, b.r);
-    return maxRadius > 0 && dist <= maxRadius * overlapThreshold;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const areaA = Math.PI * a.r * a.r;
+    const areaB = Math.PI * b.r * b.r;
+    const minArea = Math.min(areaA, areaB);
+    if (minArea <= 0) return 0;
+    const intersection = circleIntersectionArea(a.r, b.r, distance);
+    return intersection / minArea;
   }
 
   return function prune(markerKey, lat, lon, radius) {
@@ -3801,22 +3838,13 @@ function createMarkerOverlapPruner(map) {
     }
     stack.push(entry);
     const overlaps = stack.filter(function(candidate) {
-      return candidate !== entry && isNearOverlap(candidate, entry);
+      return candidate !== entry && overlapRatio(candidate, entry) >= overlapThreshold;
     });
     if (overlaps.length < maxLayers) {
       return;
     }
     const dropEntry = overlaps[0];
-    const dropLayer = circleMarkers[dropEntry.key];
-    if (!dropLayer) {
-      return;
-    }
-    // Remove pruned layers from their parent group so they stay hidden.
-    if (dropLayer.layerGroupName && markerLayerGroups && markerLayerGroups[dropLayer.layerGroupName]) {
-      markerLayerGroups[dropLayer.layerGroupName].removeLayer(dropLayer);
-    }
-    map.removeLayer(dropLayer);
-    delete circleMarkers[dropEntry.key];
+    removeMarkerByKey(dropEntry.key);
     overlapBuckets.set(key, stack.filter(function(candidate) {
       return candidate.key !== dropEntry.key;
     }));
@@ -5072,8 +5100,7 @@ function createDateRangeSlider(){
 
   function clearPlaybackMarkers() {
     Object.keys(circleMarkers).forEach(function(key) {
-      map.removeLayer(circleMarkers[key]);
-      delete circleMarkers[key];
+      removeMarkerByKey(key);
     });
     playbackMarkersRendered = false;
   }
@@ -5216,8 +5243,7 @@ function createDateRangeSlider(){
     const prevLayer = circleMarkers[markerKey];
     if (prevLayer) {
       // Drop stale layers with the same key so reset/cleanup can always remove every playback marker.
-      map.removeLayer(prevLayer);
-      delete circleMarkers[markerKey];
+      removeMarkerByKey(markerKey);
     }
     const circle = createDoseMarkerWithContrastOutline(marker.lat, marker.lon, marker.doseRate, marker.speed, zoomLevel)
     .addTo(map)
@@ -5229,6 +5255,8 @@ function createDateRangeSlider(){
     circle.isRealtime = false;
     circle.markerKey = markerKey;
     circleMarkers[markerKey] = circle;
+    rememberRenderedMarkerKey(markerKey);
+    enforceRenderedMarkerHardLimit();
     playbackMarkersRendered = true;
   }
 
@@ -5905,17 +5933,57 @@ function closeMarkerLayerStream(name) {
   markerLayerState[name].source = null;
 }
 
+function forgetRenderedMarkerKey(markerKey) {
+  if (!markerKey) {
+    return;
+  }
+  renderedMarkerKeys.delete(markerKey);
+}
+
+function rememberRenderedMarkerKey(markerKey) {
+  if (!markerKey || renderedMarkerKeys.has(markerKey)) {
+    return;
+  }
+  renderedMarkerKeys.add(markerKey);
+  renderedMarkerOrder.push(markerKey);
+}
+
+function removeMarkerByKey(markerKey) {
+  if (!markerKey) {
+    return;
+  }
+  const layer = circleMarkers[markerKey];
+  if (layer && layer.layerGroupName && markerLayerGroups && markerLayerGroups[layer.layerGroupName]) {
+    markerLayerGroups[layer.layerGroupName].removeLayer(layer);
+  }
+  if (layer && map && map.hasLayer(layer)) {
+    map.removeLayer(layer);
+  }
+  if (layer) {
+    delete circleMarkers[markerKey];
+  }
+  forgetRenderedMarkerKey(markerKey);
+}
+
+function enforceRenderedMarkerHardLimit() {
+  const hardLimit = getRenderedMarkerHardLimit();
+  while (renderedMarkerKeys.size > hardLimit && renderedMarkerOrder.length > 0) {
+    const oldestMarkerKey = renderedMarkerOrder.shift();
+    if (!oldestMarkerKey || !renderedMarkerKeys.has(oldestMarkerKey)) {
+      continue;
+    }
+    removeMarkerByKey(oldestMarkerKey);
+  }
+}
+
 function clearMarkerLayerGroup(name) {
   if (!markerLayerGroups || !markerLayerGroups[name]) {
     return;
   }
   const group = markerLayerGroups[name];
   group.eachLayer(function(layer) {
-    if (layer && layer.markerKey && circleMarkers[layer.markerKey]) {
-      delete circleMarkers[layer.markerKey];
-    }
-    if (map && map.hasLayer(layer)) {
-      map.removeLayer(layer);
+    if (layer && layer.markerKey) {
+      removeMarkerByKey(layer.markerKey);
     }
   });
   group.clearLayers();
@@ -6204,10 +6272,13 @@ function updateLiveLayerOnly(state, options) {
             marker.date = entry.marker.date;
             marker.isRealtime = true;
             const markerKey = entry.marker.id || `${entry.marker.trackID || 'track'}:${entry.marker.date}:${entry.marker.lat}:${entry.marker.lon}`;
+            removeMarkerByKey(markerKey);
             marker.markerKey = markerKey;
             marker.layerGroupName = entry.layerName;
             circleMarkers[markerKey] = marker;
+            rememberRenderedMarkerKey(markerKey);
             group.addLayer(marker);
+            enforceRenderedMarkerHardLimit();
           });
         }
       },
@@ -6331,13 +6402,16 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     marker.date = m.date;
     marker.isRealtime = m.speed < 0;
     const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
+    removeMarkerByKey(markerKey);
     marker.markerKey = markerKey;
     marker.layerGroupName = layerName;
     circleMarkers[markerKey] = marker;
+    rememberRenderedMarkerKey(markerKey);
     group.addLayer(marker);
     if (m.speed >= 0 && markerRenderState.pruneOverlap) {
       markerRenderState.pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
     }
+    enforceRenderedMarkerHardLimit();
   }
 
   const tracks = new Set();
@@ -6555,8 +6629,10 @@ function updateMarkers(forceReload){
 
   const savedRange = isTrackView ? null : loadDateRangeState();
 
-  for (const key in circleMarkers) map.removeLayer(circleMarkers[key]);
+  for (const key in circleMarkers) removeMarkerByKey(key);
   circleMarkers = {};
+  renderedMarkerOrder = [];
+  renderedMarkerKeys.clear();
   if (isTrackView) {
     trackViewMarkers = [];
     trackViewMarkersReady = false;
@@ -6639,10 +6715,14 @@ function updateMarkers(forceReload){
     marker.date      = m.date;
     marker.isRealtime = m.speed < 0;
     const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
+    removeMarkerByKey(markerKey);
+    marker.markerKey = markerKey;
     circleMarkers[markerKey] = marker;
+    rememberRenderedMarkerKey(markerKey);
     if (m.speed >= 0) {
       pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
     }
+    enforceRenderedMarkerHardLimit();
   }
 
   const es = new EventSource('/stream_markers?' + new URLSearchParams(params));
@@ -7647,8 +7727,7 @@ function adjustMarkerRadius() {
       // Recompute icon style so stale sensors fade without user interaction.
       const icon = buildRealtimeIcon(marker, zoomLevel, nowSec);
       if (!icon) {
-        map.removeLayer(marker);
-        delete circleMarkers[key];
+        removeMarkerByKey(key);
         continue;
       }
       marker.setIcon(L.divIcon({className:'', html: icon.html, iconSize:[icon.size, icon.size], iconAnchor:[icon.radius, icon.radius]}));
