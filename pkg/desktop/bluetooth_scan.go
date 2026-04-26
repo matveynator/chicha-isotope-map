@@ -3,6 +3,7 @@ package desktop
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -55,8 +56,10 @@ func ConnectRadiacodeDevice(ctx context.Context, address string) error {
 			return fmt.Errorf("connect failed: %s", strings.TrimSpace(output))
 		}
 		return nil
-	case "darwin", "windows":
-		return fmt.Errorf("native bluetooth connect is not implemented on %s yet; use Chrome/Edge Web Bluetooth", runtime.GOOS)
+	case "darwin":
+		return connectRadiacodeDarwin(ctx, address)
+	case "windows":
+		return fmt.Errorf("native bluetooth connect is not implemented on windows yet; use Chrome/Edge Web Bluetooth")
 	default:
 		return fmt.Errorf("bluetooth connect unsupported on %s", runtime.GOOS)
 	}
@@ -119,8 +122,16 @@ func parseLinuxKnownDevices(raw string) []BluetoothDevice {
 }
 
 func scanRadiacodeDarwin(ctx context.Context) ([]BluetoothDevice, error) {
+	blueutilDevices, blueutilErr := scanRadiacodeDarwinBlueutil(ctx)
+	if blueutilErr == nil && len(blueutilDevices) > 0 {
+		return blueutilDevices, nil
+	}
+
 	output, err := runCommand(ctx, "system_profiler", "SPBluetoothDataType")
 	if err != nil {
+		if blueutilErr != nil {
+			return nil, fmt.Errorf("blueutil scan failed: %v; system_profiler scan failed: %w", blueutilErr, err)
+		}
 		return nil, err
 	}
 
@@ -147,6 +158,42 @@ func scanRadiacodeDarwin(ctx context.Context) ([]BluetoothDevice, error) {
 		currentName = ""
 	}
 	return devices, nil
+}
+
+func scanRadiacodeDarwinBlueutil(ctx context.Context) ([]BluetoothDevice, error) {
+	output, err := runCommand(ctx, "blueutil", "--inquiry", "8", "--format", "json")
+	if err != nil {
+		return nil, err
+	}
+	var records []map[string]any
+	if err := json.Unmarshal([]byte(output), &records); err != nil {
+		return nil, fmt.Errorf("parse blueutil inquiry json: %w", err)
+	}
+
+	devices := make([]BluetoothDevice, 0, len(records))
+	for _, record := range records {
+		name, _ := record["name"].(string)
+		address, _ := record["address"].(string)
+		if !isRadiacodeDeviceName(name) {
+			continue
+		}
+		devices = append(devices, BluetoothDevice{Name: strings.TrimSpace(name), Address: strings.TrimSpace(address)})
+	}
+	return devices, nil
+}
+
+func connectRadiacodeDarwin(ctx context.Context, address string) error {
+	if _, err := runCommand(ctx, "blueutil", "--connect", address); err != nil {
+		return fmt.Errorf("blueutil connect failed (install blueutil via brew for desktop bridge): %w", err)
+	}
+	statusOutput, statusErr := runCommand(ctx, "blueutil", "--is-connected", address)
+	if statusErr != nil {
+		return nil
+	}
+	if strings.TrimSpace(statusOutput) != "1" {
+		return fmt.Errorf("blueutil reported not connected")
+	}
+	return nil
 }
 
 func scanRadiacodeWindows(ctx context.Context) ([]BluetoothDevice, error) {
