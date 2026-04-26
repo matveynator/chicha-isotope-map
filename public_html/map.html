@@ -2789,6 +2789,7 @@ var markerRenderState = null;
 var markerFilterState = null;
 // Guard async callbacks so stale marker loads cannot mutate shared loading UI.
 var markerLoadToken = 0;
+var markerViewportState = null;
 var isTrackView = false;
 var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
@@ -5879,6 +5880,113 @@ function buildMarkerViewKey() {
   ].join('|');
 }
 
+function captureBoundsSnapshot(bounds) {
+  if (!bounds) {
+    return null;
+  }
+  return {
+    minLat: bounds.getSouthWest().lat,
+    minLon: bounds.getSouthWest().lng,
+    maxLat: bounds.getNorthEast().lat,
+    maxLon: bounds.getNorthEast().lng,
+  };
+}
+
+function boundsContainPoint(boundsSnapshot, lat, lon) {
+  if (!boundsSnapshot) {
+    return false;
+  }
+  return lat >= boundsSnapshot.minLat &&
+    lat <= boundsSnapshot.maxLat &&
+    lon >= boundsSnapshot.minLon &&
+    lon <= boundsSnapshot.maxLon;
+}
+
+function getBoundsIntersection(firstBounds, secondBounds) {
+  if (!firstBounds || !secondBounds) {
+    return null;
+  }
+  const minLat = Math.max(firstBounds.minLat, secondBounds.minLat);
+  const minLon = Math.max(firstBounds.minLon, secondBounds.minLon);
+  const maxLat = Math.min(firstBounds.maxLat, secondBounds.maxLat);
+  const maxLon = Math.min(firstBounds.maxLon, secondBounds.maxLon);
+  if (minLat >= maxLat || minLon >= maxLon) {
+    return null;
+  }
+  return { minLat: minLat, minLon: minLon, maxLat: maxLat, maxLon: maxLon };
+}
+
+function appendBoundsIfArea(regions, candidateBounds) {
+  if (!candidateBounds) {
+    return;
+  }
+  if (candidateBounds.minLat >= candidateBounds.maxLat || candidateBounds.minLon >= candidateBounds.maxLon) {
+    return;
+  }
+  regions.push(candidateBounds);
+}
+
+function buildIncrementalBoundsRegions(previousBounds, nextBounds) {
+  if (!nextBounds) {
+    return [];
+  }
+  if (!previousBounds) {
+    return [nextBounds];
+  }
+  const sharedBounds = getBoundsIntersection(previousBounds, nextBounds);
+  if (!sharedBounds) {
+    return [nextBounds];
+  }
+  const missingRegions = [];
+  appendBoundsIfArea(missingRegions, {
+    minLat: sharedBounds.maxLat,
+    minLon: nextBounds.minLon,
+    maxLat: nextBounds.maxLat,
+    maxLon: nextBounds.maxLon,
+  });
+  appendBoundsIfArea(missingRegions, {
+    minLat: nextBounds.minLat,
+    minLon: nextBounds.minLon,
+    maxLat: sharedBounds.minLat,
+    maxLon: nextBounds.maxLon,
+  });
+  appendBoundsIfArea(missingRegions, {
+    minLat: sharedBounds.minLat,
+    minLon: nextBounds.minLon,
+    maxLat: sharedBounds.maxLat,
+    maxLon: sharedBounds.minLon,
+  });
+  appendBoundsIfArea(missingRegions, {
+    minLat: sharedBounds.minLat,
+    minLon: sharedBounds.maxLon,
+    maxLat: sharedBounds.maxLat,
+    maxLon: nextBounds.maxLon,
+  });
+  return missingRegions;
+}
+
+function mergeBoundsRegions(boundsRegions) {
+  if (!Array.isArray(boundsRegions) || boundsRegions.length === 0) {
+    return null;
+  }
+  return boundsRegions.reduce(function(mergedBounds, currentBounds) {
+    if (!mergedBounds) {
+      return {
+        minLat: currentBounds.minLat,
+        minLon: currentBounds.minLon,
+        maxLat: currentBounds.maxLat,
+        maxLon: currentBounds.maxLon,
+      };
+    }
+    return {
+      minLat: Math.min(mergedBounds.minLat, currentBounds.minLat),
+      minLon: Math.min(mergedBounds.minLon, currentBounds.minLon),
+      maxLat: Math.max(mergedBounds.maxLat, currentBounds.maxLat),
+      maxLon: Math.max(mergedBounds.maxLon, currentBounds.maxLon),
+    };
+  }, null);
+}
+
 function markerLayerEnabled(name, state) {
   if (!state) {
     return false;
@@ -5965,6 +6073,7 @@ function clearMarkerLayerGroups() {
   if (!markerLayerGroups) {
     return;
   }
+  markerViewportState = null;
   markerLayerNames.concat(markerLiveLayerName).forEach(function(name) {
     closeMarkerLayerStream(name);
     clearMarkerLayerGroup(name);
@@ -6239,6 +6348,8 @@ function updateLiveLayerOnly(state, options) {
             marker.doseRate = entry.marker.doseRate;
             marker.date = entry.marker.date;
             marker.isRealtime = true;
+            marker.markerLat = entry.marker.lat;
+            marker.markerLon = entry.marker.lon;
             const markerKey = entry.marker.id || `${entry.marker.trackID || 'track'}:${entry.marker.date}:${entry.marker.lat}:${entry.marker.lon}`;
             removeMarkerByKey(markerKey);
             marker.markerKey = markerKey;
@@ -6284,18 +6395,33 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
   const viewKey = buildMarkerViewKey();
   const viewChanged = viewKey && viewKey !== markerViewKey;
   const shouldReload = forceReload || viewChanged;
+  const bounds = map.getBounds();
+  const viewportBounds = captureBoundsSnapshot(bounds);
+  const previousViewport = markerViewportState;
+  const zoom = map.getZoom();
+  const zoomChanged = !previousViewport || previousViewport.zoom !== zoom;
+  const canUseIncrementalReload = shouldReload &&
+    !forceReload &&
+    !baseChanged &&
+    !zoomChanged &&
+    !!previousViewport &&
+    !!previousViewport.bounds;
+  const missingRegions = canUseIncrementalReload
+    ? buildIncrementalBoundsRegions(previousViewport.bounds, viewportBounds)
+    : [viewportBounds];
   if (shouldReload) {
     markerViewKey = viewKey;
+  }
+
+  if (shouldReload && !canUseIncrementalReload) {
     clearMarkerLayerGroups();
-    markerRenderState = createMarkerRenderState(map.getZoom());
+    markerRenderState = createMarkerRenderState(zoom);
   } else if (!markerRenderState) {
     markerRenderState = createMarkerRenderState(map.getZoom());
   }
 
   syncMarkerLayerVisibility(state);
 
-  const zoom = map.getZoom();
-  const bounds = map.getBounds();
   const savedRange = loadDateRangeState();
 
   const renderQueue = [];
@@ -6367,6 +6493,8 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     marker.doseRate = m.doseRate;
     marker.date = m.date;
     marker.isRealtime = m.speed < 0;
+    marker.markerLat = m.lat;
+    marker.markerLon = m.lon;
     const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
     removeMarkerByKey(markerKey);
     marker.markerKey = markerKey;
@@ -6424,16 +6552,21 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     if (waitForDangerFit && storedUserCenter) {
       reframeAroundUser();
     }
+    markerViewportState = {
+      zoom: zoom,
+      bounds: viewportBounds,
+    };
     if (loadingEl) loadingEl.style.display = 'none';
   }
 
-  function buildStreamParams(speedTag, includeRealtime, liveOnly) {
+  function buildStreamParamsForBounds(speedTag, includeRealtime, liveOnly, boundsSnapshot) {
+    const requestBounds = boundsSnapshot || viewportBounds;
     const params = new URLSearchParams({
       zoom: zoom,
-      minLat: bounds.getSouthWest().lat,
-      minLon: bounds.getSouthWest().lng,
-      maxLat: bounds.getNorthEast().lat,
-      maxLon: bounds.getNorthEast().lng,
+      minLat: requestBounds.minLat,
+      minLon: requestBounds.minLon,
+      maxLat: requestBounds.maxLat,
+      maxLon: requestBounds.maxLon,
     });
     if (speedTag) {
       params.set('speeds', speedTag);
@@ -6447,6 +6580,27 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       params.set('liveOnly', '1');
     }
     return params;
+  }
+
+  function removeBaseMarkersOutsideViewport() {
+    if (!viewportBounds) {
+      return;
+    }
+    Object.keys(circleMarkers).forEach(function(markerKey) {
+      const markerLayer = circleMarkers[markerKey];
+      if (!markerLayer || markerLayer.isRealtime || !markerLayer.layerGroupName || markerLayer.layerGroupName === markerLiveLayerName) {
+        return;
+      }
+      if (!markerLayerEnabled(markerLayer.layerGroupName, state)) {
+        return;
+      }
+      if (typeof markerLayer.markerLat !== 'number' || typeof markerLayer.markerLon !== 'number') {
+        return;
+      }
+      if (!boundsContainPoint(viewportBounds, markerLayer.markerLat, markerLayer.markerLon)) {
+        removeMarkerByKey(markerKey);
+      }
+    });
   }
 
   function requestLayerStream(layerName, params, trackSummaries) {
@@ -6495,21 +6649,36 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
   });
 
   if (shouldReload) {
+    if (canUseIncrementalReload) {
+      removeBaseMarkersOutsideViewport();
+    }
     markerLayerNames.forEach(function(name) {
       if (!markerLayerEnabled(name, state)) {
         closeMarkerLayerStream(name);
         return;
       }
+      if (canUseIncrementalReload && missingRegions.length === 0) {
+        return;
+      }
       const layerState = markerLayerState[name];
       const alreadyLoaded = layerState && layerState.loaded && layerState.viewKey === viewKey;
-      if (alreadyLoaded) {
+      if (!canUseIncrementalReload && alreadyLoaded) {
         return;
       }
       if (layerState && !layerState.loaded) {
         // Clear partial data so a fresh stream doesn't duplicate markers.
         clearMarkerLayerGroup(name);
       }
-      const params = buildStreamParams(name, false, false);
+      const incrementalMergedBounds = canUseIncrementalReload ? mergeBoundsRegions(missingRegions) : null;
+      if (canUseIncrementalReload && !incrementalMergedBounds) {
+        return;
+      }
+      const params = buildStreamParamsForBounds(
+        name,
+        false,
+        false,
+        canUseIncrementalReload ? incrementalMergedBounds : viewportBounds
+      );
       requestLayerStream(name, params, true);
     });
   } else if (baseChanged) {
@@ -6529,7 +6698,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         // Clear partial data so a fresh stream doesn't duplicate markers.
         clearMarkerLayerGroup(name);
       }
-      const params = buildStreamParams(name, false, false);
+      const params = buildStreamParamsForBounds(name, false, false, viewportBounds);
       requestLayerStream(name, params, true);
     });
   }
