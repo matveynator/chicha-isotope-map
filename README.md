@@ -85,12 +85,11 @@ Open: http://localhost:8765
 
 Screenshots are taken from the official stable download page:
 
-![macOS desktop preview](https://matveynator.github.io/chicha-isotope-map/chicha-isotope-map-macosx-universal.png)
-![Windows desktop preview](https://matveynator.github.io/chicha-isotope-map/windows-osm-light.png)
-![Linux desktop preview](https://matveynator.github.io/chicha-isotope-map/linux-amd64-desktop.png)
+<img src="https://matveynator.github.io/chicha-isotope-map/chicha-isotope-map-macosx-universal.png">
+<img src="https://matveynator.github.io/chicha-isotope-map/windows-google-light.png">
+<img src="https://matveynator.github.io/chicha-isotope-map/linux-amd64-desktop.png">
 
 ---
-
 ## Configuration and deployment
 
 ### Useful flags
