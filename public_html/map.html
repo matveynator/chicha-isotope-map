@@ -1247,28 +1247,60 @@ body, html {
           margin: 2px 0;
         }
 
-        /* Keep the icons in the speed filter aligned regardless of emoji vs. SVG source. */
-        .speed-filter-icon {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 1.5em;
-          height: 1.5em;
-          margin-left: 6px;
-          font-size: 1.2em;
-          line-height: 1;
+        /* Render speed filter rows as compact cards with icon + two-line label. */
+        .speed-filter-control {
+          padding: 8px 10px;
+          background: rgba(255, 255, 255, 0.8);
+          border-radius: 12px;
+          min-width: 250px;
+          backdrop-filter: blur(3px);
         }
 
-        /* Ensure the SVG heart scales with the surrounding emoji-based icons. */
+        :root[data-theme='dark'] .speed-filter-control {
+          background: rgba(30, 30, 30, 0.8);
+        }
+
+        .speed-filter-row {
+          display: grid;
+          grid-template-columns: 22px 44px minmax(0, 1fr);
+          align-items: center;
+          gap: 10px;
+          cursor: pointer;
+          padding: 8px 2px;
+          white-space: normal;
+        }
+
+        .speed-filter-row + .speed-filter-row {
+          border-top: 1px solid rgba(0, 0, 0, 0.12);
+        }
+
+        :root[data-theme='dark'] .speed-filter-row + .speed-filter-row {
+          border-top: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .speed-filter-row input[type='checkbox'] {
+          width: 18px;
+          height: 18px;
+          margin: 0;
+        }
+
         .speed-filter-icon img {
           display: block;
-          width: 100%;
-          height: 100%;
+          width: 42px;
+          height: 42px;
+          object-fit: contain;
         }
 
-        /* Apply grayscale filter so emoji icons render in monochrome without altering other assets. */
-        .speed-filter-icon--mono {
-          filter: grayscale(1) brightness(1) contrast(1);
+        .speed-filter-title {
+          font-size: var(--font-size-lg);
+          line-height: 1.2;
+          font-weight: 600;
+        }
+
+        .speed-filter-subtitle {
+          font-size: var(--font-size-lg);
+          line-height: 1.25;
+          opacity: 0.75;
         }
 
         #liveModal {
@@ -2550,8 +2582,8 @@ function shouldDisplayBySpeed(speed) {
     }
     return st.live;
   }
-  if (speed >= 70 && speed <= 500) return st.plane;  // ✈️
-  if (speed >= 7  && speed <  70)  return st.car;    // 🚗
+  if (speed >= 55.56 && speed <= 500) return st.plane;  // > 200 km/h
+  if (speed >= 7  && speed <  55.56)  return st.car;    // 7..200 km/h
   /* speed < 7 m/s  → pedestrian */
   return st.ped;                                      // 🚶
 }
@@ -4787,30 +4819,53 @@ document.addEventListener('DOMContentLoaded', function () {
     // custom Leaflet control
     const SpeedCtrl = L.Control.extend({
       onAdd() {
-        const div = L.DomUtil.create('div', 'leaflet-control-layers');
-        div.style.padding = '6px 10px';
+        const div = L.DomUtil.create('div', 'leaflet-control-layers speed-filter-control');
 
-        // helper that returns one <label> line
-        const row = (id, iconMarkup, checked, extraClass = '') => `
-            <label style="white-space:nowrap;display:block;cursor:pointer;">
-            <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
-            <span class="speed-filter-icon ${extraClass}">${iconMarkup}</span>
+        function speedFilterThemeVariant() {
+          return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+        }
+
+        function speedFilterIconPath(iconName) {
+          return '/static/icons/' + iconName + '-' + speedFilterThemeVariant() + '.png';
+        }
+
+        function row(id, iconName, checked, title, subtitle) {
+          return `
+            <label class="speed-filter-row">
+              <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
+              <span class="speed-filter-icon">
+                <img data-speed-icon="${iconName}" src="${speedFilterIconPath(iconName)}" alt="${title}"/>
+              </span>
+              <span>
+                <div class="speed-filter-title">${escapeHtml(title)}</div>
+                <div class="speed-filter-subtitle">${escapeHtml(subtitle)}</div>
+              </span>
             </label>`;
+        }
 
         // Build rows dynamically so the realtime checkbox only appears when supported server-side.
         const pieces = [];
         if (window.safecastRealtimeEnabled) {
-          // Use the Safecast heart artwork so the live toggle reflects the new branding.
-          const liveIconMarkup = '<img src="/static/images/safecast-heart-logo.png" alt="Realtime measurements from safecast.org" style="width:1em; height:1em; vertical-align:middle;"/>';
-          pieces.push(row('sfLive', liveIconMarkup, state.live));
-          pieces.push('<div class="leaflet-control-layers-separator"></div>');
+          pieces.push(row('sfLive', 'live', state.live, 'Онлайн', 'Радиационные метеостанции'));
         }
         pieces.push(
-          row('sfPlane', '✈️', state.plane, 'speed-filter-icon--mono'),
-          row('sfCar',   '🚗', state.car,   'speed-filter-icon--mono'),
-          row('sfPed',   '🚶', state.ped,   'speed-filter-icon--mono')
+          row('sfPlane', 'plane', state.plane, 'Самолёт', '> 200 км/ч'),
+          row('sfCar', 'car', state.car, 'Автомобиль', '7 – 200 км/ч'),
+          row('sfPed', 'ped', state.ped, 'Пешеход', '< 7 км/ч')
         );
         div.innerHTML = pieces.join('');
+
+        function refreshSpeedFilterIcons() {
+          const theme = speedFilterThemeVariant();
+          div.querySelectorAll('[data-speed-icon]').forEach(function(iconImage) {
+            const iconName = iconImage.getAttribute('data-speed-icon');
+            iconImage.src = '/static/icons/' + iconName + '-' + theme + '.png';
+          });
+        }
+        const themeObserver = new MutationObserver(function() {
+          refreshSpeedFilterIcons();
+        });
+        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
         // We collect all checkboxes so keyboard focus and pointer use can share a single tooltip instance.
         const checkboxes = Array.from(div.querySelectorAll('input[type=checkbox]'));
@@ -4826,11 +4881,11 @@ document.addEventListener('DOMContentLoaded', function () {
             const accuracy = translate('speed_filter_tooltip_accuracy');
             const lines = [];
             if (window.safecastRealtimeEnabled) {
-              lines.push(translate('speed_filter_tooltip_live'));
+              lines.push('Онлайн: радиационные метеостанции Safecast.');
             }
-            lines.push(translate('speed_filter_tooltip_plane'));
-            lines.push(translate('speed_filter_tooltip_car'));
-            lines.push(translate('speed_filter_tooltip_ped'));
+            lines.push('Самолёт: выше 200 км/ч.');
+            lines.push('Автомобиль: от 7 до 200 км/ч.');
+            lines.push('Пешеход: ниже 7 км/ч.');
             const listHtml = lines.map(function (line) {
               return '<li>' + line + '</li>';
             }).join('');
@@ -4880,7 +4935,16 @@ document.addEventListener('DOMContentLoaded', function () {
           });
         });
 
+        div.__speedFilterDestroy = function() {
+          themeObserver.disconnect();
+        };
         return div;
+      },
+      onRemove(div) {
+        if (div && typeof div.__speedFilterDestroy === 'function') {
+          div.__speedFilterDestroy();
+          delete div.__speedFilterDestroy;
+        }
       }
     });
 
