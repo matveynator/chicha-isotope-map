@@ -1279,10 +1279,11 @@ body, html {
 
         .speed-filter-row {
           display: grid;
-          grid-template-columns: 11px 18px auto;
+          grid-template-columns: 11px 22px auto;
           align-items: center;
           column-gap: 4px;
           cursor: pointer;
+          min-height: 28px;
           padding: 4px 0;
         }
 
@@ -1313,34 +1314,35 @@ body, html {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 18px;
-          height: 18px;
+          width: 22px;
+          height: 22px;
         }
 
         .speed-filter-icon img {
           display: block;
-          width: 16px;
-          height: 16px;
+          width: 20px;
+          height: 20px;
           object-fit: contain;
         }
 
         .speed-filter-text {
-          display: inline-flex;
-          flex-direction: column;
-          justify-content: center;
+          display: grid;
+          grid-template-rows: 1fr 1fr;
+          align-items: center;
+          height: 22px;
           min-width: 0;
         }
 
         .speed-filter-title {
           font-size: 11px;
-          line-height: 1.15;
+          line-height: 1;
           font-weight: 600;
           white-space: nowrap;
         }
 
         .speed-filter-subtitle {
           font-size: 8px;
-          line-height: 1.15;
+          line-height: 1;
           opacity: 0.8;
           white-space: nowrap;
         }
@@ -1351,7 +1353,7 @@ body, html {
           }
 
           .speed-filter-row {
-            grid-template-columns: 10px 16px auto;
+            grid-template-columns: 10px 20px auto;
             column-gap: 3px;
             padding: 4px 0;
           }
@@ -1366,9 +1368,14 @@ body, html {
             height: 12px;
           }
 
+          .speed-filter-icon {
+            width: 20px;
+            height: 20px;
+          }
+
           .speed-filter-icon img {
-            width: 14px;
-            height: 14px;
+            width: 17px;
+            height: 17px;
           }
 
           .speed-filter-title {
@@ -1377,6 +1384,10 @@ body, html {
 
           .speed-filter-subtitle {
             font-size: 8px;
+          }
+
+          .speed-filter-text {
+            height: 20px;
           }
         }
 
