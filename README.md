@@ -16,8 +16,6 @@ Radiacode, AtomFast, BGeigie Safecast devices supported.
 
 ## Downloads (Stable Release)
 
-Use the **Stable Release** channel so one constant link always points to the newest binaries built from commits containing `stable release`.
-
 - **Smart download page (recommended):** https://matveynator.github.io/chicha-isotope-map/
 - **Stable Release tag (all artifacts):** https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release
 
