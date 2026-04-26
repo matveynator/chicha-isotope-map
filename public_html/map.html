@@ -6664,14 +6664,9 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       if (canUseIncrementalReload && missingRegions.length === 0) {
         return;
       }
-      const layerState = markerLayerState[name];
-      const alreadyLoaded = layerState && layerState.loaded && layerState.viewKey === viewKey;
-      if (!canUseIncrementalReload && alreadyLoaded) {
-        return;
-      }
-      if (layerState && !layerState.loaded) {
-        // Clear partial data so a fresh stream doesn't duplicate markers.
-        clearMarkerLayerGroup(name);
+      // Keep existing layers during incremental panning so center markers stay stable.
+      if (!canUseIncrementalReload && markerLayerState && markerLayerState[name]) {
+        markerLayerState[name].viewKey = viewKey;
       }
       const requestRegions = canUseIncrementalReload ? missingRegions : [viewportBounds];
       requestRegions.forEach(function(regionBounds) {
