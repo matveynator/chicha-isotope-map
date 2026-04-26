@@ -4917,10 +4917,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Build rows dynamically so the realtime checkbox only appears when supported server-side.
         const pieces = [];
-        const transportPlaneTitle = translate('live_marker_transport_air');
-        const transportCarTitle = translate('live_marker_transport_car');
-        const transportPedTitle = translate('live_marker_transport_walk');
-        const realtimeTitle = translate('live_marker_title');
+        function compactLabelFromKey(translationKey, fallbackLabel) {
+          const rawLabel = String(translate(translationKey) || '').trim();
+          if (!rawLabel) {
+            return fallbackLabel;
+          }
+          const compactLabel = rawLabel
+            .split(/[\s,/–-]+/)
+            .map(function(token) { return token.trim(); })
+            .filter(function(token) { return token.length > 0; })[0];
+          return compactLabel || fallbackLabel;
+        }
+
+        const transportPlaneTitle = compactLabelFromKey('live_marker_transport_air', 'Plane');
+        const transportCarTitle = compactLabelFromKey('live_marker_transport_car', 'Car');
+        const transportPedTitle = compactLabelFromKey('live_marker_transport_walk', 'Walk');
+        const realtimeTitle = compactLabelFromKey('live_marker_title', 'Live');
         if (window.safecastRealtimeEnabled) {
           pieces.push(row('sfLive', 'live', state.live, realtimeTitle, 'safecast.org'));
         }
