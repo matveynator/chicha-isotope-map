@@ -4672,13 +4672,6 @@ document.addEventListener('DOMContentLoaded', function () {
     content: function () { return translate('qr_button_tooltip'); },
   });
 
-  var themeToggle = document.getElementById('themeToggle');
-  attachControlTooltip(themeToggle, {
-    placement: 'left',
-    content: function () { return translate('theme_toggle_tooltip'); },
-    maxWidth: 260,
-  });
-
   var shortLink = document.getElementById('shortLinkDisplay');
   if (shortLink) {
     var shortLinkHandle = attachControlTooltip(shortLink, {
@@ -4924,13 +4917,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Build rows dynamically so the realtime checkbox only appears when supported server-side.
         const pieces = [];
+        const transportPlaneTitle = translate('live_marker_transport_air');
+        const transportCarTitle = translate('live_marker_transport_car');
+        const transportPedTitle = translate('live_marker_transport_walk');
+        const realtimeTitle = translate('live_marker_title');
         if (window.safecastRealtimeEnabled) {
-          pieces.push(row('sfLive', 'live', state.live, 'Онлайн', 'Радиационные метеостанции'));
+          pieces.push(row('sfLive', 'live', state.live, realtimeTitle, 'safecast.org'));
         }
         pieces.push(
-          row('sfPlane', 'plane', state.plane, 'Самолёт', '> 250 км/ч'),
-          row('sfCar', 'car', state.car, 'Автомобиль', '25 – 250 км/ч'),
-          row('sfPed', 'ped', state.ped, 'Пешеход', '< 25 км/ч')
+          row('sfPlane', 'plane', state.plane, transportPlaneTitle, '> 250 km/h'),
+          row('sfCar', 'car', state.car, transportCarTitle, '25 – 250 km/h'),
+          row('sfPed', 'ped', state.ped, transportPedTitle, '< 25 km/h')
         );
         div.innerHTML = pieces.join('');
 
