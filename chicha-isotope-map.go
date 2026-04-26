@@ -1117,9 +1117,9 @@ func looksLikeBGeigieLine(line string) bool {
 }
 
 var speedCatalog = map[string]SpeedRange{
-	"ped":   {0, 7},         // < 7 м/с (~0-25 км/ч)
-	"car":   {7, 55.56},     // 7–55.56 м/с (~25-200 км/ч)
-	"plane": {55.56, 1000},  // > 55.56 м/с (>200 км/ч)
+	"ped":   {0, 7},      // < 7 м/с (~0-25 км/ч)
+	"car":   {7, 70},     // 7–70 м/с (~25-250 км/ч)
+	"plane": {70, 1000},  // > 70 м/с (>250 км/ч)
 }
 
 // withServerHeader оборачивает любой http.Handler, добавляя

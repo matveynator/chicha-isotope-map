@@ -1249,25 +1249,25 @@ body, html {
 
         /* Render speed filter rows as compact cards with icon + two-line label. */
         .speed-filter-control {
-          padding: 2px 4px;
-          background: rgba(255, 255, 255, 0.7);
+          padding: 6px 8px;
+          background: rgba(255, 255, 255, 0.82);
           border: 1px solid rgba(0, 0, 0, 0.14);
-          border-radius: 8px;
-          min-width: 126px;
-          max-width: 146px;
+          border-radius: 12px;
+          min-width: 240px;
+          max-width: 280px;
         }
 
         :root[data-theme='dark'] .speed-filter-control {
-          background: rgba(24, 28, 34, 0.7);
+          background: rgba(24, 28, 34, 0.82);
           border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .speed-filter-row {
           display: flex;
           align-items: center;
-          gap: 3px;
+          gap: 10px;
           cursor: pointer;
-          padding: 3px 0;
+          padding: 10px 2px;
           white-space: nowrap;
         }
 
@@ -1281,9 +1281,9 @@ body, html {
 
         .speed-filter-row input[type='checkbox'] {
           display: block;
-          flex: 0 0 11px;
-          width: 11px;
-          height: 11px;
+          flex: 0 0 18px;
+          width: 18px;
+          height: 18px;
           margin: 0;
         }
 
@@ -1291,13 +1291,13 @@ body, html {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          flex: 0 0 16px;
+          flex: 0 0 46px;
         }
 
         .speed-filter-icon img {
           display: block;
-          width: 16px;
-          height: 16px;
+          width: 44px;
+          height: 44px;
           object-fit: contain;
         }
 
@@ -1309,50 +1309,50 @@ body, html {
         }
 
         .speed-filter-title {
-          font-size: 9px;
-          line-height: 1.1;
+          font-size: 14px;
+          line-height: 1.15;
           font-weight: 600;
         }
 
         .speed-filter-subtitle {
-          font-size: 8px;
+          font-size: 11px;
           line-height: 1.15;
           opacity: 0.8;
         }
 
         @media (max-width: 480px) {
           .speed-filter-control {
-            min-width: 118px;
-            max-width: 136px;
-            padding: 2px 3px;
+            min-width: 180px;
+            max-width: 210px;
+            padding: 4px 6px;
           }
 
           .speed-filter-row {
-            gap: 2px;
-            padding: 3px 0;
+            gap: 6px;
+            padding: 8px 1px;
           }
 
           .speed-filter-row input[type='checkbox'] {
-            flex-basis: 10px;
-            width: 10px;
-            height: 10px;
-          }
-
-          .speed-filter-icon {
             flex-basis: 14px;
-          }
-
-          .speed-filter-icon img {
             width: 14px;
             height: 14px;
           }
 
+          .speed-filter-icon {
+            flex-basis: 34px;
+          }
+
+          .speed-filter-icon img {
+            width: 32px;
+            height: 32px;
+          }
+
           .speed-filter-title {
-            font-size: 8px;
+            font-size: 12px;
           }
 
           .speed-filter-subtitle {
-            font-size: 7px;
+            font-size: 10px;
           }
         }
 
@@ -2635,8 +2635,8 @@ function shouldDisplayBySpeed(speed) {
     }
     return st.live;
   }
-  if (speed >= 55.56 && speed <= 500) return st.plane;  // > 200 km/h
-  if (speed >= 7  && speed <  55.56)  return st.car;    // 7..200 km/h
+  if (speed >= 70 && speed <= 500) return st.plane;  // > 250 km/h
+  if (speed >= 7  && speed <  70)  return st.car;    // 25..250 km/h
   /* speed < 7 m/s  → pedestrian */
   return st.ped;                                      // 🚶
 }
@@ -4902,9 +4902,9 @@ document.addEventListener('DOMContentLoaded', function () {
           pieces.push(row('sfLive', 'live', state.live, 'Онлайн', 'Радиационные метеостанции'));
         }
         pieces.push(
-          row('sfPlane', 'plane', state.plane, 'Самолёт', '> 200 км/ч'),
-          row('sfCar', 'car', state.car, 'Автомобиль', '7 – 200 км/ч'),
-          row('sfPed', 'ped', state.ped, 'Пешеход', '< 7 км/ч')
+          row('sfPlane', 'plane', state.plane, 'Самолёт', '> 250 км/ч'),
+          row('sfCar', 'car', state.car, 'Автомобиль', '25 – 250 км/ч'),
+          row('sfPed', 'ped', state.ped, 'Пешеход', '< 25 км/ч')
         );
         div.innerHTML = pieces.join('');
 
@@ -4936,9 +4936,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (window.safecastRealtimeEnabled) {
               lines.push('Онлайн: радиационные метеостанции Safecast.');
             }
-            lines.push('Самолёт: выше 200 км/ч.');
-            lines.push('Автомобиль: от 7 до 200 км/ч.');
-            lines.push('Пешеход: ниже 7 км/ч.');
+            lines.push('Самолёт: выше 250 км/ч.');
+            lines.push('Автомобиль: от 25 до 250 км/ч.');
+            lines.push('Пешеход: ниже 25 км/ч.');
             const listHtml = lines.map(function (line) {
               return '<li>' + line + '</li>';
             }).join('');
