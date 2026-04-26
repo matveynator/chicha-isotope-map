@@ -5857,10 +5857,10 @@ function initMarkerLayers() {
     live: L.layerGroup(),
   };
   markerLayerState = {
-    ped: { loaded: false, viewKey: '', source: null },
-    car: { loaded: false, viewKey: '', source: null },
-    plane: { loaded: false, viewKey: '', source: null },
-    live: { loaded: false, viewKey: '', source: null },
+    ped: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0 },
+    car: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0 },
+    plane: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0 },
+    live: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0 },
   };
 }
 
@@ -5965,28 +5965,6 @@ function buildIncrementalBoundsRegions(previousBounds, nextBounds) {
   return missingRegions;
 }
 
-function mergeBoundsRegions(boundsRegions) {
-  if (!Array.isArray(boundsRegions) || boundsRegions.length === 0) {
-    return null;
-  }
-  return boundsRegions.reduce(function(mergedBounds, currentBounds) {
-    if (!mergedBounds) {
-      return {
-        minLat: currentBounds.minLat,
-        minLon: currentBounds.minLon,
-        maxLat: currentBounds.maxLat,
-        maxLon: currentBounds.maxLon,
-      };
-    }
-    return {
-      minLat: Math.min(mergedBounds.minLat, currentBounds.minLat),
-      minLon: Math.min(mergedBounds.minLon, currentBounds.minLon),
-      maxLat: Math.max(mergedBounds.maxLat, currentBounds.maxLat),
-      maxLon: Math.max(mergedBounds.maxLon, currentBounds.maxLon),
-    };
-  }, null);
-}
-
 function markerLayerEnabled(name, state) {
   if (!state) {
     return false;
@@ -6029,11 +6007,17 @@ function closeMarkerLayerStream(name) {
   if (!markerLayerState || !markerLayerState[name]) {
     return;
   }
-  const source = markerLayerState[name].source;
-  if (source) {
-    source.close();
+  const sourceSet = markerLayerState[name].source;
+  if (sourceSet && typeof sourceSet.forEach === 'function') {
+    sourceSet.forEach(function(source) {
+      if (source && typeof source.close === 'function') {
+        source.close();
+      }
+    });
+    sourceSet.clear();
   }
-  markerLayerState[name].source = null;
+  markerLayerState[name].pendingStreams = 0;
+  markerLayerState[name].loaded = false;
 }
 
 function removeMarkerByKey(markerKey) {
@@ -6066,6 +6050,10 @@ function clearMarkerLayerGroup(name) {
   if (markerLayerState && markerLayerState[name]) {
     markerLayerState[name].loaded = false;
     markerLayerState[name].viewKey = '';
+    markerLayerState[name].pendingStreams = 0;
+    if (markerLayerState[name].source && typeof markerLayerState[name].source.clear === 'function') {
+      markerLayerState[name].source.clear();
+    }
   }
 }
 
@@ -6133,16 +6121,21 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   if (!state) {
     return;
   }
-  closeMarkerLayerStream(layerName);
   const enableMarkerStreamCache = !window.desktopWebViewMode;
   const streamKey = `v1:${layerName}:${params.toString()}`;
   const streamQuery = parseMarkerStreamQueryParams(params, layerName);
+  state.pendingStreams = (state.pendingStreams || 0) + 1;
   state.loaded = false;
   state.viewKey = viewKey || '';
   let streamSummary = null;
   let streamMin = Infinity;
   let streamMax = -Infinity;
   const streamedMarkers = [];
+
+  function markStreamFinished() {
+    state.pendingStreams = Math.max(0, (state.pendingStreams || 0) - 1);
+    state.loaded = state.pendingStreams === 0;
+  }
 
   function emitFromCache(entry) {
     if (!entry || !Array.isArray(entry.markers)) {
@@ -6163,8 +6156,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     if (handlers && typeof handlers.onDone === 'function') {
       handlers.onDone(streamSummary, streamMin, streamMax);
     }
-    state.loaded = true;
-    state.source = null;
+    markStreamFinished();
     return true;
   }
 
@@ -6197,24 +6189,32 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
       if (handlers && typeof handlers.onError === 'function') {
         handlers.onError();
       }
+      markStreamFinished();
       return;
     }
     loadBestOfflineMarkerStream(layerName, params, streamKey)
       .then(function(cachedEntry) {
-        if (!emitFromCache(cachedEntry) && handlers && typeof handlers.onError === 'function') {
-          handlers.onError();
+        if (!emitFromCache(cachedEntry)) {
+          if (handlers && typeof handlers.onError === 'function') {
+            handlers.onError();
+          }
+          markStreamFinished();
         }
       })
       .catch(function() {
         if (handlers && typeof handlers.onError === 'function') {
           handlers.onError();
         }
+        markStreamFinished();
       });
     return;
   }
 
   const es = new EventSource('/stream_markers?' + params.toString());
-  state.source = es;
+  if (!state.source || typeof state.source.add !== 'function') {
+    state.source = new Set();
+  }
+  state.source.add(es);
 
   es.onmessage = e => {
     let marker;
@@ -6253,8 +6253,8 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
       .catch(function(error) {
         console.warn('marker stream cache save failed:', error);
       });
-    state.loaded = true;
-    state.source = null;
+    state.source.delete(es);
+    markStreamFinished();
     if (handlers && typeof handlers.onDone === 'function') {
       handlers.onDone(streamSummary, streamMin, streamMax);
     }
@@ -6264,11 +6264,12 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   es.addEventListener('done', finishStream);
 
   es.onerror = () => {
-    state.source = null;
+    state.source.delete(es);
     if (!enableMarkerStreamCache) {
       if (handlers && typeof handlers.onError === 'function') {
         handlers.onError();
       }
+      markStreamFinished();
       es.close();
       return;
     }
@@ -6280,11 +6281,13 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
         if (handlers && typeof handlers.onError === 'function') {
           handlers.onError();
         }
+        markStreamFinished();
       })
       .catch(function() {
         if (handlers && typeof handlers.onError === 'function') {
           handlers.onError();
         }
+        markStreamFinished();
       });
     es.close();
   };
@@ -6657,6 +6660,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         closeMarkerLayerStream(name);
         return;
       }
+      closeMarkerLayerStream(name);
       if (canUseIncrementalReload && missingRegions.length === 0) {
         return;
       }
@@ -6669,17 +6673,11 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         // Clear partial data so a fresh stream doesn't duplicate markers.
         clearMarkerLayerGroup(name);
       }
-      const incrementalMergedBounds = canUseIncrementalReload ? mergeBoundsRegions(missingRegions) : null;
-      if (canUseIncrementalReload && !incrementalMergedBounds) {
-        return;
-      }
-      const params = buildStreamParamsForBounds(
-        name,
-        false,
-        false,
-        canUseIncrementalReload ? incrementalMergedBounds : viewportBounds
-      );
-      requestLayerStream(name, params, true);
+      const requestRegions = canUseIncrementalReload ? missingRegions : [viewportBounds];
+      requestRegions.forEach(function(regionBounds) {
+        const params = buildStreamParamsForBounds(name, false, false, regionBounds);
+        requestLayerStream(name, params, true);
+      });
     });
   } else if (baseChanged) {
     markerLayerNames.forEach(function(name) {
@@ -6693,6 +6691,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         clearMarkerLayerGroup(name);
         return;
       }
+      closeMarkerLayerStream(name);
       const layerState = markerLayerState[name];
       if (layerState && !layerState.loaded) {
         // Clear partial data so a fresh stream doesn't duplicate markers.
