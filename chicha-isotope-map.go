@@ -6129,6 +6129,43 @@ func desktopBluetoothScanHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// desktopBluetoothConnectHandler asks the host Bluetooth stack to establish a
+// connection with a selected device discovered by desktopBluetoothScanHandler.
+func desktopBluetoothConnectHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isTrustedDesktopAdminRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	defer r.Body.Close()
+	var payload struct {
+		Address string `json:"address"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.Address) == "" {
+		http.Error(w, "address required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	if err := desktop.ConnectRadiacodeDevice(ctx, payload.Address); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
 func manualSpectrumPointHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -8382,6 +8419,7 @@ func main() {
 	http.HandleFunc("/upload", uploadHandler)
 	http.HandleFunc("/desktop/upload-native", desktopNativeUploadHandler)
 	http.HandleFunc("/desktop/bluetooth/scan", desktopBluetoothScanHandler)
+	http.HandleFunc("/desktop/bluetooth/connect", desktopBluetoothConnectHandler)
 	http.HandleFunc("/api/spectrum/manual-point", manualSpectrumPointHandler)
 	http.HandleFunc("/api/spectrum/attach-track", attachSpectrumToTrackHandler)
 	http.HandleFunc("/api/spectrum/attach-area", attachSpectrumToAreaHandler)

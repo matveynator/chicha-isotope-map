@@ -9516,7 +9516,29 @@ function centerMapToLocation() {
       const addressText = discoveredDevice && discoveredDevice.address ? String(discoveredDevice.address) : 'unknown address';
       return String(index + 1) + '. ' + nameText + ' [' + addressText + ']';
     });
-    alert('Desktop Bluetooth scan found:\\n' + lines.join('\\n') + '\\n\\nNext step: select a device in native desktop bridge (planned in next patch).');
+    const selectedNumberText = prompt('Desktop Bluetooth scan found:\\n' + lines.join('\\n') + '\\n\\nEnter device number to connect:');
+    if (!selectedNumberText) return;
+    const selectedIndex = Number.parseInt(String(selectedNumberText), 10) - 1;
+    if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= discoveredDevices.length) {
+      alert('Invalid device number.');
+      return;
+    }
+    const selectedDevice = discoveredDevices[selectedIndex];
+    const selectedAddress = selectedDevice && selectedDevice.address ? String(selectedDevice.address) : '';
+    if (!selectedAddress) {
+      alert('Selected device does not have an address.');
+      return;
+    }
+    const connectResponse = await fetch('/desktop/bluetooth/connect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({address: selectedAddress})
+    });
+    if (!connectResponse.ok) {
+      const errorText = await connectResponse.text();
+      throw new Error('desktop connect failed: ' + errorText);
+    }
+    alert('Connected to ' + (selectedDevice.name || selectedAddress) + '.\\nIf the device sends notifications via Web Bluetooth-compatible stack, markers will appear as data arrives.');
   }
 
   async function connectRadiacodeBluetoothAndStream() {

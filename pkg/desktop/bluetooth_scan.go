@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // BluetoothDevice keeps the minimal discovery payload exposed to the UI.
@@ -15,43 +16,155 @@ type BluetoothDevice struct {
 	Address string `json:"address"`
 }
 
-// ScanRadiacodeDevices discovers nearby or known Bluetooth devices and returns
-// only Radiacode-like entries. The implementation uses small OS-native commands
-// so server builds avoid heavy BLE dependencies.
+// ScanRadiacodeDevices performs an active discovery where possible and returns
+// only Radiacode-like devices.
 func ScanRadiacodeDevices(ctx context.Context) ([]BluetoothDevice, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	var (
-		rawOutput string
-		err       error
-	)
-
 	switch runtime.GOOS {
 	case "linux":
-		rawOutput, err = runCommand(ctx, "bluetoothctl", "devices")
+		return scanRadiacodeLinuxActive(ctx)
 	case "darwin":
-		rawOutput, err = runCommand(ctx, "system_profiler", "SPBluetoothDataType")
+		return scanRadiacodeDarwin(ctx)
 	case "windows":
-		rawOutput, err = runCommand(ctx, "powershell", "-NoProfile", "-Command", "Get-PnpDevice -Class Bluetooth | Select-Object FriendlyName,InstanceId | Format-Table -HideTableHeaders")
+		return scanRadiacodeWindows(ctx)
 	default:
 		return nil, fmt.Errorf("bluetooth scan unsupported on %s", runtime.GOOS)
 	}
+}
+
+// ConnectRadiacodeDevice asks the host Bluetooth stack to connect to the device.
+func ConnectRadiacodeDevice(ctx context.Context, address string) error {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return fmt.Errorf("empty bluetooth address")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	switch runtime.GOOS {
+	case "linux":
+		output, err := runCommand(ctx, "bluetoothctl", "connect", address)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(strings.ToLower(output), "connection successful") {
+			return fmt.Errorf("connect failed: %s", strings.TrimSpace(output))
+		}
+		return nil
+	case "darwin", "windows":
+		return fmt.Errorf("native bluetooth connect is not implemented on %s yet; use Chrome/Edge Web Bluetooth", runtime.GOOS)
+	default:
+		return fmt.Errorf("bluetooth connect unsupported on %s", runtime.GOOS)
+	}
+}
+
+func scanRadiacodeLinuxActive(ctx context.Context) ([]BluetoothDevice, error) {
+	scanCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	output, err := runCommand(scanCtx, "bluetoothctl", "--timeout", "8", "scan", "on")
+	if err != nil {
+		return nil, err
+	}
+	_, _ = runCommand(context.Background(), "bluetoothctl", "scan", "off")
+
+	radiacodeDevices := parseLinuxScanOutput(output)
+	if len(radiacodeDevices) > 0 {
+		return radiacodeDevices, nil
+	}
+
+	fallbackOutput, fallbackErr := runCommand(ctx, "bluetoothctl", "devices")
+	if fallbackErr != nil {
+		return nil, fallbackErr
+	}
+	return parseLinuxKnownDevices(fallbackOutput), nil
+}
+
+func parseLinuxScanOutput(raw string) []BluetoothDevice {
+	deviceByAddress := make(map[string]BluetoothDevice)
+	scanner := bufio.NewScanner(strings.NewReader(raw))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !(strings.Contains(line, "[NEW] Device") || strings.Contains(line, "[CHG] Device") || strings.HasPrefix(line, "Device ")) {
+			continue
+		}
+		address, name := splitAddressAndName(line)
+		if address == "" || !isRadiacodeDeviceName(name) {
+			continue
+		}
+		deviceByAddress[address] = BluetoothDevice{Name: name, Address: address}
+	}
+	return mapValues(deviceByAddress)
+}
+
+func parseLinuxKnownDevices(raw string) []BluetoothDevice {
+	deviceByAddress := make(map[string]BluetoothDevice)
+	scanner := bufio.NewScanner(strings.NewReader(raw))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "Device ") {
+			continue
+		}
+		address, name := splitAddressAndName(line)
+		if address == "" || !isRadiacodeDeviceName(name) {
+			continue
+		}
+		deviceByAddress[address] = BluetoothDevice{Name: name, Address: address}
+	}
+	return mapValues(deviceByAddress)
+}
+
+func scanRadiacodeDarwin(ctx context.Context) ([]BluetoothDevice, error) {
+	output, err := runCommand(ctx, "system_profiler", "SPBluetoothDataType")
 	if err != nil {
 		return nil, err
 	}
 
-	switch runtime.GOOS {
-	case "linux":
-		return parseLinuxBluetoothctlDevices(rawOutput), nil
-	case "darwin":
-		return parseDarwinSystemProfiler(rawOutput), nil
-	case "windows":
-		return parseWindowsPnp(rawOutput), nil
-	default:
-		return nil, nil
+	devices := make([]BluetoothDevice, 0)
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	currentName := ""
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasSuffix(line, ":") {
+			candidateName := strings.TrimSpace(strings.TrimSuffix(line, ":"))
+			if isRadiacodeDeviceName(candidateName) {
+				currentName = candidateName
+				devices = append(devices, BluetoothDevice{Name: candidateName})
+			}
+			continue
+		}
+		if currentName == "" || !strings.HasPrefix(strings.ToLower(line), "address:") {
+			continue
+		}
+		address := strings.TrimSpace(line[len("Address:"):])
+		if len(devices) > 0 {
+			devices[len(devices)-1].Address = address
+		}
+		currentName = ""
 	}
+	return devices, nil
+}
+
+func scanRadiacodeWindows(ctx context.Context) ([]BluetoothDevice, error) {
+	output, err := runCommand(ctx, "powershell", "-NoProfile", "-Command", "Get-PnpDevice -Class Bluetooth | Select-Object FriendlyName | Format-Table -HideTableHeaders")
+	if err != nil {
+		return nil, err
+	}
+
+	devices := make([]BluetoothDevice, 0)
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		name := strings.TrimSpace(scanner.Text())
+		if !isRadiacodeDeviceName(name) {
+			continue
+		}
+		devices = append(devices, BluetoothDevice{Name: name})
+	}
+	return devices, nil
 }
 
 func runCommand(ctx context.Context, name string, args ...string) (string, error) {
@@ -63,61 +176,30 @@ func runCommand(ctx context.Context, name string, args ...string) (string, error
 	return string(output), nil
 }
 
-func parseLinuxBluetoothctlDevices(raw string) []BluetoothDevice {
-	devices := make([]BluetoothDevice, 0)
-	scanner := bufio.NewScanner(strings.NewReader(raw))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "Device ") {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) < 3 {
-			continue
-		}
-		address := strings.TrimSpace(parts[1])
-		name := strings.TrimSpace(strings.Join(parts[2:], " "))
-		if !isRadiacodeDeviceName(name) {
-			continue
-		}
-		devices = append(devices, BluetoothDevice{Name: name, Address: address})
+func splitAddressAndName(line string) (string, string) {
+	parts := strings.Fields(line)
+	if len(parts) < 3 {
+		return "", ""
 	}
-	return devices
+	addressIndex := -1
+	for index := 0; index < len(parts); index++ {
+		if strings.Count(parts[index], ":") == 5 {
+			addressIndex = index
+			break
+		}
+	}
+	if addressIndex == -1 || addressIndex+1 >= len(parts) {
+		return "", ""
+	}
+	address := strings.TrimSpace(parts[addressIndex])
+	name := strings.TrimSpace(strings.Join(parts[addressIndex+1:], " "))
+	return address, name
 }
 
-func parseDarwinSystemProfiler(raw string) []BluetoothDevice {
-	devices := make([]BluetoothDevice, 0)
-	scanner := bufio.NewScanner(strings.NewReader(raw))
-	currentName := ""
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasSuffix(line, ":") && isRadiacodeDeviceName(strings.TrimSuffix(line, ":")) {
-			currentName = strings.TrimSpace(strings.TrimSuffix(line, ":"))
-			devices = append(devices, BluetoothDevice{Name: currentName})
-			continue
-		}
-		if currentName == "" || !strings.HasPrefix(strings.ToLower(line), "address:") {
-			continue
-		}
-		address := strings.TrimSpace(strings.TrimPrefix(line, "Address:"))
-		address = strings.TrimSpace(strings.TrimPrefix(address, "address:"))
-		if len(devices) > 0 {
-			devices[len(devices)-1].Address = address
-		}
-		currentName = ""
-	}
-	return devices
-}
-
-func parseWindowsPnp(raw string) []BluetoothDevice {
-	devices := make([]BluetoothDevice, 0)
-	scanner := bufio.NewScanner(strings.NewReader(raw))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || !isRadiacodeDeviceName(line) {
-			continue
-		}
-		devices = append(devices, BluetoothDevice{Name: line})
+func mapValues(deviceByAddress map[string]BluetoothDevice) []BluetoothDevice {
+	devices := make([]BluetoothDevice, 0, len(deviceByAddress))
+	for _, device := range deviceByAddress {
+		devices = append(devices, device)
 	}
 	return devices
 }
