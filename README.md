@@ -216,8 +216,10 @@ service chicha_isotope_map start'
 
 Screenshots are taken from the official stable download page:
 
-<img src="https://matveynator.github.io/chicha-isotope-map/chicha-isotope-map-macosx-universal.png">
-<img src="https://matveynator.github.io/chicha-isotope-map/windows-google-light.png">
+<img width="1288" height="837" alt="usa-google-layer" src="https://github.com/user-attachments/assets/fbdb0438-b60d-4e91-87d6-989237a775a4" />
+
+<img width="1288" height="837" alt="japan-fukusima" src="https://github.com/user-attachments/assets/2920cb7e-ff35-4851-92df-76dfe523021d" />
+
 <img src="https://matveynator.github.io/chicha-isotope-map/linux-amd64-desktop.png">
 
 ---
