@@ -1889,6 +1889,18 @@ func loadTranslations(fs embed.FS, filename string) {
 	}
 }
 
+func lookupTranslation(lang, key string) string {
+	if byLanguage, ok := translations[lang]; ok {
+		if val, ok := byLanguage[key]; ok {
+			return val
+		}
+	}
+	if byLanguage, ok := translations["en"]; ok {
+		return byLanguage[key]
+	}
+	return key
+}
+
 func getPreferredLanguage(r *http.Request) string {
 	langHeader := r.Header.Get("Accept-Language")
 	if langHeader == "" {
@@ -6454,6 +6466,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 	displayVersion := resolveDisplayVersion()
 	metaGenerator := buildMetaGenerator(lang, displayVersion, chichaGitHubURL, translations)
+	displayDomain := resolveDisplayDomain(r)
 	// Mapbox requires a token, so we fall back early if the default layer cannot load.
 	resolvedDefaultLayer := strings.TrimSpace(*defaultLayer)
 	resolvedMapboxToken := strings.TrimSpace(*mapboxToken)
@@ -6469,6 +6482,9 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 				return val
 			}
 			return translations["en"][key]
+		},
+		"translateDomain": func(key string) string {
+			return strings.ReplaceAll(lookupTranslation(lang, key), "[[domain]]", displayDomain)
 		},
 	}).ParseFS(content, "public_html/map.html"))
 
@@ -6590,6 +6606,31 @@ func resolveCurrentURL(r *http.Request) string {
 	}
 
 	return fmt.Sprintf("%s://%s%s", scheme, host, path)
+}
+
+func resolveDisplayDomain(r *http.Request) string {
+	configured := strings.TrimSpace(*domain)
+	if configured != "" {
+		return stripDomainForDisplay(configured)
+	}
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		host = fmt.Sprintf("localhost:%d", *port)
+	}
+	return stripDomainForDisplay(host)
+}
+
+func stripDomainForDisplay(raw string) string {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		return ""
+	}
+	if strings.Contains(candidate, "://") {
+		if parsed, err := url.Parse(candidate); err == nil && parsed.Host != "" {
+			candidate = parsed.Host
+		}
+	}
+	return strings.Trim(candidate, "/")
 }
 
 // resolveCanonicalURL builds a stable canonical root URL so crawlers see a consistent domain.
@@ -6744,6 +6785,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	lang := getPreferredLanguage(r)
 	displayVersion := resolveDisplayVersion()
 	metaGenerator := buildMetaGenerator(lang, displayVersion, chichaGitHubURL, translations)
+	displayDomain := resolveDisplayDomain(r)
 	// Mapbox requires a token, so fall back when the default layer cannot load.
 	resolvedDefaultLayer := strings.TrimSpace(*defaultLayer)
 	resolvedMapboxToken := strings.TrimSpace(*mapboxToken)
@@ -6772,6 +6814,9 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 				return v
 			}
 			return translations["en"][key]
+		},
+		"translateDomain": func(key string) string {
+			return strings.ReplaceAll(lookupTranslation(lang, key), "[[domain]]", displayDomain)
 		},
 	}).ParseFS(content, "public_html/map.html"))
 

@@ -4,7 +4,7 @@
     <!-- Set metadata and link CSS -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>chicha-isotope-map: {{translate "title"}} ({{ .Version }})</title>
+    <title>{{translateDomain "title"}}</title>
     <!-- Keep SEO metadata localized so crawlers understand the map in every language. -->
     <meta name="ai:purpose" content="global environmental radiation map">
     <!-- Provide explicit query parameters so AI agents and crawlers can reconstruct map views. -->
@@ -19,10 +19,10 @@
       {
         "@context": "https://schema.org",
         "@type": "WebApplication",
-        "name": "Chicha Isotope Map",
+        "name": "{{translateDomain "title"}}",
         "applicationCategory": "VisualizationApplication",
         "url": "{{.CanonicalURL}}",
-        "description": "Interactive radiation map with URL parameters for bounds, zoom, layer, theme, date range, speed filters, and single-track focus.",
+        "description": "{{translate "meta_description"}}",
         "featureList": [
           "Bounds: minLat,minLon,maxLat,maxLon",
           "Zoom: zoom",
@@ -37,7 +37,7 @@
 
     <meta property="og:type" content="website">
     <meta property="og:url" content="{{.CurrentURL}}">
-    <meta property="og:title" content="{{translate "og_title"}}">
+    <meta property="og:title" content="{{translateDomain "og_title"}}">
     <meta property="og:description" content="{{translate "og_description"}}">
     <meta property="og:image" content="{{.DefaultSocialImage}}">
     <meta property="og:site_name" content="Pelora">
