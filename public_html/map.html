@@ -3294,6 +3294,10 @@ function parseMarkerStreamQueryParams(params, layerName) {
     speeds: params.get('speeds') || '',
     dateFrom: params.get('dateFrom') || '',
     dateTo: params.get('dateTo') || '',
+    visibleMinLat: params.get('visibleMinLat') || '',
+    visibleMinLon: params.get('visibleMinLon') || '',
+    visibleMaxLat: params.get('visibleMaxLat') || '',
+    visibleMaxLon: params.get('visibleMaxLon') || '',
     realtime: params.get('realtime') || '',
     liveOnly: params.get('liveOnly') || '',
   };
@@ -5115,6 +5119,17 @@ function createDateRangeSlider(){
     return normalized;
   }
 
+  function buildYearSliderRange(minTs, maxTs) {
+    const minYear = new Date(minTs * 1000).getUTCFullYear();
+    const maxYear = new Date(maxTs * 1000).getUTCFullYear();
+    return {
+      displayMin: minYear,
+      displayMax: maxYear,
+      sliderMin: minYear,
+      sliderMax: maxYear > minYear ? maxYear : minYear + 1,
+    };
+  }
+
   const DateCtrl = L.Control.extend({
     onAdd(){
       sliderBox = L.DomUtil.create('div','leaflet-control-layers date-slider-box');
@@ -5633,16 +5648,15 @@ function createDateRangeSlider(){
     // YEAR slider (single handle)
     if(!initY){
       yearSlider = sliderBox.querySelector('#yearSlider');
-      const minYear = new Date(minTs*1000).getUTCFullYear();
-      const maxYear = new Date(maxTs*1000).getUTCFullYear();
+      const yearRange = buildYearSliderRange(minTs, maxTs);
 
       noUiSlider.create(yearSlider,{
-        start      : minYear,                // the handle can sit anywhere; labels decide what to show
+        start      : yearRange.displayMin,   // the handle can sit anywhere; labels decide what to show
         connect    : [true,false],
         orientation: 'vertical',
         direction  : 'rtl',
         step       : 1,
-        range      : { min:minYear, max:maxYear },
+        range      : { min:yearRange.sliderMin, max:yearRange.sliderMax },
         format     : wNumb({ decimals:0 })
       });
 
@@ -5654,14 +5668,13 @@ function createDateRangeSlider(){
         const fr = fullRange || [minTs,maxTs];
         const saved = loadCustomDateRangeState(fr);
         const isFull = !saved;
+        const currentYearRange = buildYearSliderRange(fr[0], fr[1]);
         if (isFull){
-          const r = yearSlider.noUiSlider.options.range;
-          lblMin().textContent = r.min;
-          lblMax().textContent = r.max;
+          lblMin().textContent = currentYearRange.displayMin;
+          lblMax().textContent = currentYearRange.displayMax;
         } else {
-          const r = yearSlider.noUiSlider.options.range;
           lblMin().textContent = y;
-          lblMax().textContent = r.max;
+          lblMax().textContent = currentYearRange.displayMax;
         }
       });
       yearSlider.noUiSlider.on('change', updateDateFilter);
@@ -5697,9 +5710,9 @@ function createDateRangeSlider(){
 
     // Initial labels = full bounds
     if (mode === 'year'){
-      const r = yearSlider.noUiSlider.options.range;
-      lblMin().textContent = r.min;
-      lblMax().textContent = r.max;
+      const yearRange = buildYearSliderRange(minTs, maxTs);
+      lblMin().textContent = yearRange.displayMin;
+      lblMax().textContent = yearRange.displayMax;
     } else {
       lblMin().textContent = tsToNiceStr(minTs);
       lblMax().textContent = tsToNiceStr(maxTs);
@@ -5722,10 +5735,9 @@ function createDateRangeSlider(){
     const hasCustom = !!customRange;
 
     // Update YEAR slider bounds
-    const minYear = new Date(minTs*1000).getUTCFullYear();
-    const maxYear = new Date(maxTs*1000).getUTCFullYear();
+    const yearRange = buildYearSliderRange(minTs, maxTs);
     yearSlider.noUiSlider.updateOptions({
-      range: { min:minYear, max:maxYear }
+      range: { min:yearRange.sliderMin, max:yearRange.sliderMax }
     }, false);
 
     // Update MONTH slider bounds
@@ -5741,9 +5753,8 @@ function createDateRangeSlider(){
     // If no custom filter → force labels to show full bounds and make month slider span all
     if (!hasCustom){
       if (mode === 'year'){
-        const r = yearSlider.noUiSlider.options.range;
-        lblMin().textContent = r.min;
-        lblMax().textContent = r.max;
+        lblMin().textContent = yearRange.displayMin;
+        lblMax().textContent = yearRange.displayMax;
       } else {
         monthSlider.noUiSlider.set([minTs,maxTs]);
         lblMin().textContent = tsToNiceStr(minTs);
@@ -5765,11 +5776,12 @@ function createDateRangeSlider(){
     if (initY && initM){
       const rY = yearSlider.noUiSlider.options.range;
       const rM = monthSlider.noUiSlider.options.range;
-      yearSlider.noUiSlider.set(rY.max);      // handle position is cosmetic
+      const yearRange = fullRange ? buildYearSliderRange(fullRange[0], fullRange[1]) : null;
+      yearSlider.noUiSlider.set(yearRange ? yearRange.displayMax : rY.max);      // handle position is cosmetic
       monthSlider.noUiSlider.set([rM.min, rM.max]);
 
-      lblMin().textContent = (mode==='year') ? rY.min : tsToNiceStr(rM.min);
-      lblMax().textContent = (mode==='year') ? rY.max : tsToNiceStr(rM.max);
+      lblMin().textContent = (mode==='year' && yearRange) ? yearRange.displayMin : tsToNiceStr(rM.min);
+      lblMax().textContent = (mode==='year' && yearRange) ? yearRange.displayMax : tsToNiceStr(rM.max);
 
       updateMarkers(true);
       updateUrl(); // keep reset reflected in shared links
@@ -6063,6 +6075,16 @@ function boundsContainPoint(boundsSnapshot, lat, lon) {
     lat <= boundsSnapshot.maxLat &&
     lon >= boundsSnapshot.minLon &&
     lon <= boundsSnapshot.maxLon;
+}
+
+function boundsContainBounds(outerBounds, innerBounds) {
+  if (!outerBounds || !innerBounds) {
+    return false;
+  }
+  return outerBounds.minLat <= innerBounds.minLat &&
+    outerBounds.maxLat >= innerBounds.maxLat &&
+    outerBounds.minLon <= innerBounds.minLon &&
+    outerBounds.maxLon >= innerBounds.maxLon;
 }
 
 function getBoundsIntersection(firstBounds, secondBounds) {
@@ -6702,28 +6724,66 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     }
   }
 
-  let minTs = Infinity;
-  let maxTs = -Infinity;
+  let fallbackMinTs = Infinity;
+  let fallbackMaxTs = -Infinity;
+  let fallbackMarkerCount = 0;
+  let visibleSummaryMinTs = Infinity;
+  let visibleSummaryMaxTs = -Infinity;
+  let visibleSummaryMarkerCount = 0;
+  let visibleSummarySeen = false;
   let pendingStreams = 0;
   let baseStreamFailed = false;
+
+  function mergeVisibleSummary(summary, allowSliderSummary) {
+    if (!allowSliderSummary || !summary || typeof summary !== 'object') {
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(summary, 'visibleCount')) {
+      return;
+    }
+    visibleSummarySeen = true;
+    const visibleCount = Number(summary.visibleCount) || 0;
+    const visibleMinTs = Number(summary.visibleMinTs);
+    const visibleMaxTs = Number(summary.visibleMaxTs);
+    visibleSummaryMarkerCount += visibleCount;
+    if (visibleCount > 0 && Number.isFinite(visibleMinTs) && Number.isFinite(visibleMaxTs)) {
+      visibleSummaryMinTs = Math.min(visibleSummaryMinTs, visibleMinTs);
+      visibleSummaryMaxTs = Math.max(visibleSummaryMaxTs, visibleMaxTs);
+    }
+  }
+
+  function normalizeDateSliderRange(minTs, maxTs) {
+    if (!isFinite(minTs) || !isFinite(maxTs)) {
+      return null;
+    }
+    if (maxTs > minTs) {
+      return [minTs, maxTs];
+    }
+    return [minTs - 1, maxTs + 1];
+  }
 
   function finalizeStreams() {
     if (!isActiveLoad() || streamsFinalized || pendingStreams > 0 || pendingRenderItems > 0) {
       return;
     }
     streamsFinalized = true;
-    const summaryMinTs = minTs;
-    const summaryMaxTs = maxTs;
-    const needSlider = isFinite(summaryMinTs) && isFinite(summaryMaxTs) && summaryMaxTs > summaryMinTs;
-    if (window.__setDateSliderVisibility){
-      window.__setDateSliderVisibility(needSlider);
+    const canUseDateRangeSummary = visibleSummarySeen || !canUseIncrementalReload;
+    const summaryMinTs = visibleSummarySeen ? visibleSummaryMinTs : fallbackMinTs;
+    const summaryMaxTs = visibleSummarySeen ? visibleSummaryMaxTs : fallbackMaxTs;
+    const summaryMarkerCount = visibleSummarySeen ? visibleSummaryMarkerCount : fallbackMarkerCount;
+    const sliderRange = normalizeDateSliderRange(summaryMinTs, summaryMaxTs);
+    const needSlider = canUseDateRangeSummary && summaryMarkerCount > 0 && !!sliderRange;
+    if (needSlider && window.__setDateSliderVisibility){
+      window.__setDateSliderVisibility(true);
+    } else if (!baseStreamFailed && canUseDateRangeSummary && window.__setDateSliderVisibility) {
+      window.__setDateSliderVisibility(false);
     }
-    if (needSlider && window.__initSliderOnce && isFinite(summaryMinTs) && isFinite(summaryMaxTs)){
-      window.__initSliderOnce(summaryMinTs, summaryMaxTs);
+    if (needSlider && window.__initSliderOnce){
+      window.__initSliderOnce(sliderRange[0], sliderRange[1]);
       window.__initSliderOnce = null;
     }
-    if (needSlider && window.__syncDateSliders && isFinite(summaryMinTs) && isFinite(summaryMaxTs)){
-      window.__syncDateSliders(summaryMinTs, summaryMaxTs);
+    if (needSlider && window.__syncDateSliders){
+      window.__syncDateSliders(sliderRange[0], sliderRange[1]);
     }
     if (waitForDangerFit && storedUserCenter) {
       reframeAroundUser();
@@ -6755,6 +6815,12 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     if (liveOnly) {
       params.set('liveOnly', '1');
     }
+    if (viewportBounds) {
+      params.set('visibleMinLat', viewportBounds.minLat);
+      params.set('visibleMinLon', viewportBounds.minLon);
+      params.set('visibleMaxLat', viewportBounds.maxLat);
+      params.set('visibleMaxLon', viewportBounds.maxLon);
+    }
     return params;
   }
 
@@ -6779,7 +6845,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     });
   }
 
-  function requestLayerStream(layerName, params, trackSummaries) {
+  function requestLayerStream(layerName, params, trackSummaries, allowSliderSummary) {
     pendingStreams += 1;
     startMarkerLayerStream(layerName, params, viewKey, {
       onMarker: function(m) {
@@ -6788,9 +6854,10 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         }
         const isLive = m.speed < 0;
         const markerInsideViewport = boundsContainPoint(viewportBounds, m.lat, m.lon);
-        if (!isLive && markerInsideViewport && typeof m.date === 'number') {
-          minTs = Math.min(minTs, m.date);
-          maxTs = Math.max(maxTs, m.date);
+        if (!isLive && markerInsideViewport && Number.isFinite(m.date)) {
+          fallbackMarkerCount += 1;
+          fallbackMinTs = Math.min(fallbackMinTs, m.date);
+          fallbackMaxTs = Math.max(fallbackMaxTs, m.date);
         }
         if (!isLive && savedRange && (m.date < savedRange[0] || m.date > savedRange[1])) {
           return;
@@ -6801,6 +6868,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         if (!isActiveLoad()) {
           return;
         }
+        mergeVisibleSummary(summary, allowSliderSummary);
         pendingStreams -= 1;
         finalizeStreams();
       },
@@ -6839,7 +6907,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       const requestRegions = canUseIncrementalReload ? missingRegions : [prefetchBounds];
       requestRegions.forEach(function(regionBounds) {
         const params = buildStreamParamsForBounds(name, false, false, regionBounds);
-        requestLayerStream(name, params, true);
+        requestLayerStream(name, params, true, boundsContainBounds(regionBounds, viewportBounds));
       });
     });
   } else if (baseChanged) {
@@ -6861,7 +6929,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         clearMarkerLayerGroup(name);
       }
       const params = buildStreamParamsForBounds(name, false, false, prefetchBounds);
-      requestLayerStream(name, params, true);
+      requestLayerStream(name, params, true, boundsContainBounds(prefetchBounds, viewportBounds));
     });
   }
 

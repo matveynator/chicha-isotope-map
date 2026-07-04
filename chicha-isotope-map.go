@@ -1117,9 +1117,9 @@ func looksLikeBGeigieLine(line string) bool {
 }
 
 var speedCatalog = map[string]SpeedRange{
-	"ped":   {0, 7},      // < 7 м/с (~0-25 км/ч)
-	"car":   {7, 70},     // 7–70 м/с (~25-250 км/ч)
-	"plane": {70, 1000},  // > 70 м/с (>250 км/ч)
+	"ped":   {0, 7},     // < 7 м/с (~0-25 км/ч)
+	"car":   {7, 70},    // 7–70 м/с (~25-250 км/ч)
+	"plane": {70, 1000}, // > 70 м/с (>250 км/ч)
 }
 
 // withServerHeader оборачивает любой http.Handler, добавляя
@@ -7098,16 +7098,55 @@ func streamPlaybackHandler(w http.ResponseWriter, r *http.Request) {
 // to show the date range slider even if the aggregated markers come from a
 // single dominant track.
 type markerStreamSummary struct {
-	TrackCount int   `json:"trackCount"`
-	MinTs      int64 `json:"minTs"`
-	MaxTs      int64 `json:"maxTs"`
+	TrackCount   int   `json:"trackCount"`
+	MinTs        int64 `json:"minTs"`
+	MaxTs        int64 `json:"maxTs"`
+	VisibleCount int   `json:"visibleCount"`
+	VisibleMinTs int64 `json:"visibleMinTs"`
+	VisibleMaxTs int64 `json:"visibleMaxTs"`
+}
+
+type markerStreamVisibleBounds struct {
+	bounds database.Bounds
+}
+
+func markerInsideVisibleBounds(m database.Marker, visibleBounds *markerStreamVisibleBounds) bool {
+	if visibleBounds == nil {
+		return false
+	}
+	bounds := visibleBounds.bounds
+	return m.Lat >= bounds.MinLat &&
+		m.Lat <= bounds.MaxLat &&
+		m.Lon >= bounds.MinLon &&
+		m.Lon <= bounds.MaxLon
+}
+
+func parseMarkerStreamVisibleBounds(values url.Values) *markerStreamVisibleBounds {
+	minLat, errMinLat := strconv.ParseFloat(values.Get("visibleMinLat"), 64)
+	minLon, errMinLon := strconv.ParseFloat(values.Get("visibleMinLon"), 64)
+	maxLat, errMaxLat := strconv.ParseFloat(values.Get("visibleMaxLat"), 64)
+	maxLon, errMaxLon := strconv.ParseFloat(values.Get("visibleMaxLon"), 64)
+	if errMinLat != nil || errMinLon != nil || errMaxLat != nil || errMaxLon != nil {
+		return nil
+	}
+	if minLat > maxLat || minLon > maxLon {
+		return nil
+	}
+	return &markerStreamVisibleBounds{
+		bounds: database.Bounds{
+			MinLat: minLat,
+			MinLon: minLon,
+			MaxLat: maxLat,
+			MaxLon: maxLon,
+		},
+	}
 }
 
 // summarizeMarkerStream forwards markers while tracking aggregate metadata.
 // Using a single goroutine and a buffered summary channel keeps the stream
 // non-blocking and avoids locks per the Go proverb "Don't communicate by
 // sharing memory; share memory by communicating."
-func summarizeMarkerStream(ctx context.Context, in <-chan database.Marker) (<-chan database.Marker, <-chan markerStreamSummary) {
+func summarizeMarkerStream(ctx context.Context, in <-chan database.Marker, visibleBounds *markerStreamVisibleBounds) (<-chan database.Marker, <-chan markerStreamSummary) {
 	out := make(chan database.Marker)
 	summaryCh := make(chan markerStreamSummary, 1)
 
@@ -7117,8 +7156,12 @@ func summarizeMarkerStream(ctx context.Context, in <-chan database.Marker) (<-ch
 
 		trackIDs := make(map[string]struct{})
 		var minTs, maxTs int64
+		var visibleMinTs, visibleMaxTs int64
 		haveMin := false
 		haveMax := false
+		haveVisibleMin := false
+		haveVisibleMax := false
+		visibleCount := 0
 
 		for {
 			select {
@@ -7127,9 +7170,12 @@ func summarizeMarkerStream(ctx context.Context, in <-chan database.Marker) (<-ch
 			case m, ok := <-in:
 				if !ok {
 					summaryCh <- markerStreamSummary{
-						TrackCount: len(trackIDs),
-						MinTs:      minTs,
-						MaxTs:      maxTs,
+						TrackCount:   len(trackIDs),
+						MinTs:        minTs,
+						MaxTs:        maxTs,
+						VisibleCount: visibleCount,
+						VisibleMinTs: visibleMinTs,
+						VisibleMaxTs: visibleMaxTs,
 					}
 					return
 				}
@@ -7146,6 +7192,17 @@ func summarizeMarkerStream(ctx context.Context, in <-chan database.Marker) (<-ch
 					if !haveMax || m.Date > maxTs {
 						maxTs = m.Date
 						haveMax = true
+					}
+					if markerInsideVisibleBounds(m, visibleBounds) {
+						visibleCount++
+						if !haveVisibleMin || m.Date < visibleMinTs {
+							visibleMinTs = m.Date
+							haveVisibleMin = true
+						}
+						if !haveVisibleMax || m.Date > visibleMaxTs {
+							visibleMaxTs = m.Date
+							haveVisibleMax = true
+						}
 					}
 				}
 
@@ -7219,6 +7276,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	maxLat, _ := strconv.ParseFloat(q.Get("maxLat"), 64)
 	maxLon, _ := strconv.ParseFloat(q.Get("maxLon"), 64)
 	trackID := q.Get("trackID")
+	visibleBounds := parseMarkerStreamVisibleBounds(q)
 	// parseBool accepts the most common on-values so clients stay lightweight.
 	parseBool := func(raw string) bool {
 		switch strings.ToLower(strings.TrimSpace(raw)) {
@@ -7312,10 +7370,10 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	var summaryCh <-chan markerStreamSummary
 	if trackID != "" {
 		// Stream raw markers for track view so chronological order is preserved.
-		streamSrc, summaryCh = summarizeMarkerStream(ctx, baseSrc)
+		streamSrc, summaryCh = summarizeMarkerStream(ctx, baseSrc, visibleBounds)
 	} else {
 		// Aggregate map view markers to keep large-area loads responsive.
-		rawStream, rawSummary := summarizeMarkerStream(ctx, baseSrc)
+		rawStream, rawSummary := summarizeMarkerStream(ctx, baseSrc, visibleBounds)
 		streamSrc = aggregateMarkers(ctx, rawStream, nil, zoom)
 		summaryCh = rawSummary
 	}
