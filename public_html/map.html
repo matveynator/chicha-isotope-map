@@ -6623,12 +6623,10 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     }
   }
 
-  const tracks = new Set();
   let minTs = Infinity;
   let maxTs = -Infinity;
   let summaryMin = Infinity;
   let summaryMax = -Infinity;
-  let summaryTrackCount = 0;
   let pendingStreams = 0;
 
   function mergeSummary(summary, streamMin, streamMax) {
@@ -6642,9 +6640,6 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     } else if (Number.isFinite(streamMax)) {
       summaryMax = Math.max(summaryMax, streamMax);
     }
-    if (summary && Number.isFinite(summary.trackCount)) {
-      summaryTrackCount += summary.trackCount;
-    }
   }
 
   function finalizeStreams() {
@@ -6654,8 +6649,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     streamsFinalized = true;
     const summaryMinTs = Number.isFinite(summaryMin) ? summaryMin : minTs;
     const summaryMaxTs = Number.isFinite(summaryMax) ? summaryMax : maxTs;
-    const trackCount = summaryTrackCount > 0 ? summaryTrackCount : tracks.size;
-    const needSlider = trackCount > 1 && isFinite(summaryMinTs) && isFinite(summaryMaxTs) && summaryMaxTs > summaryMinTs;
+    const needSlider = isFinite(summaryMinTs) && isFinite(summaryMaxTs) && summaryMaxTs > summaryMinTs;
     if (window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(needSlider);
     }
@@ -6728,9 +6722,6 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
           return;
         }
         const isLive = m.speed < 0;
-        if (!isLive && m.trackID) {
-          tracks.add(m.trackID);
-        }
         if (!isLive && typeof m.date === 'number') {
           minTs = Math.min(minTs, m.date);
           maxTs = Math.max(maxTs, m.date);
@@ -6877,7 +6868,6 @@ function updateMarkers(forceReload){
     trackViewMarkersReady = false;
   }
 
-  const tracks = new Set();
   let minTs = Infinity, maxTs = -Infinity;
   const livePlacement = createLivePlacementGrid(map, zoom);
   const pruneOverlap = createMarkerOverlapPruner(map);
@@ -6972,7 +6962,6 @@ function updateMarkers(forceReload){
     }
     let m; try { m = JSON.parse(e.data); } catch { return; }
     const isLive = m.speed < 0; // negative speed denotes realtime marker
-    if (!isLive && m.trackID) tracks.add(m.trackID);
     minTs = Math.min(minTs, m.date);
     maxTs = Math.max(maxTs, m.date);
     // Keep realtime Safecast markers visible regardless of the date slider so live sensors are never filtered out.
@@ -7004,10 +6993,7 @@ function updateMarkers(forceReload){
     streamDone = true;
     const summaryMin = streamSummary && Number.isFinite(streamSummary.minTs) ? streamSummary.minTs : minTs;
     const summaryMax = streamSummary && Number.isFinite(streamSummary.maxTs) ? streamSummary.maxTs : maxTs;
-    const trackCount = streamSummary && Number.isFinite(streamSummary.trackCount) ? streamSummary.trackCount : tracks.size;
-    const dateSpanMonths = (isFinite(summaryMin) && isFinite(summaryMax))
-                            ? monthsApart(summaryMin, summaryMax) : 0;
-    const needSlider = !isTrackView && trackCount > 1 && isFinite(summaryMin) && isFinite(summaryMax) && summaryMax > summaryMin;
+    const needSlider = !isTrackView && isFinite(summaryMin) && isFinite(summaryMax) && summaryMax > summaryMin;
     if (window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(needSlider);
     }
