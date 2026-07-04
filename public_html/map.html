@@ -2825,7 +2825,7 @@ function buildMapStateParams() {
     params.set('speed', speedParam);
   }
 
-  const dateRange = loadDateRangeState();
+  const dateRange = loadCustomDateRangeState();
   if (Array.isArray(dateRange) && dateRange.length === 2 && isFinite(dateRange[0]) && isFinite(dateRange[1])) {
     params.set('from', Math.floor(dateRange[0]));
     params.set('to', Math.floor(dateRange[1]));
@@ -2910,6 +2910,7 @@ var markerFilterState = null;
 // Guard async callbacks so stale marker loads cannot mutate shared loading UI.
 var markerLoadToken = 0;
 var markerViewportState = null;
+var currentDateFullRange = null;
 var isTrackView = false;
 var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
@@ -3298,14 +3299,15 @@ function parseMarkerStreamQueryParams(params, layerName) {
   };
 }
 
-function markerStreamBoundsOverlap(firstBounds, secondBounds) {
-  if (!firstBounds || !secondBounds) {
+function markerStreamBoundsContain(cachedBounds, requestedBounds) {
+  if (!cachedBounds || !requestedBounds) {
     return false;
   }
-  return !(firstBounds.maxLat < secondBounds.minLat ||
-    firstBounds.minLat > secondBounds.maxLat ||
-    firstBounds.maxLon < secondBounds.minLon ||
-    firstBounds.minLon > secondBounds.maxLon);
+  const boundsEpsilon = 0.000000001;
+  return cachedBounds.minLat <= requestedBounds.minLat + boundsEpsilon &&
+    cachedBounds.maxLat >= requestedBounds.maxLat - boundsEpsilon &&
+    cachedBounds.minLon <= requestedBounds.minLon + boundsEpsilon &&
+    cachedBounds.maxLon >= requestedBounds.maxLon - boundsEpsilon;
 }
 
 function markerStreamRequestCompatible(cachedQuery, requestedQuery) {
@@ -3368,16 +3370,13 @@ async function loadBestOfflineMarkerStream(layerName, params, exactStreamKey) {
     if (!markerStreamRequestCompatible(cachedQuery, requestedQuery)) {
       return false;
     }
-    return markerStreamBoundsOverlap(cachedQuery, requestedQuery);
+    if (Number(cachedQuery.zoom) !== requestedQuery.zoom) {
+      return false;
+    }
+    return markerStreamBoundsContain(cachedQuery, requestedQuery);
   });
   if (!matchingEntries || matchingEntries.length === 0) {
     return null;
-  }
-  const entriesWithExactZoom = matchingEntries.filter(function(markerStreamEntry) {
-    return markerStreamEntry.query && Number(markerStreamEntry.query.zoom) === requestedQuery.zoom;
-  });
-  if (entriesWithExactZoom.length > 0) {
-    return mergeCachedMarkerStreams(entriesWithExactZoom, requestedQuery.zoom);
   }
   return mergeCachedMarkerStreams(matchingEntries, requestedQuery.zoom);
 }
@@ -4108,26 +4107,16 @@ function resetTrackViewPlaybackForZoom() {
     return;
   }
   // Zooming changes the visible bounds, so clear state before re-streaming.
+  const hadReadyMarkers = trackViewMarkersReady;
   trackViewPlaybackGeneration += 1;
   stopTrackViewPlayback(false);
-  trackViewAutoplayRequested = true;
-  trackViewAutoplayDone = false;
+  if (hadReadyMarkers) {
+    trackViewAutoplayRequested = false;
+    trackViewAutoplayDone = true;
+  }
   trackViewMarkers = [];
   trackViewMarkersReady = false;
   clearTrackViewPlaybackMarkers();
-}
-
-function startTrackViewAutoplayAfterReload() {
-  if (!isTrackView || !currentTrackID) {
-    return;
-  }
-  if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
-    return;
-  }
-  // After a reload, always auto-play so the refreshed viewport is visible.
-  trackViewAutoplayRequested = true;
-  trackViewAutoplayDone = true;
-  startTrackViewPlayback();
 }
 
 function maybeAutoplayTrackViewPlayback() {
@@ -4202,12 +4191,62 @@ function loadSpeedFilterState() {
 }
 
 // ---------- helpers for time-range state ------------------------
+function normalizeDateRangeState(range) {
+  if (!Array.isArray(range) || range.length !== 2) {
+    return null;
+  }
+  const start = Number(range[0]);
+  const end = Number(range[1]);
+  if (!isFinite(start) || !isFinite(end)) {
+    return null;
+  }
+  return start <= end ? [start, end] : [end, start];
+}
+
+function dateRangesMatch(firstRange, secondRange) {
+  const first = normalizeDateRangeState(firstRange);
+  const second = normalizeDateRangeState(secondRange);
+  if (!first || !second) {
+    return false;
+  }
+  return Math.abs(first[0] - second[0]) < 1 && Math.abs(first[1] - second[1]) < 1;
+}
+
 function loadDateRangeState() {
-  try { return JSON.parse(sessionStorage.getItem('dateRangeState')) || null; }
+  try { return normalizeDateRangeState(JSON.parse(sessionStorage.getItem('dateRangeState'))); }
   catch(e){ return null; }
 }
 function saveDateRangeState(st) {
-  sessionStorage.setItem('dateRangeState', JSON.stringify(st));
+  const range = normalizeDateRangeState(st);
+  if (!range) {
+    clearDateRangeState();
+    return;
+  }
+  sessionStorage.setItem('dateRangeState', JSON.stringify(range));
+}
+function clearDateRangeState() {
+  sessionStorage.removeItem('dateRangeState');
+}
+function setCurrentDateFullRange(range) {
+  currentDateFullRange = normalizeDateRangeState(range);
+}
+function loadCustomDateRangeState(defaultRange) {
+  const savedRange = loadDateRangeState();
+  if (!savedRange) {
+    return null;
+  }
+  const effectiveDefaultRange = normalizeDateRangeState(defaultRange) || currentDateFullRange;
+  if (effectiveDefaultRange && dateRangesMatch(savedRange, effectiveDefaultRange)) {
+    return null;
+  }
+  return savedRange;
+}
+function saveCustomDateRangeState(range, defaultRange) {
+  if (dateRangesMatch(range, defaultRange || currentDateFullRange)) {
+    clearDateRangeState();
+    return;
+  }
+  saveDateRangeState(range);
 }
 // Remember the slider mode so shared URLs can restore the same range selector.
 function loadDateRangeMode() {
@@ -4828,13 +4867,7 @@ document.addEventListener('DOMContentLoaded', function () {
       console.warn('offline cache stats init failed:', error);
     });
 
-  // Track view initialization
-  // Inject markers as literal JSON so the first render avoids the template parse error
-  // and the frontend can inspect the slice immediately.
-  var initialMarkers = {{ .MarkersJSON }};
-  if (Array.isArray(initialMarkers) && initialMarkers.length > 0) {
-    isTrackView = true;
-
+  if (isTrackView) {
     // Rely on whenReady so marker loading does not depend on tile fetch success.
     map.whenReady(function() {
       debounceUpdateMarkers();
@@ -5025,7 +5058,8 @@ document.addEventListener('DOMContentLoaded', function () {
  *    in sync with the current map viewport on every pan/zoom IF no custom
  *    time filter is set by the user.
  *
- * No globals except 3 window.* hooks; no vendor APIs beyond noUiSlider.
+ * Shared date state is limited to the current full range plus 3 window.* hooks;
+ * no vendor APIs beyond noUiSlider.
  */
 function createDateRangeSlider(){
 
@@ -5134,7 +5168,7 @@ function createDateRangeSlider(){
   }
 
   function updateActionButtonsHighlight() {
-    const savedRange = loadDateRangeState();
+    const savedRange = loadCustomDateRangeState(fullRange);
     const defaultRange = fullRange;
     const hasCustomDateRange = isCustomDateRangeSelected(savedRange, defaultRange);
     if (btnReset) {
@@ -5158,7 +5192,7 @@ function createDateRangeSlider(){
   // Show/hide the whole control (called from updateMarkers())
   window.__setDateSliderVisibility = (show)=>{
     sliderBox.style.display = show ? 'block' : 'none';
-    if(!show) sessionStorage.removeItem('dateRangeState');
+    if(!show) clearDateRangeState();
     updateActionButtonsHighlight();
     if (!show && sliderTooltipHandle) {
       sliderTooltipHandle.hide();
@@ -5222,7 +5256,7 @@ function createDateRangeSlider(){
     if (mode === 'month' && monthSlider && monthSlider.noUiSlider) {
       return monthSlider.noUiSlider.get().map(Number);
     }
-    const saved = loadDateRangeState();
+    const saved = loadCustomDateRangeState(fullRange);
     if (Array.isArray(saved) && saved.length === 2) {
       return saved;
     }
@@ -5593,7 +5627,8 @@ function createDateRangeSlider(){
   window.__initSliderOnce = (minTs,maxTs)=>{
     if (initY && initM) return;
     fullRange = [minTs,maxTs]; // remember initial "full range"
-    const savedRange = loadDateRangeState();
+    setCurrentDateFullRange(fullRange);
+    const savedRange = loadCustomDateRangeState(fullRange);
 
     // YEAR slider (single handle)
     if(!initY){
@@ -5616,9 +5651,9 @@ function createDateRangeSlider(){
       //  - Else → show [chosen year..max year].
       yearSlider.noUiSlider.on('update', ([y])=>{
         if (mode !== 'year') return;
-        const saved = loadDateRangeState();
         const fr = fullRange || [minTs,maxTs];
-        const isFull = !saved || (saved[0] === fr[0] && saved[1] === fr[1]);
+        const saved = loadCustomDateRangeState(fr);
+        const isFull = !saved;
         if (isFull){
           const r = yearSlider.noUiSlider.options.range;
           lblMin().textContent = r.min;
@@ -5679,13 +5714,12 @@ function createDateRangeSlider(){
     if (!initY || !initM) return; // not built yet
 
     // Detect whether user has a custom time filter (not full range).
-    const saved = loadDateRangeState();
     const prevFull = fullRange;
+    const saved = loadCustomDateRangeState(prevFull);
     fullRange = [minTs,maxTs]; // update "full" range to the new viewport
-
-    const hasCustom =
-      !!saved && !(saved[0] === prevFull?.[0] && saved[1] === prevFull?.[1]) &&
-      !(saved[0] === fullRange[0] && saved[1] === fullRange[1]);
+    setCurrentDateFullRange(fullRange);
+    const customRange = saved && !dateRangesMatch(saved, fullRange) ? saved : null;
+    const hasCustom = !!customRange;
 
     // Update YEAR slider bounds
     const minYear = new Date(minTs*1000).getUTCFullYear();
@@ -5700,8 +5734,8 @@ function createDateRangeSlider(){
     }, false);
 
     // Keep slider handles aligned with the saved range so deep links stay exact.
-    if (saved) {
-      syncSlidersToRange(saved, minTs, maxTs);
+    if (customRange) {
+      syncSlidersToRange(customRange, minTs, maxTs);
     }
 
     // If no custom filter → force labels to show full bounds and make month slider span all
@@ -5715,9 +5749,8 @@ function createDateRangeSlider(){
         lblMin().textContent = tsToNiceStr(minTs);
         lblMax().textContent = tsToNiceStr(maxTs);
       }
-      // persist that "no filter" means full range
-      saveDateRangeState([minTs,maxTs]);
-      updateUrl(); // keep the default date range visible in the URL
+      clearDateRangeState();
+      updateUrl(); // keep shared links free of stale date filters
     }
     updateActionButtonsHighlight();
   };
@@ -5728,7 +5761,7 @@ function createDateRangeSlider(){
     // Clear playback-only layers and cached groups so reset always reflects the current viewport.
     clearPlaybackMarkers();
     clearMarkerLayerGroups();
-    sessionStorage.removeItem('dateRangeState');
+    clearDateRangeState();
     if (initY && initM){
       const rY = yearSlider.noUiSlider.options.range;
       const rM = monthSlider.noUiSlider.options.range;
@@ -5738,8 +5771,6 @@ function createDateRangeSlider(){
       lblMin().textContent = (mode==='year') ? rY.min : tsToNiceStr(rM.min);
       lblMax().textContent = (mode==='year') ? rY.max : tsToNiceStr(rM.max);
 
-      // remember "no filter" == full range of the viewport
-      saveDateRangeState([rM.min, rM.max]);
       updateMarkers(true);
       updateUrl(); // keep reset reflected in shared links
     }
@@ -5763,9 +5794,8 @@ function createDateRangeSlider(){
     }
 
     // Refresh labels on mode switch respecting full/custom state
-    const saved = loadDateRangeState();
-    const fr = fullRange;
-    const isFull = !saved || (fr && saved[0]===fr[0] && saved[1]===fr[1]);
+    const saved = loadCustomDateRangeState(fullRange);
+    const isFull = !saved;
 
     if (next === 'year'){
       const r = yearSlider.noUiSlider.options.range;
@@ -5804,9 +5834,9 @@ function createDateRangeSlider(){
       const yearStart = Date.UTC(y, 0, 1) / 1000;
       const rangeMin = fullRange ? fullRange[0] : yearStart;
       const from = Math.max(yearStart, rangeMin);
-      saveDateRangeState([from, rangeMax]);
+      saveCustomDateRangeState([from, rangeMax], fullRange);
     } else {
-      saveDateRangeState(monthSlider.noUiSlider.get().map(Number));
+      saveCustomDateRangeState(monthSlider.noUiSlider.get().map(Number), fullRange);
     }
     debounceUpdateMarkers(true);
     updateUrl(); // reflect date filters in the shareable URL
@@ -5971,10 +6001,10 @@ function initMarkerLayers() {
     live: L.layerGroup(),
   };
   markerLayerState = {
-    ped: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0 },
-    car: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0 },
-    plane: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0 },
-    live: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0 },
+    ped: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0, streamFailed: false },
+    car: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0, streamFailed: false },
+    plane: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0, streamFailed: false },
+    live: { loaded: false, viewKey: '', source: new Set(), pendingStreams: 0, streamFailed: false },
   };
 }
 
@@ -6003,6 +6033,25 @@ function captureBoundsSnapshot(bounds) {
     minLon: bounds.getSouthWest().lng,
     maxLat: bounds.getNorthEast().lat,
     maxLon: bounds.getNorthEast().lng,
+  };
+}
+
+function clampLatitudeToMapLimit(latitude) {
+  const maxLatitude = 85.0511287798066;
+  return Math.max(-maxLatitude, Math.min(maxLatitude, latitude));
+}
+
+function expandBoundsSnapshot(boundsSnapshot, expansionRatio) {
+  if (!boundsSnapshot) {
+    return null;
+  }
+  const latExpansion = (boundsSnapshot.maxLat - boundsSnapshot.minLat) * expansionRatio;
+  const lonExpansion = (boundsSnapshot.maxLon - boundsSnapshot.minLon) * expansionRatio;
+  return {
+    minLat: clampLatitudeToMapLimit(boundsSnapshot.minLat - latExpansion),
+    minLon: boundsSnapshot.minLon - lonExpansion,
+    maxLat: clampLatitudeToMapLimit(boundsSnapshot.maxLat + latExpansion),
+    maxLon: boundsSnapshot.maxLon + lonExpansion,
   };
 }
 
@@ -6132,6 +6181,7 @@ function closeMarkerLayerStream(name) {
   }
   markerLayerState[name].pendingStreams = 0;
   markerLayerState[name].loaded = false;
+  markerLayerState[name].streamFailed = false;
 }
 
 function removeMarkerByKey(markerKey) {
@@ -6165,6 +6215,7 @@ function clearMarkerLayerGroup(name) {
     markerLayerState[name].loaded = false;
     markerLayerState[name].viewKey = '';
     markerLayerState[name].pendingStreams = 0;
+    markerLayerState[name].streamFailed = false;
     if (markerLayerState[name].source && typeof markerLayerState[name].source.clear === 'function') {
       markerLayerState[name].source.clear();
     }
@@ -6238,17 +6289,24 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
   const enableMarkerStreamCache = !window.desktopWebViewMode;
   const streamKey = `v1:${layerName}:${params.toString()}`;
   const streamQuery = parseMarkerStreamQueryParams(params, layerName);
+  if (!state.pendingStreams) {
+    state.streamFailed = false;
+  }
   state.pendingStreams = (state.pendingStreams || 0) + 1;
   state.loaded = false;
   state.viewKey = viewKey || '';
   let streamSummary = null;
   let streamMin = Infinity;
   let streamMax = -Infinity;
+  let streamSettled = false;
   const streamedMarkers = [];
 
-  function markStreamFinished() {
+  function markStreamFinished(streamSucceeded) {
+    if (!streamSucceeded) {
+      state.streamFailed = true;
+    }
     state.pendingStreams = Math.max(0, (state.pendingStreams || 0) - 1);
-    state.loaded = state.pendingStreams === 0;
+    state.loaded = !state.streamFailed && state.pendingStreams === 0;
   }
 
   function emitFromCache(entry) {
@@ -6270,7 +6328,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     if (handlers && typeof handlers.onDone === 'function') {
       handlers.onDone(streamSummary, streamMin, streamMax);
     }
-    markStreamFinished();
+    markStreamFinished(true);
     return true;
   }
 
@@ -6303,7 +6361,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
       if (handlers && typeof handlers.onError === 'function') {
         handlers.onError();
       }
-      markStreamFinished();
+      markStreamFinished(false);
       return;
     }
     loadBestOfflineMarkerStream(layerName, params, streamKey)
@@ -6312,14 +6370,14 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
           if (handlers && typeof handlers.onError === 'function') {
             handlers.onError();
           }
-          markStreamFinished();
+          markStreamFinished(false);
         }
       })
       .catch(function() {
         if (handlers && typeof handlers.onError === 'function') {
           handlers.onError();
         }
-        markStreamFinished();
+        markStreamFinished(false);
       });
     return;
   }
@@ -6358,7 +6416,15 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     }
   });
 
-  function finishStream() {
+  function finishStream(event) {
+    if (streamSettled) {
+      return;
+    }
+    if (!event || event.data !== 'end') {
+      failStreamWithCacheFallback();
+      return;
+    }
+    streamSettled = true;
     persistStreamCache()
       .then(function() {
         latestCacheTrafficMode = 'network';
@@ -6368,22 +6434,24 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
         console.warn('marker stream cache save failed:', error);
       });
     state.source.delete(es);
-    markStreamFinished();
+    markStreamFinished(true);
     if (handlers && typeof handlers.onDone === 'function') {
       handlers.onDone(streamSummary, streamMin, streamMax);
     }
     es.close();
   }
 
-  es.addEventListener('done', finishStream);
-
-  es.onerror = () => {
+  function failStreamWithCacheFallback() {
+    if (streamSettled) {
+      return;
+    }
+    streamSettled = true;
     state.source.delete(es);
     if (!enableMarkerStreamCache) {
       if (handlers && typeof handlers.onError === 'function') {
         handlers.onError();
       }
-      markStreamFinished();
+      markStreamFinished(false);
       es.close();
       return;
     }
@@ -6395,15 +6463,21 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
         if (handlers && typeof handlers.onError === 'function') {
           handlers.onError();
         }
-        markStreamFinished();
+        markStreamFinished(false);
       })
       .catch(function() {
         if (handlers && typeof handlers.onError === 'function') {
           handlers.onError();
         }
-        markStreamFinished();
+        markStreamFinished(false);
       });
     es.close();
+  }
+
+  es.addEventListener('done', finishStream);
+
+  es.onerror = () => {
+    failStreamWithCacheFallback();
   };
 }
 
@@ -6433,12 +6507,13 @@ function updateLiveLayerOnly(state, options) {
     closeMarkerLayerStream(markerLiveLayerName);
     clearMarkerLayerGroup(markerLiveLayerName);
     const bounds = map.getBounds();
+    const prefetchBounds = expandBoundsSnapshot(captureBoundsSnapshot(bounds), 0.5);
     const params = new URLSearchParams({
       zoom: map.getZoom(),
-      minLat: bounds.getSouthWest().lat,
-      minLon: bounds.getSouthWest().lng,
-      maxLat: bounds.getNorthEast().lat,
-      maxLon: bounds.getNorthEast().lng,
+      minLat: prefetchBounds.minLat,
+      minLon: prefetchBounds.minLon,
+      maxLat: prefetchBounds.maxLat,
+      maxLon: prefetchBounds.maxLon,
       realtime: '1',
       liveOnly: '1',
     });
@@ -6511,10 +6586,14 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
   const liveChanged = liveFilterChanged(prevState, state);
   const viewKey = buildMarkerViewKey();
   const viewChanged = viewKey && viewKey !== markerViewKey;
-  const shouldReload = forceReload || viewChanged;
   const bounds = map.getBounds();
   const viewportBounds = captureBoundsSnapshot(bounds);
+  const prefetchBounds = expandBoundsSnapshot(viewportBounds, 0.5);
   const previousViewport = markerViewportState;
+  const anyBaseEnabled = markerLayerNames.some(function(name) {
+    return markerLayerEnabled(name, state);
+  });
+  const shouldReload = forceReload || viewChanged || (anyBaseEnabled && (!previousViewport || !previousViewport.bounds));
   const zoom = map.getZoom();
   const zoomChanged = !previousViewport || previousViewport.zoom !== zoom;
   const canUseIncrementalReload = shouldReload &&
@@ -6524,8 +6603,8 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     !!previousViewport &&
     !!previousViewport.bounds;
   const missingRegions = canUseIncrementalReload
-    ? buildIncrementalBoundsRegions(previousViewport.bounds, viewportBounds)
-    : [viewportBounds];
+    ? buildIncrementalBoundsRegions(previousViewport.bounds, prefetchBounds)
+    : [prefetchBounds];
   if (shouldReload) {
     markerViewKey = viewKey;
   }
@@ -6539,7 +6618,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
 
   syncMarkerLayerVisibility(state);
 
-  const savedRange = loadDateRangeState();
+  const savedRange = loadCustomDateRangeState();
 
   const renderQueue = [];
   let renderScheduled = false;
@@ -6625,30 +6704,16 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
 
   let minTs = Infinity;
   let maxTs = -Infinity;
-  let summaryMin = Infinity;
-  let summaryMax = -Infinity;
   let pendingStreams = 0;
-
-  function mergeSummary(summary, streamMin, streamMax) {
-    if (summary && Number.isFinite(summary.minTs)) {
-      summaryMin = Math.min(summaryMin, summary.minTs);
-    } else if (Number.isFinite(streamMin)) {
-      summaryMin = Math.min(summaryMin, streamMin);
-    }
-    if (summary && Number.isFinite(summary.maxTs)) {
-      summaryMax = Math.max(summaryMax, summary.maxTs);
-    } else if (Number.isFinite(streamMax)) {
-      summaryMax = Math.max(summaryMax, streamMax);
-    }
-  }
+  let baseStreamFailed = false;
 
   function finalizeStreams() {
     if (!isActiveLoad() || streamsFinalized || pendingStreams > 0 || pendingRenderItems > 0) {
       return;
     }
     streamsFinalized = true;
-    const summaryMinTs = Number.isFinite(summaryMin) ? summaryMin : minTs;
-    const summaryMaxTs = Number.isFinite(summaryMax) ? summaryMax : maxTs;
+    const summaryMinTs = minTs;
+    const summaryMaxTs = maxTs;
     const needSlider = isFinite(summaryMinTs) && isFinite(summaryMaxTs) && summaryMaxTs > summaryMinTs;
     if (window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(needSlider);
@@ -6665,7 +6730,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     }
     markerViewportState = {
       zoom: zoom,
-      bounds: viewportBounds,
+      bounds: baseStreamFailed ? null : prefetchBounds,
     };
     if (loadingEl) loadingEl.style.display = 'none';
   }
@@ -6693,8 +6758,8 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     return params;
   }
 
-  function removeBaseMarkersOutsideViewport() {
-    if (!viewportBounds) {
+  function removeBaseMarkersOutsidePrefetchBounds() {
+    if (!prefetchBounds) {
       return;
     }
     Object.keys(circleMarkers).forEach(function(markerKey) {
@@ -6708,7 +6773,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       if (typeof markerLayer.markerLat !== 'number' || typeof markerLayer.markerLon !== 'number') {
         return;
       }
-      if (!boundsContainPoint(viewportBounds, markerLayer.markerLat, markerLayer.markerLon)) {
+      if (!boundsContainPoint(prefetchBounds, markerLayer.markerLat, markerLayer.markerLon)) {
         removeMarkerByKey(markerKey);
       }
     });
@@ -6722,7 +6787,8 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
           return;
         }
         const isLive = m.speed < 0;
-        if (!isLive && typeof m.date === 'number') {
+        const markerInsideViewport = boundsContainPoint(viewportBounds, m.lat, m.lon);
+        if (!isLive && markerInsideViewport && typeof m.date === 'number') {
           minTs = Math.min(minTs, m.date);
           maxTs = Math.max(maxTs, m.date);
         }
@@ -6735,15 +6801,15 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         if (!isActiveLoad()) {
           return;
         }
-        if (trackSummaries) {
-          mergeSummary(summary, streamMin, streamMax);
-        }
         pendingStreams -= 1;
         finalizeStreams();
       },
       onError: function() {
         if (!isActiveLoad()) {
           return;
+        }
+        if (trackSummaries) {
+          baseStreamFailed = true;
         }
         pendingStreams -= 1;
         finalizeStreams();
@@ -6752,13 +6818,10 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
   }
 
   const liveEnabled = markerLayerEnabled(markerLiveLayerName, state);
-  const anyBaseEnabled = markerLayerNames.some(function(name) {
-    return markerLayerEnabled(name, state);
-  });
 
   if (shouldReload) {
     if (canUseIncrementalReload) {
-      removeBaseMarkersOutsideViewport();
+      removeBaseMarkersOutsidePrefetchBounds();
     }
     markerLayerNames.forEach(function(name) {
       if (!markerLayerEnabled(name, state)) {
@@ -6773,7 +6836,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       if (!canUseIncrementalReload && markerLayerState && markerLayerState[name]) {
         markerLayerState[name].viewKey = viewKey;
       }
-      const requestRegions = canUseIncrementalReload ? missingRegions : [viewportBounds];
+      const requestRegions = canUseIncrementalReload ? missingRegions : [prefetchBounds];
       requestRegions.forEach(function(regionBounds) {
         const params = buildStreamParamsForBounds(name, false, false, regionBounds);
         requestLayerStream(name, params, true);
@@ -6797,7 +6860,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         // Clear partial data so a fresh stream doesn't duplicate markers.
         clearMarkerLayerGroup(name);
       }
-      const params = buildStreamParamsForBounds(name, false, false, viewportBounds);
+      const params = buildStreamParamsForBounds(name, false, false, prefetchBounds);
       requestLayerStream(name, params, true);
     });
   }
@@ -6849,17 +6912,18 @@ function updateMarkers(forceReload){
 
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
+  const prefetchBounds = expandBoundsSnapshot(captureBoundsSnapshot(bounds), 0.5);
 
   const params = {
     zoom  : zoom,
-    minLat: bounds.getSouthWest().lat,
-    minLon: bounds.getSouthWest().lng,
-    maxLat: bounds.getNorthEast().lat,
-    maxLon: bounds.getNorthEast().lng
+    minLat: prefetchBounds.minLat,
+    minLon: prefetchBounds.minLon,
+    maxLat: prefetchBounds.maxLat,
+    maxLon: prefetchBounds.maxLon
   };
   if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
 
-  const savedRange = isTrackView ? null : loadDateRangeState();
+  const savedRange = isTrackView ? null : loadCustomDateRangeState();
 
   for (const key in circleMarkers) removeMarkerByKey(key);
   circleMarkers = {};
@@ -6986,8 +7050,13 @@ function updateMarkers(forceReload){
     }
   });
 
-  es.addEventListener('done', () => {
+  es.addEventListener('done', e => {
     if (!isActiveLoad()) {
+      return;
+    }
+    if (!e || e.data !== 'end') {
+      if (loadingEl) loadingEl.style.display='none';
+      es.close();
       return;
     }
     streamDone = true;
@@ -7016,10 +7085,8 @@ function updateMarkers(forceReload){
         return aDate - bDate;
       });
       trackViewMarkersReady = true;
-      if (!trackViewAutoplayRequested) {
-        renderTrackViewSnapshot();
-      }
-      startTrackViewAutoplayAfterReload();
+      renderTrackViewSnapshot();
+      maybeAutoplayTrackViewPlayback();
     }
   });
 
@@ -8399,6 +8466,8 @@ function loadMapFromUrl() {
   const dateRange = parseDateRangeParams(params);
   if (dateRange) {
     saveDateRangeState(dateRange);
+  } else {
+    clearDateRangeState();
   }
   const dateMode = params.get('dateMode');
   if (dateMode === 'year' || dateMode === 'month') {
