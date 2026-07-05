@@ -2708,14 +2708,70 @@ function normalizeThemePreference(raw) {
   return '';
 }
 
+// The automatic skin follows local daylight hours instead of the OS theme.
+function getAutomaticThemeByLocalTime(now) {
+  const localDate = now instanceof Date ? now : new Date();
+  const hour = localDate.getHours();
+  return hour >= 6 && hour < 20 ? 'light' : 'dark';
+}
+
+function loadForcedThemePreference() {
+  try {
+    return normalizeThemePreference(sessionStorage.getItem('themePreference'));
+  } catch (err) {
+    console.warn('load theme failed', err);
+    return '';
+  }
+}
+
+function saveForcedThemePreference(theme) {
+  const normalized = normalizeThemePreference(theme);
+  if (!normalized) return;
+  try {
+    sessionStorage.setItem('themePreference', normalized);
+  } catch (err) {
+    console.warn('save theme failed', err);
+  }
+}
+
 // Read the active theme so shared URLs reflect the actual UI choice.
 function getThemePreference() {
   const explicit = normalizeThemePreference(document.documentElement.dataset.theme);
   if (explicit) return explicit;
-  const stored = normalizeThemePreference(sessionStorage.getItem('themePreference'));
+  const stored = loadForcedThemePreference();
   if (stored) return stored;
-  const media = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
-  return media && media.matches ? 'dark' : 'light';
+  return getAutomaticThemeByLocalTime(new Date());
+}
+
+function normalizeBaseLayerName(raw) {
+  const layerName = String(raw || '').trim();
+  if (layerName === 'Mapbox Satellite' && mapboxSatellite) return 'Mapbox Satellite';
+  if (layerName === 'Google Satellite') return 'Google Satellite';
+  if (layerName === 'OpenStreetMap') return 'OpenStreetMap';
+  return '';
+}
+
+function loadStoredBaseLayerName() {
+  try {
+    const directLayer = normalizeBaseLayerName(localStorage.getItem(mapLayerStorageKey));
+    if (directLayer) return directLayer;
+
+    const storedView = loadMapViewState();
+    return normalizeBaseLayerName(storedView && storedView.layer);
+  } catch (err) {
+    console.warn('load layer failed', err);
+    return '';
+  }
+}
+
+function saveStoredBaseLayerName(layerName) {
+  const normalized = normalizeBaseLayerName(layerName);
+  if (!normalized) return;
+  try {
+    localStorage.setItem(mapLayerStorageKey, normalized);
+  } catch (err) {
+    console.warn('save layer failed', err);
+  }
 }
 
 // Speed filters are encoded as a comma-separated list for compact sharing.
@@ -2863,6 +2919,7 @@ function saveMapViewState() {
       layer: layer
     };
     localStorage.setItem(mapViewStorageKey, JSON.stringify(state));
+    saveStoredBaseLayerName(layer);
   } catch (err) {
     console.warn('save view failed', err);
   }
@@ -2927,6 +2984,7 @@ let shortLinkFocusReady = (typeof document.hasFocus === 'function') ? document.h
 const shortLinkIdleDelayMs = 1200;
 const shortLinkFocusDelayMs = 900;
 const mapViewStorageKey = 'cim.map.view.v1';
+const mapLayerStorageKey = 'cim.map.layer.v1';
 let storedUserCenter = null;
 let waitForDangerFit = false;
 // Cache short link payloads by target URL so play/pause toggles reuse two entries.
@@ -4777,8 +4835,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Initialize layers and auto theme switch
-  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  // Initialize layers and automatic daylight-based theme switch
+  const urlParams = new URLSearchParams(window.location.search);
   const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   const osmDark  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
   window.osmLight = osmLight; // expose for theme toggle
@@ -4791,7 +4849,8 @@ document.addEventListener('DOMContentLoaded', function () {
     ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
     : '';
 
-  osmLayer = new L.CachedTileLayer(media.matches ? osmDark : osmLight, {
+  const initialThemeName = normalizeThemePreference(urlParams.get('theme')) || getThemePreference();
+  osmLayer = new L.CachedTileLayer(initialThemeName === 'dark' ? osmDark : osmLight, {
     maxZoom: 18,
     attribution: '&copy; OSM contributors',
     cacheProvider: 'osm',
@@ -4816,8 +4875,8 @@ document.addEventListener('DOMContentLoaded', function () {
   }) : null;
 
   // right after creating osmLayer and googleSatellite
-  const urlParams       = new URLSearchParams(window.location.search);
-  const startLayerName  = decodeURIComponent(urlParams.get('layer') || defaultCfg.layer);
+  const urlLayerName = urlParams.has('layer') ? decodeURIComponent(urlParams.get('layer')) : '';
+  const startLayerName = normalizeBaseLayerName(urlLayerName) || loadStoredBaseLayerName() || normalizeBaseLayerName(defaultCfg.layer) || 'OpenStreetMap';
   let startLayer        = osmLayer;
   if (startLayerName === 'Google Satellite') {
     startLayer = googleSatellite;
@@ -8114,6 +8173,7 @@ function viewTrack(trackID) {
 
 
 function setBaseLayer(layerName) {
+  const normalizedLayerName = normalizeBaseLayerName(layerName) || 'OpenStreetMap';
   if (mapboxSatellite && map.hasLayer(mapboxSatellite)) {
     map.removeLayer(mapboxSatellite);
   }
@@ -8123,11 +8183,11 @@ function setBaseLayer(layerName) {
   if (map.hasLayer(osmLayer)) {
     map.removeLayer(osmLayer);
   }
-  if (layerName === 'Mapbox Satellite' && mapboxSatellite) {
+  if (normalizedLayerName === 'Mapbox Satellite' && mapboxSatellite) {
     mapboxSatellite.addTo(map);
     return;
   }
-  if (layerName === 'Google Satellite') {
+  if (normalizedLayerName === 'Google Satellite') {
     googleSatellite.addTo(map);
     return;
   }
@@ -8525,7 +8585,7 @@ function loadMapFromUrl() {
   // Apply URL-provided filters early so controls and marker queries stay in sync.
   const themeParam = normalizeThemePreference(params.get('theme'));
   if (themeParam) {
-    sessionStorage.setItem('themePreference', themeParam);
+    saveForcedThemePreference(themeParam);
   }
   const speedParam = parseSpeedFilterParam(params.get('speed'));
   if (speedParam) {
@@ -8546,8 +8606,13 @@ function loadMapFromUrl() {
     playbackAutoplayRequested = true;
   }
 
-  /* base layer from URL or default */
-  const layer = decodeURIComponent(params.get('layer') || (storedView && storedView.layer) || defaultCfg.layer);
+  /* base layer from URL, browser memory, or default */
+  const urlLayerName = params.has('layer') ? decodeURIComponent(params.get('layer')) : '';
+  const layer = normalizeBaseLayerName(urlLayerName) ||
+    loadStoredBaseLayerName() ||
+    normalizeBaseLayerName(storedView && storedView.layer) ||
+    normalizeBaseLayerName(defaultCfg.layer) ||
+    'OpenStreetMap';
   setBaseLayer(layer);
 
   /* read remaining params */
@@ -9368,12 +9433,12 @@ function centerMapToLocation() {
       document.addEventListener('DOMContentLoaded', function () {
         var sw = document.getElementById('themeSwitch');
         if (!sw) return;
-        var media = window.matchMedia('(prefers-color-scheme: dark)');
         var params = new URLSearchParams(window.location.search);
         var urlTheme = normalizeThemePreference(params.get('theme'));
         if (urlTheme) {
-          sessionStorage.setItem('themePreference', urlTheme);
+          saveForcedThemePreference(urlTheme);
         }
+        var automaticThemeTimer = null;
 
         function applyTheme(theme) {
           document.documentElement.dataset.theme = theme; // switch CSS variables
@@ -9387,14 +9452,44 @@ function centerMapToLocation() {
           }
         }
 
-        var storedTheme = sessionStorage.getItem('themePreference');
-        var initialTheme = storedTheme ? storedTheme : (media.matches ? 'dark' : 'light');
+        function scheduleAutomaticThemeRefresh() {
+          if (automaticThemeTimer) {
+            clearTimeout(automaticThemeTimer);
+            automaticThemeTimer = null;
+          }
+          if (loadForcedThemePreference()) return;
+
+          var now = new Date();
+          var nextBoundary = new Date(now.getTime());
+          if (now.getHours() < 6) {
+            nextBoundary.setHours(6, 0, 0, 0);
+          } else if (now.getHours() < 20) {
+            nextBoundary.setHours(20, 0, 0, 0);
+          } else {
+            nextBoundary.setDate(nextBoundary.getDate() + 1);
+            nextBoundary.setHours(6, 0, 0, 0);
+          }
+
+          var delay = Math.max(1000, nextBoundary.getTime() - now.getTime());
+          automaticThemeTimer = setTimeout(function () {
+            automaticThemeTimer = null;
+            if (!loadForcedThemePreference()) {
+              applyTheme(getAutomaticThemeByLocalTime(new Date()));
+              scheduleAutomaticThemeRefresh();
+            }
+          }, delay);
+        }
+
+        var storedTheme = loadForcedThemePreference();
+        var initialTheme = storedTheme ? storedTheme : getAutomaticThemeByLocalTime(new Date());
         applyTheme(initialTheme); // set initial state
+        scheduleAutomaticThemeRefresh();
 
         sw.addEventListener('change', function () {
           var newTheme = this.checked ? 'dark' : 'light';
           applyTheme(newTheme);
-          sessionStorage.setItem('themePreference', newTheme);
+          saveForcedThemePreference(newTheme);
+          scheduleAutomaticThemeRefresh();
         });
 
         var toggleBox = document.getElementById('themeToggle');
@@ -9407,12 +9502,6 @@ function centerMapToLocation() {
             }
           });
         }
-
-        media.addEventListener('change', function (e) {
-          var newTheme = e.matches ? 'dark' : 'light';
-          applyTheme(newTheme);
-          sessionStorage.setItem('themePreference', newTheme);
-        });
       });
     </script>
 
