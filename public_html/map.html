@@ -771,6 +771,9 @@ body, html {
           top: 60px;
           right: 20px;
           z-index: 1000;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
         }
 
         /* Geolocation button styling, theme-aware */
@@ -900,6 +903,155 @@ body, html {
         .track-playback-control {
           padding: 6px;
           width: 50px;
+        }
+
+        .playback-calendar-control {
+          --playback-calendar-width: 92px;
+          --playback-calendar-min-height: 66px;
+          --playback-calendar-binding-height: 14px;
+          --playback-calendar-ring-width: 9px;
+          --playback-calendar-ring-height: 4px;
+          --playback-calendar-ring-top: 5px;
+          --playback-calendar-ring-inset: 21px;
+          pointer-events: none;
+          width: var(--playback-calendar-width);
+          min-height: var(--playback-calendar-min-height);
+          margin-top: 6px;
+          perspective: 600px;
+        }
+
+        .playback-calendar {
+          display: none;
+          width: var(--playback-calendar-width);
+          min-height: var(--playback-calendar-min-height);
+          color: var(--modal-text);
+          filter: drop-shadow(0 1px 5px rgba(0,0,0,0.28));
+        }
+
+        .playback-calendar.is-visible {
+          display: block;
+        }
+
+        .playback-calendar-sheet {
+          position: relative;
+          overflow: hidden;
+          min-height: var(--playback-calendar-min-height);
+          border-radius: 4px;
+          border: var(--legend-border);
+          background: var(--info-card-bg);
+          box-shadow: 0 1px 5px rgba(0,0,0,0.25);
+          transform-origin: top center;
+          backface-visibility: hidden;
+          backdrop-filter: blur(6px);
+        }
+
+        :root.playback-calendar-controls-hidden .track-playback-control,
+        :root.playback-calendar-controls-hidden .date-slider-box .slider-actions {
+          visibility: hidden;
+          pointer-events: none;
+        }
+
+        .playback-calendar-sheet.is-flipping {
+          animation: playbackCalendarFlip 300ms ease-in-out;
+        }
+
+        .playback-calendar-binding {
+          height: var(--playback-calendar-binding-height);
+          background: #1e88e5;
+          border-bottom: 1px solid rgba(0,0,0,0.2);
+        }
+
+        .playback-calendar-binding::before,
+        .playback-calendar-binding::after {
+          content: "";
+          position: absolute;
+          top: var(--playback-calendar-ring-top);
+          width: var(--playback-calendar-ring-width);
+          height: var(--playback-calendar-ring-height);
+          border-radius: 8px;
+          background: rgba(255,255,255,0.85);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.25) inset;
+        }
+
+        .playback-calendar-binding::before {
+          left: var(--playback-calendar-ring-inset);
+        }
+
+        .playback-calendar-binding::after {
+          right: var(--playback-calendar-ring-inset);
+        }
+
+        .playback-calendar-month,
+        .playback-calendar-year {
+          display: block;
+          overflow: hidden;
+          max-width: 100%;
+          text-align: center;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          unicode-bidi: plaintext;
+        }
+
+        .playback-calendar-month {
+          padding: 7px 6px 0;
+          font-size: var(--font-size-base);
+          font-weight: 700;
+          line-height: 1.1;
+        }
+
+        .playback-calendar-year {
+          padding: 2px 6px 7px;
+          font-size: var(--font-size-xl);
+          font-weight: 700;
+          line-height: 1;
+        }
+
+        @keyframes playbackCalendarFlip {
+          0% { transform: rotateX(0deg); opacity: 1; }
+          45% { transform: rotateX(-72deg); opacity: 0.35; }
+          55% { transform: rotateX(46deg); opacity: 0.55; }
+          100% { transform: rotateX(0deg); opacity: 1; }
+        }
+
+        @media (max-width: 900px) {
+          .playback-calendar-control {
+            --playback-calendar-width: 82px;
+            --playback-calendar-min-height: 60px;
+            --playback-calendar-binding-height: 13px;
+            --playback-calendar-ring-inset: 18px;
+          }
+
+          .playback-calendar-month {
+            font-size: var(--font-size-sm);
+            padding-top: 6px;
+          }
+
+          .playback-calendar-year {
+            font-size: var(--font-size-lg);
+            padding-bottom: 6px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .playback-calendar-control {
+            --playback-calendar-width: 72px;
+            --playback-calendar-min-height: 54px;
+            --playback-calendar-binding-height: 12px;
+            --playback-calendar-ring-width: 8px;
+            --playback-calendar-ring-height: 3px;
+            --playback-calendar-ring-top: 5px;
+            --playback-calendar-ring-inset: 15px;
+          }
+
+          .playback-calendar-month {
+            padding: 5px 5px 0;
+            font-size: var(--font-size-xs);
+          }
+
+          .playback-calendar-year {
+            padding: 2px 5px 6px;
+            font-size: var(--font-size-lg);
+          }
         }
 
 
@@ -2426,11 +2578,21 @@ function escapeHtml(value) {
 
 const regionNameCache = {};
 
+function currentAppLocale() {
+  const langRaw = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  const normalized = (langRaw === 'ua' ? 'uk' : langRaw).replace('_', '-');
+  try {
+    new Intl.DateTimeFormat([normalized]);
+    return normalized;
+  } catch (err) {
+    return 'en';
+  }
+}
+
 function formatDateTime(ts) {
   if (!ts) return '—';
   const date = new Date(ts * 1000);
-  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
-  return date.toLocaleString(lang, { hour12: false });
+  return date.toLocaleString(currentAppLocale(), { hour12: false });
 }
 
 function approximateLocalTime(lat, lon) {
@@ -2438,9 +2600,8 @@ function approximateLocalTime(lat, lon) {
   const offsetHours = Math.round(lon / 15);
   const offsetMs = offsetHours * 60 * 60 * 1000;
   const remote = new Date(Date.now() + offsetMs);
-  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
   const label = offsetHours === 0 ? 'UTC' : (offsetHours > 0 ? `UTC+${offsetHours}` : `UTC${offsetHours}`);
-  return { text: remote.toLocaleString(lang, { hour12: false }), zone: label };
+  return { text: remote.toLocaleString(currentAppLocale(), { hour12: false }), zone: label };
 }
 
 function transportLabel(transport) {
@@ -2465,9 +2626,7 @@ function localizeCountry(code) {
   if (!code) return '';
   const normalized = String(code).toUpperCase();
   if (normalized === '??') return normalized;
-  const langRaw = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
-  let locale = langRaw === 'ua' ? 'uk' : langRaw;
-  locale = locale.replace('_', '-');
+  const locale = currentAppLocale();
   try {
     if (!regionNameCache[locale]) {
       regionNameCache[locale] = new Intl.DisplayNames([locale], { type: 'region' });
@@ -3949,6 +4108,9 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
   removeMarkerByKey(markerKey);
   rendered.markerKey = markerKey;
   circleMarkers[markerKey] = rendered;
+  if (trackViewPlaybackActive || trackViewPlaybackPaused) {
+    showPlaybackCalendarForMarker(marker);
+  }
 }
 
 function renderTrackViewSnapshot() {
@@ -4102,6 +4264,7 @@ function stopTrackViewPlayback(refreshMarkers) {
     trackViewPlaybackResume = null;
   }
   setTrackViewPlaybackButtonState('stopped');
+  hidePlaybackCalendar();
   if (refreshMarkers) {
     renderTrackViewSnapshot();
   }
@@ -4122,6 +4285,7 @@ async function startTrackViewPlayback() {
   if (markerStreamSource) {
     markerStreamSource.close();
   }
+  hidePlaybackCalendar();
   clearTrackViewPlaybackMarkers();
 
   trackViewPlaybackState = createTrackViewPlaybackState();
@@ -4222,8 +4386,132 @@ let trackViewPlaybackContainer = null;
 let trackViewMarkers = [];
 let trackViewMarkersReady = false;
 let trackViewReloadTimer = null;
+let playbackCalendarContainer = null;
+let playbackCalendarSheet = null;
+let playbackCalendarMonthNode = null;
+let playbackCalendarYearNode = null;
+let playbackCalendarCurrentKey = '';
+let playbackCalendarFlipTimer = null;
 
 var liveHistoryCache = new Map();
+
+function createPlaybackCalendarControl() {
+  if (playbackCalendarContainer) {
+    return;
+  }
+  const controlsContainer = document.querySelector('.locate-btn-container');
+  if (!controlsContainer) {
+    return;
+  }
+  const div = document.createElement('div');
+  div.className = 'playback-calendar-control';
+  div.innerHTML = `
+    <div class="playback-calendar" aria-live="polite" lang="${escapeHtml(currentAppLocale())}" dir="auto">
+      <div class="playback-calendar-sheet">
+        <div class="playback-calendar-binding"></div>
+        <span class="playback-calendar-month" dir="auto"></span>
+        <span class="playback-calendar-year" dir="auto"></span>
+      </div>
+    </div>
+  `;
+  controlsContainer.appendChild(div);
+  playbackCalendarContainer = div.querySelector('.playback-calendar');
+  playbackCalendarSheet = div.querySelector('.playback-calendar-sheet');
+  playbackCalendarMonthNode = div.querySelector('.playback-calendar-month');
+  playbackCalendarYearNode = div.querySelector('.playback-calendar-year');
+}
+
+function formatPlaybackCalendarDate(timestamp) {
+  if (!isValidDateSliderTimestamp(timestamp)) {
+    return null;
+  }
+  const date = new Date(timestamp * 1000);
+  if (!Number.isFinite(date.getTime())) {
+    return null;
+  }
+  const locale = currentAppLocale();
+  let monthFormatter;
+  let yearFormatter;
+  try {
+    monthFormatter = new Intl.DateTimeFormat([locale, 'en'], { calendar: 'gregory', month: 'short' });
+    yearFormatter = new Intl.DateTimeFormat([locale, 'en'], { calendar: 'gregory', year: 'numeric' });
+  } catch (err) {
+    monthFormatter = new Intl.DateTimeFormat(['en'], { calendar: 'gregory', month: 'short' });
+    yearFormatter = new Intl.DateTimeFormat(['en'], { calendar: 'gregory', year: 'numeric' });
+  }
+  const key = String(date.getUTCFullYear()) + '-' + String(date.getUTCMonth() + 1).padStart(2, '0');
+  return {
+    key: key,
+    locale: locale,
+    month: monthFormatter.format(date),
+    year: yearFormatter.format(date),
+  };
+}
+
+function renderPlaybackCalendarDate(formattedDate) {
+  if (!playbackCalendarMonthNode || !playbackCalendarYearNode || !formattedDate) {
+    return;
+  }
+  if (playbackCalendarContainer && formattedDate.locale) {
+    playbackCalendarContainer.setAttribute('lang', formattedDate.locale);
+  }
+  playbackCalendarMonthNode.textContent = formattedDate.month;
+  playbackCalendarYearNode.textContent = formattedDate.year;
+}
+
+function showPlaybackCalendarForMarker(marker) {
+  if (!marker || !playbackCalendarContainer || !playbackCalendarSheet) {
+    return;
+  }
+  const formattedDate = formatPlaybackCalendarDate(marker.date);
+  if (!formattedDate) {
+    return;
+  }
+  playbackCalendarContainer.classList.add('is-visible');
+  document.documentElement.classList.add('playback-calendar-controls-hidden');
+  if (formattedDate.key === playbackCalendarCurrentKey) {
+    return;
+  }
+  if (!playbackCalendarCurrentKey) {
+    playbackCalendarCurrentKey = formattedDate.key;
+    renderPlaybackCalendarDate(formattedDate);
+    return;
+  }
+  playbackCalendarCurrentKey = formattedDate.key;
+  if (playbackCalendarFlipTimer) {
+    clearTimeout(playbackCalendarFlipTimer);
+    playbackCalendarFlipTimer = null;
+  }
+  playbackCalendarSheet.classList.remove('is-flipping');
+  void playbackCalendarSheet.offsetWidth;
+  playbackCalendarSheet.classList.add('is-flipping');
+  playbackCalendarFlipTimer = setTimeout(function() {
+    renderPlaybackCalendarDate(formattedDate);
+    playbackCalendarSheet.classList.remove('is-flipping');
+    playbackCalendarFlipTimer = null;
+  }, 180);
+}
+
+function hidePlaybackCalendar() {
+  if (playbackCalendarFlipTimer) {
+    clearTimeout(playbackCalendarFlipTimer);
+    playbackCalendarFlipTimer = null;
+  }
+  playbackCalendarCurrentKey = '';
+  if (playbackCalendarSheet) {
+    playbackCalendarSheet.classList.remove('is-flipping');
+  }
+  if (playbackCalendarContainer) {
+    playbackCalendarContainer.classList.remove('is-visible');
+  }
+  document.documentElement.classList.remove('playback-calendar-controls-hidden');
+  if (playbackCalendarMonthNode) {
+    playbackCalendarMonthNode.textContent = '';
+  }
+  if (playbackCalendarYearNode) {
+    playbackCalendarYearNode.textContent = '';
+  }
+}
 
 
 /**
@@ -4989,6 +5277,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Initialize UI elements
   initializeUIElements();
   initializeDesktopAdminUI();
+  createPlaybackCalendarControl();
 
   // Periodically refresh realtime styling so markers fade without map motion.
   setInterval(adjustMarkerRadius, 60 * 1000);
@@ -5487,6 +5776,7 @@ function createDateRangeSlider(){
     circle.isRealtime = false;
     circle.markerKey = markerKey;
     circleMarkers[markerKey] = circle;
+    showPlaybackCalendarForMarker(marker);
     playbackMarkersRendered = true;
   }
 
@@ -5597,6 +5887,7 @@ function createDateRangeSlider(){
       playbackAbortController.abort();
       playbackAbortController = null;
     }
+    hidePlaybackCalendar();
     clearPlaybackMarkers();
     if (refreshMarkers) {
       debounceUpdateMarkers(true);
@@ -5631,6 +5922,7 @@ function createDateRangeSlider(){
     if (markerStreamSource) {
       markerStreamSource.close();
     }
+    hidePlaybackCalendar();
     clearPlaybackMarkers();
     const controller = new AbortController();
     playbackAbortController = controller;
