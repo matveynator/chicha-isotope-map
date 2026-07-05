@@ -945,12 +945,6 @@ body, html {
           backdrop-filter: blur(6px);
         }
 
-        :root.playback-calendar-controls-hidden .track-playback-control,
-        :root.playback-calendar-controls-hidden .date-slider-box .slider-actions {
-          visibility: hidden;
-          pointer-events: none;
-        }
-
         .playback-calendar-sheet.is-flipping {
           animation: playbackCalendarFlip 300ms ease-in-out;
         }
@@ -1059,16 +1053,17 @@ body, html {
         .date-slider-box {
           padding: 6px;
           width: 50px;
+          box-sizing: border-box;
         }
 
         /* 0) Basic slider container geometry: buffer = 8px
            (half handle size) so handles never exceed the rail */
         #dateSlider{
           width:6px;                 /* rail thickness */
-          height:130px;              /* actual track length */
+          height:131px;              /* actual track length */
           padding:0px 0;             /* inner top/bottom padding */
           box-sizing:content-box;    /* ensures padding works */
-          margin:16px auto 26px;
+          margin:10px auto 33px;
         }
 
         /* 1) grey slider rail */
@@ -1126,9 +1121,9 @@ body, html {
         #yearSlider{
           /* copied parameters from #dateSlider */
           width:6px;                 /* rail thickness */
-          height:130px;              /* track length */
+          height:131px;              /* track length */
           padding:0;                 /* inner padding */
-          margin:16px auto 26px;     /* same margins */
+          margin:10px auto 33px;     /* same margins */
           box-sizing:content-box;
         }
         /* grey rail and blue connect bar */
@@ -1139,7 +1134,7 @@ body, html {
         .slider-actions{
           display:flex;
           gap:4px;
-          margin-top:4px;
+          margin-top:3px;
         }
 
         /* Reset/Play buttons styled with theme variables */
@@ -1148,7 +1143,7 @@ body, html {
           display:block;
           width:100%;
           padding:2px 4px;
-          font-size: var(--font-size-xl);
+          font-size: var(--font-size-lg);
           border: var(--legend-border);
           background: var(--control-bg);
           border-radius:3px;
@@ -1177,6 +1172,33 @@ body, html {
         /* Track view reset sits under play so both buttons remain aligned. */
         .track-reset-btn{
           margin-top:4px;
+        }
+
+        @media (max-height: 700px), (max-width: 480px) {
+          #dateSlider,
+          #yearSlider {
+            height:99px;
+            margin:8px auto 25px;
+          }
+
+          .date-slider-box {
+            padding:5px;
+          }
+
+          .slider-label,
+          .slider-toggle button {
+            font-size: var(--font-size-xxs);
+          }
+
+          .slider-actions {
+            gap:3px;
+          }
+
+          .slider-reset-btn,
+          .slider-play-btn {
+            font-size: var(--font-size-base);
+            padding:2px 3px;
+          }
         }
 
         .loading-overlay{
@@ -4394,6 +4416,37 @@ let playbackCalendarCurrentKey = '';
 let playbackCalendarFlipTimer = null;
 
 var liveHistoryCache = new Map();
+let dateSliderWidthSyncBound = false;
+let dateSliderWidthResizeObserver = null;
+
+function syncDateSliderWidthToSpeedFilter() {
+  const speedFilterControl = document.querySelector('.speed-filter-control');
+  const dateSliderBox = document.querySelector('.date-slider-box');
+  if (!speedFilterControl || !dateSliderBox) {
+    return;
+  }
+  const width = Math.ceil(speedFilterControl.getBoundingClientRect().width);
+  if (width > 0) {
+    dateSliderBox.style.width = width + 'px';
+  }
+}
+
+function watchDateSliderWidthToSpeedFilter() {
+  if (dateSliderWidthSyncBound) {
+    syncDateSliderWidthToSpeedFilter();
+    return;
+  }
+  dateSliderWidthSyncBound = true;
+  window.addEventListener('resize', syncDateSliderWidthToSpeedFilter);
+  if (typeof ResizeObserver === 'function') {
+    const speedFilterControl = document.querySelector('.speed-filter-control');
+    if (speedFilterControl) {
+      dateSliderWidthResizeObserver = new ResizeObserver(syncDateSliderWidthToSpeedFilter);
+      dateSliderWidthResizeObserver.observe(speedFilterControl);
+    }
+  }
+  syncDateSliderWidthToSpeedFilter();
+}
 
 function createPlaybackCalendarControl() {
   if (playbackCalendarContainer) {
@@ -4468,7 +4521,6 @@ function showPlaybackCalendarForMarker(marker) {
     return;
   }
   playbackCalendarContainer.classList.add('is-visible');
-  document.documentElement.classList.add('playback-calendar-controls-hidden');
   if (formattedDate.key === playbackCalendarCurrentKey) {
     return;
   }
@@ -4504,7 +4556,6 @@ function hidePlaybackCalendar() {
   if (playbackCalendarContainer) {
     playbackCalendarContainer.classList.remove('is-visible');
   }
-  document.documentElement.classList.remove('playback-calendar-controls-hidden');
   if (playbackCalendarMonthNode) {
     playbackCalendarMonthNode.textContent = '';
   }
@@ -5403,6 +5454,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Call it
   createSpeedFilterControls();   
   createDateRangeSlider();
+  watchDateSliderWidthToSpeedFilter();
 
 
 
