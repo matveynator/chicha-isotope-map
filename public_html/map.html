@@ -4292,6 +4292,18 @@ function clearDateRangeState() {
 function setCurrentDateFullRange(range) {
   currentDateFullRange = normalizeDateRangeState(range);
 }
+function isValidDateSliderTimestamp(timestamp) {
+  return Number.isFinite(timestamp) && timestamp > 0;
+}
+function normalizeDateSliderRange(minTs, maxTs) {
+  if (!isValidDateSliderTimestamp(minTs) || !isValidDateSliderTimestamp(maxTs)) {
+    return null;
+  }
+  if (maxTs > minTs) {
+    return [minTs, maxTs];
+  }
+  return [minTs - 1, maxTs + 1];
+}
 function loadCustomDateRangeState(defaultRange) {
   const savedRange = loadDateRangeState();
   if (!savedRange) {
@@ -6811,16 +6823,6 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     }
   }
 
-  function normalizeDateSliderRange(minTs, maxTs) {
-    if (!isFinite(minTs) || !isFinite(maxTs)) {
-      return null;
-    }
-    if (maxTs > minTs) {
-      return [minTs, maxTs];
-    }
-    return [minTs - 1, maxTs + 1];
-  }
-
   function finalizeStreams() {
     if (!isActiveLoad() || streamsFinalized || pendingStreams > 0 || pendingRenderItems > 0) {
       return;
@@ -6830,8 +6832,35 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     const summaryMinTs = visibleSummarySeen ? visibleSummaryMinTs : fallbackMinTs;
     const summaryMaxTs = visibleSummarySeen ? visibleSummaryMaxTs : fallbackMaxTs;
     const summaryMarkerCount = visibleSummarySeen ? visibleSummaryMarkerCount : fallbackMarkerCount;
-    const sliderRange = normalizeDateSliderRange(summaryMinTs, summaryMaxTs);
-    const needSlider = canUseDateRangeSummary && summaryMarkerCount > 0 && !!sliderRange;
+    let sliderRange = normalizeDateSliderRange(summaryMinTs, summaryMaxTs);
+    let datedMarkerCount = summaryMarkerCount;
+    let hasRenderedVisibleDateRange = false;
+    if ((!sliderRange || datedMarkerCount <= 0) && canUseIncrementalReload) {
+      Object.keys(circleMarkers).forEach(function(markerKey) {
+        const markerLayer = circleMarkers[markerKey];
+        if (!markerLayer || markerLayer.isRealtime || !markerLayer.layerGroupName || markerLayer.layerGroupName === markerLiveLayerName) {
+          return;
+        }
+        if (!markerLayerEnabled(markerLayer.layerGroupName, state)) {
+          return;
+        }
+        if (!isValidDateSliderTimestamp(markerLayer.date)) {
+          return;
+        }
+        if (typeof markerLayer.markerLat !== 'number' || typeof markerLayer.markerLon !== 'number') {
+          return;
+        }
+        if (!boundsContainPoint(viewportBounds, markerLayer.markerLat, markerLayer.markerLon)) {
+          return;
+        }
+        datedMarkerCount += 1;
+        hasRenderedVisibleDateRange = true;
+        fallbackMinTs = Math.min(fallbackMinTs, markerLayer.date);
+        fallbackMaxTs = Math.max(fallbackMaxTs, markerLayer.date);
+      });
+      sliderRange = normalizeDateSliderRange(fallbackMinTs, fallbackMaxTs);
+    }
+    const needSlider = (canUseDateRangeSummary || hasRenderedVisibleDateRange) && datedMarkerCount > 0 && !!sliderRange;
     if (needSlider && window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(true);
     } else if (!baseStreamFailed && canUseDateRangeSummary && window.__setDateSliderVisibility) {
@@ -6913,7 +6942,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         }
         const isLive = m.speed < 0;
         const markerInsideViewport = boundsContainPoint(viewportBounds, m.lat, m.lon);
-        if (!isLive && markerInsideViewport && Number.isFinite(m.date)) {
+        if (!isLive && markerInsideViewport && isValidDateSliderTimestamp(m.date)) {
           fallbackMarkerCount += 1;
           fallbackMinTs = Math.min(fallbackMinTs, m.date);
           fallbackMaxTs = Math.max(fallbackMaxTs, m.date);
