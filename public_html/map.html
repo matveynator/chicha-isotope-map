@@ -105,6 +105,13 @@ body, html {
           --map-ui-icon-size: 44px;
           --map-right-stack-top: 20px;
           --map-right-stack-gap: 8px;
+          --map-left-stack-left: 10px;
+          --map-left-stack-gap: var(--map-right-stack-gap);
+          --map-left-stack-top: 90px;
+          --map-left-button-size: var(--map-ui-icon-size);
+          --map-layer-control-size: 56px;
+          --map-desktop-left-stack-top: var(--map-left-stack-top);
+          --map-desktop-layer-stack-top: calc(var(--map-left-stack-top) + var(--map-left-button-size) + var(--map-left-stack-gap) + var(--map-left-button-size) + var(--map-left-stack-gap) + var(--map-left-button-size) + var(--map-left-stack-gap));
           --map-upload-button-height: var(--map-ui-icon-size);
           --map-ui-radius-pill: 999px;
           --map-ui-radius-card: 18px;
@@ -335,6 +342,25 @@ body, html {
           line-height: 1;
         }
 
+        #mapLogo .playback-calendar-control {
+          display: none;
+        }
+
+        #mapLogo.is-showing-playback-calendar {
+          padding: 0;
+          background: transparent;
+          border: 0;
+          box-shadow: none;
+        }
+
+        #mapLogo.is-showing-playback-calendar .map-logo-text {
+          display: none;
+        }
+
+        #mapLogo.is-showing-playback-calendar .playback-calendar-control {
+          display: block;
+        }
+
         #shortLinkDisplay {
           position: relative;
           width: var(--map-ui-icon-size);
@@ -343,7 +369,7 @@ body, html {
           min-width: var(--map-ui-icon-size);
           min-height: var(--map-ui-icon-size);
           align-items: center;
-          justify-content: flex-end;
+          justify-content: flex-start;
           box-sizing: border-box;
           border-radius: 999px;
           padding: 0;
@@ -356,7 +382,7 @@ body, html {
           user-select: none;
           white-space: nowrap;
           overflow: hidden;
-          text-align: right;
+          text-align: center;
           transition: width 180ms ease, max-width 180ms ease, color 180ms ease, opacity 180ms ease, background 180ms ease;
         }
 
@@ -364,7 +390,7 @@ body, html {
           content: "";
           position: absolute;
           top: 50%;
-          right: calc((var(--map-ui-icon-size) - 24px) / 2);
+          left: calc((var(--map-ui-icon-size) - 24px) / 2);
           width: 24px;
           height: 24px;
           transform: translateY(-50%);
@@ -373,15 +399,15 @@ body, html {
 
         #shortLinkDisplay .short-link-label {
           position: absolute;
-          left: 12px;
-          right: var(--map-ui-icon-size);
+          left: var(--map-ui-icon-size);
+          right: 12px;
           min-width: 0;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
           opacity: 0;
           pointer-events: none;
-          text-align: right;
+          text-align: center;
           transition: opacity 140ms ease;
         }
 
@@ -391,8 +417,8 @@ body, html {
 
         #shortLinkDisplay:hover,
         #shortLinkDisplay:focus {
-          width: min(var(--short-link-url-width, 260px), calc(100vw - 24px));
-          max-width: min(var(--short-link-url-width, 260px), calc(100vw - 24px));
+          width: min(var(--short-link-url-width, 260px), calc(100vw - var(--map-mobile-left-stack-left, var(--map-left-stack-left, 10px)) - 12px));
+          max-width: min(var(--short-link-url-width, 260px), calc(100vw - var(--map-mobile-left-stack-left, var(--map-left-stack-left, 10px)) - 12px));
           color: var(--map-ui-text);
           opacity: 1;
           outline: none;
@@ -405,8 +431,8 @@ body, html {
         }
 
         #shortLinkDisplay.copied {
-          width: min(max(var(--short-link-copied-width, 150px), var(--short-link-url-width, 150px)), calc(100vw - 24px));
-          max-width: min(max(var(--short-link-copied-width, 150px), var(--short-link-url-width, 150px)), calc(100vw - 24px));
+          width: min(var(--short-link-copied-width, 150px), calc(100vw - var(--map-mobile-left-stack-left, var(--map-left-stack-left, 10px)) - 12px));
+          max-width: min(var(--short-link-copied-width, 150px), calc(100vw - var(--map-mobile-left-stack-left, var(--map-left-stack-left, 10px)) - 12px));
           color: var(--map-ui-accent-strong);
           opacity: 1;
           outline: none;
@@ -1729,6 +1755,18 @@ body, html {
           letter-spacing: 0;
         }
 
+        #mapLogo.is-showing-playback-calendar {
+          min-height: 0;
+          padding: 0;
+          overflow: visible;
+          background: transparent;
+          border-color: transparent;
+          box-shadow: none;
+          opacity: 1;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+        }
+
         #shortLinkDisplay {
           min-height: var(--map-ui-icon-size);
           display: none;
@@ -1829,6 +1867,7 @@ body, html {
         .locate-btn,
         .qr-btn,
         .desktop-admin-toggle {
+          box-sizing: border-box;
           width: var(--map-ui-icon-size);
           height: var(--map-ui-icon-size);
           min-width: var(--map-ui-icon-size);
@@ -1865,7 +1904,13 @@ body, html {
         }
 
         .leaflet-control-zoom a {
-          opacity: 0.82;
+          width: 36px;
+          height: 36px;
+          opacity: 0.92;
+          font-size: 27px;
+          font-weight: 900;
+          line-height: 36px;
+          text-shadow: 0 1px 4px rgba(0, 0, 0, 0.44);
         }
 
         .leaflet-control-zoom a:hover,
@@ -1906,7 +1951,10 @@ body, html {
           width: 42px;
           height: 42px;
           border-radius: 50%;
-          background: center / 24px 24px no-repeat url('/static/new-icons/day/map_layers.png') !important;
+          background-image: url('/static/new-icons/day/map_layers.png') !important;
+          background-position: center !important;
+          background-size: 24px 24px !important;
+          background-repeat: no-repeat !important;
           background-color: transparent !important;
           border: 0 !important;
           box-shadow: none !important;
@@ -1916,32 +1964,18 @@ body, html {
           background-image: url('/static/new-icons/night/map_layers.png') !important;
         }
 
-        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-list {
-          position: absolute;
-          top: 0;
-          left: calc(100% + 8px);
-          min-width: 180px;
-          opacity: 0;
-          visibility: hidden;
-          pointer-events: none;
-          transform: translateX(-6px);
-          transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
-          background: var(--map-ui-surface);
-          border: 0;
-          border-radius: 20px;
-          box-shadow: var(--map-ui-soft-shadow);
-          padding: 8px;
-          backdrop-filter: blur(14px) saturate(1.2);
-          -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):hover .leaflet-control-layers-toggle,
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):focus-within .leaflet-control-layers-toggle {
+          background-image: var(--map-layer-toggle-hover-icon, url('/static/new-icons/day/map_layers.png')) !important;
         }
 
-        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):hover .leaflet-control-layers-list,
-        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):focus-within .leaflet-control-layers-list,
-        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control).leaflet-control-layers-expanded .leaflet-control-layers-list {
-          opacity: 1;
-          visibility: visible;
-          pointer-events: auto;
-          transform: translateX(0);
+        :root[data-theme='dark'] .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):hover .leaflet-control-layers-toggle,
+        :root[data-theme='dark'] .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):focus-within .leaflet-control-layers-toggle {
+          background-image: var(--map-layer-toggle-hover-icon, url('/static/new-icons/night/map_layers.png')) !important;
+        }
+
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-list {
+          display: none;
         }
 
         .leaflet-control-layers-base {
@@ -2067,6 +2101,20 @@ body, html {
         }
 
         @media (min-width: 768px) {
+          .locate-btn-container {
+            top: var(--map-desktop-left-stack-top);
+            right: auto;
+            left: var(--map-left-stack-left);
+            align-items: flex-start;
+            width: min(260px, calc(100vw - var(--map-left-stack-left) - 12px));
+          }
+
+          .locate-btn,
+          .qr-btn,
+          #shortLinkDisplay {
+            align-self: flex-start;
+          }
+
           .leaflet-top.leaflet-left {
             display: flex;
             flex-direction: column;
@@ -2077,24 +2125,30 @@ body, html {
 
           .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control),
           .leaflet-top.leaflet-left > .speed-filter-control {
-            margin-left: 10px;
-            margin-right: 0;
+            position: absolute;
+            left: var(--map-left-stack-left);
+            margin: 0;
             width: 56px;
             box-sizing: border-box;
             box-shadow: none;
           }
 
           .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
-            margin-bottom: 0;
+            top: var(--map-desktop-layer-stack-top);
             padding: 6px;
             border-bottom: 0;
             border-bottom-right-radius: 0;
             border-bottom-left-radius: 0;
           }
 
+          :root[data-track-view='true'] .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
+            border-radius: 999px;
+            border-bottom: 1px solid var(--map-ui-border);
+          }
+
           .leaflet-top.leaflet-left > .speed-filter-control {
-            position: relative;
-            margin-top: 0;
+            position: absolute;
+            top: calc(var(--map-desktop-layer-stack-top) + var(--map-layer-control-size));
             padding: 7px;
             border-top: 0;
             border-top-right-radius: 0;
@@ -2314,8 +2368,10 @@ body, html {
         @media (max-width: 767px) {
           :root {
             --map-right-stack-top: 14px;
-            --map-upload-button-height: 36px;
             --map-ui-icon-size: 40px;
+            --map-upload-button-height: var(--map-ui-icon-size);
+            --map-mobile-left-stack-left: 12px;
+            --map-mobile-left-stack-top: 90px;
             --mobile-dock-side: 12px;
             --mobile-dock-padding: 8px;
             --mobile-dock-active-button: 54px;
@@ -2336,15 +2392,25 @@ body, html {
             text-overflow: ellipsis;
           }
 
+          #mapLogo.is-showing-playback-calendar {
+            max-width: none;
+            min-height: 0;
+            padding: 0;
+            overflow: visible;
+          }
+
           .upload-btn-container {
+            top: var(--map-right-stack-top);
             right: 12px;
+            left: auto;
           }
 
           .upload-btn {
             box-sizing: border-box;
-            width: var(--map-upload-button-height);
-            height: var(--map-upload-button-height);
-            min-height: var(--map-upload-button-height);
+            width: var(--map-ui-icon-size);
+            min-width: var(--map-ui-icon-size);
+            height: var(--map-ui-icon-size);
+            min-height: var(--map-ui-icon-size);
             padding: 0;
             border-radius: 50%;
           }
@@ -2365,11 +2431,21 @@ body, html {
           }
 
           .locate-btn-container {
-            right: 12px;
+            top: var(--map-mobile-left-stack-top);
+            right: auto;
+            left: var(--map-mobile-left-stack-left);
+            align-items: flex-start;
+            width: min(260px, calc(100vw - var(--map-mobile-left-stack-left) - 12px));
           }
 
           .locate-btn-container br {
             display: none;
+          }
+
+          .locate-btn,
+          .qr-btn,
+          #shortLinkDisplay {
+            align-self: flex-start;
           }
 
           #mobileControlDock {
@@ -2532,7 +2608,7 @@ body, html {
           }
 
           .mobile-dock-panel .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-list {
-            display: block;
+            display: block !important;
             position: static;
             min-width: 0;
             opacity: 1;
@@ -2604,8 +2680,8 @@ body, html {
             min-height: 48px;
             max-height: 48px;
             display: grid !important;
-            grid-template-columns: 34px minmax(0, 1fr) auto 34px;
-            gap: 6px;
+            grid-template-columns: 30px minmax(0, 1fr) auto 30px;
+            gap: 4px;
             padding: 0;
           }
 
@@ -2615,23 +2691,34 @@ body, html {
 
           .mobile-dock-panel .date-slider-box .slider-reset-btn,
           .mobile-dock-panel .date-slider-box .slider-play-btn {
-            width: 34px;
-            height: 34px;
+            width: 30px;
+            height: 30px;
           }
 
           .mobile-dock-panel .date-slider-box .slider-track-row {
-            grid-template-columns: minmax(0, 1fr);
-            gap: 0;
+            grid-template-columns: 52px minmax(34px, 1fr) 52px;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
           }
 
           .mobile-dock-panel .date-slider-box .slider-label {
-            display: none;
+            display: block;
+            width: 52px;
+            min-width: 52px;
+            max-width: 52px;
+            overflow: visible;
+            text-overflow: clip;
+            white-space: nowrap;
+            font-size: var(--font-size-xxs);
+            line-height: 1;
+            text-align: center;
           }
 
           .mobile-dock-panel .date-slider-box #dateSlider,
           .mobile-dock-panel .date-slider-box #yearSlider {
             min-width: 0;
-            padding: 0 8px;
+            padding: 0 6px;
           }
 
           .mobile-dock-panel .date-slider-box .slider-toggle {
@@ -2639,8 +2726,8 @@ body, html {
           }
 
           .mobile-dock-panel .date-slider-box .slider-toggle button {
-            min-width: 20px;
-            padding: 4px 5px;
+            min-width: 18px;
+            padding: 4px;
           }
 
           #legend {
@@ -4141,6 +4228,62 @@ function getActiveBaseLayerName() {
   return 'OpenStreetMap';
 }
 
+function resolveBaseLayerToggleIconName(layerName) {
+  const themeName = currentNewIconThemeName();
+  const isSatelliteLayer = layerName === 'Google Satellite' || layerName === 'Mapbox Satellite';
+  if (isSatelliteLayer) {
+    return themeName === 'night' ? 'map-google-night' : 'map-google-day';
+  }
+  return themeName === 'night' ? 'map-osm-night' : 'map-osm-day';
+}
+
+function refreshBaseLayerToggleIcon() {
+  if (!document.documentElement || !map) {
+    return;
+  }
+  const themeName = currentNewIconThemeName();
+  const iconName = resolveBaseLayerToggleIconName(getActiveBaseLayerName());
+  document.documentElement.style.setProperty('--map-layer-toggle-hover-icon', "url('" + newIconPath(iconName, themeName) + "')");
+}
+
+function togglePrimaryBaseLayer() {
+  const activeLayerName = getActiveBaseLayerName();
+  const nextLayerName = activeLayerName === 'OpenStreetMap' ? 'Google Satellite' : 'OpenStreetMap';
+  setBaseLayer(nextLayerName);
+  refreshMapControlSelectedStates();
+  refreshBaseLayerToggleIcon();
+  updateUrl();
+}
+
+function initializeBaseLayerToggleButton() {
+  const layerToggleNode = document.querySelector('.leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-toggle');
+  if (!layerToggleNode) {
+    return;
+  }
+  layerToggleNode.setAttribute('role', 'button');
+  layerToggleNode.setAttribute('aria-label', 'Toggle map layer');
+  layerToggleNode.addEventListener('click', function(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    event.stopPropagation();
+    togglePrimaryBaseLayer();
+  }, true);
+  layerToggleNode.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      event.stopPropagation();
+      togglePrimaryBaseLayer();
+    }
+  }, true);
+  if (typeof MutationObserver === 'function') {
+    const themeObserver = new MutationObserver(function() {
+      refreshBaseLayerToggleIcon();
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+}
+
 // Build the full map state query so every share link mirrors the UI.
 function buildMapStateParams() {
   const params = new URLSearchParams();
@@ -5431,6 +5574,9 @@ async function startTrackViewPlayback() {
         const bDate = typeof b.date === 'number' ? b.date : 0;
         return aDate - bDate;
       });
+    if (normalized.length) {
+      showPlaybackCalendarForMarker(normalized[0]);
+    }
     await playTrackViewPoints(trackViewPlaybackState, normalized);
   } catch (err) {
     return;
@@ -5558,8 +5704,8 @@ function createPlaybackCalendarControl() {
   if (playbackCalendarContainer) {
     return;
   }
-  const controlsContainer = document.querySelector('.locate-btn-container');
-  if (!controlsContainer) {
+  const logoNode = document.getElementById('mapLogo');
+  if (!logoNode) {
     return;
   }
   const div = document.createElement('div');
@@ -5573,11 +5719,19 @@ function createPlaybackCalendarControl() {
       </div>
     </div>
   `;
-  controlsContainer.appendChild(div);
+  logoNode.appendChild(div);
   playbackCalendarContainer = div.querySelector('.playback-calendar');
   playbackCalendarSheet = div.querySelector('.playback-calendar-sheet');
   playbackCalendarMonthNode = div.querySelector('.playback-calendar-month');
   playbackCalendarYearNode = div.querySelector('.playback-calendar-year');
+}
+
+function setMapLogoPlaybackCalendarVisible(isVisible) {
+  const logoNode = document.getElementById('mapLogo');
+  if (!logoNode) {
+    return;
+  }
+  logoNode.classList.toggle('is-showing-playback-calendar', !!isVisible);
 }
 
 function formatPlaybackCalendarDate(timestamp) {
@@ -5626,6 +5780,7 @@ function showPlaybackCalendarForMarker(marker) {
   if (!formattedDate) {
     return;
   }
+  setMapLogoPlaybackCalendarVisible(true);
   playbackCalendarContainer.classList.add('is-visible');
   if (formattedDate.key === playbackCalendarCurrentKey) {
     return;
@@ -5662,6 +5817,7 @@ function hidePlaybackCalendar() {
   if (playbackCalendarContainer) {
     playbackCalendarContainer.classList.remove('is-visible');
   }
+  setMapLogoPlaybackCalendarVisible(false);
   if (playbackCalendarMonthNode) {
     playbackCalendarMonthNode.textContent = '';
   }
@@ -5826,10 +5982,13 @@ function attachControlTooltip(target, options) {
     placement: 'top',
     html: false,
     maxWidth: 280,
+    offset: 10,
+    showDelay: 0,
     shouldShow: null,
   }, options || {});
 
   let tooltipEl = null;
+  let tooltipShowTimer = null;
 
   function resolveContent() {
     const content = typeof opts.content === 'function' ? opts.content() : opts.content;
@@ -5845,7 +6004,7 @@ function attachControlTooltip(target, options) {
       return;
     }
     const tipRect = tooltipEl.getBoundingClientRect();
-    const margin = 10;
+    const margin = Number(opts.offset) || 10;
     let left = rect.left + (rect.width / 2) - (tipRect.width / 2);
     let top = rect.top - tipRect.height - margin;
 
@@ -5913,19 +6072,32 @@ function attachControlTooltip(target, options) {
     positionTooltip();
     window.addEventListener('scroll', positionTooltip, true);
     window.addEventListener('resize', positionTooltip);
-    requestAnimationFrame(function () {
+    target.addEventListener('transitionend', positionTooltip);
+    const revealTooltip = function () {
       if (tooltipEl) {
+        positionTooltip();
         tooltipEl.classList.add('control-tooltip--visible');
       }
-    });
+    };
+    if (Number(opts.showDelay) > 0) {
+      tooltipShowTimer = setTimeout(revealTooltip, Number(opts.showDelay));
+    } else {
+      requestAnimationFrame(revealTooltip);
+    }
+    setTimeout(positionTooltip, 220);
   }
 
   function hideTooltip() {
+    if (tooltipShowTimer) {
+      clearTimeout(tooltipShowTimer);
+      tooltipShowTimer = null;
+    }
     if (!tooltipEl) {
       return;
     }
     window.removeEventListener('scroll', positionTooltip, true);
     window.removeEventListener('resize', positionTooltip);
+    target.removeEventListener('transitionend', positionTooltip);
     const el = tooltipEl;
     tooltipEl = null;
     el.classList.remove('control-tooltip--visible');
@@ -6145,6 +6317,10 @@ function refreshThemedNewIcons() {
       iconImage.src = newIconPath(document.documentElement.dataset.theme === 'dark' ? 'night_on' : 'night_off', themeName);
     }
   });
+
+  if (typeof refreshBaseLayerToggleIcon === 'function') {
+    refreshBaseLayerToggleIcon();
+  }
 }
 
 const desktopAdminStorageKey = 'desktop-admin-settings-v1';
@@ -6396,6 +6572,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (match) {
     currentTrackID = decodeURIComponent(match[1]);
     isTrackView = true;
+    document.documentElement.dataset.trackView = 'true';
     trackViewAutoplayRequested = true;
     // NEW: show back button immediately
     var backBox = document.querySelector('.back-to-all-container');
@@ -6414,22 +6591,26 @@ document.addEventListener('DOMContentLoaded', function () {
 
   var locateBtn = document.getElementById('locateButton');
   attachControlTooltip(locateBtn, {
-    placement: 'left',
+    placement: 'right',
     content: function () { return translate('locate_button_tooltip'); },
+    offset: 8,
   });
 
   var qrBtn = document.getElementById('qrButton');
   attachControlTooltip(qrBtn, {
-    placement: 'left',
+    placement: 'right',
     content: function () { return translate('qr_button_tooltip'); },
+    offset: 8,
   });
 
   var shortLink = document.getElementById('shortLinkDisplay');
   if (shortLink) {
     var shortLinkHandle = attachControlTooltip(shortLink, {
-      placement: 'bottom',
+      placement: 'right',
       content: function () { return translate('short_link_tooltip'); },
       maxWidth: 260,
+      offset: 8,
+      showDelay: 190,
     });
     window.__hideShortLinkHint = shortLinkHandle.hide;
   }
@@ -6548,6 +6729,8 @@ document.addEventListener('DOMContentLoaded', function () {
     collapsed: true
   }).addTo(map);
   refreshMapControlSelectedStates();
+  initializeBaseLayerToggleButton();
+  refreshBaseLayerToggleIcon();
 
   // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
@@ -6607,6 +6790,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Update URL on map changes
   map.on('baselayerchange', function() {
     refreshMapControlSelectedStates();
+    refreshBaseLayerToggleIcon();
     updateUrl();
   });
   map.on('moveend', updateUrl);
@@ -10055,8 +10239,8 @@ function applyShortLinkMeasuredWidth(cssPropertyName, labelText) {
   const measuredWidth = Math.ceil(measuringNode.getBoundingClientRect().width);
   document.body.removeChild(measuringNode);
   const iconSpace = parseFloat(linkBoxStyle.getPropertyValue('--map-ui-icon-size')) || shortLinkBox.offsetHeight || 44;
-  const leftInset = 12;
-  shortLinkBox.style.setProperty(cssPropertyName, (measuredWidth + iconSpace + leftInset) + 'px');
+  const rightInset = 12;
+  shortLinkBox.style.setProperty(cssPropertyName, (measuredWidth + iconSpace + rightInset) + 'px');
 }
 
 function hideShortLink() {
@@ -10135,6 +10319,16 @@ function finalizeShortLink() {
   return pending;
 }
 
+function resetShortLinkCopiedState(fallbackShortLink) {
+  if (!shortLinkBox) return;
+  if (shortLinkCopiedTimer) {
+    clearTimeout(shortLinkCopiedTimer);
+    shortLinkCopiedTimer = null;
+  }
+  shortLinkBox.classList.remove('copied');
+  setShortLinkLabel(shortLinkBox.dataset.href || fallbackShortLink || '');
+}
+
 // copyShortLinkToClipboard waits for the backend to confirm persistence so
 // users never copy a dangling preview link. The clipboard work stays inside the
 // fulfilled branch to avoid race conditions when multiple copy attempts happen.
@@ -10157,11 +10351,15 @@ function copyShortLinkToClipboard() {
         applyShortLinkMeasuredWidth('--short-link-copied-width', copiedText);
         setShortLinkLabel(copiedText);
         shortLinkBox.classList.add('copied');
+        if (!shortLinkBox.matches(':hover')) {
+          if (document.activeElement === shortLinkBox) {
+            shortLinkBox.blur();
+          }
+          resetShortLinkCopiedState(originalShortLink);
+          return;
+        }
         shortLinkCopiedTimer = setTimeout(() => {
-          if (!shortLinkBox) return;
-          shortLinkBox.classList.remove('copied');
-          setShortLinkLabel(shortLinkBox.dataset.href || originalShortLink);
-          shortLinkCopiedTimer = null;
+          resetShortLinkCopiedState(originalShortLink);
         }, 900);
       };
 
@@ -10473,10 +10671,23 @@ function initializeUIElements() {
 
   if (shortLinkBox) {
     const hint = translate('short_link_tooltip');
-    shortLinkBox.setAttribute('title', hint);
+    shortLinkBox.removeAttribute('title');
     shortLinkBox.setAttribute('aria-label', hint);
     shortLinkBox.addEventListener('click', () => {
       copyShortLinkToClipboard();
+    });
+    shortLinkBox.addEventListener('mouseleave', () => {
+      if (shortLinkBox.classList.contains('copied')) {
+        resetShortLinkCopiedState();
+      }
+      if (document.activeElement === shortLinkBox) {
+        shortLinkBox.blur();
+      }
+    });
+    shortLinkBox.addEventListener('blur', () => {
+      if (shortLinkBox.classList.contains('copied')) {
+        resetShortLinkCopiedState();
+      }
     });
     shortLinkBox.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
