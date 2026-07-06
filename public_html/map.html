@@ -69,19 +69,19 @@ body, html {
 
         /* Color and typography variables adapt to system theme */
         :root {
-          --overlay-bg: rgba(255, 255, 255, 0.7);
+          --overlay-bg: rgba(255, 255, 255, 0.78);
           --progress-bg: #ffffff;
           --progress-color: #333333;
           --progress-bar-bg: #f4f4f4;
           --progress-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-          --upload-btn-bg: #4caf50; /* Standard site green for consistency */
-          --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
-          --control-bg: rgba(255, 255, 255, 0.25);
-          --control-bg-hover: rgba(255, 255, 255, 0.35);
-          --legend-border: 0px solid #ccc;
+          --upload-btn-bg: #2f9f45; /* Standard site green for consistency */
+          --upload-btn-bg-hover: #258638; /* Slightly darker on hover */
+          --control-bg: rgba(255, 255, 255, 0.82);
+          --control-bg-hover: rgba(255, 255, 255, 0.96);
+          --legend-border: 1px solid rgba(35, 80, 55, 0.16);
           --modal-bg: #ffffff;
-          --modal-text: #333333;
-          --modal-border: 1px solid #888;
+          --modal-text: #1d2b36;
+          --modal-border: 1px solid rgba(35, 80, 55, 0.16);
           --link-color: #007bff;
           --info-card-bg: rgba(255, 255, 255, 0.9);
           --info-card-border: 1px solid rgba(0, 0, 0, 0.08);
@@ -90,6 +90,25 @@ body, html {
           --action-attention-bg: #ff8c00;
           --action-attention-bg-hover: #ff9f2f;
           --action-attention-text: #ffffff;
+          --map-ui-surface: rgba(255, 255, 255, 0.84);
+          --map-ui-surface-strong: rgba(255, 255, 255, 0.94);
+          --map-ui-border: rgba(35, 80, 55, 0.18);
+          --map-ui-shadow: 0 10px 28px rgba(31, 52, 68, 0.18), 0 2px 8px rgba(31, 52, 68, 0.14);
+          --map-ui-soft-shadow: 0 4px 16px rgba(31, 52, 68, 0.14);
+          --map-ui-text: #1d2b36;
+          --map-ui-muted: rgba(29, 43, 54, 0.68);
+          --map-ui-accent: #2f9f45;
+          --map-ui-accent-strong: #1f7f34;
+          --map-ui-accent-soft: rgba(47, 159, 69, 0.18);
+          --map-ui-track: rgba(47, 159, 69, 0.24);
+          --map-ui-handle: #3aaa4f;
+          --map-ui-icon-size: 44px;
+          --map-right-stack-top: 20px;
+          --map-right-stack-gap: 8px;
+          --map-upload-button-height: var(--map-ui-icon-size);
+          --map-ui-radius-pill: 999px;
+          --map-ui-radius-card: 18px;
+          --map-mobile-dock-bottom: 12px;
           color-scheme: light; /* Default to light scheme */
           --font-family-base: "Segoe UI", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; /* Shared font stack keeps every control aligned */
           --font-size-base: 12px; /* Main text size for buttons, menus, and labels */
@@ -103,27 +122,39 @@ body, html {
 
         @media (prefers-color-scheme: dark) {
           :root {
-            --overlay-bg: rgba(0, 0, 0, 0.7);
-            --progress-bg: #2b2b2b;
+            --overlay-bg: rgba(4, 18, 31, 0.78);
+            --progress-bg: #071827;
             --progress-color: #f4f4f4;
             --progress-bar-bg: #555555;
             --progress-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
-            --upload-btn-bg: #4caf50; /* Standard site green for consistency */
-            --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
-            --control-bg: rgba(51, 51, 51, 0.25);
-            --control-bg-hover: rgba(51, 51, 51, 0.35);
-            --legend-border: 0px solid #555;
-            --modal-bg: #2b2b2b;
-            --modal-text: #eee;
-            --modal-border: 1px solid #444;
-            --link-color: #90caf9;
-            --info-card-bg: rgba(43, 43, 43, 0.9);
+            --upload-btn-bg: #3aaa4f; /* Standard site green for consistency */
+            --upload-btn-bg-hover: #55c568; /* Slightly brighter on hover */
+            --control-bg: rgba(8, 29, 48, 0.76);
+            --control-bg-hover: rgba(13, 43, 70, 0.9);
+            --legend-border: 1px solid rgba(157, 224, 176, 0.24);
+            --modal-bg: #071827;
+            --modal-text: #f4f7ef;
+            --modal-border: 1px solid rgba(157, 224, 176, 0.24);
+            --link-color: #9fd9ff;
+            --info-card-bg: rgba(7, 24, 39, 0.92);
             --info-card-border: 1px solid rgba(255, 255, 255, 0.08);
             --api-method-bg: rgba(144, 202, 249, 0.2);
             --api-method-text: #90caf9;
             --action-attention-bg: #ff8c00;
             --action-attention-bg-hover: #ff9f2f;
             --action-attention-text: #ffffff;
+            --map-ui-surface: rgba(8, 29, 48, 0.78);
+            --map-ui-surface-strong: rgba(10, 37, 62, 0.9);
+            --map-ui-border: rgba(157, 224, 176, 0.24);
+            --map-ui-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), 0 0 18px rgba(47, 159, 69, 0.1);
+            --map-ui-soft-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+            --map-ui-text: #f4f7ef;
+            --map-ui-muted: rgba(244, 247, 239, 0.7);
+            --map-ui-accent: #8dd96d;
+            --map-ui-accent-strong: #55c568;
+            --map-ui-accent-soft: rgba(141, 217, 109, 0.18);
+            --map-ui-track: rgba(141, 217, 109, 0.3);
+            --map-ui-handle: #d9ffe0;
             color-scheme: dark; /* Match system dark scheme */
           }
         }
@@ -177,19 +208,19 @@ body, html {
 
         /* Manual theme overrides */
         :root[data-theme='light'] {
-          --overlay-bg: rgba(255, 255, 255, 0.7);
+          --overlay-bg: rgba(255, 255, 255, 0.78);
           --progress-bg: #ffffff;
           --progress-color: #333333;
           --progress-bar-bg: #f4f4f4;
           --progress-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-          --upload-btn-bg: #4caf50; /* Standard site green for consistency */
-          --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
-          --control-bg: rgba(255, 255, 255, 0.25);
-          --control-bg-hover: rgba(255, 255, 255, 0.35);
-          --legend-border: 0px solid #ccc;
+          --upload-btn-bg: #2f9f45; /* Standard site green for consistency */
+          --upload-btn-bg-hover: #258638; /* Slightly darker on hover */
+          --control-bg: rgba(255, 255, 255, 0.82);
+          --control-bg-hover: rgba(255, 255, 255, 0.96);
+          --legend-border: 1px solid rgba(35, 80, 55, 0.16);
           --modal-bg: #ffffff;
-          --modal-text: #333333;
-          --modal-border: 1px solid #888;
+          --modal-text: #1d2b36;
+          --modal-border: 1px solid rgba(35, 80, 55, 0.16);
           --link-color: #007bff;
           --info-card-bg: rgba(255, 255, 255, 0.9);
           --info-card-border: 1px solid rgba(0, 0, 0, 0.08);
@@ -198,6 +229,18 @@ body, html {
           --action-attention-bg: #ff8c00;
           --action-attention-bg-hover: #ff9f2f;
           --action-attention-text: #ffffff;
+          --map-ui-surface: rgba(255, 255, 255, 0.84);
+          --map-ui-surface-strong: rgba(255, 255, 255, 0.94);
+          --map-ui-border: rgba(35, 80, 55, 0.18);
+          --map-ui-shadow: 0 10px 28px rgba(31, 52, 68, 0.18), 0 2px 8px rgba(31, 52, 68, 0.14);
+          --map-ui-soft-shadow: 0 4px 16px rgba(31, 52, 68, 0.14);
+          --map-ui-text: #1d2b36;
+          --map-ui-muted: rgba(29, 43, 54, 0.68);
+          --map-ui-accent: #2f9f45;
+          --map-ui-accent-strong: #1f7f34;
+          --map-ui-accent-soft: rgba(47, 159, 69, 0.18);
+          --map-ui-track: rgba(47, 159, 69, 0.24);
+          --map-ui-handle: #3aaa4f;
           color-scheme: light; /* Force light scheme when manually selected */
         }
 
@@ -212,27 +255,39 @@ body, html {
         }
 
         :root[data-theme='dark'] {
-          --overlay-bg: rgba(0, 0, 0, 0.7);
-          --progress-bg: #2b2b2b;
+          --overlay-bg: rgba(4, 18, 31, 0.78);
+          --progress-bg: #071827;
           --progress-color: #f4f4f4;
           --progress-bar-bg: #555555;
           --progress-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
-          --upload-btn-bg: #4caf50; /* Standard site green for consistency */
-          --upload-btn-bg-hover: #388e3c; /* Slightly darker on hover */
-          --control-bg: rgba(51, 51, 51, 0.25);
-          --control-bg-hover: rgba(51, 51, 51, 0.35);
-          --legend-border: 0px solid #555;
-          --modal-bg: #2b2b2b;
-          --modal-text: #eee;
-          --modal-border: 1px solid #444;
-          --link-color: #90caf9;
-          --info-card-bg: rgba(43, 43, 43, 0.9);
+          --upload-btn-bg: #3aaa4f; /* Standard site green for consistency */
+          --upload-btn-bg-hover: #55c568; /* Slightly brighter on hover */
+          --control-bg: rgba(8, 29, 48, 0.76);
+          --control-bg-hover: rgba(13, 43, 70, 0.9);
+          --legend-border: 1px solid rgba(157, 224, 176, 0.24);
+          --modal-bg: #071827;
+          --modal-text: #f4f7ef;
+          --modal-border: 1px solid rgba(157, 224, 176, 0.24);
+          --link-color: #9fd9ff;
+          --info-card-bg: rgba(7, 24, 39, 0.92);
           --info-card-border: 1px solid rgba(255, 255, 255, 0.08);
           --api-method-bg: rgba(144, 202, 249, 0.2);
           --api-method-text: #90caf9;
           --action-attention-bg: #ff8c00;
           --action-attention-bg-hover: #ff9f2f;
           --action-attention-text: #ffffff;
+          --map-ui-surface: rgba(8, 29, 48, 0.78);
+          --map-ui-surface-strong: rgba(10, 37, 62, 0.9);
+          --map-ui-border: rgba(157, 224, 176, 0.24);
+          --map-ui-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), 0 0 18px rgba(47, 159, 69, 0.1);
+          --map-ui-soft-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+          --map-ui-text: #f4f7ef;
+          --map-ui-muted: rgba(244, 247, 239, 0.7);
+          --map-ui-accent: #8dd96d;
+          --map-ui-accent-strong: #55c568;
+          --map-ui-accent-soft: rgba(141, 217, 109, 0.18);
+          --map-ui-track: rgba(141, 217, 109, 0.3);
+          --map-ui-handle: #d9ffe0;
           color-scheme: dark; /* Force dark scheme when manually selected */
         }
 
@@ -280,35 +335,86 @@ body, html {
           line-height: 1;
         }
 
-        /* Small centered pill that surfaces the shareable short link under the logo */
         #shortLinkDisplay {
-          position: absolute;
-          top: var(--short-link-top, 56px);
-          left: 50%;
-          transform: translateX(-50%);
-          background: var(--overlay-bg);
-          border: var(--legend-border);
+          position: relative;
+          width: var(--map-ui-icon-size);
+          max-width: var(--map-ui-icon-size);
+          height: var(--map-ui-icon-size);
+          min-width: var(--map-ui-icon-size);
+          min-height: var(--map-ui-icon-size);
+          align-items: center;
+          justify-content: flex-end;
+          box-sizing: border-box;
           border-radius: 999px;
-          padding: 4px 10px;
+          padding: 0;
           font-size: var(--font-size-xs);
-          color: var(--modal-text);
-          opacity: 0.75;
+          color: transparent;
+          opacity: 0.92;
           z-index: 1200;
           cursor: pointer;
           display: none;
           user-select: none;
-          transition: opacity 0.2s ease;
+          white-space: nowrap;
+          overflow: hidden;
+          text-align: right;
+          transition: width 180ms ease, max-width 180ms ease, color 180ms ease, opacity 180ms ease, background 180ms ease;
+        }
+
+        #shortLinkDisplay::before {
+          content: "";
+          position: absolute;
+          top: 50%;
+          right: calc((var(--map-ui-icon-size) - 24px) / 2);
+          width: 24px;
+          height: 24px;
+          transform: translateY(-50%);
+          background: center / contain no-repeat url('/static/new-icons/day/link.png');
+        }
+
+        #shortLinkDisplay .short-link-label {
+          position: absolute;
+          left: 12px;
+          right: var(--map-ui-icon-size);
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          opacity: 0;
+          pointer-events: none;
+          text-align: right;
+          transition: opacity 140ms ease;
+        }
+
+        :root[data-theme='dark'] #shortLinkDisplay::before {
+          background-image: url('/static/new-icons/night/link.png');
         }
 
         #shortLinkDisplay:hover,
-        #shortLinkDisplay:focus,
+        #shortLinkDisplay:focus {
+          width: min(var(--short-link-url-width, 260px), calc(100vw - 24px));
+          max-width: min(var(--short-link-url-width, 260px), calc(100vw - 24px));
+          color: var(--map-ui-text);
+          opacity: 1;
+          outline: none;
+        }
+
+        #shortLinkDisplay:hover .short-link-label,
+        #shortLinkDisplay:focus .short-link-label,
+        #shortLinkDisplay.copied .short-link-label {
+          opacity: 1;
+        }
+
         #shortLinkDisplay.copied {
+          width: min(max(var(--short-link-copied-width, 150px), var(--short-link-url-width, 150px)), calc(100vw - 24px));
+          max-width: min(max(var(--short-link-copied-width, 150px), var(--short-link-url-width, 150px)), calc(100vw - 24px));
+          color: var(--map-ui-accent-strong);
           opacity: 1;
           outline: none;
         }
 
         #shortLinkDisplay.copied {
-          background: var(--control-bg-hover);
+          background: var(--map-ui-accent-soft);
+          color: var(--map-ui-accent-strong);
         }
 
         #mapCacheStatus {
@@ -541,55 +647,19 @@ body, html {
           font-size: var(--font-size-sm);
         }
 
-        .theme-icon {
-          font-size: var(--font-size-base);
-          line-height: 1;
-        }
-
         .theme-switch {
-          position: relative;
-          display: inline-block;
-          width: 30px;
-          height: 16px;
-          margin: 0 4px;
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          clip-path: inset(50%);
+          white-space: nowrap;
         }
 
         .theme-switch input {
           opacity: 0;
-          width: 0;
-          height: 0;
-        }
-
-        .theme-slider {
-          position: absolute;
-          cursor: pointer;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: #ccc;
-          transition: 0.2s;
-          border-radius: 16px;
-        }
-
-        .theme-slider:before {
-          position: absolute;
-          content: "";
-          height: 12px;
-          width: 12px;
-          left: 2px;
-          bottom: 2px;
-          background-color: #fff;
-          transition: 0.2s;
-          border-radius: 50%;
-        }
-
-        .theme-switch input:checked + .theme-slider {
-          background-color: #2196F3;
-        }
-
-        .theme-switch input:checked + .theme-slider:before {
-          transform: translateX(14px);
+          pointer-events: none;
         }
 
         /* Map container */
@@ -680,12 +750,12 @@ body, html {
         /* Container for upload button */
         .upload-btn-container {
           position: absolute;
-          top: 20px;
+          top: var(--map-right-stack-top);
           right: 20px;
           z-index: 1000;
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: var(--map-right-stack-gap);
         }
 
         /* Upload button styling, theme-aware */
@@ -768,12 +838,23 @@ body, html {
         /* Container for geolocation button */
         .locate-btn-container {
           position: absolute;
-          top: 60px;
+          top: calc(var(--map-right-stack-top) + var(--map-upload-button-height) + var(--map-right-stack-gap));
           right: 20px;
           z-index: 1000;
           display: flex;
           flex-direction: column;
-          align-items: center;
+          align-items: flex-end;
+          gap: var(--map-right-stack-gap);
+          width: min(260px, calc(100vw - 24px));
+          pointer-events: none;
+        }
+
+        .locate-btn-container > * {
+          pointer-events: auto;
+        }
+
+        .locate-btn-container br {
+          display: none;
         }
 
         /* Geolocation button styling, theme-aware */
@@ -789,6 +870,14 @@ body, html {
           display: flex;
           align-items: center;
           justify-content: center;
+        }
+
+        .locate-btn,
+        .qr-btn,
+        .desktop-admin-toggle,
+        #shortLinkDisplay {
+          align-self: flex-end;
+          flex: 0 0 auto;
         }
 
         /* Geolocation button hover effect */
@@ -851,8 +940,8 @@ body, html {
            Positioned below the QR button to prevent overlap. */
         .back-to-all-container {
           position: absolute;
-          top: 185px; /* place under geolocation+QR stack */
-          right: 20px;
+          top: 258px;
+          left: 10px;
           z-index: 1000;
           display: none;
         }
@@ -876,8 +965,8 @@ body, html {
            track view controls remain grouped for quick access. */
         .download-track-container {
           position: absolute;
-          top: 225px; /* keep consistent spacing below the back button */
-          right: 20px;
+          top: 304px;
+          left: 10px;
           z-index: 1000;
           display: none;
         }
@@ -916,7 +1005,7 @@ body, html {
           pointer-events: none;
           width: var(--playback-calendar-width);
           min-height: var(--playback-calendar-min-height);
-          margin-top: 6px;
+          margin-top: 0;
           perspective: 600px;
         }
 
@@ -1049,155 +1138,191 @@ body, html {
         }
 
 
-        /* ─────────–– Slider clean-look patch ─────────── */
+        /* The time slider is a horizontal playback capsule in both themes. */
         .date-slider-box {
-          padding: 6px;
-          width: 50px;
+          align-items: center;
+          gap: 10px;
+          width: min(440px, calc(100vw - 56px));
+          min-height: 52px;
           box-sizing: border-box;
+          padding: 8px 10px;
         }
 
-        /* 0) Basic slider container geometry: buffer = 8px
-           (half handle size) so handles never exceed the rail */
-        #dateSlider{
-          width:6px;                 /* rail thickness */
-          height:131px;              /* actual track length */
-          padding:0px 0;             /* inner top/bottom padding */
-          box-sizing:content-box;    /* ensures padding works */
-          margin:10px auto 33px;
+        .slider-track-row {
+          display: grid;
+          grid-template-columns: minmax(54px, auto) minmax(120px, 1fr) minmax(54px, auto);
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          flex: 1 1 auto;
         }
 
-        /* 1) grey slider rail */
-        #dateSlider .noUi-base{
-          background:#bfbfbf;
-          width:100%;                /* 6px width */
-          height:100%;               /* 130px minus padding */
+        #dateSlider,
+        #yearSlider {
+          width: 100%;
+          height: 8px;
+          min-width: 126px;
+          padding: 0 10px;
+          box-sizing: border-box;
+          margin: 0;
         }
 
-        /* 2) colored section only between handles */
-        #dateSlider .noUi-connect{
-          background:#1e88e5;        /* pick your brand color */
+        #dateSlider .noUi-target,
+        #yearSlider .noUi-target,
+        #dateSlider.noUi-target,
+        #yearSlider.noUi-target {
+          border: 0;
+          box-shadow: none;
+          background: transparent;
         }
 
-        /* Slider handles respect theme colors */
-        .noUi-vertical .noUi-handle{
-          width:32px;
-          height:20px;
-          left:-18px;              /* center on 6px rail */
-          border-radius:3px;
-          background: rgba(30, 136, 229, 0.92); /* keep handles visible over map in both themes */
-          border: 1px solid #fff;  /* requested high-contrast 1px white outline */
-          box-shadow:0 1px 4px rgba(0,0,0,.35);
-          cursor:grab;
+        #dateSlider .noUi-base,
+        #yearSlider .noUi-base {
+          background: var(--map-ui-track);
+          width: 100%;
+          height: 100%;
+          border-radius: 999px;
         }
-        /* 4) remove pseudo-element tails */
+
+        #dateSlider .noUi-connect,
+        #yearSlider .noUi-connect {
+          background: var(--map-ui-accent);
+          border-radius: 999px;
+          box-shadow: 0 0 10px var(--map-ui-accent-soft);
+        }
+
+        #dateSlider .noUi-handle,
+        #yearSlider .noUi-handle {
+          width: 18px;
+          height: 18px;
+          right: -9px;
+          top: -5px;
+          border-radius: 50%;
+          background: var(--map-ui-handle);
+          border: 2px solid var(--map-ui-surface-strong);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24), 0 0 0 3px var(--map-ui-accent-soft);
+          cursor: grab;
+        }
+
         .noUi-handle:before,
-        .noUi-handle:after{ display:none; }
+        .noUi-handle:after { display: none; }
 
-        .slider-label{
-          margin:2px 0;
+        .slider-label {
+          min-width: 0;
+          margin: 0;
+          font-size: var(--font-size-base);
+          line-height: 1.15;
+          white-space: nowrap;
+          text-align: center;
+          color: var(--map-ui-text);
+        }
+
+        .slider-toggle {
+          display: inline-flex;
+          flex: 0 0 auto;
+          gap: 2px;
+          padding: 3px;
+          margin: 0;
           font-size: var(--font-size-xs);
-          line-height:1.15em;
-          white-space:nowrap;
-          text-align:center;
+          line-height: 1;
+          user-select: none;
+          background: rgba(0, 0, 0, 0.06);
+          border-radius: 999px;
         }
 
-        /* ───── Year / Month toggle ───── */
-        .slider-toggle{
-          display:flex; gap:2px; margin:2px 0 4px;
-          font-size: var(--font-size-xs); line-height:1; user-select:none;
-        }
-        /* Year/Month toggle buttons adapt to theme */
-        .slider-toggle button{
-          flex:1 1 0; padding:2px 4px;
-          border: var(--legend-border); background: var(--control-bg);
-          border-radius:3px; cursor:pointer;
-          color: var(--modal-text);
-        }
-        .slider-toggle button.active{
-          background:#1e88e5; color:#fff; border-color:#1e88e5;
+        .slider-toggle button {
+          min-width: 24px;
+          padding: 5px 7px;
+          border: 0;
+          background: transparent;
+          border-radius: 999px;
+          cursor: pointer;
+          color: var(--map-ui-muted);
+          font-weight: 700;
         }
 
-        /* ─── Year mode: slider height matches month slider ─── */
-        #yearSlider{
-          /* copied parameters from #dateSlider */
-          width:6px;                 /* rail thickness */
-          height:131px;              /* track length */
-          padding:0;                 /* inner padding */
-          margin:10px auto 33px;     /* same margins */
-          box-sizing:content-box;
-        }
-        /* grey rail and blue connect bar */
-        #yearSlider .noUi-base      {background:#bfbfbf;width:100%;height:100%;}
-        #yearSlider .noUi-connect   {background:#bfbfbf;}
-
-
-        .slider-actions{
-          display:flex;
-          gap:4px;
-          margin-top:3px;
+        .slider-toggle button.active {
+          background: var(--map-ui-accent);
+          color: #fff;
+          box-shadow: 0 2px 8px var(--map-ui-accent-soft);
         }
 
-        /* Reset/Play buttons styled with theme variables */
+        .slider-actions {
+          display: flex;
+          flex: 0 0 auto;
+          gap: 6px;
+          margin: 0;
+        }
+
         .slider-reset-btn,
-        .slider-play-btn{
-          display:block;
-          width:100%;
-          padding:2px 4px;
+        .slider-play-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          padding: 0;
           font-size: var(--font-size-lg);
-          border: var(--legend-border);
-          background: var(--control-bg);
-          border-radius:3px;
-          cursor:pointer;
-          color: var(--modal-text);
+          border: 1px solid var(--map-ui-border);
+          background: var(--map-ui-surface-strong);
+          border-radius: 999px;
+          cursor: pointer;
+          color: var(--map-ui-text);
+          box-shadow: var(--map-ui-soft-shadow);
         }
+
         .slider-reset-btn:hover,
-        .slider-play-btn:hover{ background: var(--control-bg-hover); }
-
-        .slider-play-btn.is-playing{
-          background:#1e88e5;
-          color:#fff;
-          border-color:#1e88e5;
+        .slider-play-btn:hover {
+          background: var(--control-bg-hover);
         }
 
-        .slider-reset-btn.is-attention{
+        .slider-play-btn.is-playing {
+          background: var(--map-ui-accent);
+          color: #fff;
+          border-color: var(--map-ui-accent);
+          box-shadow: 0 0 0 3px var(--map-ui-accent-soft), var(--map-ui-soft-shadow);
+        }
+
+        .slider-reset-btn.is-attention {
           background: var(--action-attention-bg);
           color: var(--action-attention-text);
-          border: 1px solid #fff;
+          border: 1px solid rgba(255, 255, 255, 0.72);
         }
 
-        .slider-reset-btn.is-attention:hover{
+        .slider-reset-btn.is-attention:hover {
           background: var(--action-attention-bg-hover);
         }
 
-        /* Track view reset sits under play so both buttons remain aligned. */
-        .track-reset-btn{
-          margin-top:4px;
+        .track-reset-btn {
+          margin-top: 0;
         }
 
-        @media (max-height: 700px), (max-width: 480px) {
-          #dateSlider,
-          #yearSlider {
-            height:99px;
-            margin:8px auto 25px;
-          }
-
+        @media (max-width: 767px) {
           .date-slider-box {
-            padding:5px;
+            width: min(96vw, 430px);
+            gap: 8px;
+            padding: 8px;
           }
 
-          .slider-label,
+          .slider-track-row {
+            grid-template-columns: minmax(50px, auto) minmax(92px, 1fr) minmax(50px, auto);
+            gap: 6px;
+          }
+
+          .slider-label {
+            font-size: var(--font-size-xs);
+          }
+
           .slider-toggle button {
-            font-size: var(--font-size-xxs);
-          }
-
-          .slider-actions {
-            gap:3px;
+            min-width: 22px;
+            padding: 5px 6px;
           }
 
           .slider-reset-btn,
           .slider-play-btn {
+            width: 34px;
+            height: 34px;
             font-size: var(--font-size-base);
-            padding:2px 3px;
           }
         }
 
@@ -1453,34 +1578,36 @@ body, html {
 
         .speed-filter-row {
           display: grid;
-          grid-template-columns: 11px 22px auto;
+          grid-template-columns: auto;
           align-items: center;
-          column-gap: 4px;
+          justify-items: center;
           cursor: pointer;
-          min-height: 28px;
-          padding: 4px 0;
+          min-height: var(--map-ui-icon-size);
+          padding: 5px;
         }
 
         .speed-filter-row + .speed-filter-row {
-          border-top: 1px solid rgba(0, 0, 0, 0.12);
+          border-top: 0;
         }
 
         :root[data-theme='dark'] .speed-filter-row + .speed-filter-row {
-          border-top: 1px solid rgba(255, 255, 255, 0.12);
+          border-top: 0;
         }
 
         .speed-filter-check {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 12px;
-          height: 12px;
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          clip-path: inset(50%);
+          white-space: nowrap;
         }
 
         .speed-filter-row input[type='checkbox'] {
-          display: block;
-          width: 12px;
-          height: 12px;
+          position: absolute;
+          opacity: 0;
+          pointer-events: none;
           margin: 0;
         }
 
@@ -1488,37 +1615,18 @@ body, html {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 24px;
-          height: 24px;
+          width: 34px;
+          height: 34px;
+          border: 1px solid var(--map-ui-border);
+          border-radius: 50%;
+          transition: transform 150ms ease, background 150ms ease, border-color 150ms ease, box-shadow 150ms ease, filter 150ms ease;
         }
 
         .speed-filter-icon img {
           display: block;
-          width: 22px;
-          height: 22px;
+          width: 24px;
+          height: 24px;
           object-fit: contain;
-        }
-
-        .speed-filter-text {
-          display: grid;
-          grid-template-rows: 1fr 1fr;
-          align-items: center;
-          height: 16px;
-          min-width: 0;
-        }
-
-        .speed-filter-title {
-          font-size: 8px;
-          line-height: 1;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .speed-filter-subtitle {
-          font-size: 6px;
-          line-height: 1;
-          opacity: 0.8;
-          white-space: nowrap;
         }
 
         @media (max-width: 480px) {
@@ -1527,14 +1635,13 @@ body, html {
           }
 
           .speed-filter-row {
-            grid-template-columns: 10px 20px auto;
-            column-gap: 3px;
-            padding: 4px 0;
+            grid-template-columns: auto;
+            padding: 4px;
           }
 
           .speed-filter-check {
-            width: 12px;
-            height: 12px;
+            width: 1px;
+            height: 1px;
           }
 
           .speed-filter-row input[type='checkbox'] {
@@ -1543,25 +1650,1055 @@ body, html {
           }
 
           .speed-filter-icon {
+            width: 34px;
+            height: 34px;
+          }
+
+          .speed-filter-icon img {
             width: 24px;
             height: 24px;
           }
 
-          .speed-filter-icon img {
+        }
+
+        /* Unified floating map chrome follows the day/night reference without touching marker rendering. */
+        #mapLogo,
+        #shortLinkDisplay,
+        #mapCacheStatus,
+        #themeToggle,
+        #legend,
+        .date-slider-box,
+        .track-playback-control,
+        .speed-filter-control,
+        .leaflet-control-layers,
+        .leaflet-control-layers-expanded,
+        .leaflet-bar,
+        .upload-btn,
+        .locate-btn,
+        .qr-btn,
+        .download-track-btn,
+        .back-to-all-btn,
+        .desktop-admin-toggle,
+        .map-cache-reset-btn {
+          background: var(--map-ui-surface);
+          border: 1px solid var(--map-ui-border);
+          box-shadow: var(--map-ui-shadow);
+          color: var(--map-ui-text);
+          opacity: 0.86;
+          backdrop-filter: blur(14px) saturate(1.2);
+          -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        }
+
+        #mapLogo:hover,
+        #shortLinkDisplay:hover,
+        #mapCacheStatus:hover,
+        #themeToggle:hover,
+        #legend:hover,
+        .date-slider-box:hover,
+        .track-playback-control:hover,
+        .speed-filter-control:hover,
+        .leaflet-control-layers:hover,
+        .leaflet-control-layers-expanded:hover,
+        .leaflet-bar:hover,
+        .upload-btn:hover,
+        .locate-btn:hover,
+        .qr-btn:hover,
+        .download-track-btn:hover,
+        .back-to-all-btn:hover,
+        .desktop-admin-toggle:hover,
+        .map-cache-reset-btn:hover {
+          opacity: 1;
+        }
+
+        #mapLogo,
+        #shortLinkDisplay,
+        #themeToggle,
+        .date-slider-box,
+        .upload-btn,
+        .download-track-btn,
+        .back-to-all-btn {
+          border-radius: var(--map-ui-radius-pill);
+        }
+
+        #mapLogo {
+          top: 18px;
+          min-height: 36px;
+          padding: 0 24px;
+          font-size: var(--font-size-lg);
+          font-weight: 700;
+          letter-spacing: 0;
+        }
+
+        #shortLinkDisplay {
+          min-height: var(--map-ui-icon-size);
+          display: none;
+          align-items: center;
+          color: transparent;
+          opacity: 0.92;
+        }
+
+        #shortLinkDisplay:hover,
+        #shortLinkDisplay:focus {
+          color: var(--map-ui-text);
+        }
+
+        #shortLinkDisplay.copied {
+          background: var(--map-ui-accent-soft);
+          color: var(--map-ui-accent-strong);
+        }
+
+        #mapCacheStatus {
+          border-radius: var(--map-ui-radius-card);
+          padding: 8px 12px;
+          opacity: 0.94;
+        }
+
+        #themeToggle {
+          min-height: 42px;
+          padding: 5px;
+          gap: 4px;
+        }
+
+        .theme-switch {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          clip-path: inset(50%);
+          white-space: nowrap;
+        }
+
+        .theme-mode-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          padding: 0;
+          border: 1px solid transparent;
+          border-radius: 50%;
+          background: transparent;
+          cursor: pointer;
+          opacity: 0.58;
+          transform: scale(0.9);
+          transition: opacity 150ms ease, transform 150ms ease, background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+        }
+
+        .theme-mode-button img,
+        .map-ui-icon {
+          display: block;
+          width: 24px;
+          height: 24px;
+          object-fit: contain;
+          pointer-events: none;
+        }
+
+        :root[data-theme='light'] .theme-mode-button[data-theme-choice='light'],
+        :root[data-theme='dark'] .theme-mode-button[data-theme-choice='dark'] {
+          opacity: 1;
+          transform: scale(1.08);
+          background: var(--map-ui-accent-soft);
+          border-color: rgba(47, 159, 69, 0.54);
+          box-shadow: 0 0 16px var(--map-ui-accent-soft);
+        }
+
+        .theme-mode-button:hover {
+          opacity: 1;
+          background: var(--map-ui-accent-soft);
+        }
+
+        .upload-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 42px;
+          padding: 0 18px;
+          background: var(--map-ui-surface-strong);
+          color: var(--map-ui-accent-strong);
+          font-weight: 700;
+          text-decoration: none;
+        }
+
+        .upload-btn:hover {
+          background: var(--map-ui-accent);
+          color: #fff;
+        }
+
+        .locate-btn,
+        .qr-btn,
+        .desktop-admin-toggle {
+          width: var(--map-ui-icon-size);
+          height: var(--map-ui-icon-size);
+          min-width: var(--map-ui-icon-size);
+          min-height: var(--map-upload-button-height);
+          padding: 0;
+          border-radius: 50%;
+        }
+
+        .locate-btn:hover,
+        .qr-btn:hover,
+        .desktop-admin-toggle:hover,
+        .download-track-btn:hover {
+          background: var(--control-bg-hover);
+        }
+
+        .leaflet-bar {
+          overflow: hidden;
+          background: transparent !important;
+          border: 0 !important;
+          border-radius: 0;
+          box-shadow: none !important;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+        }
+
+        .leaflet-bar a,
+        .leaflet-bar a:hover {
+          background: transparent !important;
+          background-color: transparent !important;
+          border: 0 !important;
+          border-bottom: 0 !important;
+          box-shadow: none !important;
+          color: var(--map-ui-text);
+        }
+
+        .leaflet-control-zoom a {
+          opacity: 0.82;
+        }
+
+        .leaflet-control-zoom a:hover,
+        .leaflet-control-zoom a:focus {
+          opacity: 1;
+        }
+
+        .leaflet-control-layers,
+        .leaflet-control-layers-expanded,
+        .speed-filter-control,
+        .track-playback-control {
+          border-radius: var(--map-ui-radius-card);
+          box-shadow: var(--map-ui-shadow);
+        }
+
+        .leaflet-control-layers-list {
+          background: transparent;
+        }
+
+        .leaflet-control-layers-expanded {
+          padding: 8px;
+        }
+
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
+          overflow: visible;
+          padding: 6px;
+          border-radius: 999px;
+          width: 56px;
+          height: 56px;
+          box-sizing: border-box;
+        }
+
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          width: 42px;
+          height: 42px;
+          border-radius: 50%;
+          background: center / 24px 24px no-repeat url('/static/new-icons/day/map_layers.png') !important;
+          background-color: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+        }
+
+        :root[data-theme='dark'] .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-toggle {
+          background-image: url('/static/new-icons/night/map_layers.png') !important;
+        }
+
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-list {
+          position: absolute;
+          top: 0;
+          left: calc(100% + 8px);
+          min-width: 180px;
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transform: translateX(-6px);
+          transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
+          background: var(--map-ui-surface);
+          border: 0;
+          border-radius: 20px;
+          box-shadow: var(--map-ui-soft-shadow);
+          padding: 8px;
+          backdrop-filter: blur(14px) saturate(1.2);
+          -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        }
+
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):hover .leaflet-control-layers-list,
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):focus-within .leaflet-control-layers-list,
+        .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control).leaflet-control-layers-expanded .leaflet-control-layers-list {
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
+          transform: translateX(0);
+        }
+
+        .leaflet-control-layers-base {
+          display: grid;
+          gap: 6px;
+        }
+
+        .leaflet-control-layers-base label,
+        .speed-filter-row {
+          position: relative;
+          align-items: center;
+          min-height: 42px;
+          border: 1px solid transparent;
+          border-radius: 18px;
+          background: transparent;
+          color: var(--map-ui-text);
+          transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
+        }
+
+        .leaflet-control-layers-base label {
+          display: grid;
+          grid-template-columns: 30px minmax(0, 1fr);
+          gap: 8px;
+          padding: 7px 9px;
+          font-size: var(--font-size-sm);
+          font-weight: 650;
+          white-space: nowrap;
+          cursor: pointer;
+        }
+
+        .leaflet-control-layers-base label input {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .leaflet-control-layers-base label span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .leaflet-control-layers-base label::before {
+          content: "▦";
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid var(--map-ui-border);
+          color: var(--map-ui-text);
+          box-sizing: border-box;
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        }
+
+        .leaflet-control-layers-base label:nth-of-type(1)::before { content: "≋"; }
+        .leaflet-control-layers-base label:nth-of-type(2)::before { content: "◈"; }
+        .leaflet-control-layers-base label:nth-of-type(3)::before { content: "▣"; }
+
+        .leaflet-control-layers-base label:hover {
+          background: var(--map-ui-accent-soft);
+          border-color: rgba(47, 159, 69, 0.32);
+        }
+
+        .speed-filter-row:hover,
+        .speed-filter-row:active,
+        .speed-filter-row:focus,
+        .speed-filter-row:focus-within {
+          background: transparent;
+          border-color: transparent;
+          box-shadow: none;
+          outline: none;
+        }
+
+        .speed-filter-row:hover .speed-filter-icon,
+        .speed-filter-row:active .speed-filter-icon,
+        .speed-filter-row:focus-within .speed-filter-icon {
+          background: var(--map-ui-accent-soft);
+          border-color: rgba(47, 159, 69, 0.32);
+        }
+
+        .leaflet-control-layers-base label.is-selected,
+        .speed-filter-row.is-selected {
+          box-shadow: none;
+          color: var(--map-ui-accent-strong);
+        }
+
+        .leaflet-control-layers-base label.is-selected {
+          background: var(--map-ui-accent-soft);
+          border-color: rgba(47, 159, 69, 0.54);
+        }
+
+        .speed-filter-row.is-selected {
+          background: transparent;
+          border-color: transparent;
+        }
+
+        .leaflet-control-layers-base label.is-selected {
+          box-shadow: 0 0 12px var(--map-ui-accent-soft);
+        }
+
+        .leaflet-control-layers-base label.is-selected::before,
+        .speed-filter-row.is-selected .speed-filter-icon {
+          background: var(--map-ui-accent);
+          border-color: var(--map-ui-accent);
+          color: #fff;
+          transform: none;
+          box-shadow: 0 0 14px rgba(47, 159, 69, 0.34);
+          filter: brightness(1.12);
+        }
+
+        .speed-filter-control {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          padding: 7px;
+          border-radius: 999px;
+        }
+
+        @media (min-width: 768px) {
+          .leaflet-top.leaflet-left {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0;
+            filter: drop-shadow(0 10px 28px rgba(31, 52, 68, 0.18)) drop-shadow(0 2px 8px rgba(31, 52, 68, 0.14));
+          }
+
+          .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control),
+          .leaflet-top.leaflet-left > .speed-filter-control {
+            margin-left: 10px;
+            margin-right: 0;
+            width: 56px;
+            box-sizing: border-box;
+            box-shadow: none;
+          }
+
+          .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
+            margin-bottom: 0;
+            padding: 6px;
+            border-bottom: 0;
+            border-bottom-right-radius: 0;
+            border-bottom-left-radius: 0;
+          }
+
+          .leaflet-top.leaflet-left > .speed-filter-control {
+            position: relative;
+            margin-top: 0;
+            padding: 7px;
+            border-top: 0;
+            border-top-right-radius: 0;
+            border-top-left-radius: 0;
+          }
+
+          .leaflet-top.leaflet-left > .speed-filter-control::before {
+            content: "";
+            position: absolute;
+            top: -1px;
+            left: 13px;
+            right: 13px;
+            height: 1px;
+            background: var(--map-ui-border);
+            opacity: 0.58;
+          }
+        }
+
+        .speed-filter-row {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 34px;
+          height: 34px;
+          min-height: 34px;
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          -webkit-tap-highlight-color: transparent;
+          appearance: none;
+        }
+
+        .leaflet-control-layers label {
+          color: var(--map-ui-text);
+        }
+
+        .download-track-btn,
+        .back-to-all-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 38px;
+          padding: 0 14px;
+          font-weight: 700;
+        }
+
+        .back-to-all-btn,
+        .slider-reset-btn.is-attention {
+          background: var(--action-attention-bg);
+          color: var(--action-attention-text);
+        }
+
+        .track-playback-control {
+          display: flex;
+          gap: 8px;
+          width: auto;
+          padding: 8px;
+        }
+
+        .playback-calendar-sheet {
+          border: 1px solid var(--map-ui-border);
+          border-radius: var(--map-ui-radius-card);
+          background: var(--map-ui-surface);
+          box-shadow: var(--map-ui-soft-shadow);
+        }
+
+        .playback-calendar-binding {
+          background: var(--map-ui-accent);
+        }
+
+        #legend {
+          position: absolute;
+          right: 20px;
+          bottom: var(--legend-bottom, 20px) !important;
+          z-index: 1060 !important;
+          display: flex;
+          align-items: stretch;
+          gap: 0;
+          overflow: visible;
+          padding: 7px;
+          border-radius: 999px;
+          cursor: pointer;
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-sm);
+          line-height: 1.35;
+        }
+
+        .legend-gradient-bar {
+          display: grid;
+          gap: 7px;
+          align-content: center;
+          justify-items: center;
+          width: 20px;
+          min-height: 94px;
+          flex: 0 0 20px;
+          overflow: visible;
+          border-radius: 999px;
+          background: transparent;
+        }
+
+        .legend-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 0 8px rgba(0, 0, 0, 0.18);
+        }
+
+        .legend-panel-body {
+          position: absolute;
+          right: calc(100% + 8px);
+          bottom: 0;
+          width: max-content;
+          min-width: 0;
+          max-width: calc(100vw - 84px);
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transform: translateX(8px);
+          transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
+          padding: 10px 12px;
+          border-radius: 18px;
+          background: var(--map-ui-surface);
+          border: 1px solid var(--map-ui-border);
+          box-shadow: var(--map-ui-soft-shadow);
+          backdrop-filter: blur(14px) saturate(1.2);
+          -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        }
+
+        #legend:hover .legend-panel-body,
+        #legend:focus-within .legend-panel-body,
+        #legend.is-expanded .legend-panel-body {
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
+          transform: translateX(0);
+        }
+
+        .legend-panel-title {
+          display: block;
+          margin-bottom: 3px;
+          font-weight: 700;
+        }
+
+        .legend-panel-row {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          white-space: nowrap;
+        }
+
+        .legend-panel-swatch {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.36);
+        }
+
+        #legend::after {
+          content: none;
+        }
+
+        .legend-modal-backdrop,
+        .info-modal-backdrop {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.58);
+          z-index: 2000;
+          justify-content: center;
+          align-items: center;
+          padding: 16px;
+        }
+
+        .legend-modal-card {
+          width: min(720px, 94vw);
+          max-height: 80vh;
+          overflow-y: auto;
+          background: var(--modal-bg);
+          color: var(--modal-text);
+          border: var(--modal-border);
+          padding: 20px;
+          border-radius: var(--map-ui-radius-card);
+          font-size: var(--font-size-base);
+          line-height: 1.6;
+          box-shadow: var(--map-ui-shadow);
+          font-family: var(--font-family-base);
+        }
+
+        .legend-modal-title {
+          margin: 0 0 12px;
+        }
+
+        .legend-modal-text {
+          line-height: 1.6;
+        }
+
+        .legend-modal-actions {
+          margin-top: 12px;
+          text-align: right;
+        }
+
+        .legend-modal-close {
+          padding: 7px 14px;
+          background: var(--control-bg);
+          border: var(--legend-border);
+          border-radius: 999px;
+          cursor: pointer;
+          color: var(--modal-text);
+          font-family: inherit;
+        }
+
+        #mobileControlDock {
+          display: none;
+        }
+
+        @media (max-width: 767px) {
+          :root {
+            --map-right-stack-top: 14px;
+            --map-upload-button-height: 36px;
+            --map-ui-icon-size: 40px;
+            --mobile-dock-side: 12px;
+            --mobile-dock-padding: 8px;
+            --mobile-dock-active-button: 54px;
+            --mobile-dock-active-height: 66px;
+            --mobile-dock-content-left: calc(var(--mobile-dock-side) + var(--mobile-dock-padding) + var(--mobile-dock-active-button) + 8px);
+            --mobile-dock-content-right: calc(var(--mobile-dock-side) + var(--mobile-dock-padding));
+            --mobile-dock-content-bottom: calc(var(--map-mobile-dock-bottom) + var(--mobile-dock-padding) + env(safe-area-inset-bottom, 0px));
+          }
+
+          #mapLogo {
+            top: 14px;
+            max-width: calc(100vw - 132px);
+            min-height: 34px;
+            padding: 0 14px;
+            font-size: var(--font-size-base);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .upload-btn-container {
+            right: 12px;
+          }
+
+          .upload-btn {
+            box-sizing: border-box;
+            width: var(--map-upload-button-height);
+            height: var(--map-upload-button-height);
+            min-height: var(--map-upload-button-height);
+            padding: 0;
+            border-radius: 50%;
+          }
+
+          .upload-btn span {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            white-space: nowrap;
+          }
+
+          .upload-btn .map-ui-icon {
             width: 22px;
             height: 22px;
           }
 
-          .speed-filter-title {
-            font-size: 8px;
+          .locate-btn-container {
+            right: 12px;
           }
 
-          .speed-filter-subtitle {
-            font-size: 6px;
+          .locate-btn-container br {
+            display: none;
           }
 
-          .speed-filter-text {
-            height: 16px;
+          #mobileControlDock {
+            position: fixed;
+            left: var(--mobile-dock-side);
+            right: var(--mobile-dock-side);
+            bottom: calc(var(--map-mobile-dock-bottom) + env(safe-area-inset-bottom, 0px));
+            z-index: 1350;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-auto-rows: 48px;
+            align-items: center;
+            gap: 4px;
+            box-sizing: border-box;
+            height: var(--mobile-dock-active-height);
+            min-height: var(--mobile-dock-active-height);
+            max-height: var(--mobile-dock-active-height);
+            padding: var(--mobile-dock-padding);
+            overflow: hidden;
+            background: var(--map-ui-surface);
+            border: 1px solid var(--map-ui-border);
+            border-radius: 24px;
+            box-shadow: var(--map-ui-shadow);
+            backdrop-filter: blur(16px) saturate(1.2);
+            -webkit-backdrop-filter: blur(16px) saturate(1.2);
+          }
+
+          html[data-mobile-panel] #mobileControlDock {
+            grid-template-columns: var(--mobile-dock-active-button) minmax(0, 1fr);
+            gap: 8px;
+          }
+
+          .mobile-dock-panel {
+            display: none;
+            grid-column: 2;
+            align-items: center;
+            min-width: 0;
+            height: 48px;
+            min-height: 48px;
+            max-height: 48px;
+            overflow: hidden;
+          }
+
+          html[data-mobile-panel] .mobile-dock-panel {
+            display: flex;
+          }
+
+          .mobile-dock-button {
+            display: grid;
+            gap: 2px;
+            justify-items: center;
+            align-items: center;
+            min-width: 0;
+            height: 48px;
+            min-height: 48px;
+            max-height: 48px;
+            border: 0;
+            border-radius: 17px;
+            background: transparent;
+            color: var(--map-ui-text);
+            font-family: var(--font-family-base);
+            font-size: var(--font-size-xs);
+            line-height: 1.1;
+            cursor: pointer;
+          }
+
+          .mobile-dock-icon {
+            display: block;
+            width: 22px;
+            height: 22px;
+            object-fit: contain;
+          }
+
+          html[data-mobile-panel] .mobile-dock-button {
+            display: none;
+          }
+
+          html[data-mobile-panel='layers'] .mobile-dock-button[data-mobile-panel='layers'],
+          html[data-mobile-panel='speed'] .mobile-dock-button[data-mobile-panel='speed'],
+          html[data-mobile-panel='time'] .mobile-dock-button[data-mobile-panel='time'],
+          html[data-mobile-panel='settings'] .mobile-dock-button[data-mobile-panel='settings'] {
+            display: grid;
+            grid-column: 1;
+            height: 48px;
+            min-height: 48px;
+            max-height: 48px;
+            align-self: center;
+          }
+
+          html[data-mobile-panel='layers'] .mobile-dock-button[data-mobile-panel='layers'],
+          html[data-mobile-panel='speed'] .mobile-dock-button[data-mobile-panel='speed'],
+          html[data-mobile-panel='time'] .mobile-dock-button[data-mobile-panel='time'],
+          html[data-mobile-panel='settings'] .mobile-dock-button[data-mobile-panel='settings'] {
+            background: var(--map-ui-accent-soft);
+            color: var(--map-ui-accent-strong);
+          }
+
+          .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):not(.is-in-mobile-dock),
+          .speed-filter-control:not(.is-in-mobile-dock),
+          .date-slider-box:not(.is-in-mobile-dock),
+          #mapCacheStatus:not(.is-in-mobile-dock),
+          #themeToggle:not(.is-in-mobile-dock) {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+          }
+
+          .mobile-dock-panel .is-in-mobile-dock {
+            position: static !important;
+            left: auto !important;
+            right: auto !important;
+            bottom: auto !important;
+            z-index: auto !important;
+            transform: none !important;
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            box-sizing: border-box;
+            margin: 0 !important;
+            background: transparent !important;
+            background-color: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+          }
+
+          .mobile-dock-panel .is-in-mobile-dock.leaflet-control-layers-expanded,
+          .mobile-dock-panel .is-in-mobile-dock .leaflet-control-layers-list {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+          }
+
+          .mobile-dock-panel .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
+            display: block;
+            width: 100%;
+            height: 48px;
+            max-height: 48px;
+            padding: 0;
+            overflow: hidden;
+          }
+
+          .mobile-dock-panel .speed-filter-control {
+            display: flex;
+            width: 100%;
+            height: 48px;
+            max-height: 48px;
+            padding: 0;
+            flex-direction: row;
+            justify-content: space-evenly;
+            align-items: center;
+            gap: 8px;
+            overflow: hidden;
+          }
+
+          .mobile-dock-panel .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-list {
+            display: block;
+            position: static;
+            min-width: 0;
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transform: none;
+            box-shadow: none !important;
+            background: transparent !important;
+            background-color: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            padding: 0;
+          }
+
+          .mobile-dock-panel .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-toggle {
+            display: none;
+          }
+
+          .mobile-dock-panel .leaflet-control-layers-base {
+            display: flex;
+            align-items: center;
+            height: 48px;
+            gap: 5px;
+            min-width: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+          }
+
+          .mobile-dock-panel .leaflet-control-layers-base::-webkit-scrollbar {
+            display: none;
+          }
+
+          .mobile-dock-panel .leaflet-control-layers-base label {
+            min-height: 34px;
+            height: 34px;
+            grid-template-columns: minmax(0, 1fr);
+            padding: 5px 8px;
+            white-space: nowrap;
+          }
+
+          .mobile-dock-panel .leaflet-control-layers-base label::before {
+            display: none;
+          }
+
+          .leaflet-control-layers-base label,
+          .speed-filter-row {
+            min-height: 48px;
+            border-radius: 18px;
+          }
+
+          .mobile-dock-panel .leaflet-control-layers-base label {
+            min-height: 34px;
+          }
+
+          .speed-filter-row {
+            width: 34px;
+            height: 34px;
+            min-height: 34px;
+            padding: 0;
+            border-radius: 0;
+          }
+
+          .mobile-dock-panel .date-slider-box {
+            width: auto;
+            min-width: 0;
+            flex: 1 1 auto;
+            height: 48px;
+            min-height: 48px;
+            max-height: 48px;
+            display: grid !important;
+            grid-template-columns: 34px minmax(0, 1fr) auto 34px;
+            gap: 6px;
+            padding: 0;
+          }
+
+          .mobile-dock-panel .date-slider-box .slider-actions {
+            gap: 0;
+          }
+
+          .mobile-dock-panel .date-slider-box .slider-reset-btn,
+          .mobile-dock-panel .date-slider-box .slider-play-btn {
+            width: 34px;
+            height: 34px;
+          }
+
+          .mobile-dock-panel .date-slider-box .slider-track-row {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0;
+          }
+
+          .mobile-dock-panel .date-slider-box .slider-label {
+            display: none;
+          }
+
+          .mobile-dock-panel .date-slider-box #dateSlider,
+          .mobile-dock-panel .date-slider-box #yearSlider {
+            min-width: 0;
+            padding: 0 8px;
+          }
+
+          .mobile-dock-panel .date-slider-box .slider-toggle {
+            align-self: center;
+          }
+
+          .mobile-dock-panel .date-slider-box .slider-toggle button {
+            min-width: 20px;
+            padding: 4px 5px;
+          }
+
+          #legend {
+            left: auto !important;
+            right: 12px !important;
+            bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important;
+            width: auto;
+            max-width: none;
+            padding: 7px;
+            transform: none;
+            z-index: 1320 !important;
+          }
+
+          #legend .legend-panel-body {
+            right: calc(100% + 8px);
+            left: auto;
+            bottom: 0;
+            transform: translateX(8px);
+          }
+
+          .mobile-dock-panel #themeToggle {
+            flex: 0 0 auto;
+            height: 48px;
+            min-height: 48px;
+            max-height: 48px;
+            padding: 0;
+            border-radius: 0;
+          }
+
+          .mobile-dock-panel #mapCacheStatus {
+            flex: 1 1 auto;
+            position: relative !important;
+            min-width: 0;
+            width: auto;
+            max-width: none;
+            height: 48px;
+            min-height: 48px;
+            max-height: 48px;
+            overflow: hidden;
+            padding: 4px 40px 4px 6px;
+            line-height: 1.15;
+            white-space: normal;
+          }
+
+          .mobile-dock-panel #mapCacheStatus .cache-inline-line {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+          }
+
+          .mobile-dock-panel #mapCacheStatus .cache-reset-link {
+            position: absolute;
+            right: 7px;
+            bottom: 5px;
+            margin-left: 0;
+            font-weight: 700;
+            white-space: nowrap;
           }
         }
 
@@ -1940,14 +3077,16 @@ body, html {
         aria-label="{{translate "upload_button_tooltip"}}"
         type="button"
         onclick="uploadFilesNativeDesktop()">
-        {{translate "upload_button"}}
+        <img class="map-ui-icon" data-new-icon="upload" alt="" aria-hidden="true">
+        <span>{{translate "upload_button"}}</span>
       </button>
       {{else}}
         <label
           for="fileInput"
           class="upload-btn"
           aria-label="{{translate "upload_button_tooltip"}}">
-          {{translate "upload_button"}}
+          <img class="map-ui-icon" data-new-icon="upload" alt="" aria-hidden="true">
+          <span>{{translate "upload_button"}}</span>
         </label>
 
         <input
@@ -1963,34 +3102,20 @@ body, html {
     <!-- Container for geolocation button -->
     <div class="locate-btn-container leaflet-control">
       <button id="locateButton" class="locate-btn" aria-label="{{translate "locate_button_tooltip"}}">
-        <img src="/static/images/marker-icon-2x.png" alt="Locate" style="width:20px;">
+        <img class="map-ui-icon" data-new-icon="locate_me" alt="Locate">
       </button>
       <br>
       {{if not .DesktopWebView}}
         <!-- Small QR button under geolocate -->
         <button id="qrButton" class="qr-btn" aria-label="{{translate "qr_button_tooltip"}}">
-          <svg viewBox="0 0 100 100" role="img" aria-hidden="true">
-            <rect x="0" y="0" width="100" height="100" fill="#fff"/>
-            <rect x="8" y="8" width="28" height="28" fill="#000"/>
-            <rect x="12" y="12" width="20" height="20" fill="#fff"/>
-            <rect x="16" y="16" width="12" height="12" fill="#000"/>
-            <rect x="64" y="8" width="28" height="28" fill="#000"/>
-            <rect x="68" y="12" width="20" height="20" fill="#fff"/>
-            <rect x="72" y="16" width="12" height="12" fill="#000"/>
-            <rect x="8" y="64" width="28" height="28" fill="#000"/>
-            <rect x="12" y="68" width="20" height="20" fill="#fff"/>
-            <rect x="16" y="72" width="12" height="12" fill="#000"/>
-            <rect x="48" y="12" width="8" height="8" fill="#000"/>
-            <rect x="40" y="28" width="8" height="8" fill="#000"/>
-            <rect x="56" y="28" width="8" height="8" fill="#000"/>
-            <rect x="44" y="44" width="8" height="8" fill="#000"/>
-            <rect x="60" y="44" width="8" height="8" fill="#000"/>
-            <rect x="44" y="60" width="8" height="8" fill="#000"/>
-            <rect x="60" y="60" width="8" height="8" fill="#000"/>
-            <rect x="76" y="60" width="8" height="8" fill="#000"/>
-            <rect x="28" y="44" width="8" height="8" fill="#000"/>
-          </svg>
+          <img class="map-ui-icon" data-new-icon="qr_code" alt="" aria-hidden="true">
         </button>
+        <div
+          id="shortLinkDisplay"
+          role="button"
+          tabindex="0"
+          aria-live="polite"
+          aria-label="{{translate "short_link_tooltip"}}"></div>
       {{end}}
     </div>
 
@@ -2025,15 +3150,7 @@ body, html {
       <span class="map-logo-text">{{translate "logo_title"}}</span>
     </h1>
 
-    {{if not .DesktopWebView}}
-      <!-- Short link pill shows the shareable URL and copies it on click -->
-      <div
-        id="shortLinkDisplay"
-        role="button"
-        tabindex="0"
-        aria-live="polite"
-        aria-label="{{translate "short_link_tooltip"}}"></div>
-    {{else}}
+    {{if .DesktopWebView}}
       <div id="desktopStatusLine" aria-live="polite"></div>
     {{end}}
     <div id="mapCacheStatus" aria-live="polite"></div>
@@ -2062,41 +3179,31 @@ body, html {
 
     <!-- Theme toggle -->
     <div id="themeToggle" role="button" tabindex="0" aria-label="{{translate "theme_toggle_tooltip"}}">
-      <span class="theme-icon">☀️</span>
       <label class="theme-switch">
         <input type="checkbox" id="themeSwitch">
-        <span class="theme-slider"></span>
       </label>
-      <span class="theme-icon">🌙</span>
+      <button class="theme-mode-button" type="button" data-theme-choice="light" aria-label="Day theme">
+        <img data-theme-icon="day" alt="" aria-hidden="true">
+      </button>
+      <button class="theme-mode-button" type="button" data-theme-choice="dark" aria-label="Night theme">
+        <img data-theme-icon="night" alt="" aria-hidden="true">
+      </button>
     </div>
 
 <!-- Compact Legend (clickable) -->
-<div id="legend" role="button" tabindex="0" aria-label="{{translate "legend_button_tooltip"}}" style="
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  background: var(--control-bg);
-  border: var(--legend-border);
-  border-radius: 4px;
-  box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-  padding: 10px 10px 10px 0;
-  font-size: var(--font-size-sm);
-  line-height: 1.4em;
-  cursor: pointer;
-  z-index: 1000;
-  font-family: var(--font-family-base);
-  display: flex;
-  overflow: hidden;">
-    <div style="width:16px; margin-left:6px; margin-right:6px; border-radius:4px 4px 4px 4px; overflow:hidden; background:linear-gradient(to top,#008000,#FFD700,#FF8C00,#FF4500,#000); position:relative;">
-    <span style="position:absolute; bottom:4px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size: var(--font-size-xxs);">{{translate "legend_safe"}}</span>
-    <span style="position:absolute; top:4px; left:0; right:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); color:#fff; font-size: var(--font-size-xxs);">{{translate "legend_danger"}}</span>
-</div>
-  <div>
-    <strong>{{translate "legend_title"}}</strong><br>
-    <div><span style="color:#000000;">■</span> >100 µR/h</div>
-    <div><span style="color:#FF4500;">■</span> 30–100 µR/h</div>
-  <div><span style="color:#FFD700;">■</span> 11–30 µR/h</div>
-   <div><span style="color:#008000;">■</span> 0–11 µR/h</div>
+<div id="legend" role="button" tabindex="0" aria-label="{{translate "legend_button_tooltip"}}">
+  <div class="legend-gradient-bar" aria-hidden="true">
+    <span class="legend-dot" style="background:#000000;"></span>
+    <span class="legend-dot" style="background:#FF4500;"></span>
+    <span class="legend-dot" style="background:#FFD700;"></span>
+    <span class="legend-dot" style="background:#008000;"></span>
+  </div>
+  <div class="legend-panel-body">
+    <strong class="legend-panel-title">{{translate "legend_title"}}</strong>
+    <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#000000;"></span> >100 µR/h</div>
+    <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#FF4500;"></span> 30–100 µR/h</div>
+    <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#FFD700;"></span> 11–30 µR/h</div>
+    <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#008000;"></span> 0–11 µR/h</div>
   </div>
 </div>
 <!--
@@ -2104,34 +3211,35 @@ body, html {
   White labels mark safe at the bottom and danger at the top.
   Clicking the legend opens a modal with full, human-friendly guidance.
 -->
+<div id="mobileControlDock" aria-label="Map controls">
+  <button class="mobile-dock-button" type="button" data-mobile-panel="layers" aria-expanded="false" aria-label="Layers">
+    <img class="mobile-dock-icon" data-new-icon="map_layers" alt="" aria-hidden="true">
+    <span>Layers</span>
+  </button>
+  <button class="mobile-dock-button" type="button" data-mobile-panel="speed" aria-expanded="false" aria-label="Speed">
+    <img class="mobile-dock-icon" data-new-icon="speed" alt="" aria-hidden="true">
+    <span>Speed</span>
+  </button>
+  <button class="mobile-dock-button" type="button" data-mobile-panel="time" aria-expanded="false" aria-label="Time">
+    <img class="mobile-dock-icon" data-new-icon="time" alt="" aria-hidden="true">
+    <span>Time</span>
+  </button>
+  <button class="mobile-dock-button" type="button" data-mobile-panel="settings" aria-expanded="false" aria-label="Settings">
+    <img class="mobile-dock-icon" data-new-icon="filters_settings" alt="" aria-hidden="true">
+    <span>Settings</span>
+  </button>
+  <div class="mobile-dock-panel" aria-live="polite"></div>
+</div>
+
 <!-- Legend Modal -->
-  <div id="legendModal" style="
-  display:none;
-  position:fixed;
-  top:0; left:0; width:100%; height:100%;
-  background:rgba(0,0,0,0.6);
-  z-index:2000;
-  justify-content:center;
-  align-items:center;">
-  <div style="
-    background:var(--modal-bg);
-    color:var(--modal-text);
-    border:var(--modal-border);
-    max-width:720px;
-    max-height:80vh;
-    overflow-y:auto;
-    padding:20px;
-    border-radius:10px;
-    font-size: var(--font-size-base);
-    line-height:1.6em;
-    box-shadow:0 0 10px rgba(0,0,0,0.5);
-    font-family: var(--font-family-base);">
-    <h3 style="margin-top:0;">{{translate "legend_title"}}</h3>
+<div id="legendModal" class="legend-modal-backdrop">
+  <div class="legend-modal-card">
+    <h3 class="legend-modal-title">{{translate "legend_title"}}</h3>
     <!-- We inject the localized full text below -->
-    <div id="legendText" style="line-height:1.6em;"></div>
-    <div style="margin-top:12px; text-align:right;">
+    <div id="legendText" class="legend-modal-text"></div>
+    <div class="legend-modal-actions">
       <button onclick="document.getElementById('legendModal').style.display='none'"
-        style="padding:6px 12px; background: var(--control-bg); border: var(--legend-border); border-radius:4px; cursor:pointer; font-family: inherit;">
+        class="legend-modal-close">
         OK
       </button>
     </div>
@@ -3162,6 +4270,7 @@ let shortLinkCommitPromise = null;
 let shortLinkFocusDelayTimer = null;
 let shortLinkPendingUrl = '';
 let shortLinkFocusReady = (typeof document.hasFocus === 'function') ? document.hasFocus() : false;
+let shortLinkCopiedTimer = null;
 const shortLinkIdleDelayMs = 1200;
 const shortLinkFocusDelayMs = 900;
 const mapViewStorageKey = 'cim.map.view.v1';
@@ -3762,14 +4871,14 @@ function updateBottomRightControlStackLayout() {
     return;
   }
   const attributionNode = document.querySelector('.leaflet-control-attribution');
-  const legendNode = document.getElementById('legend');
   const verticalGap = 6;
   const attributionHeight = attributionNode ? (attributionNode.offsetHeight || 0) : 0;
   const cacheBottom = attributionHeight + verticalGap;
   const cachePanelHeight = mapCacheStatusNode.offsetHeight || 0;
-  const legendBottom = cacheBottom + cachePanelHeight + verticalGap;
-  const legendHeight = legendNode ? (legendNode.offsetHeight || 0) : 0;
-  const themeToggleBottom = legendBottom + legendHeight + verticalGap;
+  const themeToggleBottom = cacheBottom + cachePanelHeight + verticalGap;
+  const themeToggleNode = document.getElementById('themeToggle');
+  const themeToggleHeight = themeToggleNode ? (themeToggleNode.offsetHeight || 0) : 0;
+  const legendBottom = themeToggleBottom + themeToggleHeight + verticalGap;
 
   rootNode.style.setProperty('--map-cache-bottom', Math.max(0, cacheBottom) + 'px');
   rootNode.style.setProperty('--legend-bottom', Math.max(0, legendBottom) + 'px');
@@ -4042,7 +5151,7 @@ function refreshTrackViewPlaybackControl() {
     return;
   }
   if (currentTrackID) {
-    trackViewPlaybackContainer.style.display = 'block';
+    trackViewPlaybackContainer.style.display = 'flex';
     if (trackViewPlaybackActive && !trackViewPlaybackPaused) {
       setTrackViewPlaybackButtonState('playing');
     } else {
@@ -4073,7 +5182,7 @@ function createTrackViewPlaybackControl() {
       return div;
     }
   });
-  const control = new TrackCtrl({ position: 'topleft' });
+  const control = new TrackCtrl({ position: 'bottomleft' });
   control.addTo(map);
   trackViewPlaybackContainer = control.getContainer();
   trackViewPlaybackButton = trackViewPlaybackContainer.querySelector('#trackPlaybackButton');
@@ -4420,15 +5529,12 @@ let dateSliderWidthSyncBound = false;
 let dateSliderWidthResizeObserver = null;
 
 function syncDateSliderWidthToSpeedFilter() {
-  const speedFilterControl = document.querySelector('.speed-filter-control');
   const dateSliderBox = document.querySelector('.date-slider-box');
-  if (!speedFilterControl || !dateSliderBox) {
+  if (!dateSliderBox) {
     return;
   }
-  const width = Math.ceil(speedFilterControl.getBoundingClientRect().width);
-  if (width > 0) {
-    dateSliderBox.style.width = width + 'px';
-  }
+  // The redesigned time control has its own responsive width instead of matching the speed card.
+  dateSliderBox.style.width = '';
 }
 
 function watchDateSliderWidthToSpeedFilter() {
@@ -4858,6 +5964,189 @@ function attachControlTooltip(target, options) {
   };
 }
 
+function initializeMobileControlDock() {
+  const dock = document.getElementById('mobileControlDock');
+  if (!dock) {
+    return;
+  }
+  const rootNode = document.documentElement;
+  const dockPanel = dock.querySelector('.mobile-dock-panel');
+  if (!dockPanel) {
+    return;
+  }
+  const buttons = Array.from(dock.querySelectorAll('[data-mobile-panel]'));
+  const mobileQuery = window.matchMedia('(max-width: 767px)');
+  const dockedControlRecords = new Map();
+
+  function findMobilePanelNodes(panelName) {
+    if (panelName === 'layers') {
+      return Array.from(document.querySelectorAll('.leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control)')).slice(0, 1);
+    }
+    if (panelName === 'speed') {
+      const speedFilterNode = document.querySelector('.speed-filter-control');
+      return speedFilterNode ? [speedFilterNode] : [];
+    }
+    if (panelName === 'time') {
+      const dateSliderNode = document.querySelector('.date-slider-box');
+      return dateSliderNode ? [dateSliderNode] : [];
+    }
+    if (panelName === 'settings') {
+      return ['themeToggle', 'mapCacheStatus']
+        .map(function(elementID) { return document.getElementById(elementID); })
+        .filter(function(elementNode) { return Boolean(elementNode); });
+    }
+    return [];
+  }
+
+  function rememberDockedControlLocation(controlNode) {
+    if (dockedControlRecords.has(controlNode)) {
+      return;
+    }
+    dockedControlRecords.set(controlNode, {
+      parentNode: controlNode.parentNode,
+      nextSibling: controlNode.nextSibling,
+    });
+  }
+
+  function restoreDockedControls() {
+    Array.from(dockPanel.children).forEach(function(controlNode) {
+      const controlRecord = dockedControlRecords.get(controlNode);
+      controlNode.classList.remove('is-in-mobile-dock');
+      if (controlRecord && controlRecord.parentNode) {
+        controlRecord.parentNode.insertBefore(controlNode, controlRecord.nextSibling);
+      }
+      dockedControlRecords.delete(controlNode);
+    });
+  }
+
+  function syncDockedControlLayout(activePanel) {
+    if (activePanel === 'time') {
+      if (typeof syncDateSliderWidthToSpeedFilter === 'function') {
+        syncDateSliderWidthToSpeedFilter();
+      }
+      const dateSliderNode = document.getElementById('dateSlider');
+      const yearSliderNode = document.getElementById('yearSlider');
+      if (dateSliderNode && dateSliderNode.noUiSlider) {
+        dateSliderNode.noUiSlider.updateOptions({}, false);
+      }
+      if (yearSliderNode && yearSliderNode.noUiSlider) {
+        yearSliderNode.noUiSlider.updateOptions({}, false);
+      }
+    }
+  }
+
+  function moveControlsIntoDockPanel(activePanel, retryAllowed) {
+    restoreDockedControls();
+    dockPanel.replaceChildren();
+    if (!activePanel || !mobileQuery.matches) {
+      return;
+    }
+    const panelNodes = findMobilePanelNodes(activePanel);
+    if (!panelNodes.length) {
+      if (retryAllowed) {
+        requestAnimationFrame(function() {
+          if ((rootNode.getAttribute('data-mobile-panel') || '') === activePanel) {
+            moveControlsIntoDockPanel(activePanel, false);
+          }
+        });
+      }
+      return;
+    }
+    panelNodes.forEach(function(controlNode) {
+      rememberDockedControlLocation(controlNode);
+      controlNode.classList.add('is-in-mobile-dock');
+      dockPanel.appendChild(controlNode);
+    });
+    syncDockedControlLayout(activePanel);
+    requestAnimationFrame(function() {
+      if ((rootNode.getAttribute('data-mobile-panel') || '') === activePanel) {
+        syncDockedControlLayout(activePanel);
+      }
+    });
+  }
+
+  function setActivePanel(nextPanel) {
+    const currentPanel = rootNode.getAttribute('data-mobile-panel') || '';
+    const activePanel = currentPanel === nextPanel ? '' : nextPanel;
+    if (activePanel) {
+      rootNode.setAttribute('data-mobile-panel', activePanel);
+    } else {
+      rootNode.removeAttribute('data-mobile-panel');
+    }
+    buttons.forEach(function(button) {
+      const isActive = button.getAttribute('data-mobile-panel') === activePanel;
+      button.setAttribute('aria-expanded', isActive ? 'true' : 'false');
+    });
+    moveControlsIntoDockPanel(activePanel, true);
+  }
+
+  buttons.forEach(function(button) {
+    button.addEventListener('click', function() {
+      if (!mobileQuery.matches) {
+        return;
+      }
+      setActivePanel(button.getAttribute('data-mobile-panel') || '');
+    });
+  });
+
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+      setActivePanel('');
+    }
+  });
+
+  function handleMobileQueryChange(event) {
+    if (!event.matches) {
+      setActivePanel('');
+    }
+  }
+
+  if (typeof mobileQuery.addEventListener === 'function') {
+    mobileQuery.addEventListener('change', handleMobileQueryChange);
+  } else if (typeof mobileQuery.addListener === 'function') {
+    mobileQuery.addListener(handleMobileQueryChange);
+  }
+}
+
+function refreshMapControlSelectedStates() {
+  document.querySelectorAll('.leaflet-control-layers-base label').forEach(function(label) {
+    const input = label.querySelector('input');
+    label.classList.toggle('is-selected', Boolean(input && input.checked));
+  });
+
+  document.querySelectorAll('.speed-filter-row').forEach(function(row) {
+    const input = row.querySelector('input[type=checkbox]');
+    row.classList.toggle('is-selected', Boolean(input && input.checked));
+  });
+}
+
+function currentNewIconThemeName() {
+  return document.documentElement.dataset.theme === 'dark' ? 'night' : 'day';
+}
+
+function newIconPath(iconName, themeName) {
+  return '/static/new-icons/' + (themeName || currentNewIconThemeName()) + '/' + iconName + '.png';
+}
+
+function refreshThemedNewIcons() {
+  const themeName = currentNewIconThemeName();
+  document.querySelectorAll('[data-new-icon]').forEach(function(iconImage) {
+    const iconName = iconImage.getAttribute('data-new-icon');
+    if (iconName) {
+      iconImage.src = newIconPath(iconName, themeName);
+    }
+  });
+
+  document.querySelectorAll('[data-theme-icon]').forEach(function(iconImage) {
+    const iconKind = iconImage.getAttribute('data-theme-icon');
+    if (iconKind === 'day') {
+      iconImage.src = newIconPath(document.documentElement.dataset.theme === 'dark' ? 'day_off' : 'day_on', themeName);
+    } else if (iconKind === 'night') {
+      iconImage.src = newIconPath(document.documentElement.dataset.theme === 'dark' ? 'night_on' : 'night_off', themeName);
+    }
+  });
+}
+
 const desktopAdminStorageKey = 'desktop-admin-settings-v1';
 const desktopAdminSetupDoneKey = 'desktop-admin-setup-done-v1';
 
@@ -5147,12 +6436,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   var legendBox = document.getElementById('legend');
   if (legendBox) {
-    var legendHandle = attachControlTooltip(legendBox, {
-      placement: 'left',
-      content: function () { return translate('legend_button_tooltip'); },
-      maxWidth: 300,
-    });
-    window.__hideLegendHint = legendHandle.hide;
     legendBox.addEventListener('keydown', function (ev) {
       if (ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault();
@@ -5262,8 +6545,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
   L.control.layers(baseLayers, null, {
     position: 'topleft',
-    collapsed: false
+    collapsed: true
   }).addTo(map);
+  refreshMapControlSelectedStates();
 
   // Add custom attribution links that open informative popups
   map.attributionControl.addAttribution(
@@ -5321,12 +6605,16 @@ document.addEventListener('DOMContentLoaded', function () {
   loadMapFromUrl();
 
   // Update URL on map changes
-  map.on('baselayerchange', updateUrl);
+  map.on('baselayerchange', function() {
+    refreshMapControlSelectedStates();
+    updateUrl();
+  });
   map.on('moveend', updateUrl);
   map.on('zoomend', updateUrl);
 
   // Initialize UI elements
   initializeUIElements();
+  initializeMobileControlDock();
   initializeDesktopAdminUI();
   createPlaybackCalendarControl();
 
@@ -5350,53 +6638,36 @@ document.addEventListener('DOMContentLoaded', function () {
       onAdd() {
         const div = L.DomUtil.create('div', 'leaflet-control-layers speed-filter-control');
 
-        function speedFilterThemeVariant() {
-          return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-        }
-
-        function speedFilterIconPath(iconName) {
-          return '/static/icons/' + iconName + '-' + speedFilterThemeVariant() + '.png';
-        }
-
-        function row(id, iconName, checked, title, subtitle) {
+        function row(id, iconName, checked, title) {
           return `
-            <label class="speed-filter-row">
+            <label class="speed-filter-row" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
               <span class="speed-filter-check">
                 <input id="${id}" type="checkbox" ${checked ? 'checked' : ''}/>
               </span>
               <span class="speed-filter-icon">
-                <img data-speed-icon="${iconName}" src="${speedFilterIconPath(iconName)}" alt="${title}"/>
-              </span>
-              <span class="speed-filter-text">
-                <div class="speed-filter-title">${escapeHtml(title)}</div>
-                <div class="speed-filter-subtitle">${escapeHtml(subtitle)}</div>
+                <img data-new-icon="${iconName}" alt="${escapeHtml(title)}"/>
               </span>
             </label>`;
         }
 
-        // Build rows dynamically so the realtime checkbox only appears when supported server-side.
+        // The redesigned transport panel is icon-only; realtime stays model-only because no new live icon exists.
         const pieces = [];
-        const realtimeTitle = translate('speed_filter_button_live_title');
-        const realtimeSubtitle = translate('speed_filter_button_live_subtitle');
         const transportPlaneTitle = translate('speed_filter_button_plane_title');
         const transportCarTitle = translate('speed_filter_button_car_title');
         const transportPedTitle = translate('speed_filter_button_ped_title');
         if (window.safecastRealtimeEnabled) {
-          pieces.push(row('sfLive', 'live', state.live, realtimeTitle, realtimeSubtitle));
+          pieces.push('<input id="sfLive" type="checkbox" style="display:none" ' + (state.live ? 'checked' : '') + '/>');
         }
         pieces.push(
-          row('sfPlane', 'plane', state.plane, transportPlaneTitle, translate('speed_filter_button_plane_range')),
-          row('sfCar', 'car', state.car, transportCarTitle, translate('speed_filter_button_car_range')),
-          row('sfPed', 'ped', state.ped, transportPedTitle, translate('speed_filter_button_ped_range'))
+          row('sfPed', 'pedestrian', state.ped, transportPedTitle),
+          row('sfCar', 'car', state.car, transportCarTitle),
+          row('sfPlane', 'airplane', state.plane, transportPlaneTitle)
         );
         div.innerHTML = pieces.join('');
+        refreshThemedNewIcons();
 
         function refreshSpeedFilterIcons() {
-          const theme = speedFilterThemeVariant();
-          div.querySelectorAll('[data-speed-icon]').forEach(function(iconImage) {
-            const iconName = iconImage.getAttribute('data-speed-icon');
-            iconImage.src = '/static/icons/' + iconName + '-' + theme + '.png';
-          });
+          refreshThemedNewIcons();
         }
         const themeObserver = new MutationObserver(function() {
           refreshSpeedFilterIcons();
@@ -5405,6 +6676,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // We collect all checkboxes so keyboard focus and pointer use can share a single tooltip instance.
         const checkboxes = Array.from(div.querySelectorAll('input[type=checkbox]'));
+        refreshMapControlSelectedStates();
 
         // Keep the filter compact on small screens by avoiding persistent helper tooltips.
 
@@ -5430,6 +6702,7 @@ document.addEventListener('DOMContentLoaded', function () {
               debounceUpdateMarkers();     // redraw with new filter
             }
             updateUrl();                   // keep share links aligned with filters
+            refreshMapControlSelectedStates();
           });
         });
 
@@ -5447,6 +6720,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     new SpeedCtrl({ position: 'topleft' }).addTo(map);
+    refreshMapControlSelectedStates();
   }
 
 
@@ -5547,24 +6821,31 @@ function createDateRangeSlider(){
       sliderBox = L.DomUtil.create('div','leaflet-control-layers date-slider-box');
       sliderBox.style.display = 'none'; // hidden until needed
       sliderBox.innerHTML = `
-        <div class="slider-toggle">
-          <button id="btnMonth">M</button>
-          <button id="btnYear">Y</button>
-        </div>
-        <div id="lblMax" class="slider-label"></div>
-        <div id="yearSlider"></div>
-        <div id="dateSlider"></div>
-        <div id="lblMin" class="slider-label"></div>
         <div class="slider-actions">
           <button id="btnPlay" class="slider-play-btn" title="${translate('date_slider_play')}" aria-label="${translate('date_slider_play')}">▶</button>
+        </div>
+        <div class="slider-track-row">
+          <div id="lblMin" class="slider-label"></div>
+          <div class="slider-track-wrap">
+            <div id="yearSlider"></div>
+            <div id="dateSlider"></div>
+          </div>
+          <div id="lblMax" class="slider-label"></div>
+        </div>
+        <div class="slider-toggle" aria-label="Date mode">
+          <button id="btnMonth" type="button">M</button>
+          <button id="btnYear" type="button">Y</button>
+        </div>
+        <div class="slider-actions">
           <button id="btnReset" class="slider-reset-btn" title="Reset"> ⟲ </button>
         </div>
       `;
       sliderBox.setAttribute('role', 'group');
       sliderBox.setAttribute('tabindex', '0');
       sliderBox.setAttribute('aria-label', translate('date_slider_tooltip'));
+      L.DomEvent.disableClickPropagation(sliderBox);
       sliderTooltipHandle = attachControlTooltip(sliderBox, {
-        placement: 'right',
+        placement: 'top',
         content: function () { return translate('date_slider_tooltip'); },
         // Hide the slider hint while playback runs so it never obscures the map view.
         shouldShow: function () { return !trackPlaybackActive; },
@@ -5573,7 +6854,7 @@ function createDateRangeSlider(){
       return sliderBox;
     }
   });
-  new DateCtrl({ position:'topleft' }).addTo(map);
+  new DateCtrl({ position:'bottomleft' }).addTo(map);
 
   const btnY = sliderBox.querySelector('#btnYear');
   const btnM = sliderBox.querySelector('#btnMonth');
@@ -5618,7 +6899,7 @@ function createDateRangeSlider(){
 
   // Show/hide the whole control (called from updateMarkers())
   window.__setDateSliderVisibility = (show)=>{
-    sliderBox.style.display = show ? 'block' : 'none';
+    sliderBox.style.display = show ? 'flex' : 'none';
     if(!show) clearDateRangeState();
     updateActionButtonsHighlight();
     if (!show && sliderTooltipHandle) {
@@ -6068,8 +7349,8 @@ function createDateRangeSlider(){
       noUiSlider.create(yearSlider,{
         start      : yearRange.displayMin,   // the handle can sit anywhere; labels decide what to show
         connect    : [true,false],
-        orientation: 'vertical',
-        direction  : 'rtl',
+        orientation: 'horizontal',
+        direction  : 'ltr',
         step       : 1,
         range      : { min:yearRange.sliderMin, max:yearRange.sliderMax },
         format     : wNumb({ decimals:0 })
@@ -6103,8 +7384,8 @@ function createDateRangeSlider(){
       noUiSlider.create(monthSlider,{
         start       : [minTs,maxTs],
         connect     : true,
-        orientation : 'vertical',
-        direction   : 'rtl',
+        orientation : 'horizontal',
+        direction   : 'ltr',
         step        : 3600, // 1 hour
         range       : { min:minTs, max:maxTs },
         format      : wNumb({ decimals:0 })
@@ -7172,14 +8453,12 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       return;
     }
     streamsFinalized = true;
-    const canUseDateRangeSummary = visibleSummarySeen || !canUseIncrementalReload;
-    const summaryMinTs = visibleSummarySeen ? visibleSummaryMinTs : fallbackMinTs;
-    const summaryMaxTs = visibleSummarySeen ? visibleSummaryMaxTs : fallbackMaxTs;
-    const summaryMarkerCount = visibleSummarySeen ? visibleSummaryMarkerCount : fallbackMarkerCount;
-    let sliderRange = normalizeDateSliderRange(summaryMinTs, summaryMaxTs);
-    let datedMarkerCount = summaryMarkerCount;
-    let hasRenderedVisibleDateRange = false;
-    if ((!sliderRange || datedMarkerCount <= 0) && canUseIncrementalReload) {
+    function collectRenderedVisibleDateRange() {
+      const renderedRange = {
+        count: 0,
+        minTs: Infinity,
+        maxTs: -Infinity,
+      };
       Object.keys(circleMarkers).forEach(function(markerKey) {
         const markerLayer = circleMarkers[markerKey];
         if (!markerLayer || markerLayer.isRealtime || !markerLayer.layerGroupName || markerLayer.layerGroupName === markerLiveLayerName) {
@@ -7197,14 +8476,25 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
         if (!boundsContainPoint(viewportBounds, markerLayer.markerLat, markerLayer.markerLon)) {
           return;
         }
-        datedMarkerCount += 1;
-        hasRenderedVisibleDateRange = true;
-        fallbackMinTs = Math.min(fallbackMinTs, markerLayer.date);
-        fallbackMaxTs = Math.max(fallbackMaxTs, markerLayer.date);
+        renderedRange.count += 1;
+        renderedRange.minTs = Math.min(renderedRange.minTs, markerLayer.date);
+        renderedRange.maxTs = Math.max(renderedRange.maxTs, markerLayer.date);
       });
-      sliderRange = normalizeDateSliderRange(fallbackMinTs, fallbackMaxTs);
+      return renderedRange;
     }
-    const needSlider = (canUseDateRangeSummary || hasRenderedVisibleDateRange) && datedMarkerCount > 0 && !!sliderRange;
+    const canUseDateRangeSummary = visibleSummarySeen || !canUseIncrementalReload;
+    const summaryMinTs = visibleSummarySeen ? visibleSummaryMinTs : fallbackMinTs;
+    const summaryMaxTs = visibleSummarySeen ? visibleSummaryMaxTs : fallbackMaxTs;
+    const summaryMarkerCount = visibleSummarySeen ? visibleSummaryMarkerCount : fallbackMarkerCount;
+    let sliderRange = normalizeDateSliderRange(summaryMinTs, summaryMaxTs);
+    let datedMarkerCount = summaryMarkerCount;
+    const renderedRange = collectRenderedVisibleDateRange();
+    const hasRenderedVisibleDateRange = renderedRange.count > 0 && Number.isFinite(renderedRange.minTs) && Number.isFinite(renderedRange.maxTs);
+    if ((!sliderRange || datedMarkerCount <= 0 || !canUseDateRangeSummary) && hasRenderedVisibleDateRange) {
+      datedMarkerCount = Math.max(datedMarkerCount, renderedRange.count);
+      sliderRange = normalizeDateSliderRange(renderedRange.minTs, renderedRange.maxTs);
+    }
+    const needSlider = datedMarkerCount > 0 && !!sliderRange;
     if (needSlider && window.__setDateSliderVisibility){
       window.__setDateSliderVisibility(true);
     } else if (!baseStreamFailed && canUseDateRangeSummary && window.__setDateSliderVisibility) {
@@ -8715,12 +10005,19 @@ function applyShortLink(details) {
     hideShortLink();
     return;
   }
-  shortLinkBox.style.display = 'block';
-  shortLinkBox.textContent = shortURL;
+  if (shortLinkCopiedTimer) {
+    clearTimeout(shortLinkCopiedTimer);
+    shortLinkCopiedTimer = null;
+  }
+  shortLinkBox.style.display = 'inline-flex';
+  shortLinkBox.classList.remove('copied');
+  setShortLinkLabel(shortURL);
   shortLinkBox.dataset.href = shortURL;
   shortLinkBox.dataset.code = code;
   shortLinkBox.dataset.target = target;
   shortLinkBox.dataset.persisted = stored;
+  applyShortLinkMeasuredWidth('--short-link-url-width', shortURL);
+  applyShortLinkMeasuredWidth('--short-link-copied-width', translate('short_link_copied'));
   // Cache the response so we reuse the same short URL for identical targets.
   shortLinkCache.set(target, {
     short: shortURL,
@@ -8730,12 +10027,49 @@ function applyShortLink(details) {
   });
 }
 
+function setShortLinkLabel(labelText) {
+  if (!shortLinkBox) return;
+  let labelNode = shortLinkBox.querySelector('.short-link-label');
+  if (!labelNode) {
+    labelNode = document.createElement('span');
+    labelNode.className = 'short-link-label';
+    shortLinkBox.appendChild(labelNode);
+  }
+  labelNode.textContent = labelText || '';
+}
+
+function applyShortLinkMeasuredWidth(cssPropertyName, labelText) {
+  if (!shortLinkBox || !labelText) return;
+  const linkBoxStyle = getComputedStyle(shortLinkBox);
+  const measuringNode = document.createElement('span');
+  measuringNode.textContent = labelText;
+  measuringNode.style.position = 'fixed';
+  measuringNode.style.left = '-10000px';
+  measuringNode.style.top = '-10000px';
+  measuringNode.style.visibility = 'hidden';
+  measuringNode.style.whiteSpace = 'nowrap';
+  measuringNode.style.fontFamily = linkBoxStyle.fontFamily;
+  measuringNode.style.fontSize = linkBoxStyle.fontSize;
+  measuringNode.style.fontWeight = linkBoxStyle.fontWeight;
+  document.body.appendChild(measuringNode);
+  const measuredWidth = Math.ceil(measuringNode.getBoundingClientRect().width);
+  document.body.removeChild(measuringNode);
+  const iconSpace = parseFloat(linkBoxStyle.getPropertyValue('--map-ui-icon-size')) || shortLinkBox.offsetHeight || 44;
+  const leftInset = 12;
+  shortLinkBox.style.setProperty(cssPropertyName, (measuredWidth + iconSpace + leftInset) + 'px');
+}
+
 function hideShortLink() {
   if (!shortLinkBox) return;
   if (window.__hideShortLinkHint) {
     window.__hideShortLinkHint();
   }
+  if (shortLinkCopiedTimer) {
+    clearTimeout(shortLinkCopiedTimer);
+    shortLinkCopiedTimer = null;
+  }
   shortLinkBox.style.display = 'none';
+  shortLinkBox.classList.remove('copied');
   delete shortLinkBox.dataset.href;
   delete shortLinkBox.dataset.code;
   delete shortLinkBox.dataset.target;
@@ -8814,8 +10148,21 @@ function copyShortLinkToClipboard() {
 
       const signalSuccess = () => {
         if (!shortLinkBox) return;
+        if (shortLinkCopiedTimer) {
+          clearTimeout(shortLinkCopiedTimer);
+          shortLinkCopiedTimer = null;
+        }
+        const originalShortLink = shortLinkBox.dataset.href || link;
+        const copiedText = translate('short_link_copied');
+        applyShortLinkMeasuredWidth('--short-link-copied-width', copiedText);
+        setShortLinkLabel(copiedText);
         shortLinkBox.classList.add('copied');
-        setTimeout(() => shortLinkBox.classList.remove('copied'), 600);
+        shortLinkCopiedTimer = setTimeout(() => {
+          if (!shortLinkBox) return;
+          shortLinkBox.classList.remove('copied');
+          setShortLinkLabel(shortLinkBox.dataset.href || originalShortLink);
+          shortLinkCopiedTimer = null;
+        }, 900);
       };
 
       const fallbackCopy = () => {
@@ -9819,6 +11166,9 @@ function centerMapToLocation() {
             window.osmLayer.setUrl(theme === 'dark' ? window.osmDark : window.osmLight);
           }
           sw.checked = theme === 'dark';
+          if (typeof refreshThemedNewIcons === 'function') {
+            refreshThemedNewIcons();
+          }
           // Keep the address bar synced so shared links preserve the theme choice.
           if (typeof updateUrl === 'function') {
             updateUrl();
@@ -9867,6 +11217,14 @@ function centerMapToLocation() {
 
         var toggleBox = document.getElementById('themeToggle');
         if (toggleBox) {
+          toggleBox.querySelectorAll('[data-theme-choice]').forEach(function(button) {
+            button.addEventListener('click', function(ev) {
+              ev.preventDefault();
+              var nextTheme = button.getAttribute('data-theme-choice') === 'dark' ? 'dark' : 'light';
+              sw.checked = nextTheme === 'dark';
+              sw.dispatchEvent(new Event('change'));
+            });
+          });
           toggleBox.addEventListener('keydown', function (ev) {
             if (ev.key === 'Enter' || ev.key === ' ') {
               ev.preventDefault();
@@ -9912,9 +11270,6 @@ function centerMapToLocation() {
   // Display the full legend text in current language.
   // Exposed so marker popups reuse the same modal.
   function openLegendModal() {
-    if (window.__hideLegendHint) {
-      window.__hideLegendHint();
-    }
     var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
     var html = buildLegendHTML(lang);
     var box = document.getElementById('legendText');
@@ -10085,9 +11440,6 @@ function centerMapToLocation() {
 
   // Open modal with legal, source or license text
   function openInfoModal(topic) {
-    if (window.__hideLegendHint) {
-      window.__hideLegendHint();
-    }
     if (topic === 'api') {
       var boxApi = document.getElementById('infoText');
       if (boxApi) {
@@ -10173,7 +11525,23 @@ function centerMapToLocation() {
   (function(){
     var el = document.getElementById('legend');
     if (el) {
-      el.addEventListener('click', openLegendModal);
+      var legendMobileQuery = window.matchMedia ? window.matchMedia('(max-width: 767px)') : null;
+      el.addEventListener('click', function(event) {
+        if (legendMobileQuery && legendMobileQuery.matches && !el.classList.contains('is-expanded')) {
+          event.preventDefault();
+          el.classList.add('is-expanded');
+          return;
+        }
+        openLegendModal();
+      });
+      document.addEventListener('click', function(event) {
+        if (!legendMobileQuery || !legendMobileQuery.matches || !el.classList.contains('is-expanded')) {
+          return;
+        }
+        if (!el.contains(event.target)) {
+          el.classList.remove('is-expanded');
+        }
+      });
     }
     // Close on backdrop click (UX nicety)
     var modal = document.getElementById('legendModal');
