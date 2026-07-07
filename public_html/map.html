@@ -1586,6 +1586,294 @@ body, html {
           margin: 2px 0;
         }
 
+        .leaflet-tooltip.track-marker-tooltip,
+        .leaflet-popup.track-marker-popup .leaflet-popup-content-wrapper {
+          background: transparent;
+          border: 0;
+          box-shadow: none;
+          padding: 0;
+        }
+
+        .leaflet-tooltip.track-marker-tooltip {
+          min-inline-size: 0;
+          max-width: none;
+        }
+
+        .leaflet-popup.track-marker-popup .leaflet-popup-content {
+          max-width: none;
+          margin: 0;
+          width: auto !important;
+        }
+
+        .leaflet-popup.track-marker-popup .leaflet-popup-tip {
+          background: var(--track-marker-bubble-bg, rgba(255, 255, 255, 0.9));
+          border: 1px solid var(--track-marker-bubble-border, rgba(255, 255, 255, 0.65));
+          box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18);
+        }
+
+        :root[data-theme='dark'] .leaflet-popup.track-marker-popup .leaflet-popup-tip {
+          background: rgba(11, 18, 22, 0.78);
+          border-color: rgba(255, 255, 255, 0.18);
+        }
+
+        .leaflet-popup.track-marker-popup .leaflet-popup-close-button {
+          top: 5px;
+          right: 5px;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: var(--track-marker-close-bg, rgba(255, 255, 255, 0.76));
+          border: 1px solid var(--track-marker-bubble-border, rgba(255, 255, 255, 0.65));
+          color: var(--track-marker-text, #263142);
+          font-size: 14px;
+          font-weight: 300;
+          line-height: 16px;
+          text-align: center;
+          box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+          opacity: 0.92;
+          transition: background 120ms ease, opacity 120ms ease, transform 120ms ease;
+        }
+
+        .leaflet-popup.track-marker-popup .leaflet-popup-close-button:hover,
+        .leaflet-popup.track-marker-popup .leaflet-popup-close-button:focus {
+          background: var(--track-marker-close-bg-hover, rgba(255, 255, 255, 0.95));
+          opacity: 1;
+          transform: scale(1.04);
+        }
+
+        :root[data-theme='dark'] .leaflet-popup.track-marker-popup .leaflet-popup-close-button {
+          background: rgba(11, 18, 22, 0.62);
+          border-color: rgba(255, 255, 255, 0.18);
+          color: rgba(255, 255, 255, 0.9);
+        }
+
+        :root[data-theme='dark'] .leaflet-popup.track-marker-popup .leaflet-popup-close-button:hover,
+        :root[data-theme='dark'] .leaflet-popup.track-marker-popup .leaflet-popup-close-button:focus {
+          background: rgba(28, 39, 45, 0.9);
+        }
+
+        .track-marker-bubble {
+          --marker-level-color: #2fa344;
+          --track-marker-text: #263142;
+          --track-marker-muted: rgba(38, 49, 66, 0.76);
+          --track-marker-soft-line: rgba(38, 49, 66, 0.14);
+          --track-marker-bubble-bg: rgba(255, 255, 255, 0.88);
+          --track-marker-bubble-border: rgba(255, 255, 255, 0.72);
+          --track-marker-close-bg: rgba(255, 255, 255, 0.76);
+          --track-marker-close-bg-hover: rgba(255, 255, 255, 0.96);
+          position: relative;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 108px;
+          gap: 6px;
+          width: min(212px, calc(100vw - 22px));
+          padding: 11px 11px 10px 14px;
+          color: var(--track-marker-text);
+          background:
+            linear-gradient(90deg, var(--marker-level-color) 0 3px, transparent 3px),
+            var(--track-marker-bubble-bg);
+          border: 1px solid var(--track-marker-bubble-border);
+          border-radius: 14px;
+          box-shadow: 0 11px 24px rgba(0, 0, 0, 0.2);
+          -webkit-backdrop-filter: blur(9px) saturate(1.18);
+          backdrop-filter: blur(9px) saturate(1.18);
+          overflow: hidden;
+        }
+
+        .track-marker-bubble.is-fixed {
+          padding-right: 13px;
+        }
+
+        :root[data-theme='dark'] .track-marker-bubble {
+          --track-marker-text: rgba(255, 255, 255, 0.92);
+          --track-marker-muted: rgba(255, 255, 255, 0.72);
+          --track-marker-soft-line: rgba(255, 255, 255, 0.16);
+          --track-marker-bubble-bg: rgba(11, 18, 22, 0.78);
+          --track-marker-bubble-border: rgba(255, 255, 255, 0.18);
+          --track-marker-close-bg: rgba(11, 18, 22, 0.62);
+          --track-marker-close-bg-hover: rgba(28, 39, 45, 0.9);
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+        }
+
+        .track-marker-bubble-main {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+        }
+
+        .track-marker-label {
+          margin: 0 0 2px;
+          font-size: 8px;
+          line-height: 1.2;
+          color: var(--track-marker-muted);
+        }
+
+        .track-marker-primary {
+          font-size: 18px;
+          font-weight: 700;
+          line-height: 1.04;
+          letter-spacing: 0;
+          color: var(--track-marker-text);
+        }
+
+        .track-marker-secondary {
+          margin-top: 7px;
+          font-size: 14px;
+          font-weight: 700;
+          line-height: 1.04;
+          color: var(--track-marker-text);
+        }
+
+        .track-marker-limit {
+          margin-top: 4px;
+          font-size: 8px;
+          line-height: 1.3;
+          color: var(--track-marker-muted);
+        }
+
+        .track-marker-status {
+          display: inline-flex;
+          align-items: center;
+          align-self: flex-start;
+          gap: 4px;
+          margin-top: 8px;
+          padding: 5px 7px;
+          border: 1px solid color-mix(in srgb, var(--marker-level-color) 34%, transparent);
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--marker-level-color) 13%, transparent);
+          color: var(--marker-level-color);
+          font-size: 8px;
+          font-weight: 700;
+          line-height: 1;
+          text-decoration: none;
+        }
+
+        .track-marker-status::before {
+          content: "";
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--marker-level-color);
+          box-shadow: 0 0 7px color-mix(in srgb, var(--marker-level-color) 52%, transparent);
+        }
+
+        .track-marker-symbol {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          align-self: start;
+          width: 96px;
+          height: 96px;
+          margin-top: 14px;
+          color: var(--marker-level-color);
+          font-size: 86px;
+          line-height: 1;
+          text-shadow: 0 0 9px color-mix(in srgb, var(--marker-level-color) 18%, transparent);
+        }
+
+        .track-marker-footer {
+          grid-column: 1 / -1;
+          display: grid;
+          grid-template-columns: 19px minmax(0, 1fr);
+          gap: 5px 6px;
+          align-items: center;
+          margin-top: 9px;
+          padding-top: 7px;
+          border-top: 1px solid var(--track-marker-soft-line);
+        }
+
+        .track-marker-row-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 17px;
+          height: 17px;
+          border-radius: 50%;
+          border: 1px solid var(--track-marker-soft-line);
+          color: var(--track-marker-text);
+          font-size: 10px;
+          line-height: 1;
+        }
+
+        .track-marker-row-text {
+          min-width: 0;
+          color: var(--track-marker-text);
+          font-size: 8px;
+          line-height: 1.25;
+        }
+
+        .track-marker-track-pill {
+          display: inline-flex;
+          align-items: center;
+          max-width: 100%;
+          min-height: 17px;
+          padding: 4px 7px;
+          border: 1px solid color-mix(in srgb, var(--link-color) 52%, transparent);
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--link-color) 10%, transparent);
+          color: var(--link-color);
+          font-size: 8px;
+          line-height: 1.2;
+          text-decoration: none;
+          overflow: hidden;
+        }
+
+        .track-marker-track-pill.track-link::after {
+          content: "›";
+          margin-left: 4px;
+          font-size: 12px;
+          line-height: 0.8;
+        }
+
+        .track-marker-track-label,
+        .track-marker-track-value {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .track-marker-track-value {
+          margin-left: 3px;
+          font-weight: 700;
+        }
+
+        .track-marker-spectrum {
+          grid-column: 1 / -1;
+          margin-top: 3px;
+          color: var(--track-marker-muted);
+          font-size: 7px;
+          line-height: 1.35;
+        }
+
+        @media (max-width: 480px) {
+          .track-marker-bubble {
+            grid-template-columns: minmax(0, 1fr) 80px;
+            gap: 4px;
+            width: min(187px, calc(100vw - 15px));
+            padding: 9px 9px 9px 12px;
+            border-radius: 12px;
+          }
+
+          .track-marker-primary {
+            font-size: 16px;
+          }
+
+          .track-marker-secondary {
+            font-size: 12px;
+          }
+
+          .track-marker-symbol {
+            width: 76px;
+            height: 76px;
+            margin-top: 15px;
+            font-size: 68px;
+          }
+
+          .track-marker-footer {
+            grid-template-columns: 17px minmax(0, 1fr);
+            gap: 4px 5px;
+          }
+        }
+
         /* Render speed filter rows as compact cards with icon + two-line label. */
         .speed-filter-control {
           padding: 3px 4px;
@@ -4073,7 +4361,21 @@ function doseCategory(doseRate) {
   return 'legend_danger';
 }
 
+function annualExposureLimitLabel() {
+  const locale = currentAppLocale();
+  if (locale.indexOf('ru') === 0) return 'Предел за год: 1 mSv/год';
+  if (locale.indexOf('uk') === 0) return 'Ліміт за рік: 1 mSv/рік';
+  if (locale.indexOf('be') === 0) return 'Ліміт за год: 1 mSv/год';
+  return 'Annual limit: 1 mSv/year';
+}
 
+function radiationHazardLabel() {
+  const locale = currentAppLocale();
+  if (locale.indexOf('ru') === 0) return 'Опасность';
+  if (locale.indexOf('uk') === 0) return 'Небезпека';
+  if (locale.indexOf('be') === 0) return 'Небяспека';
+  return 'Hazard';
+}
 
 // Normalize theme strings so URL/controls agree even if inputs drift.
 function normalizeThemePreference(raw) {
@@ -5370,8 +5672,8 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
   } else {
     rendered = createDoseMarkerWithContrastOutline(marker.lat, marker.lon, marker.doseRate, marker.speed, zoomLevel)
     .addTo(map)
-    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    .bindPopup(getPopupContent(marker));
+    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip track-marker-tooltip', offset:[0,-8], interactive:true })
+    .bindPopup(getPopupContent(marker), { className:'track-marker-popup' });
   }
 
   rendered.doseRate = marker.doseRate;
@@ -7285,8 +7587,8 @@ function createDateRangeSlider(){
     }
     const circle = createDoseMarkerWithContrastOutline(marker.lat, marker.lon, marker.doseRate, marker.speed, zoomLevel)
     .addTo(map)
-    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-    .bindPopup(getPopupContent(marker));
+    .bindTooltip(getTooltipContent(marker), { direction:'top', className:'custom-tooltip track-marker-tooltip', offset:[0,-8], interactive:true })
+    .bindPopup(getPopupContent(marker), { className:'track-marker-popup' });
 
     circle.doseRate = marker.doseRate;
     circle.date = marker.date;
@@ -7826,52 +8128,68 @@ function createDateRangeSlider(){
       </div>`;
   }
 
-  function buildMarkerContent(marker) {
-    if (marker.speed < 0) {
-      return buildLiveMarkerPopup(marker);
-    }
-
+  function buildTrackMarkerBubble(marker, fixed) {
     const speedText = (typeof marker.speed === 'number' && isFinite(marker.speed))
       ? `${(marker.speed * 3.6).toFixed(1)} km/h`
       : '—';
-
-    const deviceName = marker.deviceName ? String(marker.deviceName) : '';
-    const deviceLabel = deviceName
-      ? `<div><strong>${translate('live_marker_device_label')}:</strong> ${escapeHtml(deviceName)}</div>`
+    const doseRate = typeof marker.doseRate === 'number' && isFinite(marker.doseRate) ? marker.doseRate : 0;
+    const doseColor = getGradientColor(doseRate);
+    const statusLabel = translate(doseCategory(doseRate));
+    const trackID = marker.trackID ? String(marker.trackID) : '';
+    const fixedClass = fixed ? ' is-fixed' : '';
+    const detectorType = marker.detector || marker.deviceName || marker.tube || '';
+    const detectorBlock = detectorType
+      ? `<span class="track-marker-row-icon" aria-hidden="true">⌁</span>
+          <div class="track-marker-row-text">${translate('live_marker_detector')}: ${escapeHtml(detectorType)}</div>`
       : '';
     const qualitativeSpectrum = marker.radiation ? String(marker.radiation).trim() : '';
     const qualitativeBlock = qualitativeSpectrum
-      ? `<div><strong>Spectrum composition:</strong> ${escapeHtml(qualitativeSpectrum)}</div>`
+      ? `<div class="track-marker-spectrum">Spectrum composition: ${escapeHtml(qualitativeSpectrum)}</div>`
       : '';
+    const trackIDContent = `
+      <span class="track-marker-track-label">${translate('track_id')}:</span>
+      <span class="track-marker-track-value">${escapeHtml(trackID || '—')}</span>`;
+    const trackIDBlock = fixed && trackID
+      ? `<a href="#" class="track-marker-track-pill track-link" data-track="${escapeHtml(trackID)}">${trackIDContent}</a>`
+      : `<span class="track-marker-track-pill">${trackIDContent}</span>`;
 
     return `
-      <div class="custom-tooltip">
-        <div><strong>${translate('radiation_dose')}:</strong><br>
-          ${(marker.doseRate * 100).toFixed(2)} µR/h (${marker.doseRate.toFixed(2)} µSv/h)
-          (<a href="#" class="risk-link">
-            ${translate(doseCategory(marker.doseRate))}
-          </a>)
+      <div class="track-marker-bubble${fixedClass}" style="--marker-level-color:${doseColor};">
+        <div class="track-marker-bubble-main">
+          <p class="track-marker-label">${translate('radiation_dose')}:</p>
+          <div class="track-marker-primary">${(doseRate * 100).toFixed(2)} µR/h</div>
+          <p class="track-marker-label" style="margin-top:14px;">${radiationHazardLabel()}:</p>
+          <div class="track-marker-secondary">${doseRate.toFixed(2)} µSv/h</div>
+          <div class="track-marker-limit">${annualExposureLimitLabel()}</div>
+          <a href="#" class="track-marker-status risk-link">${escapeHtml(statusLabel)}</a>
         </div>
-        ${deviceLabel}
-        ${qualitativeBlock}
-        <div><strong>${translate('speed')}:</strong> ${speedText}</div>
-        <div style="margin-top:4px">
-          <!-- clicking the link switches to track mode -->
-          <a href="#" class="track-link" data-track="${marker.trackID}" style="font-weight:bold;">
-            ${translate('track_id')}: ${marker.trackID}
-          </a>
+        <div class="track-marker-symbol" aria-hidden="true">☢</div>
+        <div class="track-marker-footer">
+          ${detectorBlock}
+          <span class="track-marker-row-icon" aria-hidden="true">◴</span>
+          <div class="track-marker-row-text">${translate('speed')}: ${escapeHtml(speedText)}</div>
+          <span class="track-marker-row-icon" aria-hidden="true">🔗</span>
+          <div class="track-marker-row-text">${trackIDBlock}</div>
+          ${qualitativeBlock}
         </div>
       </div>`;
   }
 
-// Popup reuses shared builder to stay in sync with tooltips.
+  function buildMarkerContent(marker, fixed) {
+    if (marker.speed < 0) {
+      return buildLiveMarkerPopup(marker);
+    }
+    return buildTrackMarkerBubble(marker, fixed);
+  }
+
+// Popup uses fixed marker content, so track IDs become links only after click.
 function getPopupContent(marker) {
-  return buildMarkerContent(marker);
+  return buildMarkerContent(marker, true);
 }
 
-// Tooltip uses the same builder for hover previews.
+// Tooltip uses preview content; it never exposes fixed-popup actions.
 function getTooltipContent(marker) {
-  return buildMarkerContent(marker);
+  return buildMarkerContent(marker, false);
 }
 
 
@@ -8584,8 +8902,8 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       .bindPopup(getPopupContent(m));
     } else {
       marker = createDoseMarkerWithContrastOutline(m.lat, m.lon, m.doseRate, m.speed, zoom)
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
+      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip track-marker-tooltip', offset:[0,-8], interactive:true })
+      .bindPopup(getPopupContent(m), { className:'track-marker-popup' });
     }
 
     marker.doseRate = m.doseRate;
@@ -8973,8 +9291,8 @@ function updateMarkers(forceReload){
     } else {
       marker = createDoseMarkerWithContrastOutline(m.lat, m.lon, m.doseRate, m.speed, zoom)
       .addTo(map)
-      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip', offset:[0,-8], interactive:true })
-      .bindPopup(getPopupContent(m));
+      .bindTooltip(getTooltipContent(m), { direction:'top', className:'custom-tooltip track-marker-tooltip', offset:[0,-8], interactive:true })
+      .bindPopup(getPopupContent(m), { className:'track-marker-popup' });
     }
 
     // Store dose rate and timestamp on marker for later size updates.
@@ -11717,10 +12035,11 @@ function centerMapToLocation() {
       };
       openLiveModal(dataset.device, fallback);
     }
-    // switch to track view when track link clicked
-    if (ev.target.classList.contains('track-link')) {
+    // switch to track view when any nested part of the track pill is clicked
+    const trackLink = ev.target.closest('.track-link');
+    if (trackLink) {
       ev.preventDefault();
-      viewTrack(ev.target.dataset.track);
+      viewTrack(trackLink.dataset.track);
     }
     // open info modal for attribution links
     if (ev.target.classList.contains('attr-link')) {
