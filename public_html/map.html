@@ -1663,24 +1663,31 @@ body, html {
           --track-marker-close-bg-hover: rgba(255, 255, 255, 0.96);
           position: relative;
           display: grid;
-          grid-template-columns: minmax(0, 1fr) 108px;
-          gap: 6px;
-          width: min(212px, calc(100vw - 22px));
-          padding: 11px 11px 10px 14px;
+          grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+          gap: 4px;
+          width: min(166px, calc(100vw - 22px));
+          padding: 8px 8px 7px 10px;
           color: var(--track-marker-text);
-          background:
-            linear-gradient(90deg, var(--marker-level-color) 0 3px, transparent 3px),
-            var(--track-marker-bubble-bg);
+          background: var(--track-marker-bubble-bg);
           border: 1px solid var(--track-marker-bubble-border);
-          border-radius: 14px;
-          box-shadow: 0 11px 24px rgba(0, 0, 0, 0.2);
+          border-radius: 10px;
+          box-shadow: 0 8px 17px rgba(0, 0, 0, 0.2);
           -webkit-backdrop-filter: blur(9px) saturate(1.18);
           backdrop-filter: blur(9px) saturate(1.18);
           overflow: hidden;
         }
 
+        .track-marker-bubble::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 3px;
+          background: var(--marker-level-color);
+          pointer-events: none;
+        }
+
         .track-marker-bubble.is-fixed {
-          padding-right: 13px;
+          padding-right: 9px;
         }
 
         :root[data-theme='dark'] .track-marker-bubble {
@@ -1695,37 +1702,53 @@ body, html {
         }
 
         .track-marker-bubble-main {
+          position: relative;
+          z-index: 1;
           display: flex;
           flex-direction: column;
           min-width: 0;
         }
 
         .track-marker-label {
-          margin: 0 0 2px;
-          font-size: 8px;
+          margin: 0 0 1px;
+          font-size: 7px;
           line-height: 1.2;
           color: var(--track-marker-muted);
         }
 
         .track-marker-primary {
-          font-size: 18px;
-          font-weight: 700;
+          white-space: nowrap;
+          font-size: 13px;
+          font-weight: 400;
           line-height: 1.04;
           letter-spacing: 0;
           color: var(--track-marker-text);
         }
 
         .track-marker-secondary {
-          margin-top: 7px;
-          font-size: 14px;
-          font-weight: 700;
+          margin-top: 0;
+          white-space: nowrap;
+          font-size: 10px;
+          font-weight: 400;
           line-height: 1.04;
           color: var(--track-marker-text);
         }
 
+        .track-marker-dose-number {
+          font-weight: 700;
+        }
+
+        .track-marker-dose-unit {
+          font-weight: 400;
+        }
+
+        .track-marker-hazard-label {
+          margin-top: 5px;
+        }
+
         .track-marker-limit {
-          margin-top: 4px;
-          font-size: 8px;
+          margin-top: 3px;
+          font-size: 7px;
           line-height: 1.3;
           color: var(--track-marker-muted);
         }
@@ -1734,14 +1757,14 @@ body, html {
           display: inline-flex;
           align-items: center;
           align-self: flex-start;
-          gap: 4px;
-          margin-top: 8px;
-          padding: 5px 7px;
+          gap: 3px;
+          margin-top: 6px;
+          padding: 4px 5px;
           border: 1px solid color-mix(in srgb, var(--marker-level-color) 34%, transparent);
           border-radius: 999px;
           background: color-mix(in srgb, var(--marker-level-color) 13%, transparent);
           color: var(--marker-level-color);
-          font-size: 8px;
+          font-size: 7px;
           font-weight: 700;
           line-height: 1;
           text-decoration: none;
@@ -1749,35 +1772,46 @@ body, html {
 
         .track-marker-status::before {
           content: "";
-          width: 6px;
-          height: 6px;
+          width: 4px;
+          height: 4px;
           border-radius: 50%;
           background: var(--marker-level-color);
-          box-shadow: 0 0 7px color-mix(in srgb, var(--marker-level-color) 52%, transparent);
+          box-shadow: 0 0 5px color-mix(in srgb, var(--marker-level-color) 52%, transparent);
         }
 
         .track-marker-symbol {
+          position: relative;
+          z-index: 1;
           display: flex;
           align-items: center;
           justify-content: center;
           align-self: start;
-          width: 96px;
-          height: 96px;
-          margin-top: 14px;
+          width: min(100%, 60px);
+          height: 60px;
+          margin-top: 10px;
           color: var(--marker-level-color);
-          font-size: 86px;
+          font-size: 54px;
           line-height: 1;
-          text-shadow: 0 0 9px color-mix(in srgb, var(--marker-level-color) 18%, transparent);
+          text-shadow: 0 0 6px color-mix(in srgb, var(--marker-level-color) 18%, transparent);
+        }
+
+        .track-marker-symbol svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+          color: var(--marker-level-color);
         }
 
         .track-marker-footer {
+          position: relative;
+          z-index: 1;
           grid-column: 1 / -1;
           display: grid;
-          grid-template-columns: 19px minmax(0, 1fr);
-          gap: 5px 6px;
+          grid-template-columns: 13px minmax(0, 1fr);
+          gap: 4px 4px;
           align-items: center;
-          margin-top: 9px;
-          padding-top: 7px;
+          margin-top: 6px;
+          padding-top: 5px;
           border-top: 1px solid var(--track-marker-soft-line);
         }
 
@@ -1785,19 +1819,26 @@ body, html {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 17px;
-          height: 17px;
+          width: 12px;
+          height: 12px;
           border-radius: 50%;
           border: 1px solid var(--track-marker-soft-line);
           color: var(--track-marker-text);
-          font-size: 10px;
+          font-size: 7px;
           line-height: 1;
+        }
+
+        .track-marker-icon-image {
+          width: 8px;
+          height: 8px;
+          display: block;
+          object-fit: contain;
         }
 
         .track-marker-row-text {
           min-width: 0;
           color: var(--track-marker-text);
-          font-size: 8px;
+          font-size: 7px;
           line-height: 1.25;
         }
 
@@ -1805,13 +1846,13 @@ body, html {
           display: inline-flex;
           align-items: center;
           max-width: 100%;
-          min-height: 17px;
-          padding: 4px 7px;
+          min-height: 12px;
+          padding: 3px 5px;
           border: 1px solid color-mix(in srgb, var(--link-color) 52%, transparent);
           border-radius: 999px;
           background: color-mix(in srgb, var(--link-color) 10%, transparent);
           color: var(--link-color);
-          font-size: 8px;
+          font-size: 7px;
           line-height: 1.2;
           text-decoration: none;
           overflow: hidden;
@@ -1819,9 +1860,17 @@ body, html {
 
         .track-marker-track-pill.track-link::after {
           content: "›";
-          margin-left: 4px;
-          font-size: 12px;
+          margin-left: 3px;
+          font-size: 9px;
           line-height: 0.8;
+        }
+
+        .track-marker-track-pill.is-inactive {
+          border-color: var(--track-marker-soft-line);
+          background: rgba(128, 128, 128, 0.08);
+          color: var(--track-marker-muted);
+          opacity: 0.7;
+          cursor: default;
         }
 
         .track-marker-track-label,
@@ -1838,39 +1887,46 @@ body, html {
 
         .track-marker-spectrum {
           grid-column: 1 / -1;
-          margin-top: 3px;
+          margin-top: 2px;
           color: var(--track-marker-muted);
           font-size: 7px;
           line-height: 1.35;
         }
 
+        .track-marker-hit-target {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: transparent;
+        }
+
         @media (max-width: 480px) {
           .track-marker-bubble {
-            grid-template-columns: minmax(0, 1fr) 80px;
-            gap: 4px;
-            width: min(187px, calc(100vw - 15px));
-            padding: 9px 9px 9px 12px;
-            border-radius: 12px;
+            grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+            gap: 3px;
+            width: min(146px, calc(100vw - 15px));
+            padding: 6px 6px 6px 8px;
+            border-radius: 8px;
           }
 
           .track-marker-primary {
-            font-size: 16px;
+            font-size: 11px;
           }
 
           .track-marker-secondary {
-            font-size: 12px;
+            font-size: 9px;
           }
 
           .track-marker-symbol {
-            width: 76px;
-            height: 76px;
-            margin-top: 15px;
-            font-size: 68px;
+            width: min(100%, 48px);
+            height: 48px;
+            margin-top: 10px;
+            font-size: 43px;
           }
 
           .track-marker-footer {
-            grid-template-columns: 17px minmax(0, 1fr);
-            gap: 4px 5px;
+            grid-template-columns: 12px minmax(0, 1fr);
+            gap: 3px 4px;
           }
         }
 
@@ -2181,29 +2237,48 @@ body, html {
           -webkit-backdrop-filter: none;
         }
 
+        .leaflet-top.leaflet-left {
+          left: var(--map-mobile-left-stack-left, var(--map-left-stack-left, 10px));
+        }
+
+        .leaflet-left .leaflet-control {
+          margin-left: 0;
+        }
+
+        .leaflet-control-zoom {
+          display: flex;
+          flex-direction: column;
+          gap: var(--map-right-stack-gap);
+        }
+
         .leaflet-bar a,
         .leaflet-bar a:hover {
-          background: transparent !important;
-          background-color: transparent !important;
+          background: var(--control-bg) !important;
+          background-color: var(--control-bg) !important;
           border: 0 !important;
           border-bottom: 0 !important;
-          box-shadow: none !important;
+          box-shadow: var(--map-ui-soft-shadow) !important;
           color: var(--map-ui-text);
         }
 
         .leaflet-control-zoom a {
-          width: 36px;
-          height: 36px;
+          width: var(--map-ui-icon-size);
+          height: var(--map-ui-icon-size);
           opacity: 0.92;
-          font-size: 27px;
+          border-radius: 50% !important;
+          font-size: 30px;
           font-weight: 900;
-          line-height: 36px;
+          line-height: var(--map-ui-icon-size);
           text-shadow: 0 1px 4px rgba(0, 0, 0, 0.44);
+          backdrop-filter: blur(14px) saturate(1.18);
+          -webkit-backdrop-filter: blur(14px) saturate(1.18);
         }
 
         .leaflet-control-zoom a:hover,
         .leaflet-control-zoom a:focus {
           opacity: 1;
+          background: var(--control-bg-hover) !important;
+          background-color: var(--control-bg-hover) !important;
         }
 
         .leaflet-control-layers,
@@ -2743,7 +2818,7 @@ body, html {
             bottom: calc(var(--map-mobile-dock-bottom) + env(safe-area-inset-bottom, 0px));
             z-index: 1350;
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: 56px repeat(4, minmax(0, 1fr));
             grid-auto-rows: 48px;
             align-items: center;
             gap: 4px;
@@ -2762,13 +2837,13 @@ body, html {
           }
 
           html[data-mobile-panel] #mobileControlDock {
-            grid-template-columns: var(--mobile-dock-active-button) minmax(0, 1fr);
+            grid-template-columns: 56px var(--mobile-dock-active-button) minmax(0, 1fr);
             gap: 8px;
           }
 
           .mobile-dock-panel {
             display: none;
-            grid-column: 2;
+            grid-column: 3;
             align-items: center;
             min-width: 0;
             height: 48px;
@@ -2779,6 +2854,39 @@ body, html {
 
           html[data-mobile-panel] .mobile-dock-panel {
             display: flex;
+          }
+
+          .github-link {
+            display: none;
+          }
+
+          .mobile-dock-logo-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            width: 56px;
+            height: 48px;
+            min-height: 48px;
+            max-height: 48px;
+            border-radius: 17px;
+            background: transparent;
+            opacity: 0.86;
+            transition: opacity 120ms ease, background 120ms ease;
+          }
+
+          .mobile-dock-logo-link:hover,
+          .mobile-dock-logo-link:focus {
+            opacity: 1;
+            background: var(--control-bg-hover);
+          }
+
+          .mobile-dock-logo-image {
+            display: block;
+            width: auto;
+            height: 97%;
+            max-width: 98%;
+            object-fit: contain;
           }
 
           .mobile-dock-button {
@@ -2816,7 +2924,7 @@ body, html {
           html[data-mobile-panel='time'] .mobile-dock-button[data-mobile-panel='time'],
           html[data-mobile-panel='settings'] .mobile-dock-button[data-mobile-panel='settings'] {
             display: grid;
-            grid-column: 1;
+            grid-column: 2;
             height: 48px;
             min-height: 48px;
             max-height: 48px;
@@ -3019,8 +3127,8 @@ body, html {
           }
 
           #legend {
-            left: auto !important;
-            right: 12px !important;
+            left: var(--map-mobile-left-stack-left) !important;
+            right: auto !important;
             bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important;
             width: auto;
             max-width: none;
@@ -3030,10 +3138,10 @@ body, html {
           }
 
           #legend .legend-panel-body {
-            right: calc(100% + 8px);
-            left: auto;
+            right: auto;
+            left: calc(100% + 8px);
             bottom: 0;
-            transform: translateX(8px);
+            transform: translateX(-8px);
           }
 
           .mobile-dock-panel #themeToggle {
@@ -3587,6 +3695,9 @@ body, html {
   Clicking the legend opens a modal with full, human-friendly guidance.
 -->
 <div id="mobileControlDock" aria-label="Map controls">
+  <a href="https://matveynator.github.io/chicha-isotope-map" class="mobile-dock-logo-link" target="_blank" rel="noopener noreferrer" aria-label="{{if .ShowGithubTooltip}}{{translate "github_link_tooltip_desc"}}{{else}}{{translate "logo_title"}}{{end}}">
+    <img class="mobile-dock-logo-image" src="{{ .LogoImageURL }}" alt="{{translate "description"}} (version: {{ .Version }})">
+  </a>
   <button class="mobile-dock-button" type="button" data-mobile-panel="layers" aria-expanded="false" aria-label="Layers">
     <img class="mobile-dock-icon" data-new-icon="map_layers" alt="" aria-hidden="true">
     <span>Layers</span>
@@ -4362,19 +4473,67 @@ function doseCategory(doseRate) {
 }
 
 function annualExposureLimitLabel() {
-  const locale = currentAppLocale();
-  if (locale.indexOf('ru') === 0) return 'Предел за год: 1 mSv/год';
-  if (locale.indexOf('uk') === 0) return 'Ліміт за рік: 1 mSv/рік';
-  if (locale.indexOf('be') === 0) return 'Ліміт за год: 1 mSv/год';
-  return 'Annual limit: 1 mSv/year';
+  const labels = {
+    ar: 'الحد: 1000 µSv/سنة',
+    cs: 'Limit: 1000 µSv/rok',
+    da: 'Grænse: 1000 µSv/år',
+    de: 'Grenze: 1000 µSv/Jahr',
+    el: 'Όριο: 1000 µSv/έτος',
+    en: 'Limit: 1000 µSv/year',
+    es: 'Límite: 1000 µSv/año',
+    fa: 'حد: 1000 µSv/سال',
+    fi: 'Raja: 1000 µSv/vuosi',
+    fr: 'Limite : 1000 µSv/an',
+    he: 'מגבלה: 1000 µSv/שנה',
+    hi: 'सीमा: 1000 µSv/वर्ष',
+    hu: 'Határ: 1000 µSv/év',
+    id: 'Batas: 1000 µSv/tahun',
+    it: 'Limite: 1000 µSv/anno',
+    ja: '限度: 1000 µSv/年',
+    ko: '한도: 1000 µSv/년',
+    ms: 'Had: 1000 µSv/tahun',
+    nl: 'Limiet: 1000 µSv/jaar',
+    no: 'Grense: 1000 µSv/år',
+    pl: 'Limit: 1000 µSv/rok',
+    pt: 'Limite: 1000 µSv/ano',
+    ru: 'Предел: 1000 мкЗв/год',
+    sv: 'Gräns: 1000 µSv/år',
+    th: 'ขีดจำกัด: 1000 µSv/ปี',
+    tr: 'Sınır: 1000 µSv/yıl',
+    uk: 'Межа: 1000 мкЗв/рік',
+    vi: 'Giới hạn: 1000 µSv/năm',
+    zh: '限值：1000 µSv/年'
+  };
+  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  return labels[lang] || labels[currentAppLocale().split('-')[0]] || labels.en;
 }
 
-function radiationHazardLabel() {
-  const locale = currentAppLocale();
-  if (locale.indexOf('ru') === 0) return 'Опасность';
-  if (locale.indexOf('uk') === 0) return 'Небезпека';
-  if (locale.indexOf('be') === 0) return 'Небяспека';
-  return 'Hazard';
+function markerDateLabel() {
+  const labels = {
+    ar: 'التاريخ', cs: 'Datum', da: 'Dato', de: 'Datum', el: 'Ημερομηνία',
+    en: 'Date', es: 'Fecha', fa: 'تاریخ', fi: 'Päiväys', fr: 'Date',
+    he: 'תאריך', hi: 'दिनांक', hu: 'Dátum', id: 'Tanggal', it: 'Data',
+    ja: '日付', ko: '날짜', ms: 'Tarikh', nl: 'Datum', no: 'Dato',
+    pl: 'Data', pt: 'Data', ru: 'Дата', sv: 'Datum',
+    th: 'วันที่', tr: 'Tarih', uk: 'Дата', vi: 'Ngày', zh: '日期'
+  };
+  const lang = (typeof currentLang !== 'undefined' && currentLang) ? currentLang : 'en';
+  return labels[lang] || labels[currentAppLocale().split('-')[0]] || labels.en;
+}
+
+function formatMarkerMonthYear(ts) {
+  if (!ts) return '';
+  const date = new Date(ts * 1000);
+  if (Number.isNaN(date.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat([currentAppLocale(), 'en'], {
+      calendar: 'gregory',
+      month: 'short',
+      year: 'numeric'
+    }).format(date);
+  } catch (err) {
+    return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  }
 }
 
 // Normalize theme strings so URL/controls agree even if inputs drift.
@@ -5684,6 +5843,9 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
   removeMarkerByKey(markerKey);
   rendered.markerKey = markerKey;
   circleMarkers[markerKey] = rendered;
+  if (!isLive) {
+    attachTrackMarkerHitTarget(rendered, marker, map);
+  }
   if (trackViewPlaybackActive || trackViewPlaybackPaused) {
     showPlaybackCalendarForMarker(marker);
   }
@@ -7595,6 +7757,7 @@ function createDateRangeSlider(){
     circle.isRealtime = false;
     circle.markerKey = markerKey;
     circleMarkers[markerKey] = circle;
+    attachTrackMarkerHitTarget(circle, marker, map);
     showPlaybackCalendarForMarker(marker);
     playbackMarkersRendered = true;
   }
@@ -8051,7 +8214,7 @@ function createDateRangeSlider(){
     const statusKey = doseCategory(doseRate);
     const statusLabel = translate(statusKey);
     const statusTextColor = isDarkColor(doseColor) ? '#ffffff' : '#000000';
-    const milliSievert = `${doseRate.toFixed(3)} µSv/h`;
+    const milliSievert = `${doseRate.toFixed(3)} ${translate('unit_micro_sievert_per_hour')}`;
     const lastSeen = formatDateTime(marker.date);
     const local = approximateLocalTime(marker.lat, marker.lon);
     const extrasRaw = (marker.liveExtra && typeof marker.liveExtra === 'object') ? marker.liveExtra : null;
@@ -8114,7 +8277,7 @@ function createDateRangeSlider(){
         </div>
         <div class="live-popup-dose">
           <div class="live-popup-dose-primary" style="color:${doseColor};">
-            ${microValue}<span class="live-popup-dose-unit">µR/h</span>
+            ${microValue}<span class="live-popup-dose-unit">${translate('unit_micro_roentgen_per_hour')}</span>
           </div>
           <div class="live-popup-dose-secondary" style="color:${doseColor};">
             ${milliSievert}
@@ -8128,6 +8291,21 @@ function createDateRangeSlider(){
       </div>`;
   }
 
+  function buildTrackBubbleIcon(iconName) {
+    return '<img class="track-marker-icon-image" src="' + escapeHtml(newIconPath(iconName)) + '" alt="">';
+  }
+
+  function buildRadiationSymbolSvg() {
+    return `
+      <svg viewBox="0 0 100 100" focusable="false" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="6"/>
+        <circle cx="50" cy="50" r="8" fill="currentColor"/>
+        <path d="M50 14 A36 36 0 0 1 81 32 L60 44 A13 13 0 0 0 50 37 Z" fill="currentColor"/>
+        <path d="M82 68 A36 36 0 0 1 50 86 L50 63 A13 13 0 0 0 61 56 Z" fill="currentColor"/>
+        <path d="M18 68 A36 36 0 0 1 19 32 L40 44 A13 13 0 0 0 39 56 Z" fill="currentColor"/>
+      </svg>`;
+  }
+
   function buildTrackMarkerBubble(marker, fixed) {
     const speedText = (typeof marker.speed === 'number' && isFinite(marker.speed))
       ? `${(marker.speed * 3.6).toFixed(1)} km/h`
@@ -8139,8 +8317,13 @@ function createDateRangeSlider(){
     const fixedClass = fixed ? ' is-fixed' : '';
     const detectorType = marker.detector || marker.deviceName || marker.tube || '';
     const detectorBlock = detectorType
-      ? `<span class="track-marker-row-icon" aria-hidden="true">⌁</span>
+      ? `<span class="track-marker-row-icon" aria-hidden="true">${buildTrackBubbleIcon('filters_settings')}</span>
           <div class="track-marker-row-text">${translate('live_marker_detector')}: ${escapeHtml(detectorType)}</div>`
+      : '';
+    const markerMonthYear = formatMarkerMonthYear(marker.date);
+    const markerDateBlock = markerMonthYear
+      ? `<span class="track-marker-row-icon" aria-hidden="true">${buildTrackBubbleIcon('calendar')}</span>
+          <div class="track-marker-row-text">${markerDateLabel()}: ${escapeHtml(markerMonthYear)}</div>`
       : '';
     const qualitativeSpectrum = marker.radiation ? String(marker.radiation).trim() : '';
     const qualitativeBlock = qualitativeSpectrum
@@ -8151,24 +8334,25 @@ function createDateRangeSlider(){
       <span class="track-marker-track-value">${escapeHtml(trackID || '—')}</span>`;
     const trackIDBlock = fixed && trackID
       ? `<a href="#" class="track-marker-track-pill track-link" data-track="${escapeHtml(trackID)}">${trackIDContent}</a>`
-      : `<span class="track-marker-track-pill">${trackIDContent}</span>`;
+      : `<span class="track-marker-track-pill is-inactive">${trackIDContent}</span>`;
 
     return `
       <div class="track-marker-bubble${fixedClass}" style="--marker-level-color:${doseColor};">
         <div class="track-marker-bubble-main">
-          <p class="track-marker-label">${translate('radiation_dose')}:</p>
-          <div class="track-marker-primary">${(doseRate * 100).toFixed(2)} µR/h</div>
-          <p class="track-marker-label" style="margin-top:14px;">${radiationHazardLabel()}:</p>
-          <div class="track-marker-secondary">${doseRate.toFixed(2)} µSv/h</div>
+          <p class="track-marker-label">${translate('radiation_reading_label')}:</p>
+          <div class="track-marker-primary"><span class="track-marker-dose-number">${(doseRate * 100).toFixed(2)}</span> <span class="track-marker-dose-unit">${translate('unit_micro_roentgen_per_hour')}</span></div>
+          <p class="track-marker-label track-marker-hazard-label">${translate('radiation_hazard_label')}:</p>
+          <div class="track-marker-secondary"><span class="track-marker-dose-number">${doseRate.toFixed(2)}</span> <span class="track-marker-dose-unit">${translate('unit_micro_sievert_per_hour')}</span></div>
           <div class="track-marker-limit">${annualExposureLimitLabel()}</div>
           <a href="#" class="track-marker-status risk-link">${escapeHtml(statusLabel)}</a>
         </div>
-        <div class="track-marker-symbol" aria-hidden="true">☢</div>
+        <div class="track-marker-symbol" aria-hidden="true">${buildRadiationSymbolSvg()}</div>
         <div class="track-marker-footer">
           ${detectorBlock}
-          <span class="track-marker-row-icon" aria-hidden="true">◴</span>
+          ${markerDateBlock}
+          <span class="track-marker-row-icon" aria-hidden="true">${buildTrackBubbleIcon('speed')}</span>
           <div class="track-marker-row-text">${translate('speed')}: ${escapeHtml(speedText)}</div>
-          <span class="track-marker-row-icon" aria-hidden="true">🔗</span>
+          <span class="track-marker-row-icon" aria-hidden="true">${buildTrackBubbleIcon('link')}</span>
           <div class="track-marker-row-text">${trackIDBlock}</div>
           ${qualitativeBlock}
         </div>
@@ -8404,11 +8588,56 @@ function closeMarkerLayerStream(name) {
   markerLayerState[name].streamFailed = false;
 }
 
+function trackMarkerHitTargetsEnabled() {
+  if (!window || !window.matchMedia) {
+    return false;
+  }
+  return window.matchMedia('(pointer: coarse), (max-width: 767px)').matches;
+}
+
+function attachTrackMarkerHitTarget(visibleMarker, markerData, targetLayer) {
+  if (!visibleMarker || !markerData || markerData.speed < 0 || !trackMarkerHitTargetsEnabled()) {
+    return;
+  }
+  const hitTarget = L.marker([markerData.lat, markerData.lon], {
+    icon: L.divIcon({
+      className: '',
+      html: '<div class="track-marker-hit-target"></div>',
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    }),
+    interactive: true,
+    keyboard: false,
+    zIndexOffset: 1000
+  })
+  .bindTooltip(getTooltipContent(markerData), { direction:'top', className:'custom-tooltip track-marker-tooltip', offset:[0,-8], interactive:true })
+  .bindPopup(getPopupContent(markerData), { className:'track-marker-popup' });
+
+  visibleMarker.__hitTarget = hitTarget;
+  if (targetLayer && typeof targetLayer.addLayer === 'function') {
+    targetLayer.addLayer(hitTarget);
+    return;
+  }
+  if (map) {
+    hitTarget.addTo(map);
+  }
+}
+
 function removeMarkerByKey(markerKey) {
   if (!markerKey) {
     return;
   }
   const layer = circleMarkers[markerKey];
+  if (layer && layer.__hitTarget) {
+    const hitTarget = layer.__hitTarget;
+    if (layer.layerGroupName && markerLayerGroups && markerLayerGroups[layer.layerGroupName]) {
+      markerLayerGroups[layer.layerGroupName].removeLayer(hitTarget);
+    }
+    if (map && map.hasLayer(hitTarget)) {
+      map.removeLayer(hitTarget);
+    }
+    layer.__hitTarget = null;
+  }
   if (layer && layer.layerGroupName && markerLayerGroups && markerLayerGroups[layer.layerGroupName]) {
     markerLayerGroups[layer.layerGroupName].removeLayer(layer);
   }
@@ -8917,6 +9146,9 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     marker.layerGroupName = layerName;
     circleMarkers[markerKey] = marker;
     group.addLayer(marker);
+    if (m.speed >= 0) {
+      attachTrackMarkerHitTarget(marker, m, group);
+    }
     if (m.speed >= 0 && markerRenderState.pruneOverlap) {
       markerRenderState.pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
     }
@@ -9304,6 +9536,7 @@ function updateMarkers(forceReload){
     marker.markerKey = markerKey;
     circleMarkers[markerKey] = marker;
     if (m.speed >= 0) {
+      attachTrackMarkerHitTarget(marker, m, map);
       pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
     }
   }

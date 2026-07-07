@@ -162,7 +162,11 @@
     "speed_filter_button_ped_title": "مشاة",
     "speed_filter_button_plane_range": "> 250 كم/س",
     "speed_filter_button_car_range": "25–250 كم/س",
-    "speed_filter_button_ped_range": "< 25 كم/س"
+    "speed_filter_button_ped_range": "< 25 كم/س",
+    "unit_micro_roentgen_per_hour": "µR/ساعة",
+    "unit_micro_sievert_per_hour": "µSv/ساعة",
+    "radiation_reading_label": "الإشعاع",
+    "radiation_hazard_label": "الخطر"
   },
   "cs": {
     "api_example_archive_desc": "Stáhne archiv tgz se všemi zveřejněnými soubory .json, pokud je JSON archiv zapnutý.",
@@ -345,7 +349,11 @@
     "speed_filter_button_ped_title": "pěšky",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Záření",
+    "radiation_hazard_label": "Nebezpečí"
   },
   "da": {
     "api_example_archive_desc": "Downloader en tgz-pakke med alle offentliggjorte .json-filer når JSON-arkivet er aktiveret.",
@@ -510,7 +518,11 @@
     "speed_filter_button_ped_title": "gang",
     "speed_filter_button_plane_range": "> 250 km/t",
     "speed_filter_button_car_range": "25–250 km/t",
-    "speed_filter_button_ped_range": "< 25 km/t"
+    "speed_filter_button_ped_range": "< 25 km/t",
+    "unit_micro_roentgen_per_hour": "µR/t",
+    "unit_micro_sievert_per_hour": "µSv/t",
+    "radiation_reading_label": "Stråling",
+    "radiation_hazard_label": "Fare"
   },
   "de": {
     "api_example_archive_desc": "Lädt ein tgz-Paket mit allen veröffentlichten .json-Dateien, sofern das JSON-Archiv aktiv ist.",
@@ -675,7 +687,11 @@
     "speed_filter_button_ped_title": "zu Fuß",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Strahlung",
+    "radiation_hazard_label": "Gefahr"
   },
   "el": {
     "api_example_archive_desc": "Κατεβάζει ένα αρχείο tgz με όλα τα δημοσιευμένα αρχεία .json όταν είναι ενεργό το JSON αρχείο.",
@@ -840,7 +856,11 @@
     "speed_filter_button_ped_title": "πεζός",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/ώρα",
+    "unit_micro_sievert_per_hour": "µSv/ώρα",
+    "radiation_reading_label": "Ακτινοβολία",
+    "radiation_hazard_label": "Κίνδυνος"
   },
   "en": {
     "api_example_archive_desc": "Downloads a tgz bundle with every published .json file when the server enables the JSON archive.",
@@ -1026,7 +1046,11 @@
     "speed_filter_button_ped_title": "Walk",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Radiation",
+    "radiation_hazard_label": "Hazard"
   },
   "es": {
     "api_example_archive_desc": "Descarga un paquete tgz con todos los archivos .json publicados cuando el archivo JSON está activado.",
@@ -1191,7 +1215,11 @@
     "speed_filter_button_ped_title": "a pie",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Radiación",
+    "radiation_hazard_label": "Peligro"
   },
   "fa": {
     "api_example_archive_desc": "وقتی آرشیو JSON فعال باشد یک بسته tgz شامل تمام فایل‌های .json منتشرشده را دانلود می‌کند.",
@@ -1356,7 +1384,11 @@
     "speed_filter_button_ped_title": "پیاده",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/ساعت",
+    "unit_micro_sievert_per_hour": "µSv/ساعت",
+    "radiation_reading_label": "تابش",
+    "radiation_hazard_label": "خطر"
   },
   "fi": {
     "api_example_archive_desc": "Lataa tgz-paketin, jossa on kaikki julkaistut .json-tiedostot, kun JSON-arkisto on käytössä.",
@@ -1521,7 +1553,11 @@
     "speed_filter_button_ped_title": "kävellen",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Säteily",
+    "radiation_hazard_label": "Vaara"
   },
   "fr": {
     "api_example_archive_desc": "Télécharge une archive tgz avec tous les fichiers .json publiés lorsque l’archive JSON est activée.",
@@ -1686,7 +1722,11 @@
     "speed_filter_button_ped_title": "à pied",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Rayonnement",
+    "radiation_hazard_label": "Danger"
   },
   "he": {
     "api_example_archive_desc": "מורידה חבילת tgz עם כל קבצי .json שפורסמו כאשר ארכיון ה-JSON מופעל.",
@@ -1851,7 +1891,11 @@
     "speed_filter_button_ped_title": "הליכה",
     "speed_filter_button_plane_range": "> 250 קמ\"ש",
     "speed_filter_button_car_range": "25–250 קמ\"ש",
-    "speed_filter_button_ped_range": "< 25 קמ\"ש"
+    "speed_filter_button_ped_range": "< 25 קמ\"ש",
+    "unit_micro_roentgen_per_hour": "µR/שעה",
+    "unit_micro_sievert_per_hour": "µSv/שעה",
+    "radiation_reading_label": "קרינה",
+    "radiation_hazard_label": "סכנה"
   },
   "hi": {
     "api_example_archive_desc": "JSON संग्रह सक्षम होने पर सभी प्रकाशित .json फ़ाइलों वाला tgz पैकेज डाउनलोड करता है।",
@@ -2016,7 +2060,11 @@
     "speed_filter_button_ped_title": "पैदल",
     "speed_filter_button_plane_range": "> 250 किमी/घं",
     "speed_filter_button_car_range": "25–250 किमी/घं",
-    "speed_filter_button_ped_range": "< 25 किमी/घं"
+    "speed_filter_button_ped_range": "< 25 किमी/घं",
+    "unit_micro_roentgen_per_hour": "µR/घंटा",
+    "unit_micro_sievert_per_hour": "µSv/घंटा",
+    "radiation_reading_label": "विकिरण",
+    "radiation_hazard_label": "खतरा"
   },
   "hu": {
     "api_example_archive_desc": "Letölt egy tgz csomagot az összes közzétett .json fájllal, ha a JSON archívum engedélyezett.",
@@ -2181,7 +2229,11 @@
     "speed_filter_button_ped_title": "gyalog",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Sugárzás",
+    "radiation_hazard_label": "Veszély"
   },
   "id": {
     "api_example_archive_desc": "Mengunduh paket tgz dengan semua berkas .json yang dipublikasikan saat arsip JSON diaktifkan.",
@@ -2346,7 +2398,11 @@
     "speed_filter_button_ped_title": "jalan kaki",
     "speed_filter_button_plane_range": "> 250 km/j",
     "speed_filter_button_car_range": "25–250 km/j",
-    "speed_filter_button_ped_range": "< 25 km/j"
+    "speed_filter_button_ped_range": "< 25 km/j",
+    "unit_micro_roentgen_per_hour": "µR/jam",
+    "unit_micro_sievert_per_hour": "µSv/jam",
+    "radiation_reading_label": "Radiasi",
+    "radiation_hazard_label": "Bahaya"
   },
   "it": {
     "api_example_archive_desc": "Scarica un archivio tgz con tutti i file .json pubblicati quando l’archivio JSON è attivo.",
@@ -2511,7 +2567,11 @@
     "speed_filter_button_ped_title": "a piedi",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Radiazione",
+    "radiation_hazard_label": "Pericolo"
   },
   "ja": {
     "api_example_archive_desc": "JSON アーカイブが有効な場合、公開済みの .json ファイルをすべて含む tgz バンドルをダウンロードします。",
@@ -2676,7 +2736,11 @@
     "speed_filter_button_ped_title": "徒歩",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/時",
+    "unit_micro_sievert_per_hour": "µSv/時",
+    "radiation_reading_label": "放射線",
+    "radiation_hazard_label": "危険"
   },
   "ko": {
     "api_example_archive_desc": "JSON 아카이브가 활성화된 경우 게시된 모든 .json 파일이 포함된 tgz 번들을 다운로드합니다.",
@@ -2841,7 +2905,11 @@
     "speed_filter_button_ped_title": "도보",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/시",
+    "unit_micro_sievert_per_hour": "µSv/시",
+    "radiation_reading_label": "방사선",
+    "radiation_hazard_label": "위험"
   },
   "ms": {
     "api_example_archive_desc": "Memuat turun pakej tgz dengan semua fail .json yang diterbitkan apabila arkib JSON diaktifkan.",
@@ -3006,7 +3074,11 @@
     "speed_filter_button_ped_title": "berjalan",
     "speed_filter_button_plane_range": "> 250 km/j",
     "speed_filter_button_car_range": "25–250 km/j",
-    "speed_filter_button_ped_range": "< 25 km/j"
+    "speed_filter_button_ped_range": "< 25 km/j",
+    "unit_micro_roentgen_per_hour": "µR/jam",
+    "unit_micro_sievert_per_hour": "µSv/jam",
+    "radiation_reading_label": "Sinaran",
+    "radiation_hazard_label": "Bahaya"
   },
   "nl": {
     "api_example_archive_desc": "Downloadt een tgz-pakket met alle gepubliceerde .json-bestanden wanneer het JSON-archief is ingeschakeld.",
@@ -3171,7 +3243,11 @@
     "speed_filter_button_ped_title": "lopen",
     "speed_filter_button_plane_range": "> 250 km/u",
     "speed_filter_button_car_range": "25–250 km/u",
-    "speed_filter_button_ped_range": "< 25 km/u"
+    "speed_filter_button_ped_range": "< 25 km/u",
+    "unit_micro_roentgen_per_hour": "µR/u",
+    "unit_micro_sievert_per_hour": "µSv/u",
+    "radiation_reading_label": "Straling",
+    "radiation_hazard_label": "Gevaar"
   },
   "no": {
     "api_example_archive_desc": "Laster ned en tgz-pakke med alle publiserte .json-filer når JSON-arkivet er aktivert.",
@@ -3336,7 +3412,11 @@
     "speed_filter_button_ped_title": "til fots",
     "speed_filter_button_plane_range": "> 250 km/t",
     "speed_filter_button_car_range": "25–250 km/t",
-    "speed_filter_button_ped_range": "< 25 km/t"
+    "speed_filter_button_ped_range": "< 25 km/t",
+    "unit_micro_roentgen_per_hour": "µR/t",
+    "unit_micro_sievert_per_hour": "µSv/t",
+    "radiation_reading_label": "Stråling",
+    "radiation_hazard_label": "Fare"
   },
   "pl": {
     "api_example_archive_desc": "Pobiera paczkę tgz ze wszystkimi opublikowanymi plikami .json, gdy archiwum JSON jest włączone.",
@@ -3501,7 +3581,11 @@
     "speed_filter_button_ped_title": "pieszo",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Promieniowanie",
+    "radiation_hazard_label": "Zagrożenie"
   },
   "pt": {
     "api_example_archive_desc": "Baixa um pacote tgz com todos os arquivos .json publicados quando o arquivo JSON está ativado.",
@@ -3666,7 +3750,11 @@
     "speed_filter_button_ped_title": "a pé",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Radiação",
+    "radiation_hazard_label": "Perigo"
   },
   "ru": {
     "api_example_archive_desc": "Скачивает архив tgz со всеми опубликованными файлами .json, если включён JSON‑архив.",
@@ -3849,7 +3937,11 @@
     "speed_filter_button_ped_title": "пешеход",
     "speed_filter_button_plane_range": "> 250 км/ч",
     "speed_filter_button_car_range": "25–250 км/ч",
-    "speed_filter_button_ped_range": "< 25 км/ч"
+    "speed_filter_button_ped_range": "< 25 км/ч",
+    "unit_micro_roentgen_per_hour": "мкР/ч",
+    "unit_micro_sievert_per_hour": "мкЗв/ч",
+    "radiation_reading_label": "Излучение",
+    "radiation_hazard_label": "Опасность"
   },
   "sv": {
     "api_example_archive_desc": "Hämtar ett tgz-paket med alla publicerade .json-filer när JSON-arkivet är aktiverat.",
@@ -4014,7 +4106,11 @@
     "speed_filter_button_ped_title": "gång",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/h",
+    "unit_micro_sievert_per_hour": "µSv/h",
+    "radiation_reading_label": "Strålning",
+    "radiation_hazard_label": "Fara"
   },
   "th": {
     "api_example_archive_desc": "ดาวน์โหลดแพ็กเกจ tgz ที่มีไฟล์ .json ทั้งหมดเมื่อเปิดใช้งานคลัง JSON",
@@ -4179,7 +4275,11 @@
     "speed_filter_button_ped_title": "เดินเท้า",
     "speed_filter_button_plane_range": "> 250 กม./ชม.",
     "speed_filter_button_car_range": "25–250 กม./ชม.",
-    "speed_filter_button_ped_range": "< 25 กม./ชม."
+    "speed_filter_button_ped_range": "< 25 กม./ชม.",
+    "unit_micro_roentgen_per_hour": "µR/ชม.",
+    "unit_micro_sievert_per_hour": "µSv/ชม.",
+    "radiation_reading_label": "รังสี",
+    "radiation_hazard_label": "อันตราย"
   },
   "tr": {
     "api_example_archive_desc": "JSON arşivi etkinse yayımlanmış tüm .json dosyalarıyla bir tgz paketi indirir.",
@@ -4344,7 +4444,11 @@
     "speed_filter_button_ped_title": "yaya",
     "speed_filter_button_plane_range": "> 250 km/sa",
     "speed_filter_button_car_range": "25–250 km/sa",
-    "speed_filter_button_ped_range": "< 25 km/sa"
+    "speed_filter_button_ped_range": "< 25 km/sa",
+    "unit_micro_roentgen_per_hour": "µR/sa",
+    "unit_micro_sievert_per_hour": "µSv/sa",
+    "radiation_reading_label": "Radyasyon",
+    "radiation_hazard_label": "Tehlike"
   },
   "uk": {
     "api_example_archive_desc": "Завантажує tgz-пакет з усіма опублікованими файлами .json, коли JSON-архів увімкнено.",
@@ -4509,7 +4613,11 @@
     "speed_filter_button_ped_title": "пішки",
     "speed_filter_button_plane_range": "> 250 км/год",
     "speed_filter_button_car_range": "25–250 км/год",
-    "speed_filter_button_ped_range": "< 25 км/год"
+    "speed_filter_button_ped_range": "< 25 км/год",
+    "unit_micro_roentgen_per_hour": "мкР/год",
+    "unit_micro_sievert_per_hour": "мкЗв/год",
+    "radiation_reading_label": "Випромінювання",
+    "radiation_hazard_label": "Небезпека"
   },
   "vi": {
     "api_example_archive_desc": "Tải gói tgz chứa mọi tệp .json đã công bố khi bật lưu trữ JSON.",
@@ -4674,7 +4782,11 @@
     "speed_filter_button_ped_title": "đi bộ",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/giờ",
+    "unit_micro_sievert_per_hour": "µSv/giờ",
+    "radiation_reading_label": "Bức xạ",
+    "radiation_hazard_label": "Nguy hiểm"
   },
   "zh": {
     "api_example_archive_desc": "在启用 JSON 归档时，下载包含所有已发布 .json 文件的 tgz 包。",
@@ -4839,6 +4951,10 @@
     "speed_filter_button_ped_title": "步行",
     "speed_filter_button_plane_range": "> 250 km/h",
     "speed_filter_button_car_range": "25–250 km/h",
-    "speed_filter_button_ped_range": "< 25 km/h"
+    "speed_filter_button_ped_range": "< 25 km/h",
+    "unit_micro_roentgen_per_hour": "µR/小时",
+    "unit_micro_sievert_per_hour": "µSv/小时",
+    "radiation_reading_label": "辐射",
+    "radiation_hazard_label": "危险"
   }
 }
