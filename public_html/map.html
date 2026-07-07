@@ -2690,6 +2690,7 @@ body, html {
         .qr-modal-backdrop {
           z-index: 2050;
           background: rgba(0, 0, 0, 0.62);
+          padding: 10vh 10vw;
         }
 
         .legend-modal-card {
@@ -2731,8 +2732,9 @@ body, html {
         }
 
         .qr-modal-card {
-          width: min(520px, 92vw);
-          max-height: 90vh;
+          box-sizing: border-box;
+          width: min(520px, 80vw);
+          max-height: 80vh;
           display: grid;
           gap: 14px;
           padding: 18px;
@@ -2744,6 +2746,7 @@ body, html {
           backdrop-filter: blur(18px) saturate(1.22);
           -webkit-backdrop-filter: blur(18px) saturate(1.22);
           font-family: var(--font-family-base);
+          overflow: auto;
         }
 
         .qr-modal-header {
@@ -2952,6 +2955,7 @@ body, html {
             display: none;
             grid-column: 3;
             align-items: center;
+            gap: 8px;
             min-width: 0;
             height: 48px;
             min-height: 48px;
@@ -2961,6 +2965,16 @@ body, html {
 
           html[data-mobile-panel] .mobile-dock-panel {
             display: flex;
+          }
+
+          html[data-mobile-panel='layers'] .mobile-dock-panel {
+            width: 100%;
+            justify-content: space-between;
+            gap: 0;
+          }
+
+          html[data-mobile-panel='settings'] .mobile-dock-panel {
+            gap: 5px;
           }
 
           .github-link {
@@ -3027,7 +3041,6 @@ body, html {
           }
 
           html[data-mobile-panel='layers'] .mobile-dock-button[data-mobile-panel='layers'],
-          html[data-mobile-panel='speed'] .mobile-dock-button[data-mobile-panel='speed'],
           html[data-mobile-panel='time'] .mobile-dock-button[data-mobile-panel='time'],
           html[data-mobile-panel='settings'] .mobile-dock-button[data-mobile-panel='settings'] {
             display: grid;
@@ -3039,9 +3052,9 @@ body, html {
           }
 
           html[data-mobile-panel='layers'] .mobile-dock-button[data-mobile-panel='layers'],
-          html[data-mobile-panel='speed'] .mobile-dock-button[data-mobile-panel='speed'],
           html[data-mobile-panel='time'] .mobile-dock-button[data-mobile-panel='time'],
-          html[data-mobile-panel='settings'] .mobile-dock-button[data-mobile-panel='settings'] {
+          html[data-mobile-panel='settings'] .mobile-dock-button[data-mobile-panel='settings'],
+          .mobile-dock-button.is-playing {
             background: var(--map-ui-accent-soft);
             color: var(--map-ui-accent-strong);
           }
@@ -3089,29 +3102,39 @@ body, html {
           }
 
           .mobile-dock-panel .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
-            display: block;
-            width: 100%;
+            display: flex;
+            flex: 1 1 0;
+            width: auto;
             height: 48px;
             max-height: 48px;
             padding: 0;
+            align-items: center;
+            justify-content: center;
             overflow: hidden;
           }
 
           .mobile-dock-panel .speed-filter-control {
             display: flex;
-            width: 100%;
+            flex: 3 1 0;
+            width: auto;
             height: 48px;
             max-height: 48px;
             padding: 0;
             flex-direction: row;
-            justify-content: space-evenly;
+            justify-content: space-between;
             align-items: center;
-            gap: 8px;
+            gap: 0;
             overflow: hidden;
           }
 
+          .mobile-dock-panel .speed-filter-control .speed-filter-row {
+            flex: 1 1 0;
+            display: grid;
+            justify-items: center;
+          }
+
           .mobile-dock-panel .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-list {
-            display: block !important;
+            display: none !important;
             position: static;
             min-width: 0;
             opacity: 1;
@@ -3127,34 +3150,14 @@ body, html {
           }
 
           .mobile-dock-panel .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-toggle {
-            display: none;
-          }
-
-          .mobile-dock-panel .leaflet-control-layers-base {
             display: flex;
-            align-items: center;
-            height: 48px;
-            gap: 5px;
-            min-width: 0;
-            overflow-x: auto;
-            overflow-y: hidden;
-            scrollbar-width: none;
-          }
-
-          .mobile-dock-panel .leaflet-control-layers-base::-webkit-scrollbar {
-            display: none;
-          }
-
-          .mobile-dock-panel .leaflet-control-layers-base label {
-            min-height: 34px;
+            width: 34px;
             height: 34px;
-            grid-template-columns: minmax(0, 1fr);
-            padding: 5px 8px;
-            white-space: nowrap;
-          }
-
-          .mobile-dock-panel .leaflet-control-layers-base label::before {
-            display: none;
+            min-width: 34px;
+            min-height: 34px;
+            background-size: 21px 21px !important;
+            border: 1px solid var(--map-ui-border) !important;
+            border-radius: 50% !important;
           }
 
           .leaflet-control-layers-base label,
@@ -3261,18 +3264,19 @@ body, html {
           }
 
           .mobile-dock-panel #mapCacheStatus {
-            flex: 1 1 auto;
+            flex: 0 1 74px;
             position: relative !important;
             min-width: 0;
-            width: auto;
-            max-width: none;
-            height: 48px;
-            min-height: 48px;
-            max-height: 48px;
+            width: 74px;
+            max-width: 74px;
+            height: 34px;
+            min-height: 34px;
+            max-height: 34px;
             overflow: hidden;
-            padding: 4px 40px 4px 6px;
-            line-height: 1.15;
+            padding: 3px 4px;
+            line-height: 1.05;
             white-space: normal;
+            font-size: var(--font-size-xxs);
           }
 
           .mobile-dock-panel #mapCacheStatus .cache-inline-line {
@@ -3282,22 +3286,58 @@ body, html {
             text-align: left;
           }
 
+          .mobile-dock-panel #mapCacheStatus .cache-inline-line + .cache-inline-line {
+            display: none;
+          }
+
           .mobile-dock-panel #mapCacheStatus .cache-reset-link {
-            position: absolute;
-            right: 7px;
-            bottom: 5px;
+            position: static;
+            display: inline-block;
             margin-left: 0;
             font-weight: 700;
             white-space: nowrap;
           }
 
+          .mobile-settings-links {
+            display: flex;
+            flex: 1 1 auto;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+            min-width: 0;
+            height: 48px;
+            overflow: hidden;
+          }
+
+          .mobile-settings-link {
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 6px 5px;
+            border-radius: 999px;
+            background: var(--control-bg);
+            color: var(--map-ui-text);
+            border: 1px solid var(--map-ui-border);
+            font-size: var(--font-size-xxs);
+            line-height: 1;
+            text-align: center;
+            text-decoration: none;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .mobile-settings-link:hover,
+          .mobile-settings-link:focus {
+            background: var(--control-bg-hover);
+          }
+
           .qr-modal-backdrop {
-            padding: 12px;
+            padding: 10vh 10vw;
           }
 
           .qr-modal-card {
-            width: 90vw;
-            max-height: 88vh;
+            width: 80vw;
+            max-height: 80vh;
             padding: 14px;
             gap: 12px;
           }
@@ -3308,7 +3348,7 @@ body, html {
           }
 
           .qr-modal-image {
-            width: calc(90vw - 48px);
+            width: calc(80vw - 48px);
             max-width: 100%;
           }
 
@@ -3834,21 +3874,21 @@ body, html {
   <a href="https://matveynator.github.io/chicha-isotope-map" class="mobile-dock-logo-link" target="_blank" rel="noopener noreferrer" aria-label="{{if .ShowGithubTooltip}}{{translate "github_link_tooltip_desc"}}{{else}}{{translate "logo_title"}}{{end}}">
     <img class="mobile-dock-logo-image" src="{{ .LogoImageURL }}" alt="{{translate "description"}} (version: {{ .Version }})">
   </a>
-  <button class="mobile-dock-button" type="button" data-mobile-panel="layers" aria-expanded="false" aria-label="Layers">
+  <button class="mobile-dock-button" type="button" data-mobile-panel="layers" aria-expanded="false" aria-label="{{translate "mobile_dock_layers"}}">
     <img class="mobile-dock-icon" data-new-icon="map_layers" alt="" aria-hidden="true">
-    <span>Layers</span>
+    <span>{{translate "mobile_dock_layers"}}</span>
   </button>
-  <button class="mobile-dock-button" type="button" data-mobile-panel="speed" aria-expanded="false" aria-label="Speed">
-    <img class="mobile-dock-icon" data-new-icon="speed" alt="" aria-hidden="true">
-    <span>Speed</span>
+  <button class="mobile-dock-button" type="button" data-mobile-action="playback" aria-pressed="false" aria-label="{{translate "mobile_dock_play"}}">
+    <img class="mobile-dock-icon" data-new-icon="play" alt="" aria-hidden="true">
+    <span>{{translate "mobile_dock_play"}}</span>
   </button>
-  <button class="mobile-dock-button" type="button" data-mobile-panel="time" aria-expanded="false" aria-label="Time">
-    <img class="mobile-dock-icon" data-new-icon="time" alt="" aria-hidden="true">
-    <span>Time</span>
+  <button class="mobile-dock-button" type="button" data-mobile-panel="time" aria-expanded="false" aria-label="{{translate "mobile_dock_history"}}">
+    <img class="mobile-dock-icon" data-new-icon="calendar" alt="" aria-hidden="true">
+    <span>{{translate "mobile_dock_history"}}</span>
   </button>
-  <button class="mobile-dock-button" type="button" data-mobile-panel="settings" aria-expanded="false" aria-label="Settings">
+  <button class="mobile-dock-button" type="button" data-mobile-panel="settings" aria-expanded="false" aria-label="{{translate "mobile_dock_settings"}}">
     <img class="mobile-dock-icon" data-new-icon="filters_settings" alt="" aria-hidden="true">
-    <span>Settings</span>
+    <span>{{translate "mobile_dock_settings"}}</span>
   </button>
   <div class="mobile-dock-panel" aria-live="polite"></div>
 </div>
@@ -6766,25 +6806,49 @@ function initializeMobileControlDock() {
     return;
   }
   const buttons = Array.from(dock.querySelectorAll('[data-mobile-panel]'));
+  const playbackButton = dock.querySelector('[data-mobile-action="playback"]');
   const mobileQuery = window.matchMedia('(max-width: 767px)');
   const dockedControlRecords = new Map();
 
+  function ensureMobileSettingsLinks() {
+    let linksNode = document.getElementById('mobileSettingsLinks');
+    if (linksNode) {
+      return linksNode;
+    }
+    linksNode = document.createElement('div');
+    linksNode.id = 'mobileSettingsLinks';
+    linksNode.className = 'mobile-settings-links';
+    [
+      ['api', 'attr_api'],
+      ['sources', 'attr_sources'],
+      ['license', 'attr_license']
+    ].forEach(function(linkSpec) {
+      const linkNode = document.createElement('a');
+      linkNode.href = '#';
+      linkNode.className = 'mobile-settings-link attr-link';
+      linkNode.dataset.info = linkSpec[0];
+      linkNode.textContent = translate(linkSpec[1]);
+      linksNode.appendChild(linkNode);
+    });
+    return linksNode;
+  }
+
   function findMobilePanelNodes(panelName) {
     if (panelName === 'layers') {
-      return Array.from(document.querySelectorAll('.leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control)')).slice(0, 1);
-    }
-    if (panelName === 'speed') {
       const speedFilterNode = document.querySelector('.speed-filter-control');
-      return speedFilterNode ? [speedFilterNode] : [];
+      const layerNode = Array.from(document.querySelectorAll('.leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control)')).slice(0, 1)[0] || null;
+      return [speedFilterNode, layerNode].filter(function(controlNode) { return Boolean(controlNode); });
     }
     if (panelName === 'time') {
       const dateSliderNode = document.querySelector('.date-slider-box');
       return dateSliderNode ? [dateSliderNode] : [];
     }
     if (panelName === 'settings') {
-      return ['themeToggle', 'mapCacheStatus']
+      const settingsNodes = ['themeToggle', 'mapCacheStatus']
         .map(function(elementID) { return document.getElementById(elementID); })
         .filter(function(elementNode) { return Boolean(elementNode); });
+      settingsNodes.push(ensureMobileSettingsLinks());
+      return settingsNodes;
     }
     return [];
   }
@@ -6879,6 +6943,24 @@ function initializeMobileControlDock() {
       setActivePanel(button.getAttribute('data-mobile-panel') || '');
     });
   });
+
+  if (playbackButton) {
+    playbackButton.addEventListener('click', function() {
+      if (!mobileQuery.matches) {
+        return;
+      }
+      setActivePanel('');
+      if (trackPlaybackActive || playbackMarkersRendered) {
+        if (typeof window.__stopMapPlayback === 'function') {
+          window.__stopMapPlayback(true);
+        }
+        return;
+      }
+      if (typeof window.__toggleMapPlayback === 'function') {
+        window.__toggleMapPlayback();
+      }
+    });
+  }
 
   document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
@@ -7730,6 +7812,12 @@ function createDateRangeSlider(){
     btnPlay.textContent = isPlaying ? '⏸' : '▶';
     btnPlay.title = translate(labelKey);
     btnPlay.setAttribute('aria-label', translate(labelKey));
+    const mobilePlaybackButton = document.querySelector('[data-mobile-action="playback"]');
+    if (mobilePlaybackButton) {
+      mobilePlaybackButton.classList.toggle('is-playing', isPlaying);
+      mobilePlaybackButton.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
+      mobilePlaybackButton.setAttribute('aria-label', translate(isPlaying ? 'date_slider_stop' : 'mobile_dock_play'));
+    }
     if (playbackShareActive !== isPlaying) {
       // Keep the share URL in sync with the play button state for deep links.
       playbackShareActive = isPlaying;
@@ -8137,6 +8225,8 @@ function createDateRangeSlider(){
   // Listen once for the map session, keeping the interaction predictable.
   document.addEventListener('keydown', handlePlaybackShortcut, true);
   document.addEventListener('keyup', suppressPlaybackShortcutKeyup, true);
+  window.__toggleMapPlayback = togglePlayback;
+  window.__stopMapPlayback = stopPlayback;
 
   // One-time creation of both sliders using initial bounds
   window.__initSliderOnce = (minTs,maxTs)=>{

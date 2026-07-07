@@ -171,7 +171,12 @@
     "qr_modal_download": "حفظ الصورة",
     "qr_modal_print": "طباعة",
     "qr_modal_close": "إغلاق",
-    "qr_modal_save_hint": "احفظ الصورة أو شاركها لفتح هذه الخريطة على جهاز آخر."
+    "qr_modal_save_hint": "احفظ الصورة أو شاركها لفتح هذه الخريطة على جهاز آخر.",
+    "mobile_dock_layers": "الطبقات",
+    "mobile_dock_play": "تشغيل",
+    "mobile_dock_dates": "التواريخ",
+    "mobile_dock_settings": "الإعدادات",
+    "mobile_dock_history": "السجل"
   },
   "cs": {
     "api_example_archive_desc": "Stáhne archiv tgz se všemi zveřejněnými soubory .json, pokud je JSON archiv zapnutý.",
@@ -363,7 +368,12 @@
     "qr_modal_download": "Uložit obrázek",
     "qr_modal_print": "Tisk",
     "qr_modal_close": "Zavřít",
-    "qr_modal_save_hint": "Uložte nebo sdílejte obrázek pro otevření této mapy na jiném zařízení."
+    "qr_modal_save_hint": "Uložte nebo sdílejte obrázek pro otevření této mapy na jiném zařízení.",
+    "mobile_dock_layers": "Vrstvy",
+    "mobile_dock_play": "Přehrát",
+    "mobile_dock_dates": "Data",
+    "mobile_dock_settings": "Nastavení",
+    "mobile_dock_history": "Historie"
   },
   "da": {
     "api_example_archive_desc": "Downloader en tgz-pakke med alle offentliggjorte .json-filer når JSON-arkivet er aktiveret.",
@@ -537,7 +547,12 @@
     "qr_modal_download": "Gem billede",
     "qr_modal_print": "Print",
     "qr_modal_close": "Luk",
-    "qr_modal_save_hint": "Gem eller del billedet for at åbne kortet på en anden enhed."
+    "qr_modal_save_hint": "Gem eller del billedet for at åbne kortet på en anden enhed.",
+    "mobile_dock_layers": "Lag",
+    "mobile_dock_play": "Afspil",
+    "mobile_dock_dates": "Datoer",
+    "mobile_dock_settings": "Indstillinger",
+    "mobile_dock_history": "Historik"
   },
   "de": {
     "api_example_archive_desc": "Lädt ein tgz-Paket mit allen veröffentlichten .json-Dateien, sofern das JSON-Archiv aktiv ist.",
@@ -711,7 +726,12 @@
     "qr_modal_download": "Bild speichern",
     "qr_modal_print": "Drucken",
     "qr_modal_close": "Schließen",
-    "qr_modal_save_hint": "Speichern oder teilen Sie das Bild, um diese Karte auf einem anderen Gerät zu öffnen."
+    "qr_modal_save_hint": "Speichern oder teilen Sie das Bild, um diese Karte auf einem anderen Gerät zu öffnen.",
+    "mobile_dock_layers": "Ebenen",
+    "mobile_dock_play": "Abspielen",
+    "mobile_dock_dates": "Daten",
+    "mobile_dock_settings": "Einstellungen",
+    "mobile_dock_history": "Verlauf"
   },
   "el": {
     "api_example_archive_desc": "Κατεβάζει ένα αρχείο tgz με όλα τα δημοσιευμένα αρχεία .json όταν είναι ενεργό το JSON αρχείο.",
@@ -885,7 +905,12 @@
     "qr_modal_download": "Αποθήκευση εικόνας",
     "qr_modal_print": "Εκτύπωση",
     "qr_modal_close": "Κλείσιμο",
-    "qr_modal_save_hint": "Αποθηκεύστε ή μοιραστείτε την εικόνα για να ανοίξετε αυτόν τον χάρτη σε άλλη συσκευή."
+    "qr_modal_save_hint": "Αποθηκεύστε ή μοιραστείτε την εικόνα για να ανοίξετε αυτόν τον χάρτη σε άλλη συσκευή.",
+    "mobile_dock_layers": "Επίπεδα",
+    "mobile_dock_play": "Αναπαραγωγή",
+    "mobile_dock_dates": "Ημερομηνίες",
+    "mobile_dock_settings": "Ρυθμίσεις",
+    "mobile_dock_history": "Ιστορικό"
   },
   "en": {
     "api_example_archive_desc": "Downloads a tgz bundle with every published .json file when the server enables the JSON archive.",
@@ -1080,7 +1105,12 @@
     "qr_modal_download": "Save image",
     "qr_modal_print": "Print",
     "qr_modal_close": "Close",
-    "qr_modal_save_hint": "Save or share the image to open this map on another device."
+    "qr_modal_save_hint": "Save or share the image to open this map on another device.",
+    "mobile_dock_layers": "Layers",
+    "mobile_dock_play": "Play",
+    "mobile_dock_dates": "Dates",
+    "mobile_dock_settings": "Settings",
+    "mobile_dock_history": "History"
   },
   "es": {
     "api_example_archive_desc": "Descarga un paquete tgz con todos los archivos .json publicados cuando el archivo JSON está activado.",
@@ -1254,7 +1284,12 @@
     "qr_modal_download": "Guardar imagen",
     "qr_modal_print": "Imprimir",
     "qr_modal_close": "Cerrar",
-    "qr_modal_save_hint": "Guarde o comparta la imagen para abrir este mapa en otro dispositivo."
+    "qr_modal_save_hint": "Guarde o comparta la imagen para abrir este mapa en otro dispositivo.",
+    "mobile_dock_layers": "Capas",
+    "mobile_dock_play": "Reproducir",
+    "mobile_dock_dates": "Fechas",
+    "mobile_dock_settings": "Ajustes",
+    "mobile_dock_history": "Historial"
   },
   "fa": {
     "api_example_archive_desc": "وقتی آرشیو JSON فعال باشد یک بسته tgz شامل تمام فایل‌های .json منتشرشده را دانلود می‌کند.",
@@ -1428,7 +1463,12 @@
     "qr_modal_download": "ذخیره تصویر",
     "qr_modal_print": "چاپ",
     "qr_modal_close": "بستن",
-    "qr_modal_save_hint": "برای باز کردن این نقشه در دستگاهی دیگر، تصویر را ذخیره یا هم‌رسانی کنید."
+    "qr_modal_save_hint": "برای باز کردن این نقشه در دستگاهی دیگر، تصویر را ذخیره یا هم‌رسانی کنید.",
+    "mobile_dock_layers": "لایه‌ها",
+    "mobile_dock_play": "پخش",
+    "mobile_dock_dates": "تاریخ‌ها",
+    "mobile_dock_settings": "تنظیمات",
+    "mobile_dock_history": "تاریخچه"
   },
   "fi": {
     "api_example_archive_desc": "Lataa tgz-paketin, jossa on kaikki julkaistut .json-tiedostot, kun JSON-arkisto on käytössä.",
@@ -1602,7 +1642,12 @@
     "qr_modal_download": "Tallenna kuva",
     "qr_modal_print": "Tulosta",
     "qr_modal_close": "Sulje",
-    "qr_modal_save_hint": "Tallenna tai jaa kuva avataksesi tämän kartan toisella laitteella."
+    "qr_modal_save_hint": "Tallenna tai jaa kuva avataksesi tämän kartan toisella laitteella.",
+    "mobile_dock_layers": "Tasot",
+    "mobile_dock_play": "Toista",
+    "mobile_dock_dates": "Päivät",
+    "mobile_dock_settings": "Asetukset",
+    "mobile_dock_history": "Historia"
   },
   "fr": {
     "api_example_archive_desc": "Télécharge une archive tgz avec tous les fichiers .json publiés lorsque l’archive JSON est activée.",
@@ -1776,7 +1821,12 @@
     "qr_modal_download": "Enregistrer l’image",
     "qr_modal_print": "Imprimer",
     "qr_modal_close": "Fermer",
-    "qr_modal_save_hint": "Enregistrez ou partagez l’image pour ouvrir cette carte sur un autre appareil."
+    "qr_modal_save_hint": "Enregistrez ou partagez l’image pour ouvrir cette carte sur un autre appareil.",
+    "mobile_dock_layers": "Couches",
+    "mobile_dock_play": "Lire",
+    "mobile_dock_dates": "Dates",
+    "mobile_dock_settings": "Réglages",
+    "mobile_dock_history": "Historique"
   },
   "he": {
     "api_example_archive_desc": "מורידה חבילת tgz עם כל קבצי .json שפורסמו כאשר ארכיון ה-JSON מופעל.",
@@ -1950,7 +2000,12 @@
     "qr_modal_download": "שמירת תמונה",
     "qr_modal_print": "הדפסה",
     "qr_modal_close": "סגירה",
-    "qr_modal_save_hint": "שמרו או שתפו את התמונה כדי לפתוח את המפה במכשיר אחר."
+    "qr_modal_save_hint": "שמרו או שתפו את התמונה כדי לפתוח את המפה במכשיר אחר.",
+    "mobile_dock_layers": "שכבות",
+    "mobile_dock_play": "הפעל",
+    "mobile_dock_dates": "תאריכים",
+    "mobile_dock_settings": "הגדרות",
+    "mobile_dock_history": "היסטוריה"
   },
   "hi": {
     "api_example_archive_desc": "JSON संग्रह सक्षम होने पर सभी प्रकाशित .json फ़ाइलों वाला tgz पैकेज डाउनलोड करता है।",
@@ -2124,7 +2179,12 @@
     "qr_modal_download": "चित्र सहेजें",
     "qr_modal_print": "प्रिंट",
     "qr_modal_close": "बंद करें",
-    "qr_modal_save_hint": "इस मानचित्र को दूसरे डिवाइस पर खोलने के लिए चित्र सहेजें या साझा करें।"
+    "qr_modal_save_hint": "इस मानचित्र को दूसरे डिवाइस पर खोलने के लिए चित्र सहेजें या साझा करें।",
+    "mobile_dock_layers": "परतें",
+    "mobile_dock_play": "चलाएँ",
+    "mobile_dock_dates": "तारीखें",
+    "mobile_dock_settings": "सेटिंग्स",
+    "mobile_dock_history": "इतिहास"
   },
   "hu": {
     "api_example_archive_desc": "Letölt egy tgz csomagot az összes közzétett .json fájllal, ha a JSON archívum engedélyezett.",
@@ -2298,7 +2358,12 @@
     "qr_modal_download": "Kép mentése",
     "qr_modal_print": "Nyomtatás",
     "qr_modal_close": "Bezárás",
-    "qr_modal_save_hint": "Mentse vagy ossza meg a képet a térkép másik eszközön való megnyitásához."
+    "qr_modal_save_hint": "Mentse vagy ossza meg a képet a térkép másik eszközön való megnyitásához.",
+    "mobile_dock_layers": "Rétegek",
+    "mobile_dock_play": "Lejátszás",
+    "mobile_dock_dates": "Dátumok",
+    "mobile_dock_settings": "Beállítások",
+    "mobile_dock_history": "Előzmények"
   },
   "id": {
     "api_example_archive_desc": "Mengunduh paket tgz dengan semua berkas .json yang dipublikasikan saat arsip JSON diaktifkan.",
@@ -2472,7 +2537,12 @@
     "qr_modal_download": "Simpan gambar",
     "qr_modal_print": "Cetak",
     "qr_modal_close": "Tutup",
-    "qr_modal_save_hint": "Simpan atau bagikan gambar untuk membuka peta ini di perangkat lain."
+    "qr_modal_save_hint": "Simpan atau bagikan gambar untuk membuka peta ini di perangkat lain.",
+    "mobile_dock_layers": "Lapisan",
+    "mobile_dock_play": "Putar",
+    "mobile_dock_dates": "Tanggal",
+    "mobile_dock_settings": "Pengaturan",
+    "mobile_dock_history": "Riwayat"
   },
   "it": {
     "api_example_archive_desc": "Scarica un archivio tgz con tutti i file .json pubblicati quando l’archivio JSON è attivo.",
@@ -2646,7 +2716,12 @@
     "qr_modal_download": "Salva immagine",
     "qr_modal_print": "Stampa",
     "qr_modal_close": "Chiudi",
-    "qr_modal_save_hint": "Salva o condividi l’immagine per aprire questa mappa su un altro dispositivo."
+    "qr_modal_save_hint": "Salva o condividi l’immagine per aprire questa mappa su un altro dispositivo.",
+    "mobile_dock_layers": "Livelli",
+    "mobile_dock_play": "Riproduci",
+    "mobile_dock_dates": "Date",
+    "mobile_dock_settings": "Impostazioni",
+    "mobile_dock_history": "Cronologia"
   },
   "ja": {
     "api_example_archive_desc": "JSON アーカイブが有効な場合、公開済みの .json ファイルをすべて含む tgz バンドルをダウンロードします。",
@@ -2820,7 +2895,12 @@
     "qr_modal_download": "画像を保存",
     "qr_modal_print": "印刷",
     "qr_modal_close": "閉じる",
-    "qr_modal_save_hint": "この地図を別の端末で開くには、画像を保存または共有してください。"
+    "qr_modal_save_hint": "この地図を別の端末で開くには、画像を保存または共有してください。",
+    "mobile_dock_layers": "レイヤー",
+    "mobile_dock_play": "再生",
+    "mobile_dock_dates": "日付",
+    "mobile_dock_settings": "設定",
+    "mobile_dock_history": "履歴"
   },
   "ko": {
     "api_example_archive_desc": "JSON 아카이브가 활성화된 경우 게시된 모든 .json 파일이 포함된 tgz 번들을 다운로드합니다.",
@@ -2994,7 +3074,12 @@
     "qr_modal_download": "이미지 저장",
     "qr_modal_print": "인쇄",
     "qr_modal_close": "닫기",
-    "qr_modal_save_hint": "다른 기기에서 이 지도를 열려면 이미지를 저장하거나 공유하세요."
+    "qr_modal_save_hint": "다른 기기에서 이 지도를 열려면 이미지를 저장하거나 공유하세요.",
+    "mobile_dock_layers": "레이어",
+    "mobile_dock_play": "재생",
+    "mobile_dock_dates": "날짜",
+    "mobile_dock_settings": "설정",
+    "mobile_dock_history": "기록"
   },
   "ms": {
     "api_example_archive_desc": "Memuat turun pakej tgz dengan semua fail .json yang diterbitkan apabila arkib JSON diaktifkan.",
@@ -3168,7 +3253,12 @@
     "qr_modal_download": "Simpan imej",
     "qr_modal_print": "Cetak",
     "qr_modal_close": "Tutup",
-    "qr_modal_save_hint": "Simpan atau kongsi imej untuk membuka peta ini pada peranti lain."
+    "qr_modal_save_hint": "Simpan atau kongsi imej untuk membuka peta ini pada peranti lain.",
+    "mobile_dock_layers": "Lapisan",
+    "mobile_dock_play": "Main",
+    "mobile_dock_dates": "Tarikh",
+    "mobile_dock_settings": "Tetapan",
+    "mobile_dock_history": "Sejarah"
   },
   "nl": {
     "api_example_archive_desc": "Downloadt een tgz-pakket met alle gepubliceerde .json-bestanden wanneer het JSON-archief is ingeschakeld.",
@@ -3342,7 +3432,12 @@
     "qr_modal_download": "Afbeelding opslaan",
     "qr_modal_print": "Afdrukken",
     "qr_modal_close": "Sluiten",
-    "qr_modal_save_hint": "Sla de afbeelding op of deel deze om deze kaart op een ander apparaat te openen."
+    "qr_modal_save_hint": "Sla de afbeelding op of deel deze om deze kaart op een ander apparaat te openen.",
+    "mobile_dock_layers": "Lagen",
+    "mobile_dock_play": "Afspelen",
+    "mobile_dock_dates": "Datums",
+    "mobile_dock_settings": "Instellingen",
+    "mobile_dock_history": "Geschiedenis"
   },
   "no": {
     "api_example_archive_desc": "Laster ned en tgz-pakke med alle publiserte .json-filer når JSON-arkivet er aktivert.",
@@ -3516,7 +3611,12 @@
     "qr_modal_download": "Lagre bilde",
     "qr_modal_print": "Skriv ut",
     "qr_modal_close": "Lukk",
-    "qr_modal_save_hint": "Lagre eller del bildet for å åpne dette kartet på en annen enhet."
+    "qr_modal_save_hint": "Lagre eller del bildet for å åpne dette kartet på en annen enhet.",
+    "mobile_dock_layers": "Lag",
+    "mobile_dock_play": "Spill av",
+    "mobile_dock_dates": "Datoer",
+    "mobile_dock_settings": "Innstillinger",
+    "mobile_dock_history": "Historikk"
   },
   "pl": {
     "api_example_archive_desc": "Pobiera paczkę tgz ze wszystkimi opublikowanymi plikami .json, gdy archiwum JSON jest włączone.",
@@ -3690,7 +3790,12 @@
     "qr_modal_download": "Zapisz obraz",
     "qr_modal_print": "Drukuj",
     "qr_modal_close": "Zamknij",
-    "qr_modal_save_hint": "Zapisz lub udostępnij obraz, aby otworzyć tę mapę na innym urządzeniu."
+    "qr_modal_save_hint": "Zapisz lub udostępnij obraz, aby otworzyć tę mapę na innym urządzeniu.",
+    "mobile_dock_layers": "Warstwy",
+    "mobile_dock_play": "Odtwórz",
+    "mobile_dock_dates": "Daty",
+    "mobile_dock_settings": "Ustawienia",
+    "mobile_dock_history": "Historia"
   },
   "pt": {
     "api_example_archive_desc": "Baixa um pacote tgz com todos os arquivos .json publicados quando o arquivo JSON está ativado.",
@@ -3864,7 +3969,12 @@
     "qr_modal_download": "Guardar imagem",
     "qr_modal_print": "Imprimir",
     "qr_modal_close": "Fechar",
-    "qr_modal_save_hint": "Guarde ou partilhe a imagem para abrir este mapa noutro dispositivo."
+    "qr_modal_save_hint": "Guarde ou partilhe a imagem para abrir este mapa noutro dispositivo.",
+    "mobile_dock_layers": "Camadas",
+    "mobile_dock_play": "Reproduzir",
+    "mobile_dock_dates": "Datas",
+    "mobile_dock_settings": "Definições",
+    "mobile_dock_history": "Histórico"
   },
   "ru": {
     "api_example_archive_desc": "Скачивает архив tgz со всеми опубликованными файлами .json, если включён JSON‑архив.",
@@ -4056,7 +4166,12 @@
     "qr_modal_download": "Сохранить картинку",
     "qr_modal_print": "Печать",
     "qr_modal_close": "Закрыть",
-    "qr_modal_save_hint": "Сохраните или отправьте картинку, чтобы открыть эту карту на другом устройстве."
+    "qr_modal_save_hint": "Сохраните или отправьте картинку, чтобы открыть эту карту на другом устройстве.",
+    "mobile_dock_layers": "Слои",
+    "mobile_dock_play": "Проиграть",
+    "mobile_dock_dates": "Даты",
+    "mobile_dock_settings": "Настройки",
+    "mobile_dock_history": "История"
   },
   "sv": {
     "api_example_archive_desc": "Hämtar ett tgz-paket med alla publicerade .json-filer när JSON-arkivet är aktiverat.",
@@ -4230,7 +4345,12 @@
     "qr_modal_download": "Spara bild",
     "qr_modal_print": "Skriv ut",
     "qr_modal_close": "Stäng",
-    "qr_modal_save_hint": "Spara eller dela bilden för att öppna kartan på en annan enhet."
+    "qr_modal_save_hint": "Spara eller dela bilden för att öppna kartan på en annan enhet.",
+    "mobile_dock_layers": "Lager",
+    "mobile_dock_play": "Spela upp",
+    "mobile_dock_dates": "Datum",
+    "mobile_dock_settings": "Inställningar",
+    "mobile_dock_history": "Historik"
   },
   "th": {
     "api_example_archive_desc": "ดาวน์โหลดแพ็กเกจ tgz ที่มีไฟล์ .json ทั้งหมดเมื่อเปิดใช้งานคลัง JSON",
@@ -4404,7 +4524,12 @@
     "qr_modal_download": "บันทึกรูปภาพ",
     "qr_modal_print": "พิมพ์",
     "qr_modal_close": "ปิด",
-    "qr_modal_save_hint": "บันทึกหรือแชร์รูปภาพเพื่อเปิดแผนที่นี้บนอุปกรณ์อื่น"
+    "qr_modal_save_hint": "บันทึกหรือแชร์รูปภาพเพื่อเปิดแผนที่นี้บนอุปกรณ์อื่น",
+    "mobile_dock_layers": "ชั้นข้อมูล",
+    "mobile_dock_play": "เล่น",
+    "mobile_dock_dates": "วันที่",
+    "mobile_dock_settings": "การตั้งค่า",
+    "mobile_dock_history": "ประวัติ"
   },
   "tr": {
     "api_example_archive_desc": "JSON arşivi etkinse yayımlanmış tüm .json dosyalarıyla bir tgz paketi indirir.",
@@ -4578,7 +4703,12 @@
     "qr_modal_download": "Görseli kaydet",
     "qr_modal_print": "Yazdır",
     "qr_modal_close": "Kapat",
-    "qr_modal_save_hint": "Bu haritayı başka bir cihazda açmak için görseli kaydedin veya paylaşın."
+    "qr_modal_save_hint": "Bu haritayı başka bir cihazda açmak için görseli kaydedin veya paylaşın.",
+    "mobile_dock_layers": "Katmanlar",
+    "mobile_dock_play": "Oynat",
+    "mobile_dock_dates": "Tarihler",
+    "mobile_dock_settings": "Ayarlar",
+    "mobile_dock_history": "Geçmiş"
   },
   "uk": {
     "api_example_archive_desc": "Завантажує tgz-пакет з усіма опублікованими файлами .json, коли JSON-архів увімкнено.",
@@ -4752,7 +4882,12 @@
     "qr_modal_download": "Зберегти зображення",
     "qr_modal_print": "Друк",
     "qr_modal_close": "Закрити",
-    "qr_modal_save_hint": "Збережіть або надішліть зображення, щоб відкрити цю карту на іншому пристрої."
+    "qr_modal_save_hint": "Збережіть або надішліть зображення, щоб відкрити цю карту на іншому пристрої.",
+    "mobile_dock_layers": "Шари",
+    "mobile_dock_play": "Відтворити",
+    "mobile_dock_dates": "Дати",
+    "mobile_dock_settings": "Налаштування",
+    "mobile_dock_history": "Історія"
   },
   "vi": {
     "api_example_archive_desc": "Tải gói tgz chứa mọi tệp .json đã công bố khi bật lưu trữ JSON.",
@@ -4926,7 +5061,12 @@
     "qr_modal_download": "Lưu hình ảnh",
     "qr_modal_print": "In",
     "qr_modal_close": "Đóng",
-    "qr_modal_save_hint": "Lưu hoặc chia sẻ hình ảnh để mở bản đồ này trên thiết bị khác."
+    "qr_modal_save_hint": "Lưu hoặc chia sẻ hình ảnh để mở bản đồ này trên thiết bị khác.",
+    "mobile_dock_layers": "Lớp",
+    "mobile_dock_play": "Phát",
+    "mobile_dock_dates": "Ngày",
+    "mobile_dock_settings": "Cài đặt",
+    "mobile_dock_history": "Lịch sử"
   },
   "zh": {
     "api_example_archive_desc": "在启用 JSON 归档时，下载包含所有已发布 .json 文件的 tgz 包。",
@@ -5100,6 +5240,11 @@
     "qr_modal_download": "保存图片",
     "qr_modal_print": "打印",
     "qr_modal_close": "关闭",
-    "qr_modal_save_hint": "保存或分享图片，以便在另一台设备上打开此地图。"
+    "qr_modal_save_hint": "保存或分享图片，以便在另一台设备上打开此地图。",
+    "mobile_dock_layers": "图层",
+    "mobile_dock_play": "播放",
+    "mobile_dock_dates": "日期",
+    "mobile_dock_settings": "设置",
+    "mobile_dock_history": "历史"
   }
 }
