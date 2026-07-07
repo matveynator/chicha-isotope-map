@@ -2675,6 +2675,7 @@ body, html {
         }
 
         .legend-modal-backdrop,
+        .qr-modal-backdrop,
         .info-modal-backdrop {
           display: none;
           position: fixed;
@@ -2684,6 +2685,11 @@ body, html {
           justify-content: center;
           align-items: center;
           padding: 16px;
+        }
+
+        .qr-modal-backdrop {
+          z-index: 2050;
+          background: rgba(0, 0, 0, 0.62);
         }
 
         .legend-modal-card {
@@ -2722,6 +2728,107 @@ body, html {
           cursor: pointer;
           color: var(--modal-text);
           font-family: inherit;
+        }
+
+        .qr-modal-card {
+          width: min(520px, 92vw);
+          max-height: 90vh;
+          display: grid;
+          gap: 14px;
+          padding: 18px;
+          border-radius: var(--map-ui-radius-card);
+          background: var(--map-ui-surface);
+          color: var(--modal-text);
+          border: 1px solid var(--map-ui-border);
+          box-shadow: var(--map-ui-shadow);
+          backdrop-filter: blur(18px) saturate(1.22);
+          -webkit-backdrop-filter: blur(18px) saturate(1.22);
+          font-family: var(--font-family-base);
+        }
+
+        .qr-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .qr-modal-title {
+          margin: 0;
+          font-size: var(--font-size-lg);
+          line-height: 1.2;
+          font-weight: 700;
+        }
+
+        .qr-modal-close {
+          width: 36px;
+          height: 36px;
+          border: 0;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--control-bg);
+          color: var(--modal-text);
+          cursor: pointer;
+          font-size: 22px;
+          line-height: 1;
+        }
+
+        .qr-modal-close:hover,
+        .qr-modal-action:hover {
+          background: var(--control-bg-hover);
+        }
+
+        .qr-modal-image-frame {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 12px;
+          border-radius: 22px;
+          background: rgba(255, 255, 255, 0.92);
+          box-shadow: inset 0 0 0 1px rgba(20, 40, 30, 0.08);
+        }
+
+        .qr-modal-image {
+          display: block;
+          width: min(420px, 78vh, 100%);
+          height: auto;
+          aspect-ratio: 1;
+          object-fit: contain;
+        }
+
+        .qr-modal-hint {
+          margin: 0;
+          color: var(--map-ui-muted);
+          font-size: var(--font-size-sm);
+          line-height: 1.35;
+        }
+
+        .qr-modal-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          justify-content: flex-end;
+        }
+
+        .qr-modal-action {
+          min-height: 38px;
+          padding: 8px 14px;
+          border: 1px solid var(--map-ui-border);
+          border-radius: 999px;
+          background: var(--control-bg);
+          color: var(--modal-text);
+          cursor: pointer;
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-sm);
+          line-height: 1.1;
+        }
+
+        .qr-modal-action-primary {
+          background: var(--map-ui-accent-soft);
+          color: var(--map-ui-accent-strong);
+          border-color: color-mix(in srgb, var(--map-ui-accent-strong) 34%, transparent);
         }
 
         #mobileControlDock {
@@ -3182,6 +3289,35 @@ body, html {
             margin-left: 0;
             font-weight: 700;
             white-space: nowrap;
+          }
+
+          .qr-modal-backdrop {
+            padding: 12px;
+          }
+
+          .qr-modal-card {
+            width: 90vw;
+            max-height: 88vh;
+            padding: 14px;
+            gap: 12px;
+          }
+
+          .qr-modal-image-frame {
+            padding: 10px;
+            border-radius: 18px;
+          }
+
+          .qr-modal-image {
+            width: calc(90vw - 48px);
+            max-width: 100%;
+          }
+
+          .qr-modal-actions {
+            justify-content: stretch;
+          }
+
+          .qr-modal-action {
+            flex: 1 1 auto;
           }
         }
 
@@ -3715,6 +3851,25 @@ body, html {
     <span>Settings</span>
   </button>
   <div class="mobile-dock-panel" aria-live="polite"></div>
+</div>
+
+<!-- QR Modal -->
+<div id="qrModal" class="qr-modal-backdrop" aria-hidden="true">
+  <div class="qr-modal-card" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
+    <div class="qr-modal-header">
+      <h3 id="qrModalTitle" class="qr-modal-title">{{translate "qr_modal_title"}}</h3>
+      <button id="qrModalClose" class="qr-modal-close" type="button" aria-label="{{translate "qr_modal_close"}}">×</button>
+    </div>
+    <div class="qr-modal-image-frame">
+      <img id="qrModalImage" class="qr-modal-image" alt="{{translate "qr_modal_title"}}">
+    </div>
+    <p id="qrModalHint" class="qr-modal-hint">{{translate "qr_modal_save_hint"}}</p>
+    <div class="qr-modal-actions">
+      <button id="qrModalDownload" class="qr-modal-action qr-modal-action-primary" type="button">{{translate "qr_modal_download"}}</button>
+      <button id="qrModalPrint" class="qr-modal-action" type="button">{{translate "qr_modal_print"}}</button>
+      <button id="qrModalCloseFooter" class="qr-modal-action" type="button">{{translate "qr_modal_close"}}</button>
+    </div>
+  </div>
 </div>
 
 <!-- Legend Modal -->
@@ -11145,19 +11300,142 @@ function resolveShortLinkForQr() {
     });
 }
 
+let activeQrImageURL = '';
+let activeQrPayloadURL = '';
+
+function buildQrImageURL(payloadURL) {
+  return '/qrpng?u=' + encodeURIComponent(payloadURL);
+}
+
+function showQrModal(qrImageURL, payloadURL) {
+  activeQrImageURL = qrImageURL;
+  activeQrPayloadURL = payloadURL;
+  const modal = document.getElementById('qrModal');
+  const image = document.getElementById('qrModalImage');
+  if (!modal || !image) {
+    window.open(qrImageURL, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  image.src = qrImageURL;
+  image.dataset.payload = payloadURL;
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function hideQrModal() {
+  const modal = document.getElementById('qrModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+}
+
 function openServerPoster() {
   if (typeof updateUrl === 'function') { try { updateUrl(); } catch(_){} }
   var full = window.location.href;
   resolveShortLinkForQr()
     .then(function (shortURL) {
       var payload = shortURL || full;
-      var dst = '/qrpng?u=' + encodeURIComponent(payload);
-      window.open(dst, '_blank', 'noopener,noreferrer');
+      showQrModal(buildQrImageURL(payload), payload);
     })
     .catch(function () {
-      var dst = '/qrpng?u=' + encodeURIComponent(full);
-      window.open(dst, '_blank', 'noopener,noreferrer');
+      showQrModal(buildQrImageURL(full), full);
     });
+}
+
+async function downloadQrImage() {
+  if (!activeQrImageURL) return;
+  const filename = 'chicha-isotope-map-qr.png';
+  const response = await fetch(activeQrImageURL, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error('QR download failed: ' + response.status);
+  }
+  const blob = await response.blob();
+  const file = (typeof File === 'function') ? new File([blob], filename, { type: blob.type || 'image/png' }) : null;
+  if (file && navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+    await navigator.share({
+      files: [file],
+      title: translate('qr_modal_title'),
+      text: activeQrPayloadURL || window.location.href
+    });
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+function printQrImage() {
+  if (!activeQrImageURL) return;
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.onload = function () {
+    try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      }
+    } catch (error) {
+      console.warn('QR image print failed:', error);
+      window.open(activeQrImageURL, '_blank', 'noopener,noreferrer');
+    }
+    setTimeout(function () {
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    }, 1000);
+  };
+  iframe.src = activeQrImageURL;
+  document.body.appendChild(iframe);
+}
+
+function bindQrModalControls() {
+  const modal = document.getElementById('qrModal');
+  const closeButtons = [
+    document.getElementById('qrModalClose'),
+    document.getElementById('qrModalCloseFooter')
+  ];
+  closeButtons.forEach(function (button) {
+    if (!button) return;
+    button.addEventListener('click', hideQrModal);
+  });
+  const downloadButton = document.getElementById('qrModalDownload');
+  if (downloadButton) {
+    downloadButton.addEventListener('click', function () {
+      downloadQrImage().catch(function (error) {
+        console.warn('QR image save failed:', error);
+        if (activeQrImageURL) {
+          window.open(activeQrImageURL, '_blank', 'noopener,noreferrer');
+        }
+      });
+    });
+  }
+  const printButton = document.getElementById('qrModalPrint');
+  if (printButton) {
+    printButton.addEventListener('click', printQrImage);
+  }
+  if (modal) {
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) {
+        hideQrModal();
+      }
+    });
+  }
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      hideQrModal();
+    }
+  });
 }
 
 function bindDesktopExternalLinkRouting() {
@@ -11195,6 +11473,7 @@ function bindDesktopExternalLinkRouting() {
 
 function initializeUIElements() {
   bindDesktopExternalLinkRouting();
+  bindQrModalControls();
   var locateButton = document.getElementById('locateButton');
   if (locateButton) {
     locateButton.addEventListener('click', function () {

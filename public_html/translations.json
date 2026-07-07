@@ -166,7 +166,12 @@
     "unit_micro_roentgen_per_hour": "µR/ساعة",
     "unit_micro_sievert_per_hour": "µSv/ساعة",
     "radiation_reading_label": "الإشعاع",
-    "radiation_hazard_label": "الخطر"
+    "radiation_hazard_label": "الخطر",
+    "qr_modal_title": "رمز QR",
+    "qr_modal_download": "حفظ الصورة",
+    "qr_modal_print": "طباعة",
+    "qr_modal_close": "إغلاق",
+    "qr_modal_save_hint": "احفظ الصورة أو شاركها لفتح هذه الخريطة على جهاز آخر."
   },
   "cs": {
     "api_example_archive_desc": "Stáhne archiv tgz se všemi zveřejněnými soubory .json, pokud je JSON archiv zapnutý.",
@@ -353,7 +358,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Záření",
-    "radiation_hazard_label": "Nebezpečí"
+    "radiation_hazard_label": "Nebezpečí",
+    "qr_modal_title": "QR kód",
+    "qr_modal_download": "Uložit obrázek",
+    "qr_modal_print": "Tisk",
+    "qr_modal_close": "Zavřít",
+    "qr_modal_save_hint": "Uložte nebo sdílejte obrázek pro otevření této mapy na jiném zařízení."
   },
   "da": {
     "api_example_archive_desc": "Downloader en tgz-pakke med alle offentliggjorte .json-filer når JSON-arkivet er aktiveret.",
@@ -522,7 +532,12 @@
     "unit_micro_roentgen_per_hour": "µR/t",
     "unit_micro_sievert_per_hour": "µSv/t",
     "radiation_reading_label": "Stråling",
-    "radiation_hazard_label": "Fare"
+    "radiation_hazard_label": "Fare",
+    "qr_modal_title": "QR-kode",
+    "qr_modal_download": "Gem billede",
+    "qr_modal_print": "Print",
+    "qr_modal_close": "Luk",
+    "qr_modal_save_hint": "Gem eller del billedet for at åbne kortet på en anden enhed."
   },
   "de": {
     "api_example_archive_desc": "Lädt ein tgz-Paket mit allen veröffentlichten .json-Dateien, sofern das JSON-Archiv aktiv ist.",
@@ -691,7 +706,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Strahlung",
-    "radiation_hazard_label": "Gefahr"
+    "radiation_hazard_label": "Gefahr",
+    "qr_modal_title": "QR-Code",
+    "qr_modal_download": "Bild speichern",
+    "qr_modal_print": "Drucken",
+    "qr_modal_close": "Schließen",
+    "qr_modal_save_hint": "Speichern oder teilen Sie das Bild, um diese Karte auf einem anderen Gerät zu öffnen."
   },
   "el": {
     "api_example_archive_desc": "Κατεβάζει ένα αρχείο tgz με όλα τα δημοσιευμένα αρχεία .json όταν είναι ενεργό το JSON αρχείο.",
@@ -860,7 +880,12 @@
     "unit_micro_roentgen_per_hour": "µR/ώρα",
     "unit_micro_sievert_per_hour": "µSv/ώρα",
     "radiation_reading_label": "Ακτινοβολία",
-    "radiation_hazard_label": "Κίνδυνος"
+    "radiation_hazard_label": "Κίνδυνος",
+    "qr_modal_title": "Κωδικός QR",
+    "qr_modal_download": "Αποθήκευση εικόνας",
+    "qr_modal_print": "Εκτύπωση",
+    "qr_modal_close": "Κλείσιμο",
+    "qr_modal_save_hint": "Αποθηκεύστε ή μοιραστείτε την εικόνα για να ανοίξετε αυτόν τον χάρτη σε άλλη συσκευή."
   },
   "en": {
     "api_example_archive_desc": "Downloads a tgz bundle with every published .json file when the server enables the JSON archive.",
@@ -1050,7 +1075,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Radiation",
-    "radiation_hazard_label": "Hazard"
+    "radiation_hazard_label": "Hazard",
+    "qr_modal_title": "QR code",
+    "qr_modal_download": "Save image",
+    "qr_modal_print": "Print",
+    "qr_modal_close": "Close",
+    "qr_modal_save_hint": "Save or share the image to open this map on another device."
   },
   "es": {
     "api_example_archive_desc": "Descarga un paquete tgz con todos los archivos .json publicados cuando el archivo JSON está activado.",
@@ -1219,7 +1249,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Radiación",
-    "radiation_hazard_label": "Peligro"
+    "radiation_hazard_label": "Peligro",
+    "qr_modal_title": "Código QR",
+    "qr_modal_download": "Guardar imagen",
+    "qr_modal_print": "Imprimir",
+    "qr_modal_close": "Cerrar",
+    "qr_modal_save_hint": "Guarde o comparta la imagen para abrir este mapa en otro dispositivo."
   },
   "fa": {
     "api_example_archive_desc": "وقتی آرشیو JSON فعال باشد یک بسته tgz شامل تمام فایل‌های .json منتشرشده را دانلود می‌کند.",
@@ -1388,7 +1423,12 @@
     "unit_micro_roentgen_per_hour": "µR/ساعت",
     "unit_micro_sievert_per_hour": "µSv/ساعت",
     "radiation_reading_label": "تابش",
-    "radiation_hazard_label": "خطر"
+    "radiation_hazard_label": "خطر",
+    "qr_modal_title": "کد QR",
+    "qr_modal_download": "ذخیره تصویر",
+    "qr_modal_print": "چاپ",
+    "qr_modal_close": "بستن",
+    "qr_modal_save_hint": "برای باز کردن این نقشه در دستگاهی دیگر، تصویر را ذخیره یا هم‌رسانی کنید."
   },
   "fi": {
     "api_example_archive_desc": "Lataa tgz-paketin, jossa on kaikki julkaistut .json-tiedostot, kun JSON-arkisto on käytössä.",
@@ -1557,7 +1597,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Säteily",
-    "radiation_hazard_label": "Vaara"
+    "radiation_hazard_label": "Vaara",
+    "qr_modal_title": "QR-koodi",
+    "qr_modal_download": "Tallenna kuva",
+    "qr_modal_print": "Tulosta",
+    "qr_modal_close": "Sulje",
+    "qr_modal_save_hint": "Tallenna tai jaa kuva avataksesi tämän kartan toisella laitteella."
   },
   "fr": {
     "api_example_archive_desc": "Télécharge une archive tgz avec tous les fichiers .json publiés lorsque l’archive JSON est activée.",
@@ -1726,7 +1771,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Rayonnement",
-    "radiation_hazard_label": "Danger"
+    "radiation_hazard_label": "Danger",
+    "qr_modal_title": "Code QR",
+    "qr_modal_download": "Enregistrer l’image",
+    "qr_modal_print": "Imprimer",
+    "qr_modal_close": "Fermer",
+    "qr_modal_save_hint": "Enregistrez ou partagez l’image pour ouvrir cette carte sur un autre appareil."
   },
   "he": {
     "api_example_archive_desc": "מורידה חבילת tgz עם כל קבצי .json שפורסמו כאשר ארכיון ה-JSON מופעל.",
@@ -1895,7 +1945,12 @@
     "unit_micro_roentgen_per_hour": "µR/שעה",
     "unit_micro_sievert_per_hour": "µSv/שעה",
     "radiation_reading_label": "קרינה",
-    "radiation_hazard_label": "סכנה"
+    "radiation_hazard_label": "סכנה",
+    "qr_modal_title": "קוד QR",
+    "qr_modal_download": "שמירת תמונה",
+    "qr_modal_print": "הדפסה",
+    "qr_modal_close": "סגירה",
+    "qr_modal_save_hint": "שמרו או שתפו את התמונה כדי לפתוח את המפה במכשיר אחר."
   },
   "hi": {
     "api_example_archive_desc": "JSON संग्रह सक्षम होने पर सभी प्रकाशित .json फ़ाइलों वाला tgz पैकेज डाउनलोड करता है।",
@@ -2064,7 +2119,12 @@
     "unit_micro_roentgen_per_hour": "µR/घंटा",
     "unit_micro_sievert_per_hour": "µSv/घंटा",
     "radiation_reading_label": "विकिरण",
-    "radiation_hazard_label": "खतरा"
+    "radiation_hazard_label": "खतरा",
+    "qr_modal_title": "QR कोड",
+    "qr_modal_download": "चित्र सहेजें",
+    "qr_modal_print": "प्रिंट",
+    "qr_modal_close": "बंद करें",
+    "qr_modal_save_hint": "इस मानचित्र को दूसरे डिवाइस पर खोलने के लिए चित्र सहेजें या साझा करें।"
   },
   "hu": {
     "api_example_archive_desc": "Letölt egy tgz csomagot az összes közzétett .json fájllal, ha a JSON archívum engedélyezett.",
@@ -2233,7 +2293,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Sugárzás",
-    "radiation_hazard_label": "Veszély"
+    "radiation_hazard_label": "Veszély",
+    "qr_modal_title": "QR-kód",
+    "qr_modal_download": "Kép mentése",
+    "qr_modal_print": "Nyomtatás",
+    "qr_modal_close": "Bezárás",
+    "qr_modal_save_hint": "Mentse vagy ossza meg a képet a térkép másik eszközön való megnyitásához."
   },
   "id": {
     "api_example_archive_desc": "Mengunduh paket tgz dengan semua berkas .json yang dipublikasikan saat arsip JSON diaktifkan.",
@@ -2402,7 +2467,12 @@
     "unit_micro_roentgen_per_hour": "µR/jam",
     "unit_micro_sievert_per_hour": "µSv/jam",
     "radiation_reading_label": "Radiasi",
-    "radiation_hazard_label": "Bahaya"
+    "radiation_hazard_label": "Bahaya",
+    "qr_modal_title": "Kode QR",
+    "qr_modal_download": "Simpan gambar",
+    "qr_modal_print": "Cetak",
+    "qr_modal_close": "Tutup",
+    "qr_modal_save_hint": "Simpan atau bagikan gambar untuk membuka peta ini di perangkat lain."
   },
   "it": {
     "api_example_archive_desc": "Scarica un archivio tgz con tutti i file .json pubblicati quando l’archivio JSON è attivo.",
@@ -2571,7 +2641,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Radiazione",
-    "radiation_hazard_label": "Pericolo"
+    "radiation_hazard_label": "Pericolo",
+    "qr_modal_title": "Codice QR",
+    "qr_modal_download": "Salva immagine",
+    "qr_modal_print": "Stampa",
+    "qr_modal_close": "Chiudi",
+    "qr_modal_save_hint": "Salva o condividi l’immagine per aprire questa mappa su un altro dispositivo."
   },
   "ja": {
     "api_example_archive_desc": "JSON アーカイブが有効な場合、公開済みの .json ファイルをすべて含む tgz バンドルをダウンロードします。",
@@ -2740,7 +2815,12 @@
     "unit_micro_roentgen_per_hour": "µR/時",
     "unit_micro_sievert_per_hour": "µSv/時",
     "radiation_reading_label": "放射線",
-    "radiation_hazard_label": "危険"
+    "radiation_hazard_label": "危険",
+    "qr_modal_title": "QRコード",
+    "qr_modal_download": "画像を保存",
+    "qr_modal_print": "印刷",
+    "qr_modal_close": "閉じる",
+    "qr_modal_save_hint": "この地図を別の端末で開くには、画像を保存または共有してください。"
   },
   "ko": {
     "api_example_archive_desc": "JSON 아카이브가 활성화된 경우 게시된 모든 .json 파일이 포함된 tgz 번들을 다운로드합니다.",
@@ -2909,7 +2989,12 @@
     "unit_micro_roentgen_per_hour": "µR/시",
     "unit_micro_sievert_per_hour": "µSv/시",
     "radiation_reading_label": "방사선",
-    "radiation_hazard_label": "위험"
+    "radiation_hazard_label": "위험",
+    "qr_modal_title": "QR 코드",
+    "qr_modal_download": "이미지 저장",
+    "qr_modal_print": "인쇄",
+    "qr_modal_close": "닫기",
+    "qr_modal_save_hint": "다른 기기에서 이 지도를 열려면 이미지를 저장하거나 공유하세요."
   },
   "ms": {
     "api_example_archive_desc": "Memuat turun pakej tgz dengan semua fail .json yang diterbitkan apabila arkib JSON diaktifkan.",
@@ -3078,7 +3163,12 @@
     "unit_micro_roentgen_per_hour": "µR/jam",
     "unit_micro_sievert_per_hour": "µSv/jam",
     "radiation_reading_label": "Sinaran",
-    "radiation_hazard_label": "Bahaya"
+    "radiation_hazard_label": "Bahaya",
+    "qr_modal_title": "Kod QR",
+    "qr_modal_download": "Simpan imej",
+    "qr_modal_print": "Cetak",
+    "qr_modal_close": "Tutup",
+    "qr_modal_save_hint": "Simpan atau kongsi imej untuk membuka peta ini pada peranti lain."
   },
   "nl": {
     "api_example_archive_desc": "Downloadt een tgz-pakket met alle gepubliceerde .json-bestanden wanneer het JSON-archief is ingeschakeld.",
@@ -3247,7 +3337,12 @@
     "unit_micro_roentgen_per_hour": "µR/u",
     "unit_micro_sievert_per_hour": "µSv/u",
     "radiation_reading_label": "Straling",
-    "radiation_hazard_label": "Gevaar"
+    "radiation_hazard_label": "Gevaar",
+    "qr_modal_title": "QR-code",
+    "qr_modal_download": "Afbeelding opslaan",
+    "qr_modal_print": "Afdrukken",
+    "qr_modal_close": "Sluiten",
+    "qr_modal_save_hint": "Sla de afbeelding op of deel deze om deze kaart op een ander apparaat te openen."
   },
   "no": {
     "api_example_archive_desc": "Laster ned en tgz-pakke med alle publiserte .json-filer når JSON-arkivet er aktivert.",
@@ -3416,7 +3511,12 @@
     "unit_micro_roentgen_per_hour": "µR/t",
     "unit_micro_sievert_per_hour": "µSv/t",
     "radiation_reading_label": "Stråling",
-    "radiation_hazard_label": "Fare"
+    "radiation_hazard_label": "Fare",
+    "qr_modal_title": "QR-kode",
+    "qr_modal_download": "Lagre bilde",
+    "qr_modal_print": "Skriv ut",
+    "qr_modal_close": "Lukk",
+    "qr_modal_save_hint": "Lagre eller del bildet for å åpne dette kartet på en annen enhet."
   },
   "pl": {
     "api_example_archive_desc": "Pobiera paczkę tgz ze wszystkimi opublikowanymi plikami .json, gdy archiwum JSON jest włączone.",
@@ -3585,7 +3685,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Promieniowanie",
-    "radiation_hazard_label": "Zagrożenie"
+    "radiation_hazard_label": "Zagrożenie",
+    "qr_modal_title": "Kod QR",
+    "qr_modal_download": "Zapisz obraz",
+    "qr_modal_print": "Drukuj",
+    "qr_modal_close": "Zamknij",
+    "qr_modal_save_hint": "Zapisz lub udostępnij obraz, aby otworzyć tę mapę na innym urządzeniu."
   },
   "pt": {
     "api_example_archive_desc": "Baixa um pacote tgz com todos os arquivos .json publicados quando o arquivo JSON está ativado.",
@@ -3754,7 +3859,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Radiação",
-    "radiation_hazard_label": "Perigo"
+    "radiation_hazard_label": "Perigo",
+    "qr_modal_title": "Código QR",
+    "qr_modal_download": "Guardar imagem",
+    "qr_modal_print": "Imprimir",
+    "qr_modal_close": "Fechar",
+    "qr_modal_save_hint": "Guarde ou partilhe a imagem para abrir este mapa noutro dispositivo."
   },
   "ru": {
     "api_example_archive_desc": "Скачивает архив tgz со всеми опубликованными файлами .json, если включён JSON‑архив.",
@@ -3941,7 +4051,12 @@
     "unit_micro_roentgen_per_hour": "мкР/ч",
     "unit_micro_sievert_per_hour": "мкЗв/ч",
     "radiation_reading_label": "Излучение",
-    "radiation_hazard_label": "Опасность"
+    "radiation_hazard_label": "Опасность",
+    "qr_modal_title": "QR-код",
+    "qr_modal_download": "Сохранить картинку",
+    "qr_modal_print": "Печать",
+    "qr_modal_close": "Закрыть",
+    "qr_modal_save_hint": "Сохраните или отправьте картинку, чтобы открыть эту карту на другом устройстве."
   },
   "sv": {
     "api_example_archive_desc": "Hämtar ett tgz-paket med alla publicerade .json-filer när JSON-arkivet är aktiverat.",
@@ -4110,7 +4225,12 @@
     "unit_micro_roentgen_per_hour": "µR/h",
     "unit_micro_sievert_per_hour": "µSv/h",
     "radiation_reading_label": "Strålning",
-    "radiation_hazard_label": "Fara"
+    "radiation_hazard_label": "Fara",
+    "qr_modal_title": "QR-kod",
+    "qr_modal_download": "Spara bild",
+    "qr_modal_print": "Skriv ut",
+    "qr_modal_close": "Stäng",
+    "qr_modal_save_hint": "Spara eller dela bilden för att öppna kartan på en annan enhet."
   },
   "th": {
     "api_example_archive_desc": "ดาวน์โหลดแพ็กเกจ tgz ที่มีไฟล์ .json ทั้งหมดเมื่อเปิดใช้งานคลัง JSON",
@@ -4279,7 +4399,12 @@
     "unit_micro_roentgen_per_hour": "µR/ชม.",
     "unit_micro_sievert_per_hour": "µSv/ชม.",
     "radiation_reading_label": "รังสี",
-    "radiation_hazard_label": "อันตราย"
+    "radiation_hazard_label": "อันตราย",
+    "qr_modal_title": "รหัส QR",
+    "qr_modal_download": "บันทึกรูปภาพ",
+    "qr_modal_print": "พิมพ์",
+    "qr_modal_close": "ปิด",
+    "qr_modal_save_hint": "บันทึกหรือแชร์รูปภาพเพื่อเปิดแผนที่นี้บนอุปกรณ์อื่น"
   },
   "tr": {
     "api_example_archive_desc": "JSON arşivi etkinse yayımlanmış tüm .json dosyalarıyla bir tgz paketi indirir.",
@@ -4448,7 +4573,12 @@
     "unit_micro_roentgen_per_hour": "µR/sa",
     "unit_micro_sievert_per_hour": "µSv/sa",
     "radiation_reading_label": "Radyasyon",
-    "radiation_hazard_label": "Tehlike"
+    "radiation_hazard_label": "Tehlike",
+    "qr_modal_title": "QR kodu",
+    "qr_modal_download": "Görseli kaydet",
+    "qr_modal_print": "Yazdır",
+    "qr_modal_close": "Kapat",
+    "qr_modal_save_hint": "Bu haritayı başka bir cihazda açmak için görseli kaydedin veya paylaşın."
   },
   "uk": {
     "api_example_archive_desc": "Завантажує tgz-пакет з усіма опублікованими файлами .json, коли JSON-архів увімкнено.",
@@ -4617,7 +4747,12 @@
     "unit_micro_roentgen_per_hour": "мкР/год",
     "unit_micro_sievert_per_hour": "мкЗв/год",
     "radiation_reading_label": "Випромінювання",
-    "radiation_hazard_label": "Небезпека"
+    "radiation_hazard_label": "Небезпека",
+    "qr_modal_title": "QR-код",
+    "qr_modal_download": "Зберегти зображення",
+    "qr_modal_print": "Друк",
+    "qr_modal_close": "Закрити",
+    "qr_modal_save_hint": "Збережіть або надішліть зображення, щоб відкрити цю карту на іншому пристрої."
   },
   "vi": {
     "api_example_archive_desc": "Tải gói tgz chứa mọi tệp .json đã công bố khi bật lưu trữ JSON.",
@@ -4786,7 +4921,12 @@
     "unit_micro_roentgen_per_hour": "µR/giờ",
     "unit_micro_sievert_per_hour": "µSv/giờ",
     "radiation_reading_label": "Bức xạ",
-    "radiation_hazard_label": "Nguy hiểm"
+    "radiation_hazard_label": "Nguy hiểm",
+    "qr_modal_title": "Mã QR",
+    "qr_modal_download": "Lưu hình ảnh",
+    "qr_modal_print": "In",
+    "qr_modal_close": "Đóng",
+    "qr_modal_save_hint": "Lưu hoặc chia sẻ hình ảnh để mở bản đồ này trên thiết bị khác."
   },
   "zh": {
     "api_example_archive_desc": "在启用 JSON 归档时，下载包含所有已发布 .json 文件的 tgz 包。",
@@ -4955,6 +5095,11 @@
     "unit_micro_roentgen_per_hour": "µR/小时",
     "unit_micro_sievert_per_hour": "µSv/小时",
     "radiation_reading_label": "辐射",
-    "radiation_hazard_label": "危险"
+    "radiation_hazard_label": "危险",
+    "qr_modal_title": "二维码",
+    "qr_modal_download": "保存图片",
+    "qr_modal_print": "打印",
+    "qr_modal_close": "关闭",
+    "qr_modal_save_hint": "保存或分享图片，以便在另一台设备上打开此地图。"
   }
 }
