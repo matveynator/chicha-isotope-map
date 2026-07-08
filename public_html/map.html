@@ -104,6 +104,7 @@ body, html {
           --map-ui-handle: #3aaa4f;
           --map-ui-icon-size: 44px;
           --map-right-stack-top: 20px;
+          --map-right-stack-right: 20px;
           --map-right-stack-gap: 8px;
           --map-left-stack-left: 10px;
           --map-left-stack-gap: var(--map-right-stack-gap);
@@ -302,7 +303,7 @@ body, html {
         #themeToggle {
           position: absolute;
           bottom: 140px;
-          right: 20px;
+          right: var(--map-right-stack-right);
           background: var(--control-bg);
           border: var(--legend-border);
           border-radius: 4px;
@@ -446,7 +447,7 @@ body, html {
         #mapCacheStatus {
           position: absolute;
           bottom: var(--map-cache-bottom, 10px);
-          right: 10px;
+          right: var(--map-right-stack-right);
           left: auto;
           transform: none;
           background: var(--overlay-bg);
@@ -2935,10 +2936,12 @@ body, html {
         }
 
         .qr-modal-card {
+          --qr-modal-max-height: min(720px, calc(100dvh - 32px));
           box-sizing: border-box;
           width: min(520px, 80vw);
-          max-height: 80vh;
+          max-height: var(--qr-modal-max-height);
           display: grid;
+          grid-template-rows: auto minmax(0, 1fr) auto auto;
           gap: 14px;
           padding: 18px;
           border-radius: var(--map-ui-radius-card);
@@ -2949,7 +2952,7 @@ body, html {
           backdrop-filter: blur(18px) saturate(1.22);
           -webkit-backdrop-filter: blur(18px) saturate(1.22);
           font-family: var(--font-family-base);
-          overflow: auto;
+          overflow: hidden;
         }
 
         .qr-modal-header {
@@ -2990,15 +2993,18 @@ body, html {
           display: flex;
           align-items: center;
           justify-content: center;
+          min-height: 0;
           padding: 12px;
           border-radius: 22px;
           background: rgba(255, 255, 255, 0.92);
           box-shadow: inset 0 0 0 1px rgba(20, 40, 30, 0.08);
+          overflow: hidden;
         }
 
         .qr-modal-image {
           display: block;
-          width: min(420px, 78vh, 100%);
+          width: min(420px, 100%, calc(var(--qr-modal-max-height) - 204px));
+          max-height: 100%;
           height: auto;
           aspect-ratio: 1;
           object-fit: contain;
@@ -3573,32 +3579,48 @@ body, html {
           }
 
           .qr-modal-backdrop {
-            padding: 10vh 10vw;
+            padding: 12px;
           }
 
           .qr-modal-card {
-            width: 80vw;
-            max-height: 80vh;
-            padding: 14px;
-            gap: 12px;
+            --qr-modal-max-height: calc(100dvh - 24px);
+            width: min(420px, calc(100vw - 24px));
+            padding: 12px;
+            gap: 8px;
+          }
+
+          .qr-modal-title {
+            font-size: var(--font-size-base);
+          }
+
+          .qr-modal-close {
+            width: 32px;
+            height: 32px;
+            font-size: 20px;
           }
 
           .qr-modal-image-frame {
-            padding: 10px;
-            border-radius: 18px;
+            padding: 8px;
+            border-radius: 16px;
           }
 
           .qr-modal-image {
-            width: calc(80vw - 48px);
-            max-width: 100%;
+            width: min(100%, calc(100vw - 56px), calc(100dvh - 190px));
           }
 
           .qr-modal-actions {
-            justify-content: stretch;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
           }
 
           .qr-modal-action {
-            flex: 1 1 auto;
+            min-height: 34px;
+            padding: 6px 8px;
+            font-size: var(--font-size-xs);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
           }
         }
 
@@ -11647,58 +11669,231 @@ function openServerPoster() {
 async function downloadQrImage() {
   if (!activeQrImageURL) return;
   const filename = 'chicha-isotope-map-qr.png';
+  let fileHandle = null;
+
+  if (shouldUseDesktopQrSavePicker()) {
+    try {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: 'PNG image',
+          accept: { 'image/png': ['.png'] }
+        }]
+      });
+    } catch (error) {
+      if (isUserCancelledFileAction(error)) {
+        return;
+      }
+      console.warn('QR save picker failed:', error);
+    }
+  }
+
   const response = await fetch(activeQrImageURL, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('QR download failed: ' + response.status);
   }
   const blob = await response.blob();
-  const file = (typeof File === 'function') ? new File([blob], filename, { type: blob.type || 'image/png' }) : null;
-  if (file && navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
-    await navigator.share({
-      files: [file],
-      title: translate('qr_modal_title'),
-      text: activeQrPayloadURL || window.location.href
-    });
-    return;
+  if (fileHandle) {
+    try {
+      await writeBlobToFileHandle(fileHandle, blob);
+      return;
+    } catch (error) {
+      console.warn('QR file write failed:', error);
+    }
   }
+
+  const file = (typeof File === 'function') ? new File([blob], filename, { type: blob.type || 'image/png' }) : null;
+  if (shouldUseNativeQrShare(file)) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: translate('qr_modal_title'),
+        text: activeQrPayloadURL || window.location.href
+      });
+      return;
+    } catch (error) {
+      if (isUserCancelledFileAction(error)) {
+        return;
+      }
+      console.warn('QR image share failed:', error);
+    }
+  }
+
+  downloadQrBlobWithAnchor(blob, filename);
+}
+
+function shouldUseDesktopQrSavePicker() {
+  if (typeof window.showSaveFilePicker !== 'function') {
+    return false;
+  }
+  return !isLikelyTouchOnlyDevice();
+}
+
+function isLikelyTouchOnlyDevice() {
+  const hasTouch = navigator.maxTouchPoints && navigator.maxTouchPoints > 0;
+  const coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const finePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+  return Boolean(hasTouch && coarsePointer && !finePointer);
+}
+
+function shouldUseNativeQrShare(file) {
+  if (!file || !navigator.share || !navigator.canShare) {
+    return false;
+  }
+  if (!isLikelyTouchOnlyDevice()) {
+    return false;
+  }
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch (_) {
+    return false;
+  }
+}
+
+function isUserCancelledFileAction(error) {
+  return error && error.name === 'AbortError';
+}
+
+async function writeBlobToFileHandle(fileHandle, blob) {
+  const writable = await fileHandle.createWritable();
+  try {
+    await writable.write(blob);
+  } catch (error) {
+    try { await writable.abort(); } catch (_) {}
+    throw error;
+  }
+  await writable.close();
+}
+
+function downloadQrBlobWithAnchor(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  link.rel = 'noopener';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
 }
 
 function printQrImage() {
   if (!activeQrImageURL) return;
+  const qrPrintImageURL = activeQrImageURL;
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
+  iframe.style.left = '-10000px';
+  iframe.style.top = '0';
+  iframe.style.width = '210mm';
+  iframe.style.height = '297mm';
   iframe.style.border = '0';
+  iframe.style.background = '#ffffff';
   iframe.setAttribute('aria-hidden', 'true');
-  iframe.onload = function () {
-    try {
-      if (iframe.contentWindow) {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-      }
-    } catch (error) {
-      console.warn('QR image print failed:', error);
-      window.open(activeQrImageURL, '_blank', 'noopener,noreferrer');
+
+  function removeQrPrintFrame() {
+    if (iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe);
     }
-    setTimeout(function () {
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
-    }, 1000);
-  };
-  iframe.src = activeQrImageURL;
+  }
+
+  function openQrImageFallback(error) {
+    if (error) {
+      console.warn('QR image print failed:', error);
+    }
+    removeQrPrintFrame();
+    window.open(qrPrintImageURL, '_blank', 'noopener,noreferrer');
+  }
+
   document.body.appendChild(iframe);
+
+  try {
+    const printWindow = iframe.contentWindow;
+    const printDocument = iframe.contentDocument || (printWindow ? printWindow.document : null);
+    if (!printWindow || !printDocument) {
+      openQrImageFallback();
+      return;
+    }
+
+    printDocument.open();
+    printDocument.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(translate('qr_modal_title'))}</title>
+  <style>
+    @page { margin: 10mm; }
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    img {
+      display: block;
+      width: auto;
+      height: auto;
+      max-width: 180mm;
+      max-height: 257mm;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+    @media print {
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+      }
+      img {
+        max-width: 180mm;
+        max-height: 257mm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <img id="qrPrintImage" alt="">
+</body>
+</html>`);
+    printDocument.close();
+
+    const printImage = printDocument.getElementById('qrPrintImage');
+    if (!printImage) {
+      openQrImageFallback();
+      return;
+    }
+
+    function printLoadedQrImage() {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch (error) {
+        openQrImageFallback(error);
+        return;
+      }
+      setTimeout(removeQrPrintFrame, 1500);
+    }
+
+    printImage.onload = function () {
+      setTimeout(printLoadedQrImage, 50);
+    };
+    printImage.onerror = function () {
+      openQrImageFallback();
+    };
+    printImage.src = qrPrintImageURL;
+    if (printImage.complete && printImage.naturalWidth > 0) {
+      setTimeout(printLoadedQrImage, 50);
+    }
+  } catch (error) {
+    openQrImageFallback(error);
+  }
 }
 
 function bindQrModalControls() {
