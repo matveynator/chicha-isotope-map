@@ -975,6 +975,10 @@ body, html {
           opacity: 1;
         }
 
+        .track-view-actions {
+          display: none;
+        }
+
         /* "Back to all tracks" button container.
            Positioned below the QR button to prevent overlap. */
         .back-to-all-container {
@@ -1355,6 +1359,82 @@ body, html {
 
           .date-slider-box {
             width: var(--map-desktop-playback-width);
+          }
+
+          :root[data-track-view='true'] .track-view-actions {
+            position: absolute;
+            bottom: 10px;
+            left: var(--map-desktop-playback-left);
+            width: var(--map-desktop-playback-width);
+            z-index: 1300;
+            display: flex;
+            align-items: center;
+            gap: var(--map-right-stack-gap);
+            pointer-events: auto;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .back-to-all-container,
+          :root[data-track-view='true'] .track-view-actions .download-track-container {
+            min-width: 0;
+            position: static;
+            top: auto;
+            left: auto;
+            z-index: auto;
+            margin: 0;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .back-to-all-container {
+            flex: 0 0 auto;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .download-track-container {
+            flex: 1 1 0;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .track-view-playback-slot {
+            flex: 0 0 auto;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .back-to-all-btn,
+          :root[data-track-view='true'] .track-view-actions .download-track-btn {
+            height: var(--map-ui-icon-size);
+            min-height: var(--map-ui-icon-size);
+            max-height: var(--map-ui-icon-size);
+            box-sizing: border-box;
+            border-radius: var(--map-ui-radius-pill);
+            padding: 0 16px;
+            width: 100%;
+            max-width: none;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .back-to-all-btn {
+            width: auto;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .download-track-btn {
+            max-width: none;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .track-playback-control {
+            flex: 0 0 auto;
+            height: var(--map-ui-icon-size);
+            min-height: var(--map-ui-icon-size);
+            max-height: var(--map-ui-icon-size);
+            box-sizing: border-box;
+            margin: 0;
+            padding: 5px;
+            border-radius: var(--map-ui-radius-pill);
+            align-items: center;
+          }
+
+          :root[data-track-view='true'] .track-view-actions .slider-play-btn {
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            min-height: 34px;
           }
 
           #mapCacheStatus {
@@ -3063,6 +3143,10 @@ body, html {
             --mobile-dock-content-bottom: calc(var(--map-mobile-dock-bottom) + var(--mobile-dock-padding) + env(safe-area-inset-bottom, 0px));
           }
 
+          :root[data-track-view='true'] .track-view-actions {
+            display: contents;
+          }
+
           #mapLogo {
             top: 14px;
             max-width: calc(100vw - 132px);
@@ -4041,18 +4125,19 @@ body, html {
       {{end}}
     </div>
 
-    <!-- Container for "Back to all tracks" button -->
-    <div class="back-to-all-container leaflet-control" style="display: none;">
-      <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
-    </div>
-
-    <!-- Track download button appears only in track view so users can retrieve the original JSON quickly. -->
-    <div class="download-track-container leaflet-control" style="display: none;">
-      {{if .DesktopNativeUpload}}
-      <button id="downloadTrackLink" class="download-track-btn" type="button">{{ translate "download_track_cim" }}</button>
-      {{else}}
-      <a id="downloadTrackLink" class="download-track-btn" href="#">{{ translate "download_track_cim" }}</a>
-      {{end}}
+    <!-- Track view actions stay grouped so return, playback, and download read as one workflow. -->
+    <div id="trackViewActions" class="track-view-actions">
+      <div class="back-to-all-container leaflet-control" style="display: none;">
+        <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
+      </div>
+      <div id="trackViewPlaybackSlot" class="track-view-playback-slot"></div>
+      <div class="download-track-container leaflet-control" style="display: none;">
+        {{if .DesktopNativeUpload}}
+        <button id="downloadTrackLink" class="download-track-btn" type="button">{{ translate "download_track_cim" }}</button>
+        {{else}}
+        <a id="downloadTrackLink" class="download-track-btn" href="#">{{ translate "download_track_cim" }}</a>
+        {{end}}
+      </div>
     </div>
 
     <!-- File upload overlay -->
@@ -6167,6 +6252,7 @@ function refreshTrackViewPlaybackControl() {
   if (!trackViewPlaybackContainer || !trackViewPlaybackButton) {
     return;
   }
+  syncTrackViewDesktopActions();
   if (currentTrackID) {
     trackViewPlaybackContainer.style.display = 'flex';
     if (trackViewPlaybackActive && !trackViewPlaybackPaused) {
@@ -6177,6 +6263,56 @@ function refreshTrackViewPlaybackControl() {
   } else {
     trackViewPlaybackContainer.style.display = 'none';
   }
+}
+
+function shouldUseTrackViewDesktopActions() {
+  if (!currentTrackID) {
+    return false;
+  }
+  if (!window.matchMedia) {
+    return true;
+  }
+  return window.matchMedia('(min-width: 768px)').matches;
+}
+
+function rememberTrackViewPlaybackLocation() {
+  if (trackViewPlaybackOriginalLocation || !trackViewPlaybackContainer || !trackViewPlaybackContainer.parentNode) {
+    return;
+  }
+  trackViewPlaybackOriginalLocation = {
+    parentNode: trackViewPlaybackContainer.parentNode,
+    nextSibling: trackViewPlaybackContainer.nextSibling,
+  };
+}
+
+function restoreTrackViewPlaybackLocation() {
+  if (!trackViewPlaybackOriginalLocation || !trackViewPlaybackContainer) {
+    return;
+  }
+  const parentNode = trackViewPlaybackOriginalLocation.parentNode;
+  if (!parentNode || trackViewPlaybackContainer.parentNode === parentNode) {
+    return;
+  }
+  if (trackViewPlaybackOriginalLocation.nextSibling && trackViewPlaybackOriginalLocation.nextSibling.parentNode === parentNode) {
+    parentNode.insertBefore(trackViewPlaybackContainer, trackViewPlaybackOriginalLocation.nextSibling);
+  } else {
+    parentNode.appendChild(trackViewPlaybackContainer);
+  }
+}
+
+function syncTrackViewDesktopActions() {
+  if (!trackViewPlaybackContainer) {
+    return;
+  }
+  rememberTrackViewPlaybackLocation();
+  const playbackSlot = document.getElementById('trackViewPlaybackSlot');
+  if (shouldUseTrackViewDesktopActions() && playbackSlot) {
+    if (trackViewPlaybackContainer.parentNode !== playbackSlot) {
+      playbackSlot.appendChild(trackViewPlaybackContainer);
+    }
+    return;
+  }
+  restoreTrackViewPlaybackLocation();
 }
 
 // Track view playback control sits where the date slider play button lives.
@@ -6202,6 +6338,7 @@ function createTrackViewPlaybackControl() {
   const control = new TrackCtrl({ position: 'bottomleft' });
   control.addTo(map);
   trackViewPlaybackContainer = control.getContainer();
+  rememberTrackViewPlaybackLocation();
   trackViewPlaybackButton = trackViewPlaybackContainer.querySelector('#trackPlaybackButton');
   const trackViewResetButton = trackViewPlaybackContainer.querySelector('#trackPlaybackResetButton');
   if (trackViewPlaybackButton) {
@@ -6217,6 +6354,7 @@ function createTrackViewPlaybackControl() {
       updateMarkers(true);
     });
   }
+  syncTrackViewDesktopActions();
   refreshTrackViewPlaybackControl();
 }
 
@@ -6273,6 +6411,47 @@ function renderTrackViewSnapshot() {
   trackViewMarkers.forEach(function(marker, index) {
     renderTrackViewMarker(marker, zoom, index);
   });
+}
+
+function trackViewMarkerBounds(markers) {
+  if (!Array.isArray(markers) || !markers.length) {
+    return null;
+  }
+  let bounds = null;
+  markers.forEach(function(marker) {
+    if (!marker || typeof marker.lat !== 'number' || typeof marker.lon !== 'number') {
+      return;
+    }
+    if (!Number.isFinite(marker.lat) || !Number.isFinite(marker.lon)) {
+      return;
+    }
+    const latLng = L.latLng(marker.lat, marker.lon);
+    bounds = bounds ? bounds.extend(latLng) : L.latLngBounds(latLng, latLng);
+  });
+  return bounds && bounds.isValid && bounds.isValid() ? bounds : null;
+}
+
+function fitTrackViewToFullTrack() {
+  if (!map) {
+    return;
+  }
+  const bounds = trackViewMarkerBounds(trackViewMarkers) || trackBounds;
+  if (!bounds) {
+    return;
+  }
+  if (trackViewReloadTimer) {
+    clearTimeout(trackViewReloadTimer);
+    trackViewReloadTimer = null;
+  }
+  trackViewProgrammaticFitPending = true;
+  map.fitBounds(bounds, {
+    paddingTopLeft: [24, 72],
+    paddingBottomRight: [24, 88],
+  });
+  setTimeout(function() {
+    trackViewProgrammaticFitPending = false;
+  }, 250);
+  adjustMarkerRadius();
 }
 
 function createMarkerOverlapPruner(map) {
@@ -6418,6 +6597,7 @@ function stopTrackViewPlayback(refreshMarkers) {
   hidePlaybackCalendar();
   if (refreshMarkers) {
     renderTrackViewSnapshot();
+    fitTrackViewToFullTrack();
   }
 }
 
@@ -6537,6 +6717,8 @@ let trackViewPlaybackGeneration = 0;
 const trackViewPlaybackConfig = { pointDelayMs: 70 };
 let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
+let trackViewPlaybackOriginalLocation = null;
+let trackViewProgrammaticFitPending = false;
 let trackViewMarkers = [];
 let trackViewMarkersReady = false;
 let trackViewReloadTimer = null;
@@ -7515,6 +7697,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   refreshDownloadLink();
   refreshTrackViewPlaybackControl();
+  window.addEventListener('resize', syncTrackViewDesktopActions);
 
   // Theme-aware hover hints keep visitors oriented without repeating markup titles.
   var uploadLabel = document.querySelector('.upload-btn');
@@ -9924,7 +10107,13 @@ function updateMarkers(forceReload){
     maxLat: prefetchBounds.maxLat,
     maxLon: prefetchBounds.maxLon
   };
-  if (currentTrackID) params.trackID = currentTrackID; // focus on a single track when set
+  if (currentTrackID) {
+    params.trackID = currentTrackID; // focus on a single track when set
+    params.minLat = -90;
+    params.minLon = -180;
+    params.maxLat = 90;
+    params.maxLon = 180;
+  }
 
   const savedRange = isTrackView ? null : loadCustomDateRangeState();
 
@@ -10090,6 +10279,7 @@ function updateMarkers(forceReload){
       });
       trackViewMarkersReady = true;
       renderTrackViewSnapshot();
+      fitTrackViewToFullTrack();
       maybeAutoplayTrackViewPlayback();
     }
   });
@@ -11002,6 +11192,9 @@ function scheduleTrackViewReload() {
   if (!isTrackView) {
     return;
   }
+  if (trackViewProgrammaticFitPending) {
+    return;
+  }
   if (trackViewReloadTimer) {
     clearTimeout(trackViewReloadTimer);
   }
@@ -11042,6 +11235,10 @@ function viewTrack(trackID) {
   isTrackView    = true;
 
   const params = buildMapStateParams();
+  ['minLat', 'minLon', 'maxLat', 'maxLon', 'zoom', 'from', 'to', 'dateMode'].forEach(function(paramName) {
+    params.delete(paramName);
+  });
+  params.set('play', '1');
   // Encode the track ID so namespaced IDs (e.g. safecast-123) survive routing.
   const trackURL = `/trackid/${encodeURIComponent(trackID)}?${params.toString()}`;
 
@@ -11528,7 +11725,7 @@ function autoLocateUser() {
 
 function loadMapFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const storedView = loadMapViewState();
+  const storedView = isTrackView ? null : loadMapViewState();
 
   // Apply URL-provided filters early so controls and marker queries stay in sync.
   const themeParam = normalizeThemePreference(params.get('theme'));
@@ -11572,11 +11769,12 @@ function loadMapFromUrl() {
   if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
     map.fitBounds([[minLat, minLon], [maxLat, maxLon]]);
     adjustMarkerRadius();
+  } else if (isTrackView && trackBounds) {
+    map.fitBounds(trackBounds);
+    adjustMarkerRadius();
   } else if (storedView) {
     map.setView([storedView.lat, storedView.lon], storedView.zoom);
     adjustMarkerRadius();
-  } else if (isTrackView && trackBounds) {
-    map.fitBounds(trackBounds);
   } else {
     map.setView([defaultCfg.lat, defaultCfg.lon], defaultCfg.zoom);
   }
