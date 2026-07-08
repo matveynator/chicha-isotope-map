@@ -496,10 +496,22 @@ body, html {
         }
 
         #mapCacheStatus .cache-reset-link {
-          color: var(--link-color);
-          text-decoration: underline;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          flex: 0 0 22px;
+          border: 1px solid var(--map-ui-border);
+          border-radius: 50%;
+          background: var(--map-ui-surface-strong);
+          color: var(--map-ui-text);
+          text-decoration: none;
           cursor: pointer;
           margin-left: 6px;
+          font-size: var(--font-size-base);
+          font-weight: 700;
+          line-height: 1;
         }
 
         /* Keep bottom-right controls stacked vertically above the cache status card. */
@@ -1021,26 +1033,25 @@ body, html {
         }
 
         .playback-calendar-control {
-          --playback-calendar-width: 92px;
-          --playback-calendar-min-height: 66px;
-          --playback-calendar-binding-height: 14px;
-          --playback-calendar-ring-width: 9px;
-          --playback-calendar-ring-height: 4px;
-          --playback-calendar-ring-top: 5px;
-          --playback-calendar-ring-inset: 21px;
+          --playback-calendar-height: var(--map-ui-icon-size);
+          --playback-calendar-icon-size: 20px;
+          --playback-calendar-text-min-width: 82px;
           pointer-events: none;
-          width: var(--playback-calendar-width);
-          min-height: var(--playback-calendar-min-height);
+          width: auto;
+          height: var(--playback-calendar-height);
+          min-height: var(--playback-calendar-height);
+          max-height: var(--playback-calendar-height);
+          box-sizing: border-box;
           margin-top: 0;
-          perspective: 600px;
         }
 
         .playback-calendar {
           display: none;
-          width: var(--playback-calendar-width);
-          min-height: var(--playback-calendar-min-height);
-          color: var(--modal-text);
-          filter: drop-shadow(0 1px 5px rgba(0,0,0,0.28));
+          height: var(--playback-calendar-height);
+          min-height: var(--playback-calendar-height);
+          max-height: var(--playback-calendar-height);
+          box-sizing: border-box;
+          color: var(--map-ui-text);
         }
 
         .playback-calendar.is-visible {
@@ -1049,117 +1060,89 @@ body, html {
 
         .playback-calendar-sheet {
           position: relative;
-          overflow: hidden;
-          min-height: var(--playback-calendar-min-height);
-          border-radius: 4px;
-          border: var(--legend-border);
-          background: var(--info-card-bg);
-          box-shadow: 0 1px 5px rgba(0,0,0,0.25);
-          transform-origin: top center;
-          backface-visibility: hidden;
-          backdrop-filter: blur(6px);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          height: var(--playback-calendar-height);
+          min-height: var(--playback-calendar-height);
+          max-height: var(--playback-calendar-height);
+          min-width: 176px;
+          box-sizing: border-box;
+          padding: 0 18px;
+          border-radius: var(--map-ui-radius-pill);
+          border: 1px solid var(--map-ui-border);
+          background: var(--map-ui-surface);
+          box-shadow: var(--map-ui-shadow);
+          opacity: 0.94;
+          backdrop-filter: blur(14px) saturate(1.2);
+          -webkit-backdrop-filter: blur(14px) saturate(1.2);
         }
 
         .playback-calendar-sheet.is-flipping {
-          animation: playbackCalendarFlip 300ms ease-in-out;
+          animation: playbackCalendarPulse 180ms ease-in-out;
         }
 
-        .playback-calendar-binding {
-          height: var(--playback-calendar-binding-height);
-          background: #1e88e5;
-          border-bottom: 1px solid rgba(0,0,0,0.2);
-        }
-
-        .playback-calendar-binding::before,
-        .playback-calendar-binding::after {
-          content: "";
-          position: absolute;
-          top: var(--playback-calendar-ring-top);
-          width: var(--playback-calendar-ring-width);
-          height: var(--playback-calendar-ring-height);
-          border-radius: 8px;
-          background: rgba(255,255,255,0.85);
-          box-shadow: 0 1px 2px rgba(0,0,0,0.25) inset;
-        }
-
-        .playback-calendar-binding::before {
-          left: var(--playback-calendar-ring-inset);
-        }
-
-        .playback-calendar-binding::after {
-          right: var(--playback-calendar-ring-inset);
-        }
-
-        .playback-calendar-month,
-        .playback-calendar-year {
+        .playback-calendar-icon {
           display: block;
+          flex: 0 0 var(--playback-calendar-icon-size);
+          width: var(--playback-calendar-icon-size);
+          height: var(--playback-calendar-icon-size);
+          background-image: url('/static/new-icons/day/calendar.png');
+          background-position: center;
+          background-repeat: no-repeat;
+          background-size: contain;
+        }
+
+        :root[data-theme='dark'] .playback-calendar-icon {
+          background-image: url('/static/new-icons/night/calendar.png');
+        }
+
+        .playback-calendar-date {
+          display: block;
+          min-width: var(--playback-calendar-text-min-width);
           overflow: hidden;
-          max-width: 100%;
-          text-align: center;
+          max-width: min(160px, calc(100vw - 156px));
+          text-align: left;
           text-overflow: ellipsis;
           white-space: nowrap;
           unicode-bidi: plaintext;
-        }
-
-        .playback-calendar-month {
-          padding: 7px 6px 0;
-          font-size: var(--font-size-base);
+          font-size: var(--font-size-lg);
           font-weight: 700;
-          line-height: 1.1;
+          line-height: 1.2;
         }
 
-        .playback-calendar-year {
-          padding: 2px 6px 7px;
-          font-size: var(--font-size-xl);
-          font-weight: 700;
-          line-height: 1;
-        }
-
-        @keyframes playbackCalendarFlip {
-          0% { transform: rotateX(0deg); opacity: 1; }
-          45% { transform: rotateX(-72deg); opacity: 0.35; }
-          55% { transform: rotateX(46deg); opacity: 0.55; }
-          100% { transform: rotateX(0deg); opacity: 1; }
+        @keyframes playbackCalendarPulse {
+          0% { transform: translateY(0); opacity: 0.82; }
+          100% { transform: translateY(0); opacity: 0.94; }
         }
 
         @media (max-width: 900px) {
           .playback-calendar-control {
-            --playback-calendar-width: 82px;
-            --playback-calendar-min-height: 60px;
-            --playback-calendar-binding-height: 13px;
-            --playback-calendar-ring-inset: 18px;
+            --playback-calendar-icon-size: 19px;
+            --playback-calendar-text-min-width: 76px;
           }
 
-          .playback-calendar-month {
-            font-size: var(--font-size-sm);
-            padding-top: 6px;
-          }
-
-          .playback-calendar-year {
-            font-size: var(--font-size-lg);
-            padding-bottom: 6px;
+          .playback-calendar-sheet {
+            min-width: 162px;
+            padding: 0 16px;
           }
         }
 
         @media (max-width: 480px) {
           .playback-calendar-control {
-            --playback-calendar-width: 72px;
-            --playback-calendar-min-height: 54px;
-            --playback-calendar-binding-height: 12px;
-            --playback-calendar-ring-width: 8px;
-            --playback-calendar-ring-height: 3px;
-            --playback-calendar-ring-top: 5px;
-            --playback-calendar-ring-inset: 15px;
+            --playback-calendar-icon-size: 18px;
+            --playback-calendar-text-min-width: 70px;
           }
 
-          .playback-calendar-month {
-            padding: 5px 5px 0;
-            font-size: var(--font-size-xs);
+          .playback-calendar-sheet {
+            min-width: 146px;
+            gap: 10px;
+            padding: 0 14px;
           }
 
-          .playback-calendar-year {
-            padding: 2px 5px 6px;
-            font-size: var(--font-size-lg);
+          .playback-calendar-date {
+            font-size: var(--font-size-base);
           }
         }
 
@@ -1349,6 +1332,63 @@ body, html {
             width: 34px;
             height: 34px;
             font-size: var(--font-size-base);
+          }
+        }
+
+        @media (min-width: 768px) {
+          :root {
+            --map-desktop-program-logo-left: 20px;
+            --map-desktop-program-logo-width: 100px;
+            --map-desktop-playback-left: calc(var(--map-desktop-program-logo-left) + var(--map-desktop-program-logo-width) + var(--map-desktop-program-logo-left));
+            --map-desktop-playback-width: min(440px, calc(100vw - var(--map-desktop-playback-left) - 240px));
+            --map-desktop-cache-width: max(135px, min(255px, calc((100vw - var(--map-desktop-playback-left) - var(--map-desktop-playback-width) - 24px) * 0.75)));
+          }
+
+          .leaflet-bottom.leaflet-left {
+            left: var(--map-desktop-playback-left);
+          }
+
+          .leaflet-bottom.leaflet-left .leaflet-control {
+            margin-left: 0;
+          }
+
+          .date-slider-box {
+            width: var(--map-desktop-playback-width);
+          }
+
+          #mapCacheStatus {
+            max-width: var(--map-desktop-cache-width);
+            padding: 3px 6px;
+            border-radius: 8px;
+            font-size: var(--font-size-xxs);
+            line-height: 1.05;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+          }
+
+          #mapCacheStatus .cache-inline-line {
+            margin: 0;
+            font-size: var(--font-size-xxs);
+            line-height: 1.05;
+            text-align: right;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            overflow-wrap: normal;
+          }
+
+          #mapCacheStatus .cache-reset-link {
+            width: 20px;
+            height: 20px;
+            flex-basis: 20px;
+            margin-left: 2px;
+            font-size: var(--font-size-sm);
+          }
+
+          #mapCacheStatus .cache-status-lines {
+            min-width: 0;
+            flex: 1 1 auto;
           }
         }
 
@@ -2092,7 +2132,10 @@ body, html {
 
         #mapLogo {
           top: 18px;
-          min-height: 36px;
+          height: var(--map-ui-icon-size);
+          min-height: var(--map-ui-icon-size);
+          max-height: var(--map-ui-icon-size);
+          box-sizing: border-box;
           padding: 0 24px;
           font-size: var(--font-size-lg);
           font-weight: 700;
@@ -2195,7 +2238,10 @@ body, html {
           align-items: center;
           justify-content: center;
           gap: 8px;
-          min-height: 42px;
+          height: var(--map-ui-icon-size);
+          min-height: var(--map-ui-icon-size);
+          max-height: var(--map-ui-icon-size);
+          box-sizing: border-box;
           padding: 0 18px;
           background: var(--map-ui-surface-strong);
           color: var(--map-ui-accent-strong);
@@ -2246,37 +2292,114 @@ body, html {
         }
 
         .leaflet-control-zoom {
+          position: relative;
           display: flex;
           flex-direction: column;
-          gap: var(--map-right-stack-gap);
+          gap: 0;
+          width: var(--map-ui-icon-size);
+          height: calc(var(--map-ui-icon-size) * 1.56);
+          box-sizing: border-box;
+          overflow: hidden;
+          border-radius: calc(var(--map-ui-icon-size) / 2);
+          background: var(--map-ui-surface) !important;
+          border: 1px solid var(--map-ui-border) !important;
+          box-shadow: var(--map-ui-shadow) !important;
+          opacity: 0.94;
+          backdrop-filter: blur(14px) saturate(1.2);
+          -webkit-backdrop-filter: blur(14px) saturate(1.2);
+        }
+
+        .leaflet-control-zoom::after {
+          content: "";
+          position: absolute;
+          left: 12px;
+          right: 12px;
+          top: 50%;
+          height: 1px;
+          background: var(--map-ui-border);
+          transform: translateY(-0.5px);
+          pointer-events: none;
         }
 
         .leaflet-bar a,
         .leaflet-bar a:hover {
-          background: var(--control-bg) !important;
-          background-color: var(--control-bg) !important;
+          background: transparent !important;
+          background-color: transparent !important;
           border: 0 !important;
           border-bottom: 0 !important;
-          box-shadow: var(--map-ui-soft-shadow) !important;
+          box-shadow: none !important;
           color: var(--map-ui-text);
         }
 
         .leaflet-control-zoom a {
-          width: var(--map-ui-icon-size);
-          height: var(--map-ui-icon-size);
-          opacity: 0.92;
-          border-radius: 50% !important;
-          font-size: 30px;
-          font-weight: 900;
-          line-height: var(--map-ui-icon-size);
-          text-shadow: 0 1px 4px rgba(0, 0, 0, 0.44);
-          backdrop-filter: blur(14px) saturate(1.18);
-          -webkit-backdrop-filter: blur(14px) saturate(1.18);
+          position: relative;
+          z-index: 1;
+          display: block !important;
+          flex: 0 0 50%;
+          width: 100%;
+          height: 50%;
+          min-height: 0;
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+          opacity: 1;
+          border-radius: 0 !important;
+          color: transparent !important;
+          font-size: 0 !important;
+          line-height: 0 !important;
+          text-align: center !important;
+          text-indent: 0 !important;
+          text-shadow: none;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+        }
+
+        .leaflet-touch .leaflet-control-zoom a {
+          width: 100% !important;
+          height: 50% !important;
+          color: transparent !important;
+          font-size: 0 !important;
+          line-height: 0 !important;
+          text-indent: 0 !important;
+        }
+
+        .leaflet-control-zoom .leaflet-control-zoom-in,
+        .leaflet-control-zoom .leaflet-control-zoom-out {
+          width: 100% !important;
+          height: 50% !important;
+          line-height: 0 !important;
+        }
+
+        .leaflet-control-zoom a::before {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          color: var(--map-ui-text);
+          font-family: var(--font-family-base);
+          font-size: 25px;
+          font-weight: 300;
+          line-height: 1;
+          text-indent: 0;
+        }
+
+        .leaflet-control-zoom-in::before {
+          content: "+";
+        }
+
+        .leaflet-control-zoom-out::before {
+          content: "−";
+          transform: translate(-50%, calc(-50% - 1px));
+        }
+
+        .leaflet-control-zoom a:first-child {
+          border-bottom: 0 !important;
         }
 
         .leaflet-control-zoom a:hover,
         .leaflet-control-zoom a:focus {
           opacity: 1;
+          color: transparent !important;
           background: var(--control-bg-hover) !important;
           background-color: var(--control-bg-hover) !important;
         }
@@ -2314,7 +2437,7 @@ body, html {
           width: 42px;
           height: 42px;
           border-radius: 50%;
-          background-image: url('/static/new-icons/day/map_layers.png') !important;
+          background-image: var(--map-layer-toggle-icon, url('/static/new-icons/day/map_layers.png')) !important;
           background-position: center !important;
           background-size: 24px 24px !important;
           background-repeat: no-repeat !important;
@@ -2324,17 +2447,17 @@ body, html {
         }
 
         :root[data-theme='dark'] .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-toggle {
-          background-image: url('/static/new-icons/night/map_layers.png') !important;
+          background-image: var(--map-layer-toggle-icon, url('/static/new-icons/night/map_layers.png')) !important;
         }
 
         .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):hover .leaflet-control-layers-toggle,
         .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):focus-within .leaflet-control-layers-toggle {
-          background-image: var(--map-layer-toggle-hover-icon, url('/static/new-icons/day/map_layers.png')) !important;
+          background-image: var(--map-layer-toggle-icon, url('/static/new-icons/day/map_layers.png')) !important;
         }
 
         :root[data-theme='dark'] .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):hover .leaflet-control-layers-toggle,
         :root[data-theme='dark'] .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):focus-within .leaflet-control-layers-toggle {
-          background-image: var(--map-layer-toggle-hover-icon, url('/static/new-icons/night/map_layers.png')) !important;
+          background-image: var(--map-layer-toggle-icon, url('/static/new-icons/night/map_layers.png')) !important;
         }
 
         .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-list {
@@ -2489,44 +2612,102 @@ body, html {
           .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control),
           .leaflet-top.leaflet-left > .speed-filter-control {
             position: absolute;
-            left: var(--map-left-stack-left);
+            left: 0;
             margin: 0;
-            width: 56px;
             box-sizing: border-box;
-            box-shadow: none;
           }
 
           .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
             top: var(--map-desktop-layer-stack-top);
-            padding: 6px;
-            border-bottom: 0;
-            border-bottom-right-radius: 0;
-            border-bottom-left-radius: 0;
+            width: var(--map-ui-icon-size);
+            height: var(--map-ui-icon-size);
+            padding: 0;
+            border-radius: 50%;
+            box-shadow: var(--map-ui-shadow);
+          }
+
+          .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) .leaflet-control-layers-toggle {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
           }
 
           :root[data-track-view='true'] .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
-            border-radius: 999px;
-            border-bottom: 1px solid var(--map-ui-border);
+            border-radius: 50%;
           }
 
           .leaflet-top.leaflet-left > .speed-filter-control {
             position: absolute;
-            top: calc(var(--map-desktop-layer-stack-top) + var(--map-layer-control-size));
-            padding: 7px;
-            border-top: 0;
-            border-top-right-radius: 0;
-            border-top-left-radius: 0;
+            top: calc(var(--map-desktop-layer-stack-top) + var(--map-ui-icon-size) + var(--map-left-stack-gap));
+            width: var(--map-ui-icon-size);
+            min-width: var(--map-ui-icon-size);
+            max-width: var(--map-ui-icon-size);
+            padding: 0;
+            gap: var(--map-left-stack-gap);
+            align-items: flex-start;
+            background: transparent;
+            background-color: transparent;
+            border: 0 !important;
+            box-shadow: none !important;
+            opacity: 1;
+            pointer-events: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
           }
 
-          .leaflet-top.leaflet-left > .speed-filter-control::before {
-            content: "";
-            position: absolute;
-            top: -1px;
-            left: 13px;
-            right: 13px;
-            height: 1px;
-            background: var(--map-ui-border);
-            opacity: 0.58;
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            align-self: flex-start;
+            width: var(--map-ui-icon-size);
+            height: var(--map-ui-icon-size);
+            min-height: var(--map-ui-icon-size);
+            padding: 0;
+            box-sizing: border-box;
+            border-radius: 50%;
+            background: var(--map-ui-surface);
+            border: 1px solid var(--map-ui-border);
+            box-shadow: var(--map-ui-shadow);
+            opacity: 0.86;
+            pointer-events: auto;
+            backdrop-filter: blur(14px) saturate(1.2);
+            -webkit-backdrop-filter: blur(14px) saturate(1.2);
+          }
+
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row:hover,
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row:focus-within {
+            opacity: 1;
+            background: var(--control-bg-hover);
+          }
+
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row.is-selected {
+            opacity: 1;
+            background: var(--map-ui-accent);
+            border-color: var(--map-ui-accent);
+            color: #fff;
+            box-shadow: 0 0 14px rgba(47, 159, 69, 0.34), var(--map-ui-shadow);
+          }
+
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-icon {
+            width: 24px;
+            height: 24px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+          }
+
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row:hover .speed-filter-icon,
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row:focus-within .speed-filter-icon,
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row.is-selected .speed-filter-icon {
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+          }
+
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row.is-selected .speed-filter-icon {
+            filter: brightness(0) invert(1);
           }
         }
 
@@ -2570,17 +2751,6 @@ body, html {
           gap: 8px;
           width: auto;
           padding: 8px;
-        }
-
-        .playback-calendar-sheet {
-          border: 1px solid var(--map-ui-border);
-          border-radius: var(--map-ui-radius-card);
-          background: var(--map-ui-surface);
-          box-shadow: var(--map-ui-soft-shadow);
-        }
-
-        .playback-calendar-binding {
-          background: var(--map-ui-accent);
         }
 
         #legend {
@@ -2890,7 +3060,10 @@ body, html {
           #mapLogo {
             top: 14px;
             max-width: calc(100vw - 132px);
-            min-height: 34px;
+            height: var(--map-ui-icon-size);
+            min-height: var(--map-ui-icon-size);
+            max-height: var(--map-ui-icon-size);
+            box-sizing: border-box;
             padding: 0 14px;
             font-size: var(--font-size-base);
             white-space: nowrap;
@@ -2980,13 +3153,13 @@ body, html {
           }
 
           html[data-mobile-panel] #mobileControlDock {
-            grid-template-columns: 56px var(--mobile-dock-active-button) minmax(0, 1fr);
+            grid-template-columns: var(--mobile-dock-active-button) minmax(0, 1fr);
             gap: 8px;
           }
 
           .mobile-dock-panel {
             display: none;
-            grid-column: 3;
+            grid-column: 2;
             align-items: center;
             gap: 8px;
             min-width: 0;
@@ -3009,7 +3182,7 @@ body, html {
 
           html[data-mobile-panel='settings'] .mobile-dock-panel {
             gap: 8px;
-            padding-left: 4px;
+            padding-left: 0;
           }
 
           .github-link {
@@ -3043,6 +3216,10 @@ body, html {
             height: 97%;
             max-width: 98%;
             object-fit: contain;
+          }
+
+          html[data-mobile-panel] .mobile-dock-logo-link {
+            display: none;
           }
 
           .mobile-dock-button {
@@ -3079,7 +3256,7 @@ body, html {
           html[data-mobile-panel='time'] .mobile-dock-button[data-mobile-panel='time'],
           html[data-mobile-panel='settings'] .mobile-dock-button[data-mobile-panel='settings'] {
             display: grid;
-            grid-column: 2;
+            grid-column: 1;
             height: 48px;
             min-height: 48px;
             max-height: 48px;
@@ -4944,7 +5121,7 @@ function refreshBaseLayerToggleIcon() {
   }
   const themeName = currentNewIconThemeName();
   const iconName = resolveBaseLayerToggleIconName(getActiveBaseLayerName());
-  document.documentElement.style.setProperty('--map-layer-toggle-hover-icon', "url('" + newIconPath(iconName, themeName) + "')");
+  document.documentElement.style.setProperty('--map-layer-toggle-icon', "url('" + newIconPath(iconName, themeName) + "')");
 }
 
 function togglePrimaryBaseLayer() {
@@ -5339,6 +5516,14 @@ function formatBytes(byteCount) {
   if (safeBytes < 1024 * 1024) return `${(safeBytes / 1024).toFixed(1)} KB`;
   if (safeBytes < 1024 * 1024 * 1024) return `${(safeBytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(safeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatCompactBytes(byteCount) {
+  const safeBytes = Number.isFinite(byteCount) && byteCount > 0 ? byteCount : 0;
+  if (safeBytes < 1024) return `${Math.round(safeBytes)}B`;
+  if (safeBytes < 1024 * 1024) return `${(safeBytes / 1024).toFixed(1)}K`;
+  if (safeBytes < 1024 * 1024 * 1024) return `${(safeBytes / (1024 * 1024)).toFixed(1)}M`;
+  return `${(safeBytes / (1024 * 1024 * 1024)).toFixed(1)}G`;
 }
 
 function openOfflineCacheDatabase() {
@@ -5747,54 +5932,20 @@ async function renderOfflineCacheStatus() {
       indexedDBUsageBytes = 0;
     }
   }
-  const onlineLabel = isInternetOnlineNow() ? mapCacheText('online') : mapCacheText('offline');
-  const modeLabel = latestCacheTrafficMode === 'cache' ? mapCacheText('mode_cache_hit') : latestCacheTrafficMode === 'mixed' ? mapCacheText('mode_cache_mixed') : mapCacheText('mode_network');
+  const onlineCode = isInternetOnlineNow() ? 'ON' : 'OFF';
+  const modeCode = latestCacheTrafficMode === 'cache' ? 'C' : latestCacheTrafficMode === 'mixed' ? 'M' : 'N';
   const desktopMode = !!window.desktopWebViewMode;
   const tileTotal = stats.tiles.osm + stats.tiles.google + stats.tiles.mapbox;
   const measuredTotal = Math.max(stats.total, indexedDBUsageBytes);
   const effectiveTotal = desktopMode ? Math.max(tileTotal, indexedDBUsageBytes) : measuredTotal;
-  const hitMissLine = `${stats.tileHits}/${stats.tileMisses}`;
-  const downloadsLine = Number(stats.tileDownloads) || 0;
-  const firstLineSegments = [];
-  const secondLineSegments = [];
-  firstLineSegments.push({
-    html: `<span class="cache-connectivity-dot ${isInternetOnlineNow() ? 'online' : 'offline'}" aria-hidden="true"></span>${mapCacheText('map')}: ${onlineLabel}`,
-    textLength: (`${mapCacheText('map')}: ${onlineLabel}`).length,
-  });
-  firstLineSegments.push({ html: modeLabel, textLength: modeLabel.length });
-  firstLineSegments.push({
-    html: `${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)}`,
-    textLength: (`${mapCacheText('provider_osm')} ${formatBytes(stats.tiles.osm)}`).length,
-  });
-  firstLineSegments.push({
-    html: `${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}`,
-    textLength: (`${mapCacheText('provider_google')} ${formatBytes(stats.tiles.google)}`).length,
-  });
-  secondLineSegments.push({
-    html: `${mapCacheText('tiles_downloaded')} ↓${downloadsLine}`,
-    textLength: (`${mapCacheText('tiles_downloaded')} ↓${downloadsLine}`).length,
-  });
-  secondLineSegments.push({
-    html: `${mapCacheText('hits_misses')} ${hitMissLine}`,
-    textLength: (`${mapCacheText('hits_misses')} ${hitMissLine}`).length,
-  });
-  secondLineSegments.push({
-    html: `${mapCacheText('markers_cached')} ${Number(stats.markerPoints) || 0}`,
-    textLength: (`${mapCacheText('markers_cached')} ${Number(stats.markerPoints) || 0}`).length,
-  });
-  secondLineSegments.push({
-    html: `${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`,
-    textLength: (`${mapCacheText('storage')} ${formatBytes(effectiveTotal)} / ${quotaBytes > 0 ? formatBytes(quotaBytes) : mapCacheText('unknown')}`).length,
-  });
-  secondLineSegments.push({
-    html: `<span id="resetMapCacheLink" class="cache-reset-link">${mapCacheText('reset')}</span>`,
-    textLength: mapCacheText('reset').length,
-  });
-  const firstLine = firstLineSegments.map(function(segmentEntry) { return segmentEntry.html; }).join(' · ') + ' ·';
-  const secondLine = secondLineSegments.map(function(segmentEntry) { return segmentEntry.html; }).join(' · ') + ' ·';
+  const firstLine = `<span class="cache-connectivity-dot ${isInternetOnlineNow() ? 'online' : 'offline'}" aria-hidden="true"></span>${onlineCode} ${modeCode} O${formatCompactBytes(stats.tiles.osm)} G${formatCompactBytes(stats.tiles.google)}`;
+  const secondLine = `D${Number(stats.tileDownloads) || 0} H${Number(stats.tileHits) || 0}/${Number(stats.tileMisses) || 0} P${Number(stats.markerPoints) || 0} S${formatCompactBytes(effectiveTotal)}/${quotaBytes > 0 ? formatCompactBytes(quotaBytes) : 'U'}`;
   mapCacheStatusNode.innerHTML =
+    `<div class="cache-status-lines">` +
     `<div class="cache-inline-line">${firstLine}</div>` +
-    `<div class="cache-inline-line">${secondLine}</div>`;
+    `<div class="cache-inline-line">${secondLine}</div>` +
+    `</div>` +
+    `<button id="resetMapCacheLink" class="cache-reset-link" type="button" title="${escapeHtml(mapCacheText('reset_button'))}" aria-label="${escapeHtml(mapCacheText('reset_button'))}">⟲</button>`;
   updateBottomRightControlStackLayout();
   const resetLink = document.getElementById('resetMapCacheLink');
   if (resetLink) {
@@ -6369,10 +6520,9 @@ let trackViewMarkersReady = false;
 let trackViewReloadTimer = null;
 let playbackCalendarContainer = null;
 let playbackCalendarSheet = null;
-let playbackCalendarMonthNode = null;
-let playbackCalendarYearNode = null;
+let playbackCalendarDateNode = null;
 let playbackCalendarCurrentKey = '';
-let playbackCalendarFlipTimer = null;
+let playbackCalendarPulseTimer = null;
 
 var liveHistoryCache = new Map();
 let dateSliderWidthSyncBound = false;
@@ -6417,17 +6567,15 @@ function createPlaybackCalendarControl() {
   div.innerHTML = `
     <div class="playback-calendar" aria-live="polite" lang="${escapeHtml(currentAppLocale())}" dir="auto">
       <div class="playback-calendar-sheet">
-        <div class="playback-calendar-binding"></div>
-        <span class="playback-calendar-month" dir="auto"></span>
-        <span class="playback-calendar-year" dir="auto"></span>
+        <span class="playback-calendar-icon" aria-hidden="true"></span>
+        <span class="playback-calendar-date" dir="auto"></span>
       </div>
     </div>
   `;
   logoNode.appendChild(div);
   playbackCalendarContainer = div.querySelector('.playback-calendar');
   playbackCalendarSheet = div.querySelector('.playback-calendar-sheet');
-  playbackCalendarMonthNode = div.querySelector('.playback-calendar-month');
-  playbackCalendarYearNode = div.querySelector('.playback-calendar-year');
+  playbackCalendarDateNode = div.querySelector('.playback-calendar-date');
 }
 
 function setMapLogoPlaybackCalendarVisible(isVisible) {
@@ -6447,33 +6595,28 @@ function formatPlaybackCalendarDate(timestamp) {
     return null;
   }
   const locale = currentAppLocale();
-  let monthFormatter;
-  let yearFormatter;
+  let dateFormatter;
   try {
-    monthFormatter = new Intl.DateTimeFormat([locale, 'en'], { calendar: 'gregory', month: 'short' });
-    yearFormatter = new Intl.DateTimeFormat([locale, 'en'], { calendar: 'gregory', year: 'numeric' });
+    dateFormatter = new Intl.DateTimeFormat([locale, 'en'], { calendar: 'gregory', month: 'short', year: 'numeric' });
   } catch (err) {
-    monthFormatter = new Intl.DateTimeFormat(['en'], { calendar: 'gregory', month: 'short' });
-    yearFormatter = new Intl.DateTimeFormat(['en'], { calendar: 'gregory', year: 'numeric' });
+    dateFormatter = new Intl.DateTimeFormat(['en'], { calendar: 'gregory', month: 'short', year: 'numeric' });
   }
   const key = String(date.getUTCFullYear()) + '-' + String(date.getUTCMonth() + 1).padStart(2, '0');
   return {
     key: key,
     locale: locale,
-    month: monthFormatter.format(date),
-    year: yearFormatter.format(date),
+    text: dateFormatter.format(date),
   };
 }
 
 function renderPlaybackCalendarDate(formattedDate) {
-  if (!playbackCalendarMonthNode || !playbackCalendarYearNode || !formattedDate) {
+  if (!playbackCalendarDateNode || !formattedDate) {
     return;
   }
   if (playbackCalendarContainer && formattedDate.locale) {
     playbackCalendarContainer.setAttribute('lang', formattedDate.locale);
   }
-  playbackCalendarMonthNode.textContent = formattedDate.month;
-  playbackCalendarYearNode.textContent = formattedDate.year;
+  playbackCalendarDateNode.textContent = formattedDate.text;
 }
 
 function showPlaybackCalendarForMarker(marker) {
@@ -6495,24 +6638,24 @@ function showPlaybackCalendarForMarker(marker) {
     return;
   }
   playbackCalendarCurrentKey = formattedDate.key;
-  if (playbackCalendarFlipTimer) {
-    clearTimeout(playbackCalendarFlipTimer);
-    playbackCalendarFlipTimer = null;
+  if (playbackCalendarPulseTimer) {
+    clearTimeout(playbackCalendarPulseTimer);
+    playbackCalendarPulseTimer = null;
   }
   playbackCalendarSheet.classList.remove('is-flipping');
   void playbackCalendarSheet.offsetWidth;
   playbackCalendarSheet.classList.add('is-flipping');
-  playbackCalendarFlipTimer = setTimeout(function() {
+  playbackCalendarPulseTimer = setTimeout(function() {
     renderPlaybackCalendarDate(formattedDate);
     playbackCalendarSheet.classList.remove('is-flipping');
-    playbackCalendarFlipTimer = null;
+    playbackCalendarPulseTimer = null;
   }, 180);
 }
 
 function hidePlaybackCalendar() {
-  if (playbackCalendarFlipTimer) {
-    clearTimeout(playbackCalendarFlipTimer);
-    playbackCalendarFlipTimer = null;
+  if (playbackCalendarPulseTimer) {
+    clearTimeout(playbackCalendarPulseTimer);
+    playbackCalendarPulseTimer = null;
   }
   playbackCalendarCurrentKey = '';
   if (playbackCalendarSheet) {
@@ -6522,11 +6665,8 @@ function hidePlaybackCalendar() {
     playbackCalendarContainer.classList.remove('is-visible');
   }
   setMapLogoPlaybackCalendarVisible(false);
-  if (playbackCalendarMonthNode) {
-    playbackCalendarMonthNode.textContent = '';
-  }
-  if (playbackCalendarYearNode) {
-    playbackCalendarYearNode.textContent = '';
+  if (playbackCalendarDateNode) {
+    playbackCalendarDateNode.textContent = '';
   }
 }
 
