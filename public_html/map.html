@@ -6431,12 +6431,8 @@ function trackViewMarkerBounds(markers) {
   return bounds && bounds.isValid && bounds.isValid() ? bounds : null;
 }
 
-function fitTrackViewToFullTrack() {
-  if (!map) {
-    return;
-  }
-  const bounds = trackViewMarkerBounds(trackViewMarkers) || trackBounds;
-  if (!bounds) {
+function fitTrackViewBoundsToScreen(bounds) {
+  if (!map || !bounds) {
     return;
   }
   if (trackViewReloadTimer) {
@@ -6444,13 +6440,26 @@ function fitTrackViewToFullTrack() {
     trackViewReloadTimer = null;
   }
   trackViewProgrammaticFitPending = true;
+  const mapSize = map.getSize();
+  const horizontalPadding = Math.max(1, Math.round(mapSize.x * 0.05));
+  const verticalPadding = Math.max(1, Math.round(mapSize.y * 0.05));
   map.fitBounds(bounds, {
-    paddingTopLeft: [24, 72],
-    paddingBottomRight: [24, 88],
+    padding: [horizontalPadding, verticalPadding],
   });
   setTimeout(function() {
     trackViewProgrammaticFitPending = false;
   }, 250);
+}
+
+function fitTrackViewToFullTrack() {
+  if (!map) {
+    return;
+  }
+  const bounds = trackBounds || trackViewMarkerBounds(trackViewMarkers);
+  if (!bounds) {
+    return;
+  }
+  fitTrackViewBoundsToScreen(bounds);
   adjustMarkerRadius();
 }
 
@@ -11767,10 +11776,16 @@ function loadMapFromUrl() {
   const maxLon = parseFloat(params.get('maxLon'));
 
   if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
-    map.fitBounds([[minLat, minLon], [maxLat, maxLon]]);
+    const urlBounds = L.latLngBounds([minLat, minLon], [maxLat, maxLon]);
+    if (isTrackView) {
+      trackBounds = urlBounds;
+      fitTrackViewBoundsToScreen(trackBounds);
+    } else {
+      map.fitBounds(urlBounds);
+    }
     adjustMarkerRadius();
   } else if (isTrackView && trackBounds) {
-    map.fitBounds(trackBounds);
+    fitTrackViewBoundsToScreen(trackBounds);
     adjustMarkerRadius();
   } else if (storedView) {
     map.setView([storedView.lat, storedView.lon], storedView.zoom);
