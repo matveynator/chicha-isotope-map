@@ -2823,6 +2823,54 @@ body, html {
             box-shadow: 0 0 14px rgba(47, 159, 69, 0.34), var(--map-ui-shadow);
           }
 
+          .locate-btn,
+          .qr-btn,
+          .desktop-admin-toggle,
+          .download-track-btn,
+          :root[data-track-view='true'] .track-view-actions .back-to-all-btn,
+          :root[data-track-view='true'] .track-view-actions .slider-play-btn,
+          .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control),
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row {
+            transform: translateY(0) scale(1);
+            transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 90ms ease, opacity 140ms ease;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          .locate-btn:hover,
+          .locate-btn:focus-visible,
+          .qr-btn:hover,
+          .qr-btn:focus-visible,
+          .desktop-admin-toggle:hover,
+          .desktop-admin-toggle:focus-visible,
+          .download-track-btn:hover,
+          .download-track-btn:focus-visible,
+          :root[data-track-view='true'] .track-view-actions .back-to-all-btn:hover,
+          :root[data-track-view='true'] .track-view-actions .back-to-all-btn:focus-visible,
+          :root[data-track-view='true'] .track-view-actions .slider-play-btn:hover,
+          :root[data-track-view='true'] .track-view-actions .slider-play-btn:focus-visible,
+          .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):hover,
+          .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):focus-within,
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row:hover,
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row:focus-within {
+            border-color: var(--map-ui-accent-strong);
+            box-shadow: 0 0 0 3px var(--map-ui-accent-soft), var(--map-ui-shadow);
+            opacity: 1;
+            outline: none;
+          }
+
+          .locate-btn:active,
+          .qr-btn:active,
+          .desktop-admin-toggle:active,
+          .download-track-btn:active,
+          :root[data-track-view='true'] .track-view-actions .back-to-all-btn:active,
+          :root[data-track-view='true'] .track-view-actions .slider-play-btn:active,
+          .leaflet-top.leaflet-left > .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):active,
+          .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-row:active {
+            transform: translateY(1px) scale(0.94);
+            box-shadow: 0 0 0 2px var(--map-ui-accent-soft), 0 3px 10px rgba(0, 0, 0, 0.28);
+          }
+
           .leaflet-top.leaflet-left > .speed-filter-control .speed-filter-icon {
             width: 24px;
             height: 24px;
@@ -3259,6 +3307,38 @@ body, html {
           .upload-btn .map-ui-icon {
             width: 22px;
             height: 22px;
+          }
+
+          .upload-btn,
+          .locate-btn,
+          .qr-btn,
+          #shortLinkDisplay {
+            transform: translateY(0) scale(1);
+            transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 90ms ease, opacity 140ms ease, width 180ms ease, max-width 180ms ease;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          .upload-btn:hover,
+          .upload-btn:focus-visible,
+          .locate-btn:hover,
+          .locate-btn:focus-visible,
+          .qr-btn:hover,
+          .qr-btn:focus-visible,
+          #shortLinkDisplay:hover,
+          #shortLinkDisplay:focus-visible {
+            border-color: var(--map-ui-accent-strong);
+            box-shadow: 0 0 0 3px var(--map-ui-accent-soft), var(--map-ui-shadow);
+            opacity: 1;
+            outline: none;
+          }
+
+          .upload-btn:active,
+          .locate-btn:active,
+          .qr-btn:active,
+          #shortLinkDisplay:active {
+            transform: translateY(1px) scale(0.94);
+            box-shadow: 0 0 0 2px var(--map-ui-accent-soft), 0 3px 10px rgba(0, 0, 0, 0.28);
           }
 
           .locate-btn-container {
