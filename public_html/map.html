@@ -5551,7 +5551,6 @@ var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
 var currentTrackID = null;
 var trackViewInitialViewportFallbackPending = false;
-var trackViewInitialViewportFallbackActive = false;
 const shortLinkBox = document.getElementById('shortLinkDisplay');
 let shortLinkTimer = null;
 let shortLinkAbort = null;
@@ -10398,7 +10397,7 @@ function updateMarkers(forceReload){
   if (currentTrackID) {
     params.trackID = currentTrackID; // focus on a single track when set
     params.realtime = 0;
-    if (!shouldLimitTrackViewToViewport() || trackViewInitialViewportFallbackActive) {
+    if (!shouldLimitTrackViewToViewport() || trackViewInitialViewportFallbackPending) {
       params.minLat = -90;
       params.minLon = -180;
       params.maxLat = 90;
@@ -10569,26 +10568,20 @@ function updateMarkers(forceReload){
         return aDate - bDate;
       });
 
-      if (shouldLimitTrackViewToViewport() && trackViewInitialViewportFallbackPending && !trackViewMarkers.length) {
+      if (shouldLimitTrackViewToViewport() && trackViewInitialViewportFallbackPending) {
+        const initialFullTrackBounds = trackViewMarkerBounds(trackViewMarkers);
         trackViewInitialViewportFallbackPending = false;
-        trackViewInitialViewportFallbackActive = true;
-        updateMarkers(true);
-        return;
-      }
-
-      if (trackViewInitialViewportFallbackActive) {
-        const fallbackBounds = trackViewMarkerBounds(trackViewMarkers);
-        trackViewInitialViewportFallbackActive = false;
         trackViewMarkers = [];
         trackViewMarkersReady = false;
         clearTrackViewPlaybackMarkers();
-        if (fallbackBounds) {
-          fitTrackViewBoundsToScreen(fallbackBounds);
+        if (initialFullTrackBounds) {
+          trackBounds = initialFullTrackBounds;
+          fitTrackViewBoundsToScreen(initialFullTrackBounds);
           setTimeout(function() {
             updateMarkers(true);
           }, 280);
+          return;
         }
-        return;
       }
 
       trackViewInitialViewportFallbackPending = false;
@@ -10612,8 +10605,7 @@ function updateMarkers(forceReload){
       return;
     }
     if (loadingEl) loadingEl.style.display='none';
-    if (isTrackView && trackViewInitialViewportFallbackActive) {
-      trackViewInitialViewportFallbackActive = false;
+    if (isTrackView && trackViewInitialViewportFallbackPending) {
       trackViewInitialViewportFallbackPending = false;
     }
     if (isTrackView && trackViewAutoplayRequested) {
@@ -12105,8 +12097,7 @@ function loadMapFromUrl() {
   const focusLon = parseFloat(params.get('focusLon'));
   const focusZoom = parseInt(params.get('focusZoom'), 10);
   const hasTrackViewBounds = !isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon);
-  const hasTrackViewFocus = Number.isFinite(focusLat) && Number.isFinite(focusLon);
-  trackViewInitialViewportFallbackPending = isTrackView && shouldLimitTrackViewToViewport() && !hasTrackViewBounds && !hasTrackViewFocus && !trackBounds;
+  trackViewInitialViewportFallbackPending = isTrackView && shouldLimitTrackViewToViewport() && !hasTrackViewBounds && !trackBounds;
 
   if (hasTrackViewBounds) {
     const urlBounds = L.latLngBounds([minLat, minLon], [maxLat, maxLon]);
@@ -12120,7 +12111,7 @@ function loadMapFromUrl() {
   } else if (isTrackView && trackBounds) {
     fitTrackViewBoundsToScreen(trackBounds);
     adjustMarkerRadius();
-  } else if (isTrackView && hasTrackViewFocus) {
+  } else if (isTrackView && Number.isFinite(focusLat) && Number.isFinite(focusLon)) {
     const safeFocusZoom = Number.isFinite(focusZoom) ? Math.max(1, Math.min(18, focusZoom)) : Math.max(12, defaultCfg.zoom);
     trackViewProgrammaticFitPending = true;
     map.setView([focusLat, focusLon], safeFocusZoom);
