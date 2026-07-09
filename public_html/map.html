@@ -6446,6 +6446,7 @@ function fitTrackViewBoundsToScreen(bounds) {
   map.fitBounds(bounds, {
     padding: [horizontalPadding, verticalPadding],
   });
+  trackViewInitialFitDone = true;
   setTimeout(function() {
     trackViewProgrammaticFitPending = false;
   }, 250);
@@ -6566,6 +6567,17 @@ function normalizeTrackViewPlaybackMarker(marker) {
   return marker;
 }
 
+function trackViewMarkerIsVisibleOnScreen(marker) {
+  if (!map || !marker || typeof marker.lat !== 'number' || typeof marker.lon !== 'number') {
+    return false;
+  }
+  const bounds = map.getBounds();
+  if (!bounds) {
+    return false;
+  }
+  return bounds.contains(L.latLng(marker.lat, marker.lon));
+}
+
 async function playTrackViewPoints(state, points) {
   for (let i = state.pointIndex; i < points.length; i++) {
     if (!trackViewPlaybackActive) {
@@ -6606,7 +6618,6 @@ function stopTrackViewPlayback(refreshMarkers) {
   hidePlaybackCalendar();
   if (refreshMarkers) {
     renderTrackViewSnapshot();
-    fitTrackViewToFullTrack();
   }
 }
 
@@ -6631,10 +6642,11 @@ async function startTrackViewPlayback() {
   trackViewPlaybackState = createTrackViewPlaybackState();
   const playbackGeneration = trackViewPlaybackState.generation;
   try {
-    // Sort by timestamp so playback always runs from the first marker to the last.
+    // Sort only visible markers so zoomed track playback starts inside the current screen.
     const normalized = trackViewMarkers
       .map(normalizeTrackViewPlaybackMarker)
       .filter(Boolean)
+      .filter(trackViewMarkerIsVisibleOnScreen)
       .sort(function(a, b) {
         const aDate = typeof a.date === 'number' ? a.date : 0;
         const bDate = typeof b.date === 'number' ? b.date : 0;
@@ -6728,6 +6740,7 @@ let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
 let trackViewPlaybackOriginalLocation = null;
 let trackViewProgrammaticFitPending = false;
+let trackViewInitialFitDone = false;
 let trackViewMarkers = [];
 let trackViewMarkersReady = false;
 let trackViewReloadTimer = null;
@@ -10288,7 +10301,9 @@ function updateMarkers(forceReload){
       });
       trackViewMarkersReady = true;
       renderTrackViewSnapshot();
-      fitTrackViewToFullTrack();
+      if (!trackViewInitialFitDone) {
+        fitTrackViewToFullTrack();
+      }
       maybeAutoplayTrackViewPlayback();
     }
   });
