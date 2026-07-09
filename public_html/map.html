@@ -1004,6 +1004,24 @@ body, html {
           background-color: var(--action-attention-bg-hover);
         }
 
+        .track-back-icon {
+          display: block;
+          width: 22px;
+          height: 22px;
+          object-fit: contain;
+          pointer-events: none;
+        }
+
+        .track-back-label {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          clip-path: inset(50%);
+          white-space: nowrap;
+        }
+
         /* Dedicated download container lives under the back button so
            track view controls remain grouped for quick access. */
         .download-track-container {
@@ -1431,7 +1449,11 @@ body, html {
           }
 
           :root[data-track-view='true'] .track-view-actions .back-to-all-btn {
-            width: auto;
+            width: var(--map-ui-icon-size);
+            min-width: var(--map-ui-icon-size);
+            max-width: var(--map-ui-icon-size);
+            padding: 0;
+            border-radius: 50%;
           }
 
           :root[data-track-view='true'] .track-view-actions .download-track-btn {
@@ -4248,7 +4270,10 @@ body, html {
     <!-- Track view actions stay grouped so return, playback, and download read as one workflow. -->
     <div id="trackViewActions" class="track-view-actions">
       <div class="back-to-all-container leaflet-control" style="display: none;">
-        <button id="backToAllButton" class="back-to-all-btn">{{ translate "back_to_all_tracks" }}</button>
+        <button id="backToAllButton" class="back-to-all-btn" aria-label="{{ translate "back_to_all_tracks" }}" title="{{ translate "back_to_all_tracks" }}">
+          <img class="track-back-icon" data-theme-icon="back" src="/static/new-icons/day/back-day-black-transparent.png" alt="" aria-hidden="true">
+          <span class="track-back-label">{{ translate "back_to_all_tracks" }}</span>
+        </button>
       </div>
       <div id="trackViewPlaybackSlot" class="track-view-playback-slot"></div>
       <div class="download-track-container leaflet-control" style="display: none;">
@@ -4363,7 +4388,7 @@ body, html {
     <span>{{translate "mobile_dock_settings"}}</span>
   </button>
   <button class="mobile-track-dock-button" type="button" data-mobile-track-action="back" aria-label="{{translate "back_to_all_tracks"}}">
-    <span aria-hidden="true">←</span>
+    <img class="mobile-dock-icon" data-theme-icon="back" src="/static/new-icons/day/back-day-black-transparent.png" alt="" aria-hidden="true">
     <span>{{translate "back_to_all_tracks"}}</span>
   </button>
   <button id="mobileTrackPlayButton" class="mobile-track-dock-button" type="button" data-mobile-track-action="play" aria-pressed="false" aria-label="{{translate "track_view_play"}}">
@@ -5525,6 +5550,8 @@ var isTrackView = false;
 var osmLayer, googleSatellite, mapboxSatellite;
 var trackBounds;
 var currentTrackID = null;
+var trackViewInitialViewportFallbackPending = false;
+var trackViewInitialViewportFallbackActive = false;
 const shortLinkBox = document.getElementById('shortLinkDisplay');
 let shortLinkTimer = null;
 let shortLinkAbort = null;
@@ -6425,7 +6452,7 @@ function refreshTrackViewPlaybackControl() {
   syncTrackViewDesktopActions();
   if (currentTrackID) {
     trackViewPlaybackContainer.style.display = 'flex';
-    if (trackViewPlaybackActive && !trackViewPlaybackPaused) {
+    if (trackViewPlaybackActive) {
       setTrackViewPlaybackButtonState('playing');
     } else {
       setTrackViewPlaybackButtonState('stopped');
@@ -6555,7 +6582,7 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
   if (!isLive) {
     attachTrackMarkerHitTarget(rendered, marker, map);
   }
-  if (trackViewPlaybackActive || trackViewPlaybackPaused) {
+  if (trackViewPlaybackActive) {
     showPlaybackCalendarForMarker(marker);
   }
 }
@@ -6620,6 +6647,16 @@ function fitTrackViewToFullTrack() {
   }
   fitTrackViewBoundsToScreen(bounds);
   adjustMarkerRadius();
+}
+
+function shouldLimitTrackViewToViewport() {
+  if (!isTrackView || !currentTrackID) {
+    return false;
+  }
+  if (!window.matchMedia) {
+    return false;
+  }
+  return window.matchMedia('(max-width: 767px)').matches;
 }
 
 function createMarkerOverlapPruner(map) {
@@ -6696,15 +6733,6 @@ function trackViewDelay(ms) {
   });
 }
 
-function waitTrackViewWhilePaused() {
-  if (!trackViewPlaybackPaused) {
-    return Promise.resolve();
-  }
-  return new Promise(function(resolve) {
-    trackViewPlaybackResume = resolve;
-  });
-}
-
 function createTrackViewPlaybackState() {
   return {
     pointIndex: 0,
@@ -6736,42 +6764,85 @@ function trackViewMarkerIsVisibleOnScreen(marker) {
   return bounds.contains(L.latLng(marker.lat, marker.lon));
 }
 
+function createTrackViewPlaybackPlan(pointCount) {
+  const slowestPointDelayMs = trackViewPlaybackConfig.slowestPointDelayMs;
+  if (!Number.isFinite(pointCount) || pointCount <= 0) {
+    return {
+      mode: 'point-delay',
+      pointDelayMs: slowestPointDelayMs,
+      targetDurationMs: 0,
+    };
+  }
+  const idealPointDelayMs = trackViewPlaybackConfig.targetDurationMs / pointCount;
+  if (!Number.isFinite(idealPointDelayMs) || idealPointDelayMs >= slowestPointDelayMs) {
+    return {
+      mode: 'point-delay',
+      pointDelayMs: slowestPointDelayMs,
+      targetDurationMs: pointCount * slowestPointDelayMs,
+    };
+  }
+  return {
+    mode: 'timeline',
+    pointDelayMs: idealPointDelayMs,
+    targetDurationMs: trackViewPlaybackConfig.targetDurationMs,
+  };
+}
+
+function trackViewPlaybackShouldContinue(state) {
+  return trackViewPlaybackActive && state.generation === trackViewPlaybackGeneration;
+}
+
 async function playTrackViewPoints(state, points) {
+  const playbackPlan = createTrackViewPlaybackPlan(points.length);
+  if (playbackPlan.mode === 'timeline') {
+    await playTrackViewPointsOnTimeline(state, points, playbackPlan);
+    return;
+  }
+  await playTrackViewPointsWithPointDelay(state, points, playbackPlan);
+}
+
+async function playTrackViewPointsWithPointDelay(state, points, playbackPlan) {
   for (let i = state.pointIndex; i < points.length; i++) {
-    if (!trackViewPlaybackActive) {
-      return;
-    }
-    if (state.generation !== trackViewPlaybackGeneration) {
-      return;
-    }
-    if (trackViewPlaybackPaused) {
-      await waitTrackViewWhilePaused();
-      if (!trackViewPlaybackActive) {
-        return;
-      }
-      if (state.generation !== trackViewPlaybackGeneration) {
-        return;
-      }
-    }
+    if (!trackViewPlaybackShouldContinue(state)) return;
     renderTrackViewMarker(points[i], map.getZoom(), i);
     state.pointIndex = i + 1;
-    await trackViewDelay(trackViewPlaybackConfig.pointDelayMs);
-    if (state.generation !== trackViewPlaybackGeneration) {
-      return;
-    }
+    await trackViewDelay(playbackPlan.pointDelayMs);
+    if (!trackViewPlaybackShouldContinue(state)) return;
   }
 }
 
+function playTrackViewPointsOnTimeline(state, points, playbackPlan) {
+  return new Promise(function(resolve) {
+    const playbackStartedAt = performance.now();
+    function renderTimelineFrame(frameTime) {
+      if (!trackViewPlaybackShouldContinue(state)) {
+        resolve();
+        return;
+      }
+      const elapsedMs = Math.max(0, frameTime - playbackStartedAt);
+      const expectedPointCount = Math.min(
+        points.length,
+        Math.max(state.pointIndex + 1, Math.ceil((elapsedMs / playbackPlan.targetDurationMs) * points.length))
+      );
+      while (state.pointIndex < expectedPointCount && trackViewPlaybackShouldContinue(state)) {
+        renderTrackViewMarker(points[state.pointIndex], map.getZoom(), state.pointIndex);
+        state.pointIndex += 1;
+      }
+      if (state.pointIndex >= points.length || !trackViewPlaybackShouldContinue(state)) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(renderTimelineFrame);
+    }
+    requestAnimationFrame(renderTimelineFrame);
+  });
+}
+
 function stopTrackViewPlayback(refreshMarkers) {
-  if (!trackViewPlaybackActive && !trackViewPlaybackPaused) {
+  if (!trackViewPlaybackActive) {
     return;
   }
   trackViewPlaybackActive = false;
-  trackViewPlaybackPaused = false;
-  if (trackViewPlaybackResume) {
-    trackViewPlaybackResume();
-    trackViewPlaybackResume = null;
-  }
   setTrackViewPlaybackButtonState('stopped');
   hidePlaybackCalendar();
   if (refreshMarkers) {
@@ -6788,7 +6859,6 @@ async function startTrackViewPlayback() {
   }
   trackViewPlaybackGeneration += 1;
   trackViewPlaybackActive = true;
-  trackViewPlaybackPaused = false;
   setTrackViewPlaybackButtonState('playing');
 
   if (markerStreamSource) {
@@ -6824,14 +6894,14 @@ async function startTrackViewPlayback() {
 }
 
 function toggleTrackViewPlayback() {
-  if (trackViewAutoplayRequested && !trackViewPlaybackActive && !trackViewPlaybackPaused) {
+  if (trackViewAutoplayRequested && !trackViewPlaybackActive) {
     trackViewAutoplayRequested = false;
     trackViewAutoplayDone = true;
     setTrackViewPlaybackButtonState('stopped');
     renderTrackViewSnapshot();
     return;
   }
-  if (trackViewPlaybackActive || trackViewPlaybackPaused) {
+  if (trackViewPlaybackActive) {
     stopTrackViewPlayback(true);
     return;
   }
@@ -6869,7 +6939,7 @@ function maybeAutoplayTrackViewPlayback() {
   if (!currentTrackID || !map) {
     return;
   }
-  if (trackViewPlaybackActive || trackViewPlaybackPaused) {
+  if (trackViewPlaybackActive) {
     trackViewAutoplayDone = true;
     return;
   }
@@ -6892,12 +6962,13 @@ let playbackAutoplayDone = false;
 // Track view playback flags avoid auto-starting more than once per page load.
 let trackViewAutoplayRequested = false;
 let trackViewAutoplayDone = false;
-let trackViewPlaybackPaused = false;
-let trackViewPlaybackResume = null;
 let trackViewPlaybackActive = false;
 // Generation guards stop in-flight playback loops when a new viewport starts.
 let trackViewPlaybackGeneration = 0;
-const trackViewPlaybackConfig = { pointDelayMs: 70 };
+const trackViewPlaybackConfig = {
+  slowestPointDelayMs: 70,
+  targetDurationMs: 30000,
+};
 let trackViewPlaybackButton = null;
 let trackViewPlaybackContainer = null;
 let trackViewPlaybackOriginalLocation = null;
@@ -7647,6 +7718,9 @@ function refreshThemedNewIcons() {
       iconImage.src = newIconPath(document.documentElement.dataset.theme === 'dark' ? 'night_on' : 'night_off', themeName);
     } else if (iconKind === 'download') {
       iconImage.src = '/static/new-icons/' + themeName + '/download-' + themeName + '.png';
+    } else if (iconKind === 'back') {
+      const backThemeSuffix = themeName === 'night' ? 'night-white' : 'day-black';
+      iconImage.src = '/static/new-icons/' + themeName + '/back-' + backThemeSuffix + '-transparent.png';
     }
   });
 
@@ -10324,10 +10398,12 @@ function updateMarkers(forceReload){
   if (currentTrackID) {
     params.trackID = currentTrackID; // focus on a single track when set
     params.realtime = 0;
-    params.minLat = -90;
-    params.minLon = -180;
-    params.maxLat = 90;
-    params.maxLon = 180;
+    if (!shouldLimitTrackViewToViewport() || trackViewInitialViewportFallbackActive) {
+      params.minLat = -90;
+      params.minLon = -180;
+      params.maxLat = 90;
+      params.maxLon = 180;
+    }
   }
 
   const savedRange = isTrackView ? null : loadCustomDateRangeState();
@@ -10492,6 +10568,30 @@ function updateMarkers(forceReload){
         const bDate = typeof b.date === 'number' ? b.date : 0;
         return aDate - bDate;
       });
+
+      if (shouldLimitTrackViewToViewport() && trackViewInitialViewportFallbackPending && !trackViewMarkers.length) {
+        trackViewInitialViewportFallbackPending = false;
+        trackViewInitialViewportFallbackActive = true;
+        updateMarkers(true);
+        return;
+      }
+
+      if (trackViewInitialViewportFallbackActive) {
+        const fallbackBounds = trackViewMarkerBounds(trackViewMarkers);
+        trackViewInitialViewportFallbackActive = false;
+        trackViewMarkers = [];
+        trackViewMarkersReady = false;
+        clearTrackViewPlaybackMarkers();
+        if (fallbackBounds) {
+          fitTrackViewBoundsToScreen(fallbackBounds);
+          setTimeout(function() {
+            updateMarkers(true);
+          }, 280);
+        }
+        return;
+      }
+
+      trackViewInitialViewportFallbackPending = false;
       trackViewMarkersReady = true;
       renderTrackViewSnapshot();
       if (trackViewAutoplayRequested && !trackViewMarkers.length) {
@@ -10512,6 +10612,10 @@ function updateMarkers(forceReload){
       return;
     }
     if (loadingEl) loadingEl.style.display='none';
+    if (isTrackView && trackViewInitialViewportFallbackActive) {
+      trackViewInitialViewportFallbackActive = false;
+      trackViewInitialViewportFallbackPending = false;
+    }
     if (isTrackView && trackViewAutoplayRequested) {
       trackViewAutoplayRequested = false;
       trackViewAutoplayDone = true;
@@ -12000,8 +12104,11 @@ function loadMapFromUrl() {
   const focusLat = parseFloat(params.get('focusLat'));
   const focusLon = parseFloat(params.get('focusLon'));
   const focusZoom = parseInt(params.get('focusZoom'), 10);
+  const hasTrackViewBounds = !isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon);
+  const hasTrackViewFocus = Number.isFinite(focusLat) && Number.isFinite(focusLon);
+  trackViewInitialViewportFallbackPending = isTrackView && shouldLimitTrackViewToViewport() && !hasTrackViewBounds && !hasTrackViewFocus && !trackBounds;
 
-  if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
+  if (hasTrackViewBounds) {
     const urlBounds = L.latLngBounds([minLat, minLon], [maxLat, maxLon]);
     if (isTrackView) {
       trackBounds = urlBounds;
@@ -12013,7 +12120,7 @@ function loadMapFromUrl() {
   } else if (isTrackView && trackBounds) {
     fitTrackViewBoundsToScreen(trackBounds);
     adjustMarkerRadius();
-  } else if (isTrackView && Number.isFinite(focusLat) && Number.isFinite(focusLon)) {
+  } else if (isTrackView && hasTrackViewFocus) {
     const safeFocusZoom = Number.isFinite(focusZoom) ? Math.max(1, Math.min(18, focusZoom)) : Math.max(12, defaultCfg.zoom);
     trackViewProgrammaticFitPending = true;
     map.setView([focusLat, focusLon], safeFocusZoom);
