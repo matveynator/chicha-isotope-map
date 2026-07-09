@@ -324,23 +324,84 @@ body, html {
           top: 12px;
           left: 50%;
           transform: translateX(-50%);
-          display: flex;
+          display: grid;
           align-items: center;
-          gap: 6px;
+          grid-template-columns: 34px minmax(0, 1fr);
+          grid-template-rows: auto auto;
+          column-gap: 8px;
+          row-gap: 0;
+          justify-items: start;
           background: var(--overlay-bg);
           border: var(--legend-border);
           border-radius: 999px;
-          padding: 6px 12px;
+          padding: 4px 16px;
           z-index: 1200;
           font-size: var(--font-size-sm);
           color: var(--modal-text);
           margin: 0;
           text-transform: none;
+          max-width: min(560px, calc(100vw - 144px));
+          box-sizing: border-box;
+          text-align: start;
         }
 
         #mapLogo .map-logo-icon {
-          font-size: var(--font-size-lg);
-          line-height: 1;
+          grid-column: 1;
+          grid-row: 1 / span 2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          align-self: center;
+          width: 32px;
+          height: 32px;
+          color: var(--map-ui-accent-strong);
+        }
+
+        #mapLogo .map-logo-icon svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+          color: currentColor;
+          filter: drop-shadow(0 0 5px color-mix(in srgb, var(--map-ui-accent-strong) 18%, transparent));
+        }
+
+        #mapLogo .map-logo-title {
+          grid-column: 2;
+          grid-row: 1;
+          display: block;
+          min-width: 0;
+          max-width: 100%;
+          font-size: var(--font-size-base);
+          font-weight: 700;
+          line-height: 0.96;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-align: start;
+        }
+
+        #mapLogo .map-logo-subtitle {
+          grid-column: 2;
+          grid-row: 2;
+          display: grid;
+          max-width: 100%;
+          margin-top: -5px;
+          overflow: hidden;
+          font-size: var(--font-size-xs);
+          font-weight: 500;
+          line-height: 0.95;
+          opacity: 0.82;
+          text-align: start;
+        }
+
+        #mapLogo .map-logo-subtitle-line {
+          display: block;
+          min-width: 0;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          text-align: start;
         }
 
         #mapLogo .playback-calendar-control {
@@ -354,7 +415,15 @@ body, html {
           box-shadow: none;
         }
 
-        #mapLogo.is-showing-playback-calendar .map-logo-text {
+        #mapLogo.is-showing-playback-calendar .map-logo-title {
+          display: none;
+        }
+
+        #mapLogo.is-showing-playback-calendar .map-logo-icon {
+          display: none;
+        }
+
+        #mapLogo.is-showing-playback-calendar .map-logo-subtitle {
           display: none;
         }
 
@@ -2379,7 +2448,7 @@ body, html {
           padding: 0 18px;
           background: var(--map-ui-surface-strong);
           color: var(--map-ui-accent-strong);
-          font-weight: 700;
+          font-weight: 400;
           text-decoration: none;
         }
 
@@ -3263,16 +3332,27 @@ body, html {
 
           #mapLogo {
             top: 14px;
-            max-width: calc(100vw - 132px);
-            height: var(--map-ui-icon-size);
+            max-width: calc(100vw - 112px);
             min-height: var(--map-ui-icon-size);
-            max-height: var(--map-ui-icon-size);
             box-sizing: border-box;
-            padding: 0 14px;
-            font-size: var(--font-size-base);
-            white-space: nowrap;
+            padding: 3px 12px;
             overflow: hidden;
-            text-overflow: ellipsis;
+            grid-template-columns: 28px minmax(0, 1fr);
+            column-gap: 6px;
+          }
+
+          #mapLogo .map-logo-icon {
+            width: 26px;
+            height: 26px;
+          }
+
+          #mapLogo .map-logo-title {
+            font-size: var(--font-size-sm);
+          }
+
+          #mapLogo .map-logo-subtitle {
+            font-size: var(--font-size-xxs);
+            line-height: 0.95;
           }
 
           #mapLogo.is-showing-playback-calendar {
@@ -4319,22 +4399,98 @@ body, html {
       // We emit ready-made JS literals to keep html/template from misdetecting
       // the surrounding string context when translations contain quotes.
       var translations = {{ .TranslationsJSON }};
-        var currentLang = '{{ .Lang }}'; // Current language
+      var currentLang = '{{ .Lang }}'; // Current language
 
-        // Get translation by key
-        function translate(key) {
-            if (!translations['en']) {
-                console.error('English translations not available!');
-                return key;
-            }
-
-            if (translations[currentLang] && translations[currentLang][key]) {
-                return translations[currentLang][key];
-            } else if (translations['en'][key]) {
-                return translations['en'][key];
-            }
-            return key;
+      // Get translation by key
+      function translate(key) {
+        if (!translations['en']) {
+          console.error('English translations not available!');
+          return key;
         }
+
+        if (translations[currentLang] && translations[currentLang][key]) {
+          return translations[currentLang][key];
+        } else if (translations['en'][key]) {
+          return translations['en'][key];
+        }
+        return key;
+      }
+
+      function mapLogoTitleText() {
+        var title = translate('title');
+        if (!title || title === 'title') {
+          title = translate('logo_title');
+        }
+        return String(title)
+          .replace(/\s*[:：]\s*\[\[domain\]\]\s*$/u, '')
+          .replace(/\s*[:：]\s*[^:：]+$/u, '')
+          .replace(/[\s:：-]+$/u, '')
+          .trim();
+      }
+
+      function splitMapLogoSubtitle(text) {
+        var sourceText = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!sourceText) return ['', ''];
+        var midpoint = Math.floor(sourceText.length / 2);
+        var splitIndex = -1;
+        var bestDistance = Number.MAX_SAFE_INTEGER;
+        var separatorPattern = /[\s,.;:!?，。！？、؛،]/u;
+
+        for (var index = 1; index < sourceText.length - 1; index++) {
+          if (!separatorPattern.test(sourceText.charAt(index))) continue;
+          var distance = Math.abs(index - midpoint);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            splitIndex = index;
+          }
+        }
+
+        if (splitIndex < 0 && sourceText.length > 18) {
+          splitIndex = midpoint;
+        }
+        if (splitIndex < 0) {
+          return [sourceText, ''];
+        }
+
+        var firstLine = sourceText.slice(0, splitIndex).replace(/[\s,.;:!?，。！？、؛،]+$/u, '').trim();
+        var secondLine = sourceText.slice(splitIndex).replace(/^[\s,.;:!?，。！？、؛،]+/u, '').trim();
+        if (!firstLine || !secondLine) {
+          return [sourceText, ''];
+        }
+        return [firstLine, secondLine];
+      }
+
+      function setMapLogoSubtitle(subtitleNode, text) {
+        var subtitleLines = splitMapLogoSubtitle(text);
+        subtitleNode.textContent = '';
+        subtitleLines.forEach(function(lineText) {
+          if (!lineText) return;
+          var lineNode = document.createElement('span');
+          lineNode.className = 'map-logo-subtitle-line';
+          lineNode.textContent = lineText;
+          subtitleNode.appendChild(lineNode);
+        });
+      }
+
+      function refreshMapLogoText() {
+        var logoNode = document.getElementById('mapLogo');
+        if (!logoNode) return;
+        var iconNode = logoNode.querySelector('.map-logo-icon');
+        var titleNode = logoNode.querySelector('.map-logo-text');
+        var subtitleNode = logoNode.querySelector('.map-logo-subtitle');
+        var titleText = mapLogoTitleText();
+        var subtitleText = translate('meta_description');
+        if (iconNode && !iconNode.innerHTML) {
+          iconNode.innerHTML = buildRadiationSymbolSvg();
+        }
+        if (titleNode) {
+          titleNode.textContent = titleText;
+        }
+        if (subtitleNode) {
+          setMapLogoSubtitle(subtitleNode, subtitleText);
+        }
+        logoNode.setAttribute('aria-label', titleText + '. ' + subtitleText);
+      }
     </script>
     <script>
       const defaultCfg = {
@@ -4466,8 +4622,10 @@ body, html {
     </a>
 
     <!-- World radiation logo announces the map identity for every language. -->
-    <h1 id="mapLogo" aria-label="{{translate "logo_title"}}">
-      <span class="map-logo-text">{{translate "logo_title"}}</span>
+    <h1 id="mapLogo" aria-label="{{translateDomain "title"}}">
+      <span class="map-logo-icon" aria-hidden="true"></span>
+      <span class="map-logo-title"><span class="map-logo-text">{{translateDomain "title"}}</span></span>
+      <span class="map-logo-subtitle">{{translate "meta_description"}}</span>
     </h1>
 
     {{if .DesktopWebView}}
@@ -7407,14 +7565,28 @@ function saveDateRangeMode(mode) {
   }
 }
 
+function formatSliderYear(year) {
+  try {
+    return new Intl.NumberFormat([currentAppLocale(), 'en'], { useGrouping: false }).format(Number(year));
+  } catch (err) {
+    return String(year);
+  }
+}
+
 /**
- * Return a "Month YYYY" string in the browser locale.
- * Chrome/Firefox often display "Aug 2025",
- * Safari shows "Aug 2025", etc.
+ * Return a localized "Month YYYY" string for the application language.
  */
 function tsToNiceStr(ts){
-  return new Date(ts * 1000)
-    .toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  const date = new Date(ts * 1000);
+  try {
+    return new Intl.DateTimeFormat([currentAppLocale(), 'en'], {
+      calendar: 'gregory',
+      month: 'short',
+      year: 'numeric'
+    }).format(date);
+  } catch (err) {
+    return date.toLocaleDateString('en', { month: 'short', year: 'numeric' });
+  }
 }
 
 
@@ -8128,6 +8300,7 @@ function initializeDesktopAdminUI() {
 
 
 document.addEventListener('DOMContentLoaded', function () {
+  refreshMapLogoText();
 
   // Initialize trackID from path while allowing dashes and URL-escaped segments.
   var match = window.location.pathname.match(/^\/trackid\/([^/?#]+)/);
@@ -9118,14 +9291,14 @@ function createDateRangeSlider(){
         const fr = fullRange || [minTs,maxTs];
         const saved = loadCustomDateRangeState(fr);
         const isFull = !saved;
-        const currentYearRange = buildYearSliderRange(fr[0], fr[1]);
-        if (isFull){
-          lblMin().textContent = currentYearRange.displayMin;
-          lblMax().textContent = currentYearRange.displayMax;
-        } else {
-          lblMin().textContent = y;
-          lblMax().textContent = currentYearRange.displayMax;
-        }
+	        const currentYearRange = buildYearSliderRange(fr[0], fr[1]);
+	        if (isFull){
+	          lblMin().textContent = formatSliderYear(currentYearRange.displayMin);
+	          lblMax().textContent = formatSliderYear(currentYearRange.displayMax);
+	        } else {
+	          lblMin().textContent = formatSliderYear(y);
+	          lblMax().textContent = formatSliderYear(currentYearRange.displayMax);
+	        }
       });
       yearSlider.noUiSlider.on('change', updateDateFilter);
       yearSlider.style.display = mode === 'year' ? 'block' : 'none';
@@ -9159,10 +9332,10 @@ function createDateRangeSlider(){
     syncSlidersToRange(savedRange, minTs, maxTs);
 
     // Initial labels = full bounds
-    if (mode === 'year'){
-      const yearRange = buildYearSliderRange(minTs, maxTs);
-      lblMin().textContent = yearRange.displayMin;
-      lblMax().textContent = yearRange.displayMax;
+	    if (mode === 'year'){
+	      const yearRange = buildYearSliderRange(minTs, maxTs);
+	      lblMin().textContent = formatSliderYear(yearRange.displayMin);
+	      lblMax().textContent = formatSliderYear(yearRange.displayMax);
     } else {
       lblMin().textContent = tsToNiceStr(minTs);
       lblMax().textContent = tsToNiceStr(maxTs);
@@ -9202,9 +9375,9 @@ function createDateRangeSlider(){
 
     // If no custom filter → force labels to show full bounds and make month slider span all
     if (!hasCustom){
-      if (mode === 'year'){
-        lblMin().textContent = yearRange.displayMin;
-        lblMax().textContent = yearRange.displayMax;
+	      if (mode === 'year'){
+	        lblMin().textContent = formatSliderYear(yearRange.displayMin);
+	        lblMax().textContent = formatSliderYear(yearRange.displayMax);
       } else {
         monthSlider.noUiSlider.set([minTs,maxTs]);
         lblMin().textContent = tsToNiceStr(minTs);
@@ -9230,8 +9403,8 @@ function createDateRangeSlider(){
       yearSlider.noUiSlider.set(yearRange ? yearRange.displayMax : rY.max);      // handle position is cosmetic
       monthSlider.noUiSlider.set([rM.min, rM.max]);
 
-      lblMin().textContent = (mode==='year' && yearRange) ? yearRange.displayMin : tsToNiceStr(rM.min);
-      lblMax().textContent = (mode==='year' && yearRange) ? yearRange.displayMax : tsToNiceStr(rM.max);
+	      lblMin().textContent = (mode==='year' && yearRange) ? formatSliderYear(yearRange.displayMin) : tsToNiceStr(rM.min);
+	      lblMax().textContent = (mode==='year' && yearRange) ? formatSliderYear(yearRange.displayMax) : tsToNiceStr(rM.max);
 
       updateMarkers(true);
       updateUrl(); // keep reset reflected in shared links
@@ -9259,16 +9432,16 @@ function createDateRangeSlider(){
     const saved = loadCustomDateRangeState(fullRange);
     const isFull = !saved;
 
-    if (next === 'year'){
-      const r = yearSlider.noUiSlider.options.range;
-      if (isFull){
-        lblMin().textContent = r.min;
-        lblMax().textContent = r.max;
-      } else {
-        const y = +yearSlider.noUiSlider.get();
-        lblMin().textContent = y;
-        lblMax().textContent = r.max;
-      }
+	    if (next === 'year'){
+	      const r = yearSlider.noUiSlider.options.range;
+	      if (isFull){
+	        lblMin().textContent = formatSliderYear(r.min);
+	        lblMax().textContent = formatSliderYear(r.max);
+	      } else {
+	        const y = +yearSlider.noUiSlider.get();
+	        lblMin().textContent = formatSliderYear(y);
+	        lblMax().textContent = formatSliderYear(r.max);
+	      }
     } else {
       const r = monthSlider.noUiSlider.options.range;
       if (isFull){
