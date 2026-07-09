@@ -3358,6 +3358,52 @@ body, html {
             cursor: pointer;
           }
 
+          .mobile-track-dock-button {
+            display: none;
+            gap: 2px;
+            justify-items: center;
+            align-items: center;
+            justify-self: center;
+            align-self: center;
+            width: 42px;
+            min-width: 42px;
+            max-width: 42px;
+            height: 42px;
+            min-height: 42px;
+            max-height: 42px;
+            border: 1px solid var(--map-ui-border);
+            border-radius: 50%;
+            background: var(--map-ui-surface-strong);
+            color: var(--map-ui-text);
+            font-family: var(--font-family-base);
+            font-size: var(--font-size-lg);
+            line-height: 1.1;
+            cursor: pointer;
+            text-decoration: none;
+            box-shadow: var(--map-ui-soft-shadow);
+          }
+
+          .mobile-track-dock-button span:last-child {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            white-space: nowrap;
+          }
+
+          .mobile-track-dock-button:hover,
+          .mobile-track-dock-button:focus {
+            background: var(--control-bg-hover);
+            outline: none;
+          }
+
+          .mobile-track-dock-button:disabled {
+            opacity: 0.48;
+            pointer-events: none;
+          }
+
           .mobile-dock-icon {
             display: block;
             width: 22px;
@@ -3386,6 +3432,34 @@ body, html {
           .mobile-dock-button.is-playing {
             background: var(--map-ui-accent-soft);
             color: var(--map-ui-accent-strong);
+          }
+
+          :root[data-track-view='true'] #mobileControlDock {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+          }
+
+          :root[data-track-view='true'] .mobile-dock-logo-link,
+          :root[data-track-view='true'] .mobile-dock-button,
+          :root[data-track-view='true'] .mobile-dock-panel {
+            display: none;
+          }
+
+          :root[data-track-view='true'] .mobile-track-dock-button {
+            display: grid;
+          }
+
+          :root[data-track-view='true'] .mobile-track-dock-button.is-playing {
+            background: var(--map-ui-accent);
+            border-color: var(--map-ui-accent);
+            color: #fff;
+            box-shadow: 0 0 0 3px var(--map-ui-accent-soft), var(--map-ui-soft-shadow);
+          }
+
+          :root[data-track-view='true'] .track-view-actions .back-to-all-container,
+          :root[data-track-view='true'] .track-view-actions .download-track-container,
+          :root[data-track-view='true'] .track-view-actions .track-view-playback-slot,
+          :root[data-track-view='true'] .track-playback-control {
+            display: none !important;
           }
 
           .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control):not(.is-in-mobile-dock),
@@ -4268,6 +4342,22 @@ body, html {
   <button class="mobile-dock-button" type="button" data-mobile-panel="settings" aria-expanded="false" aria-label="{{translate "mobile_dock_settings"}}">
     <img class="mobile-dock-icon" data-new-icon="filters_settings" alt="" aria-hidden="true">
     <span>{{translate "mobile_dock_settings"}}</span>
+  </button>
+  <button class="mobile-track-dock-button" type="button" data-mobile-track-action="back" aria-label="{{translate "back_to_all_tracks"}}">
+    <span aria-hidden="true">←</span>
+    <span>{{translate "back_to_all_tracks"}}</span>
+  </button>
+  <button id="mobileTrackPlayButton" class="mobile-track-dock-button" type="button" data-mobile-track-action="play" aria-pressed="false" aria-label="{{translate "track_view_play"}}">
+    <span aria-hidden="true">▶</span>
+    <span>Play</span>
+  </button>
+  <button class="mobile-track-dock-button" type="button" data-mobile-track-action="reset" aria-label="Reset track playback">
+    <span aria-hidden="true">↺</span>
+    <span>Reset</span>
+  </button>
+  <button id="mobileTrackDownloadButton" class="mobile-track-dock-button" type="button" data-mobile-track-action="download" aria-label="{{translate "download_track_cim"}}" title="{{translate "download_track_cim"}}">
+    <img class="mobile-dock-icon" data-theme-icon="download" src="/static/new-icons/day/download-day.png" alt="" aria-hidden="true">
+    <span>{{translate "download_track_cim"}}</span>
   </button>
   <div class="mobile-dock-panel" aria-live="polite"></div>
 </div>
@@ -6209,6 +6299,7 @@ function refreshDownloadLink() {
   var link = document.getElementById('downloadTrackLink');
   var box  = document.querySelector('.download-track-container');
   if (!link || !box) {
+    syncMobileTrackDownloadButton(null);
     return;
   }
   if (currentTrackID) {
@@ -6236,6 +6327,22 @@ function refreshDownloadLink() {
     link.removeAttribute('download');
     link.onclick = null;
     box.style.display = 'none';
+  }
+  syncMobileTrackDownloadButton(link);
+}
+
+function syncMobileTrackDownloadButton(sourceLink) {
+  var mobileDownloadButton = document.getElementById('mobileTrackDownloadButton');
+  if (!mobileDownloadButton) {
+    return;
+  }
+  mobileDownloadButton.disabled = !currentTrackID;
+  mobileDownloadButton.setAttribute('aria-label', translate('download_track_cim'));
+  mobileDownloadButton.setAttribute('title', translate('download_track_cim'));
+  if (sourceLink && sourceLink.getAttribute('download')) {
+    mobileDownloadButton.dataset.downloadFilename = sourceLink.getAttribute('download');
+  } else {
+    delete mobileDownloadButton.dataset.downloadFilename;
   }
 }
 
@@ -6270,6 +6377,13 @@ function downloadCurrentTrackNativeDesktop() {
  * ---------------------------------------------------------------*/
 function setTrackViewPlaybackButtonState(state) {
   if (!trackViewPlaybackButton) {
+    const mobileOnlyTrackPlaybackButton = document.getElementById('mobileTrackPlayButton');
+    if (mobileOnlyTrackPlaybackButton) {
+      const mobileOnlyIsPlaying = state === 'playing';
+      mobileOnlyTrackPlaybackButton.classList.toggle('is-playing', mobileOnlyIsPlaying);
+      mobileOnlyTrackPlaybackButton.setAttribute('aria-pressed', mobileOnlyIsPlaying ? 'true' : 'false');
+      mobileOnlyTrackPlaybackButton.setAttribute('aria-label', translate(mobileOnlyIsPlaying ? 'track_view_pause' : 'track_view_play'));
+    }
     return;
   }
   const isPlaying = state === 'playing';
@@ -6278,6 +6392,16 @@ function setTrackViewPlaybackButtonState(state) {
   trackViewPlaybackButton.textContent = isPlaying ? '⏸' : '▶';
   trackViewPlaybackButton.setAttribute('title', translate(labelKey));
   trackViewPlaybackButton.setAttribute('aria-label', translate(labelKey));
+  const mobileTrackPlaybackButton = document.getElementById('mobileTrackPlayButton');
+  if (mobileTrackPlaybackButton) {
+    mobileTrackPlaybackButton.classList.toggle('is-playing', isPlaying);
+    mobileTrackPlaybackButton.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
+    mobileTrackPlaybackButton.setAttribute('aria-label', translate(labelKey));
+    const iconNode = mobileTrackPlaybackButton.querySelector('span[aria-hidden="true"]');
+    if (iconNode) {
+      iconNode.textContent = isPlaying ? '⏸' : '▶';
+    }
+  }
 }
 
 function refreshTrackViewPlaybackControl() {
@@ -6674,16 +6798,16 @@ async function startTrackViewPlayback() {
   trackViewPlaybackState = createTrackViewPlaybackState();
   const playbackGeneration = trackViewPlaybackState.generation;
   try {
-    // Sort only visible markers so zoomed track playback starts inside the current screen.
-    const normalized = trackViewMarkers
+    const sortedTrackMarkers = trackViewMarkers
       .map(normalizeTrackViewPlaybackMarker)
       .filter(Boolean)
-      .filter(trackViewMarkerIsVisibleOnScreen)
       .sort(function(a, b) {
         const aDate = typeof a.date === 'number' ? a.date : 0;
         const bDate = typeof b.date === 'number' ? b.date : 0;
         return aDate - bDate;
       });
+    const visibleTrackMarkers = sortedTrackMarkers.filter(trackViewMarkerIsVisibleOnScreen);
+    const normalized = visibleTrackMarkers.length ? visibleTrackMarkers : sortedTrackMarkers;
     if (normalized.length) {
       showPlaybackCalendarForMarker(normalized[0]);
     }
@@ -6710,6 +6834,13 @@ function toggleTrackViewPlayback() {
       trackViewPlaybackResume();
       trackViewPlaybackResume = null;
     }
+    return;
+  }
+  if (!trackViewMarkersReady || !Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
+    trackViewAutoplayRequested = true;
+    trackViewAutoplayDone = false;
+    setTrackViewPlaybackButtonState('playing');
+    updateMarkers(true);
     return;
   }
   startTrackViewPlayback();
@@ -7250,6 +7381,7 @@ function initializeMobileControlDock() {
   }
   const buttons = Array.from(dock.querySelectorAll('[data-mobile-panel]'));
   const playbackButton = dock.querySelector('[data-mobile-action="playback"]');
+  const trackActionButtons = Array.from(dock.querySelectorAll('[data-mobile-track-action]'));
   const mobileQuery = window.matchMedia('(max-width: 767px)');
   const dockedControlRecords = new Map();
 
@@ -7431,6 +7563,39 @@ function initializeMobileControlDock() {
       }
     });
   }
+
+  trackActionButtons.forEach(function(button) {
+    button.addEventListener('click', function(event) {
+      if (!mobileQuery.matches || !currentTrackID) {
+        return;
+      }
+      event.preventDefault();
+      setActivePanel('');
+      const actionName = button.getAttribute('data-mobile-track-action') || '';
+      if (actionName === 'back') {
+        const backToAllButton = document.getElementById('backToAllButton');
+        if (backToAllButton) {
+          backToAllButton.click();
+        }
+        return;
+      }
+      if (actionName === 'play') {
+        toggleTrackViewPlayback();
+        return;
+      }
+      if (actionName === 'reset') {
+        resetTrackViewPlaybackForZoom();
+        updateMarkers(true);
+        return;
+      }
+      if (actionName === 'download') {
+        const downloadTrackLink = document.getElementById('downloadTrackLink');
+        if (downloadTrackLink) {
+          downloadTrackLink.click();
+        }
+      }
+    });
+  });
 
   document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
@@ -10335,6 +10500,11 @@ function updateMarkers(forceReload){
       });
       trackViewMarkersReady = true;
       renderTrackViewSnapshot();
+      if (trackViewAutoplayRequested && !trackViewMarkers.length) {
+        trackViewAutoplayRequested = false;
+        trackViewAutoplayDone = true;
+        setTrackViewPlaybackButtonState('stopped');
+      }
       if (!trackViewInitialFitDone) {
         fitTrackViewToFullTrack();
       }
@@ -10348,6 +10518,11 @@ function updateMarkers(forceReload){
       return;
     }
     if (loadingEl) loadingEl.style.display='none';
+    if (isTrackView && trackViewAutoplayRequested) {
+      trackViewAutoplayRequested = false;
+      trackViewAutoplayDone = true;
+      setTrackViewPlaybackButtonState('stopped');
+    }
     es.close();
   };
 }
