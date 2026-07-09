@@ -1045,6 +1045,12 @@ body, html {
           pointer-events: none;
         }
 
+        :root[data-track-view='true'] .download-track-btn img {
+          width: 16.8px;
+          height: 16.8px;
+          opacity: 0.84;
+        }
+
         /* Track playback button uses the slider play styling so it stays familiar. */
         .track-playback-control {
           padding: 6px;
@@ -3453,6 +3459,12 @@ body, html {
             border-color: var(--map-ui-accent);
             color: #fff;
             box-shadow: 0 0 0 3px var(--map-ui-accent-soft), var(--map-ui-soft-shadow);
+          }
+
+          :root[data-track-view='true'] #mobileTrackDownloadButton .mobile-dock-icon {
+            width: 15.4px;
+            height: 15.4px;
+            opacity: 0.84;
           }
 
           :root[data-track-view='true'] .track-view-actions .back-to-all-container,
