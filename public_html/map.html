@@ -9048,8 +9048,9 @@ function createDateRangeSlider(){
     const trackIDContent = `
       <span class="track-marker-track-label">${translate('track_id')}:</span>
       <span class="track-marker-track-value">${escapeHtml(trackID || '—')}</span>`;
+    const trackLinkAttrs = `data-track="${escapeHtml(trackID)}" data-lat="${escapeHtml(String(marker.lat))}" data-lon="${escapeHtml(String(marker.lon))}"`;
     const trackIDBlock = fixed && trackID
-      ? `<a href="#" class="track-marker-track-pill track-link" data-track="${escapeHtml(trackID)}">${trackIDContent}</a>`
+      ? `<a href="#" class="track-marker-track-pill track-link" ${trackLinkAttrs}>${trackIDContent}</a>`
       : `<span class="track-marker-track-pill is-inactive">${trackIDContent}</span>`;
 
     return `
@@ -10163,6 +10164,7 @@ function updateMarkers(forceReload){
   };
   if (currentTrackID) {
     params.trackID = currentTrackID; // focus on a single track when set
+    params.realtime = 0;
     params.minLat = -90;
     params.minLon = -180;
     params.maxLat = 90;
@@ -11286,15 +11288,20 @@ function adjustMarkerRadius() {
  *  viewTrack() — switch to single-track mode.
  *  Set currentTrackID = trackID before changing window.location.
  * -----------------------------------------------------------------*/
-function viewTrack(trackID) {
+function viewTrack(trackID, focusPoint) {
   currentTrackID = trackID;   // new
   isTrackView    = true;
 
   const params = buildMapStateParams();
-  ['minLat', 'minLon', 'maxLat', 'maxLon', 'zoom', 'from', 'to', 'dateMode'].forEach(function(paramName) {
+  ['minLat', 'minLon', 'maxLat', 'maxLon', 'zoom', 'from', 'to', 'dateMode', 'speed'].forEach(function(paramName) {
     params.delete(paramName);
   });
   params.delete('play');
+  if (focusPoint && Number.isFinite(focusPoint.lat) && Number.isFinite(focusPoint.lon)) {
+    params.set('focusLat', focusPoint.lat.toFixed(6));
+    params.set('focusLon', focusPoint.lon.toFixed(6));
+    params.set('focusZoom', Math.max(12, map.getZoom()));
+  }
   // Encode the track ID so namespaced IDs (e.g. safecast-123) survive routing.
   const trackURL = `/trackid/${encodeURIComponent(trackID)}?${params.toString()}`;
 
@@ -11821,6 +11828,9 @@ function loadMapFromUrl() {
   const minLon = parseFloat(params.get('minLon'));
   const maxLat = parseFloat(params.get('maxLat'));
   const maxLon = parseFloat(params.get('maxLon'));
+  const focusLat = parseFloat(params.get('focusLat'));
+  const focusLon = parseFloat(params.get('focusLon'));
+  const focusZoom = parseInt(params.get('focusZoom'), 10);
 
   if (!isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon)) {
     const urlBounds = L.latLngBounds([minLat, minLon], [maxLat, maxLon]);
@@ -11834,6 +11844,14 @@ function loadMapFromUrl() {
   } else if (isTrackView && trackBounds) {
     fitTrackViewBoundsToScreen(trackBounds);
     adjustMarkerRadius();
+  } else if (isTrackView && Number.isFinite(focusLat) && Number.isFinite(focusLon)) {
+    const safeFocusZoom = Number.isFinite(focusZoom) ? Math.max(1, Math.min(18, focusZoom)) : Math.max(12, defaultCfg.zoom);
+    trackViewProgrammaticFitPending = true;
+    map.setView([focusLat, focusLon], safeFocusZoom);
+    setTimeout(function() {
+      trackViewProgrammaticFitPending = false;
+    }, 250);
+    adjustMarkerRadius();
   } else if (storedView) {
     map.setView([storedView.lat, storedView.lon], storedView.zoom);
     adjustMarkerRadius();
@@ -11845,6 +11863,9 @@ function loadMapFromUrl() {
 }
 
 function updateUrl() {
+  if (isTrackView && trackViewProgrammaticFitPending) {
+    return;
+  }
   const params = buildMapStateParams();
   var newUrl = `${window.location.pathname}?${params.toString()}`;
 
@@ -13315,7 +13336,10 @@ function centerMapToLocation() {
     const trackLink = ev.target.closest('.track-link');
     if (trackLink) {
       ev.preventDefault();
-      viewTrack(trackLink.dataset.track);
+      viewTrack(trackLink.dataset.track, {
+        lat: parseFloat(trackLink.dataset.lat),
+        lon: parseFloat(trackLink.dataset.lon),
+      });
     }
     // open info modal for attribution links
     if (ev.target.classList.contains('attr-link')) {
