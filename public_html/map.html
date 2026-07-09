@@ -3407,13 +3407,25 @@ body, html {
           }
 
           html[data-mobile-panel='layers'] .mobile-dock-panel {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             width: 100%;
-            justify-content: space-between;
-            gap: 0;
+            align-items: center;
+            justify-items: center;
+            gap: 4px;
+          }
+
+          html[data-mobile-panel='settings'] #mobileControlDock {
+            gap: 12px;
           }
 
           html[data-mobile-panel='settings'] .mobile-dock-panel {
-            gap: 8px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            height: 48px;
+            min-height: 48px;
+            max-height: 48px;
             padding-left: 0;
           }
 
@@ -3646,34 +3658,25 @@ body, html {
           }
 
           .mobile-dock-panel .leaflet-control-layers:not(.speed-filter-control):not(.date-slider-box):not(.track-playback-control) {
-            display: flex;
-            flex: 1 1 0;
-            width: auto;
+            display: grid;
+            grid-column: 5;
+            justify-items: center;
+            width: 100%;
             height: 48px;
             max-height: 48px;
             padding: 0;
             align-items: center;
-            justify-content: center;
             overflow: hidden;
           }
 
           .mobile-dock-panel .speed-filter-control {
-            display: flex;
-            flex: 3 1 0;
-            width: auto;
-            height: 48px;
-            max-height: 48px;
-            padding: 0;
-            flex-direction: row;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0;
-            overflow: hidden;
+            display: contents;
           }
 
           .mobile-dock-panel .speed-filter-control .speed-filter-row {
-            flex: 1 1 0;
+            flex: 0 0 34px;
             display: grid;
+            align-items: center;
             justify-items: center;
           }
 
@@ -3714,12 +3717,53 @@ body, html {
             min-height: 34px;
           }
 
-          .speed-filter-row {
+          .mobile-dock-panel .speed-filter-row {
             width: 34px;
             height: 34px;
             min-height: 34px;
             padding: 0;
+            border: 1px solid var(--map-ui-border);
+            border-radius: 50%;
+            background: var(--map-ui-surface);
+            box-shadow: var(--map-ui-soft-shadow);
+            opacity: 0.92;
+            transform: translateY(0) scale(1);
+            transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 90ms ease, opacity 140ms ease;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          .mobile-dock-panel .speed-filter-row:hover,
+          .mobile-dock-panel .speed-filter-row:focus-within {
+            background: var(--control-bg-hover);
+            border-color: var(--map-ui-accent-strong);
+            box-shadow: 0 0 0 3px var(--map-ui-accent-soft), var(--map-ui-soft-shadow);
+            opacity: 1;
+            outline: none;
+          }
+
+          .mobile-dock-panel .speed-filter-row:active {
+            transform: translateY(1px) scale(0.94);
+            box-shadow: 0 0 0 2px var(--map-ui-accent-soft), 0 3px 10px rgba(0, 0, 0, 0.28);
+          }
+
+          .mobile-dock-panel .speed-filter-row.is-selected {
+            background: var(--map-ui-accent);
+            border-color: var(--map-ui-accent);
+            color: #fff;
+            opacity: 1;
+          }
+
+          .mobile-dock-panel .speed-filter-row .speed-filter-icon,
+          .mobile-dock-panel .speed-filter-row:hover .speed-filter-icon,
+          .mobile-dock-panel .speed-filter-row:focus-within .speed-filter-icon,
+          .mobile-dock-panel .speed-filter-row.is-selected .speed-filter-icon {
+            width: 24px;
+            height: 24px;
+            border: 0;
             border-radius: 0;
+            background: transparent;
+            box-shadow: none;
           }
 
           .mobile-dock-panel .date-slider-box {
@@ -3799,20 +3843,56 @@ body, html {
           }
 
           .mobile-dock-panel #themeToggle {
-            flex: 0 0 auto;
-            height: 48px;
-            min-height: 48px;
-            max-height: 48px;
-            padding: 0;
+            flex: 0 0 84px;
+            display: inline-flex;
+            justify-content: space-between;
+            width: 84px;
+            height: 40px;
+            min-height: 40px;
+            max-height: 40px;
+            padding: 0 2px 0 6px;
             border-radius: 0;
           }
 
+          .mobile-dock-panel #themeToggle .theme-mode-button {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--map-ui-border);
+            border-radius: 50%;
+            background: var(--control-bg);
+            box-shadow: none;
+            opacity: 0.58;
+            transform: scale(0.9);
+          }
+
+          .mobile-dock-panel #themeToggle .theme-mode-button:hover,
+          .mobile-dock-panel #themeToggle .theme-mode-button:focus-visible {
+            border-color: var(--map-ui-accent-strong);
+            background: var(--control-bg-hover);
+            box-shadow: none;
+            opacity: 1;
+            outline: none;
+          }
+
+          :root[data-theme='light'] .mobile-dock-panel #themeToggle .theme-mode-button[data-theme-choice='light'],
+          :root[data-theme='dark'] .mobile-dock-panel #themeToggle .theme-mode-button[data-theme-choice='dark'] {
+            background: var(--map-ui-accent-soft);
+            border-color: var(--map-ui-accent-strong);
+            box-shadow: none;
+            opacity: 1;
+            transform: scale(1.08);
+          }
+
+          .mobile-dock-panel #themeToggle .theme-mode-button:active {
+            transform: scale(0.94);
+          }
+
           .mobile-dock-panel #mapCacheStatus {
-            flex: 1 1 86px;
+            display: none !important;
             position: relative !important;
             min-width: 0;
-            width: auto;
-            max-width: 108px;
+            width: 100%;
+            max-width: none;
             height: 38px;
             min-height: 38px;
             max-height: 38px;
@@ -3843,49 +3923,24 @@ body, html {
             white-space: nowrap;
           }
 
-          .mobile-cache-reset-button {
-            flex: 0 0 34px;
-            width: 34px;
-            height: 34px;
-            min-width: 34px;
-            min-height: 34px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            border: 1px solid var(--map-ui-border);
-            border-radius: 50%;
-            background: var(--control-bg);
-            color: var(--map-ui-text);
-            font-family: var(--font-family-base);
-            font-size: 20px;
-            line-height: 1;
-            cursor: pointer;
-            opacity: 0.9;
-          }
-
-          .mobile-cache-reset-button:hover,
-          .mobile-cache-reset-button:focus {
-            background: var(--control-bg-hover);
-            color: var(--map-ui-accent-strong);
-            opacity: 1;
-          }
-
           .mobile-settings-links {
-            display: flex;
             flex: 1 1 auto;
-            align-items: center;
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-auto-rows: 20px;
+            align-items: stretch;
             gap: 4px;
             min-width: 0;
-            height: 48px;
+            height: 44px;
             overflow: hidden;
           }
 
           .mobile-settings-link {
-            flex: 1 1 0;
             min-width: 0;
-            padding: 6px 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 6px;
             border-radius: 999px;
             background: var(--control-bg);
             color: var(--map-ui-text);
@@ -3897,11 +3952,16 @@ body, html {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease;
           }
 
           .mobile-settings-link:hover,
-          .mobile-settings-link:focus {
+          .mobile-settings-link:focus-visible {
             background: var(--control-bg-hover);
+            border-color: var(--map-ui-accent-strong);
+            color: var(--map-ui-accent-strong);
+            box-shadow: 0 0 0 2px var(--map-ui-accent-soft);
+            outline: none;
           }
 
           .qr-modal-backdrop {
@@ -7570,40 +7630,27 @@ function initializeMobileControlDock() {
     linksNode.id = 'mobileSettingsLinks';
     linksNode.className = 'mobile-settings-links';
     [
-      ['api', 'attr_api'],
-      ['sources', 'attr_sources'],
-      ['license', 'attr_license']
+      { info: 'api', label: 'API/MCP' },
+      { info: 'legal', labelKey: 'attr_legal' },
+      { info: 'sources', labelKey: 'attr_sources' },
+      { info: 'license', labelKey: 'attr_license' },
+      { href: 'https://matveynator.github.io/chicha-isotope-map', label: 'GitHub' }
     ].forEach(function(linkSpec) {
       const linkNode = document.createElement('a');
-      linkNode.href = '#';
-      linkNode.className = 'mobile-settings-link attr-link';
-      linkNode.dataset.info = linkSpec[0];
-      linkNode.textContent = translate(linkSpec[1]);
+      linkNode.href = linkSpec.href || '#';
+      linkNode.className = 'mobile-settings-link';
+      if (linkSpec.info) {
+        linkNode.classList.add('attr-link');
+        linkNode.dataset.info = linkSpec.info;
+      }
+      if (linkSpec.href) {
+        linkNode.target = '_blank';
+        linkNode.rel = 'noopener noreferrer';
+      }
+      linkNode.textContent = linkSpec.label || translate(linkSpec.labelKey);
       linksNode.appendChild(linkNode);
     });
     return linksNode;
-  }
-
-  function ensureMobileMapCacheResetButton() {
-    let buttonNode = document.getElementById('mobileMapCacheResetButton');
-    if (buttonNode) {
-      buttonNode.title = mapCacheText('reset_button');
-      buttonNode.setAttribute('aria-label', mapCacheText('reset_button'));
-      return buttonNode;
-    }
-    buttonNode = document.createElement('button');
-    buttonNode.id = 'mobileMapCacheResetButton';
-    buttonNode.className = 'mobile-cache-reset-button';
-    buttonNode.type = 'button';
-    buttonNode.title = mapCacheText('reset_button');
-    buttonNode.setAttribute('aria-label', mapCacheText('reset_button'));
-    buttonNode.textContent = '⟲';
-    buttonNode.addEventListener('click', function(event) {
-      event.preventDefault();
-      event.stopPropagation();
-      openMapCacheResetConfirmModal();
-    });
-    return buttonNode;
   }
 
   function findMobilePanelNodes(panelName) {
@@ -7617,10 +7664,9 @@ function initializeMobileControlDock() {
       return dateSliderNode ? [dateSliderNode] : [];
     }
     if (panelName === 'settings') {
-      const settingsNodes = ['themeToggle', 'mapCacheStatus']
+      const settingsNodes = ['themeToggle']
         .map(function(elementID) { return document.getElementById(elementID); })
         .filter(function(elementNode) { return Boolean(elementNode); });
-      settingsNodes.push(ensureMobileMapCacheResetButton());
       settingsNodes.push(ensureMobileSettingsLinks());
       return settingsNodes;
     }
