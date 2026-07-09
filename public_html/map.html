@@ -1017,18 +1017,32 @@ body, html {
         .download-track-btn {
           background-color: var(--control-bg);
           border: var(--legend-border);
-          border-radius: 4px;
-          padding: 5px 10px;
+          border-radius: 50%;
+          padding: 0;
           cursor: pointer;
           font-size: var(--font-size-base);
           color: var(--modal-text);
           box-shadow: 0 1px 5px rgba(0,0,0,0.65);
           text-decoration: none;
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          box-sizing: border-box;
+          width: var(--map-ui-icon-size);
+          height: var(--map-ui-icon-size);
+          min-width: var(--map-ui-icon-size);
+          min-height: var(--map-ui-icon-size);
         }
 
         .download-track-btn:hover {
           background-color: var(--control-bg-hover);
+        }
+
+        .download-track-btn img {
+          width: 24px;
+          height: 24px;
+          display: block;
+          pointer-events: none;
         }
 
         /* Track playback button uses the slider play styling so it stays familiar. */
@@ -1388,7 +1402,7 @@ body, html {
           }
 
           :root[data-track-view='true'] .track-view-actions .download-track-container {
-            flex: 1 1 0;
+            flex: 0 0 auto;
           }
 
           :root[data-track-view='true'] .track-view-actions .track-view-playback-slot {
@@ -1415,7 +1429,11 @@ body, html {
           }
 
           :root[data-track-view='true'] .track-view-actions .download-track-btn {
-            max-width: none;
+            width: var(--map-ui-icon-size);
+            min-width: var(--map-ui-icon-size);
+            max-width: var(--map-ui-icon-size);
+            padding: 0;
+            border-radius: 50%;
           }
 
           :root[data-track-view='true'] .track-view-actions .track-playback-control {
@@ -2821,6 +2839,15 @@ body, html {
           font-weight: 700;
         }
 
+        .download-track-btn {
+          width: var(--map-ui-icon-size);
+          height: var(--map-ui-icon-size);
+          min-width: var(--map-ui-icon-size);
+          min-height: var(--map-ui-icon-size);
+          padding: 0;
+          border-radius: 50%;
+        }
+
         .back-to-all-btn,
         .slider-reset-btn.is-attention {
           background: var(--action-attention-bg);
@@ -4133,9 +4160,13 @@ body, html {
       <div id="trackViewPlaybackSlot" class="track-view-playback-slot"></div>
       <div class="download-track-container leaflet-control" style="display: none;">
         {{if .DesktopNativeUpload}}
-        <button id="downloadTrackLink" class="download-track-btn" type="button">{{ translate "download_track_cim" }}</button>
+        <button id="downloadTrackLink" class="download-track-btn" type="button" aria-label="{{ translate "download_track_cim" }}" title="{{ translate "download_track_cim" }}">
+          <img data-theme-icon="download" src="/static/new-icons/day/download-day.png" alt="" aria-hidden="true">
+        </button>
         {{else}}
-        <a id="downloadTrackLink" class="download-track-btn" href="#">{{ translate "download_track_cim" }}</a>
+        <a id="downloadTrackLink" class="download-track-btn" href="#" aria-label="{{ translate "download_track_cim" }}" title="{{ translate "download_track_cim" }}">
+          <img data-theme-icon="download" src="/static/new-icons/day/download-day.png" alt="" aria-hidden="true">
+        </a>
         {{end}}
       </div>
     </div>
@@ -6183,8 +6214,9 @@ function refreshDownloadLink() {
   if (currentTrackID) {
     // Encode IDs so hyphens and other safe characters keep round-tripping in URLs.
     var encodedTrackID = encodeURIComponent(currentTrackID);
+    link.setAttribute('aria-label', translate('download_track_cim'));
+    link.setAttribute('title', translate('download_track_cim'));
     if (window.desktopNativeUpload) {
-      link.textContent = currentTrackID + '.json';
       link.removeAttribute('href');
       link.removeAttribute('download');
       link.onclick = function (event) {
@@ -6192,14 +6224,14 @@ function refreshDownloadLink() {
         downloadCurrentTrackNativeDesktop();
       };
     } else {
-      link.textContent = translate('download_track_cim');
       link.href = '/api/track/' + encodedTrackID + '.json';
       link.setAttribute('download', currentTrackID + '.json');
       link.onclick = null;
     }
     box.style.display = 'block';
   } else {
-    link.textContent = translate('download_track_cim');
+    link.setAttribute('aria-label', translate('download_track_cim'));
+    link.setAttribute('title', translate('download_track_cim'));
     link.href = '#';
     link.removeAttribute('download');
     link.onclick = null;
@@ -7454,6 +7486,8 @@ function refreshThemedNewIcons() {
       iconImage.src = newIconPath(document.documentElement.dataset.theme === 'dark' ? 'day_off' : 'day_on', themeName);
     } else if (iconKind === 'night') {
       iconImage.src = newIconPath(document.documentElement.dataset.theme === 'dark' ? 'night_on' : 'night_off', themeName);
+    } else if (iconKind === 'download') {
+      iconImage.src = '/static/new-icons/' + themeName + '/download-' + themeName + '.png';
     }
   });
 
@@ -7712,8 +7746,6 @@ document.addEventListener('DOMContentLoaded', function () {
     currentTrackID = decodeURIComponent(match[1]);
     isTrackView = true;
     document.documentElement.dataset.trackView = 'true';
-    trackViewAutoplayRequested = true;
-    // NEW: show back button immediately
     var backBox = document.querySelector('.back-to-all-container');
     if (backBox) backBox.style.display = 'block';
   }
@@ -11262,7 +11294,7 @@ function viewTrack(trackID) {
   ['minLat', 'minLon', 'maxLat', 'maxLon', 'zoom', 'from', 'to', 'dateMode'].forEach(function(paramName) {
     params.delete(paramName);
   });
-  params.set('play', '1');
+  params.delete('play');
   // Encode the track ID so namespaced IDs (e.g. safecast-123) survive routing.
   const trackURL = `/trackid/${encodeURIComponent(trackID)}?${params.toString()}`;
 
@@ -11771,7 +11803,7 @@ function loadMapFromUrl() {
     saveDateRangeMode(dateMode);
   }
   const playParam = parsePlaybackParam(params.get('play'));
-  if (playParam) {
+  if (playParam && !isTrackView) {
     playbackAutoplayRequested = true;
   }
 
@@ -12263,12 +12295,6 @@ function initializeUIElements() {
 
   scheduleShortLinkRefresh();
 
-  if (isTrackView && map && typeof map.whenReady === 'function') {
-    // Autoplay kicks in once the map is ready so the playback starts immediately.
-    map.whenReady(function () {
-      requestAnimationFrame(maybeAutoplayTrackViewPlayback);
-    });
-  }
 }
 
 function centerMapToLocation() {
