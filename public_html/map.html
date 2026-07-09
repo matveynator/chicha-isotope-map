@@ -3416,6 +3416,10 @@ body, html {
             cursor: pointer;
             text-decoration: none;
             box-shadow: var(--map-ui-soft-shadow);
+            transform: translateY(0) scale(1);
+            transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 90ms ease, opacity 140ms ease;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
           }
 
           .mobile-track-dock-button span:last-child {
@@ -3429,13 +3433,25 @@ body, html {
           }
 
           .mobile-track-dock-button:hover,
-          .mobile-track-dock-button:focus {
+          .mobile-track-dock-button:focus-visible {
             background: var(--control-bg-hover);
+            border-color: var(--map-ui-accent-strong);
+            box-shadow: 0 0 0 3px var(--map-ui-accent-soft), var(--map-ui-soft-shadow);
             outline: none;
+          }
+
+          .mobile-track-dock-button:active {
+            background: var(--control-bg-hover);
+            transform: translateY(1px) scale(0.94);
+            box-shadow: 0 0 0 2px var(--map-ui-accent-soft), 0 3px 10px rgba(0, 0, 0, 0.28);
           }
 
           .mobile-track-dock-button:disabled {
             opacity: 0.48;
+            pointer-events: none;
+          }
+
+          .mobile-track-dock-button .mobile-dock-icon {
             pointer-events: none;
           }
 
@@ -3488,6 +3504,10 @@ body, html {
             border-color: var(--map-ui-accent);
             color: #fff;
             box-shadow: 0 0 0 3px var(--map-ui-accent-soft), var(--map-ui-soft-shadow);
+          }
+
+          :root[data-track-view='true'] .mobile-track-dock-button.is-playing:active {
+            box-shadow: 0 0 0 2px var(--map-ui-accent-soft), 0 3px 10px rgba(0, 0, 0, 0.28);
           }
 
           :root[data-track-view='true'] #mobileTrackDownloadButton .mobile-dock-icon {
@@ -4656,13 +4676,20 @@ const MARKER_CONTRAST_RING_COLOR = '#000000';
 const MARKER_CONTRAST_RING_WIDTH = 0.5;
 let doseMarkerCanvasRenderer = null;
 
+function trackMarkerTouchTolerance() {
+  if (!window || !window.matchMedia) {
+    return 0;
+  }
+  return window.matchMedia('(pointer: coarse), (max-width: 767px)').matches ? 16 : 0;
+}
+
 function getDoseMarkerRenderer() {
   if (!map || !L || typeof L.canvas !== 'function') {
     return null;
   }
   if (!doseMarkerCanvasRenderer) {
     // Canvas renderer avoids thousands of SVG DOM nodes and keeps panning smooth on phones.
-    doseMarkerCanvasRenderer = L.canvas({ padding: 0.25 });
+    doseMarkerCanvasRenderer = L.canvas({ padding: 0.25, tolerance: trackMarkerTouchTolerance() });
   }
   return doseMarkerCanvasRenderer;
 }
@@ -9538,10 +9565,9 @@ function closeMarkerLayerStream(name) {
 }
 
 function trackMarkerHitTargetsEnabled() {
-  if (!window || !window.matchMedia) {
-    return false;
-  }
-  return window.matchMedia('(pointer: coarse), (max-width: 767px)').matches;
+  // Canvas renderer tolerance gives touch users a larger hit area without
+  // doubling every track marker into a second Leaflet layer.
+  return false;
 }
 
 function attachTrackMarkerHitTarget(visibleMarker, markerData, targetLayer) {
@@ -10019,6 +10045,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
   const savedRange = loadCustomDateRangeState();
 
   const renderQueue = [];
+  let renderQueueIndex = 0;
   let renderScheduled = false;
   let pendingRenderItems = 0;
   let streamsFinalized = false;
@@ -10043,20 +10070,24 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     renderScheduled = false;
     if (!isActiveLoad()) {
       renderQueue.length = 0;
+      renderQueueIndex = 0;
       pendingRenderItems = 0;
       return;
     }
     const start = performance.now();
-    while (renderQueue.length && performance.now() - start < 12) {
-      const entry = renderQueue.shift();
+    while (renderQueueIndex < renderQueue.length && performance.now() - start < 12) {
+      const entry = renderQueue[renderQueueIndex];
+      renderQueueIndex += 1;
       renderQueuedMarker(entry.marker, entry.layerName);
       pendingRenderItems -= 1;
     }
-    if (renderQueue.length) {
+    if (renderQueueIndex < renderQueue.length) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
       return;
     }
+    renderQueue.length = 0;
+    renderQueueIndex = 0;
     finalizeStreams();
   }
 
@@ -10418,6 +10449,7 @@ function updateMarkers(forceReload){
   const livePlacement = createLivePlacementGrid(map, zoom);
   const pruneOverlap = createMarkerOverlapPruner(map);
   const renderQueue = [];
+  let renderQueueIndex = 0;
   let renderScheduled = false;
   let pendingRenderItems = 0;
   let streamDone = false;
@@ -10449,19 +10481,23 @@ function updateMarkers(forceReload){
     renderScheduled = false;
     if (!isActiveLoad()) {
       renderQueue.length = 0;
+      renderQueueIndex = 0;
       pendingRenderItems = 0;
       return;
     }
     const start = performance.now();
-    while (renderQueue.length && performance.now() - start < 12) {
-      renderQueuedMarker(renderQueue.shift());
+    while (renderQueueIndex < renderQueue.length && performance.now() - start < 12) {
+      renderQueuedMarker(renderQueue[renderQueueIndex]);
+      renderQueueIndex += 1;
       pendingRenderItems -= 1;
     }
-    if (renderQueue.length) {
+    if (renderQueueIndex < renderQueue.length) {
       renderScheduled = true;
       requestAnimationFrame(drainRenderQueue);
       return;
     }
+    renderQueue.length = 0;
+    renderQueueIndex = 0;
     finalizeTrackStream();
   }
 
