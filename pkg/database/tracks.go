@@ -285,6 +285,66 @@ WHERE trackID = %s;`
 	return summary, nil
 }
 
+// ResolveTrackMarkerZoom returns the densest precomputed zoom layer at or below
+// the requested zoom, falling back to the nearest higher layer when older
+// databases do not have a lower layer for that track.
+func (db *Database) ResolveTrackMarkerZoom(ctx context.Context, trackID string, requestedZoom int, dbType string) (int, error) {
+	if requestedZoom < 1 {
+		requestedZoom = 1
+	}
+	if requestedZoom > 20 {
+		requestedZoom = 20
+	}
+
+	firstPlaceholder := "?"
+	secondPlaceholder := "?"
+	if strings.ToLower(dbType) == "pgx" {
+		firstPlaceholder = "$1"
+		secondPlaceholder = "$2"
+	}
+	maxAtOrBelowQuery := fmt.Sprintf(
+		`SELECT MAX(zoom) FROM markers WHERE trackID = %s AND zoom > 0 AND zoom <= %s;`,
+		firstPlaceholder,
+		secondPlaceholder,
+	)
+	minAboveQuery := fmt.Sprintf(
+		`SELECT MIN(zoom) FROM markers WHERE trackID = %s AND zoom > %s;`,
+		firstPlaceholder,
+		secondPlaceholder,
+	)
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	resolvedZoom := requestedZoom
+	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+		var maxZoom sql.NullInt64
+		if err := conn.QueryRowContext(ctx, maxAtOrBelowQuery, trackID, requestedZoom).Scan(&maxZoom); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("resolve track marker zoom: %w", err)
+		}
+		if maxZoom.Valid && maxZoom.Int64 > 0 {
+			resolvedZoom = int(maxZoom.Int64)
+			return nil
+		}
+
+		var minZoom sql.NullInt64
+		if err := conn.QueryRowContext(ctx, minAboveQuery, trackID, requestedZoom).Scan(&minZoom); err != nil {
+			if err == sql.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("resolve track marker zoom fallback: %w", err)
+		}
+		if minZoom.Valid && minZoom.Int64 > 0 {
+			resolvedZoom = int(minZoom.Int64)
+		}
+		return nil
+	})
+	return resolvedZoom, err
+}
+
 // =========================
 // Marker range streaming API
 // =========================

@@ -7311,11 +7311,28 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 	return out
 }
 
+func parseMarkerStreamZoom(raw string) int {
+	zoom, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(zoom) || math.IsInf(zoom, 0) {
+		return 1
+	}
+	rounded := int(math.Round(zoom))
+	if rounded < 1 {
+		return 1
+	}
+	if rounded > 20 {
+		return 20
+	}
+	return rounded
+}
+
+const trackViewMarkerZoomBoost = 2
+
 // streamMarkersHandler streams markers via Server-Sent Events.
 // Map views are aggregated for responsiveness while track views preserve order.
 func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	zoom, _ := strconv.Atoi(q.Get("zoom"))
+	zoom := parseMarkerStreamZoom(q.Get("zoom"))
 	minLat, _ := strconv.ParseFloat(q.Get("minLat"), 64)
 	minLon, _ := strconv.ParseFloat(q.Get("minLon"), 64)
 	maxLat, _ := strconv.ParseFloat(q.Get("maxLat"), 64)
@@ -7356,6 +7373,23 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
+	trackStreamZoom := zoom
+	if trackID != "" {
+		// Single-track views can afford denser precomputed layers while
+		// staying on the indexed zoom pipeline instead of loading raw tracks.
+		trackStreamZoom = zoom + trackViewMarkerZoomBoost
+		if trackStreamZoom > 20 {
+			trackStreamZoom = 20
+		}
+		if trackStreamZoom < 1 {
+			trackStreamZoom = 1
+		}
+		if resolvedZoom, err := db.ResolveTrackMarkerZoom(ctx, trackID, trackStreamZoom, *dbType); err == nil {
+			trackStreamZoom = resolvedZoom
+		} else {
+			log.Printf("resolve track marker zoom: %v", err)
+		}
+	}
 	var (
 		baseSrc <-chan database.Marker
 		errCh   <-chan error
@@ -7363,9 +7397,9 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	if !liveOnly {
 		if trackID != "" {
 			if len(sr) > 0 {
-				baseSrc, errCh = db.StreamMarkersByTrackIDZoomBoundsSpeed(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
+				baseSrc, errCh = db.StreamMarkersByTrackIDZoomBoundsSpeed(ctx, trackID, trackStreamZoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
 			} else {
-				baseSrc, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+				baseSrc, errCh = db.StreamMarkersByTrackIDZoomAndBounds(ctx, trackID, trackStreamZoom, minLat, minLon, maxLat, maxLon, *dbType)
 			}
 		} else {
 			if len(sr) > 0 {

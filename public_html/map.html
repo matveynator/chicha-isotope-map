@@ -5692,6 +5692,85 @@ function parsePlaybackParam(raw) {
   return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'play';
 }
 
+function currentUrlRequestsPlayback() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('play')) {
+    return false;
+  }
+  const rawPlayParam = params.get('play');
+  return String(rawPlayParam || '').trim() === '' || parsePlaybackParam(rawPlayParam);
+}
+
+function currentUrlIsTrackViewRoute() {
+  return /^\/trackid\/([^/?#]+)/.test(window.location.pathname);
+}
+
+function currentUrlRequestsTrackViewPlayback() {
+  return currentUrlIsTrackViewRoute() && currentUrlRequestsPlayback();
+}
+
+function clearTrackViewAutoplayRetryTimer() {
+  if (trackViewAutoplayRetryTimer) {
+    clearTimeout(trackViewAutoplayRetryTimer);
+    trackViewAutoplayRetryTimer = null;
+  }
+}
+
+function clearTrackViewReloadTimer() {
+  if (trackViewReloadTimer) {
+    clearTimeout(trackViewReloadTimer);
+    trackViewReloadTimer = null;
+  }
+}
+
+function suppressTrackViewReloadFor(milliseconds) {
+  const duration = Number(milliseconds);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return;
+  }
+  trackViewReloadSuppressedUntil = Math.max(trackViewReloadSuppressedUntil, Date.now() + duration);
+}
+
+function isTrackViewReloadSuppressed() {
+  return Date.now() < trackViewReloadSuppressedUntil;
+}
+
+function requestTrackViewAutoplayFromUrl() {
+  playbackShareActive = true;
+  trackViewAutoplayRequested = true;
+  trackViewAutoplayDone = false;
+  trackViewAutoplayFromUrl = true;
+  trackViewAutoplayPendingShare = true;
+  clearTrackViewAutoplayRetryTimer();
+}
+
+function syncTrackViewPlaybackShareState(isPlaying) {
+  if (!isPlaying && shouldPreserveTrackViewAutoplayShareState()) {
+    return;
+  }
+  if (isPlaying && trackViewPlaybackActive) {
+    trackViewAutoplayPendingShare = false;
+  }
+  if (!isPlaying) {
+    trackViewAutoplayPendingShare = false;
+  }
+  if (playbackShareActive === isPlaying) {
+    return;
+  }
+  playbackShareActive = isPlaying;
+  if (typeof updateUrl === 'function' && map) {
+    updateUrl();
+  }
+}
+
+function shouldPreserveTrackViewAutoplayShareState() {
+  return (isTrackView || currentUrlIsTrackViewRoute()) &&
+    trackViewAutoplayPendingShare &&
+    trackViewAutoplayFromUrl &&
+    trackViewAutoplayRequested &&
+    !trackViewAutoplayDone;
+}
+
 // Helper keeps URL state in sync with the currently active base layer.
 function getActiveBaseLayerName() {
   if (mapboxSatellite && map.hasLayer(mapboxSatellite)) {
@@ -5799,7 +5878,7 @@ function buildMapStateParams() {
     params.set('dateMode', dateMode);
   }
 
-  if (playbackShareActive) {
+  if (playbackShareActive || shouldPreserveTrackViewAutoplayShareState()) {
     params.set('play', '1');
   }
 
@@ -5810,6 +5889,12 @@ function buildMapStateParams() {
 function getCurrentUrlParams() {
   const params = buildMapStateParams();
   return `?${params.toString()}`;
+}
+
+function buildCurrentShareURL() {
+  const params = buildMapStateParams();
+  const query = params.toString();
+  return window.location.origin + window.location.pathname + (query ? '?' + query : '');
 }
 
 // Persist the last opened view so a fresh browser session resumes the same
@@ -5886,6 +5971,7 @@ let shortLinkAbort = null;
 let lastShortLinkFull = '';
 let pendingShortLinkFull = '';
 let shortLinkCommitPromise = null;
+let shortLinkCommitTarget = '';
 let shortLinkFocusDelayTimer = null;
 let shortLinkPendingUrl = '';
 let shortLinkFocusReady = (typeof document.hasFocus === 'function') ? document.hasFocus() : false;
@@ -6746,31 +6832,39 @@ function downloadCurrentTrackNativeDesktop() {
  * without forcing the full dataset to render immediately.
  * ---------------------------------------------------------------*/
 function setTrackViewPlaybackButtonState(state) {
+  const isPlaying = state === 'playing' || shouldPreserveTrackViewAutoplayShareState();
+  const labelKey = isPlaying ? 'date_slider_stop' : 'track_view_play';
+  const iconText = isPlaying ? '⏸' : '▶';
   if (!trackViewPlaybackButton) {
     const mobileOnlyTrackPlaybackButton = document.getElementById('mobileTrackPlayButton');
     if (mobileOnlyTrackPlaybackButton) {
-      const mobileOnlyIsPlaying = state === 'playing';
-      mobileOnlyTrackPlaybackButton.classList.toggle('is-playing', mobileOnlyIsPlaying);
-      mobileOnlyTrackPlaybackButton.setAttribute('aria-pressed', mobileOnlyIsPlaying ? 'true' : 'false');
-      mobileOnlyTrackPlaybackButton.setAttribute('aria-label', translate('track_view_play'));
+      mobileOnlyTrackPlaybackButton.classList.toggle('is-playing', isPlaying);
+      mobileOnlyTrackPlaybackButton.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
+      mobileOnlyTrackPlaybackButton.setAttribute('aria-label', translate(labelKey));
+      const mobileOnlyIconNode = mobileOnlyTrackPlaybackButton.querySelector('span[aria-hidden="true"]');
+      if (mobileOnlyIconNode) {
+        mobileOnlyIconNode.textContent = iconText;
+      }
     }
+    syncTrackViewPlaybackShareState(isPlaying);
     return;
   }
-  const isPlaying = state === 'playing';
   trackViewPlaybackButton.classList.toggle('is-playing', isPlaying);
-  trackViewPlaybackButton.textContent = '▶';
-  trackViewPlaybackButton.setAttribute('title', translate('track_view_play'));
-  trackViewPlaybackButton.setAttribute('aria-label', translate('track_view_play'));
+  trackViewPlaybackButton.textContent = iconText;
+  trackViewPlaybackButton.setAttribute('title', translate(labelKey));
+  trackViewPlaybackButton.setAttribute('aria-label', translate(labelKey));
+  trackViewPlaybackButton.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
   const mobileTrackPlaybackButton = document.getElementById('mobileTrackPlayButton');
   if (mobileTrackPlaybackButton) {
     mobileTrackPlaybackButton.classList.toggle('is-playing', isPlaying);
     mobileTrackPlaybackButton.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
-    mobileTrackPlaybackButton.setAttribute('aria-label', translate('track_view_play'));
+    mobileTrackPlaybackButton.setAttribute('aria-label', translate(labelKey));
     const iconNode = mobileTrackPlaybackButton.querySelector('span[aria-hidden="true"]');
     if (iconNode) {
-      iconNode.textContent = '▶';
+      iconNode.textContent = iconText;
     }
   }
+  syncTrackViewPlaybackShareState(isPlaying);
 }
 
 function refreshTrackViewPlaybackControl() {
@@ -6915,13 +7009,25 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
   }
 }
 
+function compareTrackMarkersForLayerOrder(a, b) {
+  const aDose = a && Number.isFinite(a.doseRate) ? a.doseRate : -Infinity;
+  const bDose = b && Number.isFinite(b.doseRate) ? b.doseRate : -Infinity;
+  if (aDose !== bDose) {
+    return aDose - bDose;
+  }
+  const aDate = a && typeof a.date === 'number' ? a.date : 0;
+  const bDate = b && typeof b.date === 'number' ? b.date : 0;
+  return aDate - bDate;
+}
+
 function renderTrackViewSnapshot() {
   if (!map || !Array.isArray(trackViewMarkers)) {
     return;
   }
   clearTrackViewPlaybackMarkers();
   const zoom = map.getZoom();
-  trackViewMarkers.forEach(function(marker, index) {
+  const displayMarkers = trackViewMarkers.slice().sort(compareTrackMarkersForLayerOrder);
+  displayMarkers.forEach(function(marker, index) {
     renderTrackViewMarker(marker, zoom, index);
   });
 }
@@ -6948,10 +7054,8 @@ function fitTrackViewBoundsToScreen(bounds) {
   if (!map || !bounds) {
     return;
   }
-  if (trackViewReloadTimer) {
-    clearTimeout(trackViewReloadTimer);
-    trackViewReloadTimer = null;
-  }
+  clearTrackViewReloadTimer();
+  suppressTrackViewReloadFor(900);
   trackViewProgrammaticFitPending = true;
   const mapSize = map.getSize();
   const horizontalPadding = Math.max(1, Math.round(mapSize.x * 0.05));
@@ -6961,8 +7065,15 @@ function fitTrackViewBoundsToScreen(bounds) {
   });
   trackViewInitialFitDone = true;
   setTimeout(function() {
-    trackViewProgrammaticFitPending = false;
+    finishTrackViewProgrammaticMove();
   }, 250);
+}
+
+function finishTrackViewProgrammaticMove() {
+  trackViewProgrammaticFitPending = false;
+  suppressTrackViewReloadFor(650);
+  clearTrackViewReloadTimer();
+  maybeAutoplayTrackViewPlayback();
 }
 
 function fitTrackViewToFullTrack() {
@@ -7185,6 +7296,8 @@ async function startTrackViewPlayback() {
   if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
     return;
   }
+  clearTrackViewReloadTimer();
+  suppressTrackViewReloadFor(700);
   trackViewPlaybackGeneration += 1;
   trackViewPlaybackActive = true;
   setTrackViewPlaybackButtonState('playing');
@@ -7222,7 +7335,9 @@ async function startTrackViewPlayback() {
 }
 
 function toggleTrackViewPlayback() {
-  if (trackViewAutoplayRequested && !trackViewPlaybackActive) {
+  if (trackViewAutoplayRequested && !trackViewAutoplayDone && !trackViewPlaybackActive) {
+    trackViewAutoplayFromUrl = false;
+    clearTrackViewAutoplayRetryTimer();
     trackViewAutoplayRequested = false;
     trackViewAutoplayDone = true;
     setTrackViewPlaybackButtonState('stopped');
@@ -7230,10 +7345,16 @@ function toggleTrackViewPlayback() {
     return;
   }
   if (trackViewPlaybackActive) {
+    trackViewAutoplayFromUrl = false;
+    trackViewAutoplayRequested = false;
+    trackViewAutoplayDone = true;
+    clearTrackViewAutoplayRetryTimer();
     stopTrackViewPlayback(true);
     return;
   }
   if (!trackViewMarkersReady || !Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
+    trackViewAutoplayFromUrl = false;
+    clearTrackViewAutoplayRetryTimer();
     trackViewAutoplayRequested = true;
     trackViewAutoplayDone = false;
     setTrackViewPlaybackButtonState('playing');
@@ -7249,11 +7370,14 @@ function resetTrackViewPlaybackForZoom() {
   }
   // Zooming changes the visible bounds, so clear state before re-streaming.
   const hadReadyMarkers = trackViewMarkersReady;
+  const preserveUrlAutoplay = trackViewAutoplayFromUrl && trackViewAutoplayRequested && !trackViewAutoplayDone;
   trackViewPlaybackGeneration += 1;
   stopTrackViewPlayback(false);
-  if (hadReadyMarkers) {
+  if (hadReadyMarkers && !preserveUrlAutoplay) {
     trackViewAutoplayRequested = false;
     trackViewAutoplayDone = true;
+    trackViewAutoplayFromUrl = false;
+    clearTrackViewAutoplayRetryTimer();
   }
   trackViewMarkers = [];
   trackViewMarkersReady = false;
@@ -7269,12 +7393,26 @@ function maybeAutoplayTrackViewPlayback() {
   }
   if (trackViewPlaybackActive) {
     trackViewAutoplayDone = true;
+    trackViewAutoplayFromUrl = false;
+    trackViewAutoplayRequested = false;
+    clearTrackViewAutoplayRetryTimer();
+    return;
+  }
+  if (trackViewProgrammaticFitPending) {
+    clearTrackViewAutoplayRetryTimer();
+    trackViewAutoplayRetryTimer = setTimeout(function() {
+      trackViewAutoplayRetryTimer = null;
+      maybeAutoplayTrackViewPlayback();
+    }, 320);
     return;
   }
   if (!Array.isArray(trackViewMarkers) || !trackViewMarkers.length) {
     return;
   }
   trackViewAutoplayDone = true;
+  trackViewAutoplayFromUrl = false;
+  trackViewAutoplayRequested = false;
+  clearTrackViewAutoplayRetryTimer();
   startTrackViewPlayback();
 }
 
@@ -7283,13 +7421,17 @@ var markerStreamSource = null;
 var trackPlaybackActive = false;
 var playbackMarkersRendered = false;
 // Playback sharing flags keep URL state aligned with the active play button.
-let playbackShareActive = false;
+const initialTrackViewAutoplayRequestFromUrl = currentUrlRequestsTrackViewPlayback();
+let playbackShareActive = initialTrackViewAutoplayRequestFromUrl;
 // Autoplay flags capture URL intent and ensure we trigger playback only once.
 let playbackAutoplayRequested = false;
 let playbackAutoplayDone = false;
 // Track view playback flags avoid auto-starting more than once per page load.
-let trackViewAutoplayRequested = false;
+let trackViewAutoplayRequested = initialTrackViewAutoplayRequestFromUrl;
 let trackViewAutoplayDone = false;
+let trackViewAutoplayFromUrl = initialTrackViewAutoplayRequestFromUrl;
+let trackViewAutoplayPendingShare = initialTrackViewAutoplayRequestFromUrl;
+let trackViewAutoplayRetryTimer = null;
 let trackViewPlaybackActive = false;
 // Generation guards stop in-flight playback loops when a new viewport starts.
 let trackViewPlaybackGeneration = 0;
@@ -7305,6 +7447,7 @@ let trackViewInitialFitDone = false;
 let trackViewMarkers = [];
 let trackViewMarkersReady = false;
 let trackViewReloadTimer = null;
+let trackViewReloadSuppressedUntil = 0;
 let playbackCalendarContainer = null;
 let playbackCalendarSheet = null;
 let playbackCalendarDateNode = null;
@@ -10703,6 +10846,10 @@ function updateMarkers(forceReload){
   const loadingEl = document.getElementById('loadingOverlay');
   if (trackPlaybackActive || trackViewPlaybackActive) {
     if (forceReload && trackViewPlaybackActive) {
+      if (isTrackView && isTrackViewReloadSuppressed()) {
+        if (loadingEl) loadingEl.style.display='none';
+        return;
+      }
       stopTrackViewPlayback(false);
     } else {
       if (loadingEl) loadingEl.style.display='none';
@@ -10926,7 +11073,9 @@ function updateMarkers(forceReload){
       trackViewInitialViewportFallbackPending = false;
       trackViewMarkersReady = true;
       renderTrackViewSnapshot();
-      if (trackViewAutoplayRequested && !trackViewMarkers.length) {
+      if (trackViewAutoplayRequested && !trackViewAutoplayDone && !trackViewPlaybackActive && !trackViewMarkers.length) {
+        trackViewAutoplayFromUrl = false;
+        clearTrackViewAutoplayRetryTimer();
         trackViewAutoplayRequested = false;
         trackViewAutoplayDone = true;
         setTrackViewPlaybackButtonState('stopped');
@@ -10947,7 +11096,9 @@ function updateMarkers(forceReload){
     if (isTrackView && trackViewInitialViewportFallbackPending) {
       trackViewInitialViewportFallbackPending = false;
     }
-    if (isTrackView && trackViewAutoplayRequested) {
+    if (isTrackView && trackViewAutoplayRequested && !trackViewAutoplayDone && !trackViewPlaybackActive) {
+      trackViewAutoplayFromUrl = false;
+      clearTrackViewAutoplayRetryTimer();
       trackViewAutoplayRequested = false;
       trackViewAutoplayDone = true;
       setTrackViewPlaybackButtonState('stopped');
@@ -11854,7 +12005,7 @@ function scheduleTrackViewReload() {
   if (!isTrackView) {
     return;
   }
-  if (trackViewProgrammaticFitPending) {
+  if (trackViewProgrammaticFitPending || isTrackViewReloadSuppressed()) {
     return;
   }
   if (trackViewReloadTimer) {
@@ -11862,6 +12013,9 @@ function scheduleTrackViewReload() {
   }
   trackViewReloadTimer = setTimeout(function() {
     trackViewReloadTimer = null;
+    if (isTrackViewReloadSuppressed()) {
+      return;
+    }
     resetTrackViewPlaybackForZoom();
     updateMarkers(true);
   }, 200);
@@ -12158,21 +12312,24 @@ function hideShortLink() {
 // Returning a promise keeps the UI non-blocking while honoring the "share memory
 // by communicating" proverb — the page communicates with the backend instead of
 // toggling global flags.
-function finalizeShortLink() {
+function finalizeShortLink(targetOverride) {
   if (!shortLinkBox) {
     return Promise.reject(new Error('short link box missing'));
   }
-  const persisted = shortLinkBox.dataset.persisted === 'true';
-  const href = shortLinkBox.dataset.href || '';
-  const target = shortLinkBox.dataset.target || '';
-  const code = shortLinkBox.dataset.code || '';
+  const requestedTarget = typeof targetOverride === 'string' ? targetOverride.trim() : '';
+  const previewTarget = shortLinkBox.dataset.target || '';
+  const target = requestedTarget || previewTarget;
+  const previewMatchesTarget = previewTarget === target;
+  const persisted = previewMatchesTarget && shortLinkBox.dataset.persisted === 'true';
+  const href = previewMatchesTarget ? (shortLinkBox.dataset.href || '') : '';
+  const code = previewMatchesTarget ? (shortLinkBox.dataset.code || '') : '';
   if (!target) {
     return Promise.reject(new Error('missing short link target'));
   }
   if (persisted && href) {
     return Promise.resolve(href);
   }
-  if (shortLinkCommitPromise) {
+  if (shortLinkCommitPromise && shortLinkCommitTarget === target) {
     return shortLinkCommitPromise;
   }
 
@@ -12198,6 +12355,9 @@ function finalizeShortLink() {
       if (!data || !data.short || !data.target) {
         throw new Error('shorten response missing URL');
       }
+      if (shortLinkCommitPromise !== pending || shortLinkCommitTarget !== target) {
+        return data.short;
+      }
       lastShortLinkFull = data.target;
       pendingShortLinkFull = '';
       applyShortLink(data);
@@ -12205,9 +12365,11 @@ function finalizeShortLink() {
     });
 
   shortLinkCommitPromise = pending;
+  shortLinkCommitTarget = target;
   pending.finally(() => {
-    if (shortLinkCommitPromise === pending) {
+    if (shortLinkCommitPromise === pending && shortLinkCommitTarget === target) {
       shortLinkCommitPromise = null;
+      shortLinkCommitTarget = '';
     }
   });
   return pending;
@@ -12228,7 +12390,8 @@ function resetShortLinkCopiedState(fallbackShortLink) {
 // fulfilled branch to avoid race conditions when multiple copy attempts happen.
 function copyShortLinkToClipboard() {
   if (!shortLinkBox) return;
-  finalizeShortLink()
+  const currentShareURL = buildCurrentShareURL();
+  finalizeShortLink(currentShareURL)
     .then(link => {
       if (!link) {
         throw new Error('empty short link');
@@ -12413,9 +12576,14 @@ function loadMapFromUrl() {
   if (dateMode === 'year' || dateMode === 'month') {
     saveDateRangeMode(dateMode);
   }
-  const playParam = parsePlaybackParam(params.get('play'));
-  if (playParam && !isTrackView) {
-    playbackAutoplayRequested = true;
+  const playParam = currentUrlRequestsPlayback();
+  if (playParam) {
+    playbackShareActive = true;
+    if (isTrackView) {
+      requestTrackViewAutoplayFromUrl();
+    } else {
+      playbackAutoplayRequested = true;
+    }
   }
 
   /* base layer from URL, browser memory, or default */
@@ -12435,6 +12603,8 @@ function loadMapFromUrl() {
   const focusLat = parseFloat(params.get('focusLat'));
   const focusLon = parseFloat(params.get('focusLon'));
   const focusZoom = parseInt(params.get('focusZoom'), 10);
+  const urlZoom = Number(params.get('zoom'));
+  const hasUrlZoom = params.has('zoom') && Number.isFinite(urlZoom);
   const hasTrackViewBounds = !isNaN(minLat) && !isNaN(minLon) && !isNaN(maxLat) && !isNaN(maxLon);
   trackViewInitialViewportFallbackPending = isTrackView && shouldLimitTrackViewToViewport() && !hasTrackViewBounds && !trackBounds;
 
@@ -12442,7 +12612,19 @@ function loadMapFromUrl() {
     const urlBounds = L.latLngBounds([minLat, minLon], [maxLat, maxLon]);
     if (isTrackView) {
       trackBounds = urlBounds;
-      fitTrackViewBoundsToScreen(trackBounds);
+      if (hasUrlZoom) {
+        const safeUrlZoom = Math.max(1, Math.min(20, urlZoom));
+        trackViewProgrammaticFitPending = true;
+        trackViewInitialFitDone = true;
+        suppressTrackViewReloadFor(900);
+        clearTrackViewReloadTimer();
+        map.setView(urlBounds.getCenter(), safeUrlZoom);
+        setTimeout(function() {
+          finishTrackViewProgrammaticMove();
+        }, 250);
+      } else {
+        fitTrackViewBoundsToScreen(trackBounds);
+      }
     } else {
       map.fitBounds(urlBounds);
     }
@@ -12453,9 +12635,11 @@ function loadMapFromUrl() {
   } else if (isTrackView && Number.isFinite(focusLat) && Number.isFinite(focusLon)) {
     const safeFocusZoom = Number.isFinite(focusZoom) ? Math.max(1, Math.min(18, focusZoom)) : Math.max(12, defaultCfg.zoom);
     trackViewProgrammaticFitPending = true;
+    suppressTrackViewReloadFor(900);
+    clearTrackViewReloadTimer();
     map.setView([focusLat, focusLon], safeFocusZoom);
     setTimeout(function() {
-      trackViewProgrammaticFitPending = false;
+      finishTrackViewProgrammaticMove();
     }, 250);
     adjustMarkerRadius();
   } else if (storedView) {
@@ -12466,6 +12650,9 @@ function loadMapFromUrl() {
   }
 
   autoLocateUser();
+  if (isTrackView && playParam) {
+    maybeAutoplayTrackViewPlayback();
+  }
 }
 
 function updateUrl() {
@@ -12483,9 +12670,9 @@ function updateUrl() {
 // Resolve a short link for the current map view so QR codes stay compact and
 // readable across scanners that struggle with oversized URLs.
 function resolveShortLinkForQr() {
-  const full = window.location.href;
+  const full = buildCurrentShareURL();
   if (shortLinkBox && shortLinkBox.dataset && shortLinkBox.dataset.target === full) {
-    return finalizeShortLink();
+    return finalizeShortLink(full);
   }
 
   const payload = { url: full, commit: true };
@@ -12542,7 +12729,7 @@ function hideQrModal() {
 
 function openServerPoster() {
   if (typeof updateUrl === 'function') { try { updateUrl(); } catch(_){} }
-  var full = window.location.href;
+  var full = buildCurrentShareURL();
   resolveShortLinkForQr()
     .then(function (shortURL) {
       var payload = shortURL || full;
