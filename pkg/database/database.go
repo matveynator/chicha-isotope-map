@@ -2436,6 +2436,12 @@ func (db *Database) getMaintenanceState(ctx context.Context, dbType, task string
 	return status, true, nil
 }
 
+// GetMaintenanceState exposes lightweight task state to application-level
+// maintenance jobs that own their rebuild logic outside the database package.
+func (db *Database) GetMaintenanceState(ctx context.Context, dbType, task string) (string, bool, error) {
+	return db.getMaintenanceState(ctx, dbType, task)
+}
+
 func (db *Database) setMaintenanceState(ctx context.Context, dbType, task, status, message string) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -2470,6 +2476,12 @@ VALUES (%s, %s, %s, %s)`, placeholder(dbType, 1), placeholder(dbType, 2), placeh
 		}
 		return nil
 	})
+}
+
+// SetMaintenanceState records task progress for application-level maintenance
+// without forcing those jobs into package database.
+func (db *Database) SetMaintenanceState(ctx context.Context, dbType, task, status, message string) error {
+	return db.setMaintenanceState(ctx, dbType, task, status, message)
 }
 
 // MarkerBatchProgress reports how many markers a bulk insert has flushed so operators can track

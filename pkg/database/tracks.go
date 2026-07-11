@@ -453,6 +453,121 @@ ORDER BY id%s;`, trackPlaceholder, fromPlaceholder, toPlaceholder, limitClause)
 	return out, errs
 }
 
+// StreamRawMarkersByTrackID streams only zoom=0 markers for one track. Raw
+// markers are the source of truth for rebuilding map zoom aggregates.
+func (db *Database) StreamRawMarkersByTrackID(
+	ctx context.Context,
+	trackID string,
+	dbType string,
+) (<-chan Marker, <-chan error) {
+	out := make(chan Marker)
+	errs := make(chan error, 1)
+
+	go func() {
+		defer close(out)
+		defer close(errs)
+
+		ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+		defer cancel()
+
+		nextPlaceholder := newPlaceholderGenerator(dbType)
+		trackPlaceholder := nextPlaceholder()
+		zoomPlaceholder := nextPlaceholder()
+		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+       altitude,
+       COALESCE(detector, '') AS detector,
+       COALESCE(radiation, '') AS radiation,
+       temperature,
+       humidity,
+       COALESCE(device_id, '') AS device_id,
+       COALESCE(transport, '') AS transport,
+       COALESCE(device_name, '') AS device_name,
+       COALESCE(tube, '') AS tube,
+       COALESCE(country, '') AS country
+FROM markers
+WHERE trackID = %s AND zoom = %s
+ORDER BY date, id;`, trackPlaceholder, zoomPlaceholder)
+
+		var batch []Marker
+		err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
+			rows, err := conn.QueryContext(ctx, query, trackID, 0)
+			if err != nil {
+				return fmt.Errorf("stream raw markers: %w", err)
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var m Marker
+				var altitude sql.NullFloat64
+				var temperature sql.NullFloat64
+				var humidity sql.NullFloat64
+				if err := rows.Scan(&m.ID, &m.DoseRate, &m.Date, &m.Lon, &m.Lat, &m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
+					&altitude, &m.Detector, &m.Radiation, &temperature, &humidity,
+					&m.DeviceID, &m.Transport, &m.DeviceName, &m.Tube, &m.Country); err != nil {
+					return fmt.Errorf("scan raw marker: %w", err)
+				}
+				if altitude.Valid {
+					m.Altitude = altitude.Float64
+					m.AltitudeValid = true
+				}
+				if temperature.Valid {
+					m.Temperature = temperature.Float64
+					m.TemperatureValid = true
+				}
+				if humidity.Valid {
+					m.Humidity = humidity.Float64
+					m.HumidityValid = true
+				}
+				batch = append(batch, m)
+			}
+
+			if err := rows.Err(); err != nil {
+				return fmt.Errorf("iterate raw markers: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			errs <- err
+			return
+		}
+
+		for _, m := range batch {
+			select {
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			case out <- m:
+			}
+		}
+
+		errs <- nil
+	}()
+
+	return out, errs
+}
+
+// DeleteTrackZoomAggregates removes derived map layers while preserving raw
+// zoom=0 measurements for exports and future rebuilds.
+func (db *Database) DeleteTrackZoomAggregates(ctx context.Context, trackID, dbType string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	nextPlaceholder := newPlaceholderGenerator(dbType)
+	trackPlaceholder := nextPlaceholder()
+	zoomPlaceholder := nextPlaceholder()
+	query := fmt.Sprintf(`DELETE FROM markers WHERE trackID = %s AND zoom > %s`, trackPlaceholder, zoomPlaceholder)
+
+	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
+	defer cancel()
+
+	return db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
+		if _, err := conn.ExecContext(ctx, query, trackID, 0); err != nil {
+			return fmt.Errorf("delete track zoom aggregates: %w", err)
+		}
+		return nil
+	})
+}
+
 // EnsureTrackPresence keeps the lightweight tracks registry in sync with
 // incoming marker inserts so pagination can avoid repeated DISTINCT scans.
 // We deliberately use INSERT…WHERE NOT EXISTS instead of ON CONFLICT to stay

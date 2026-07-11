@@ -7104,7 +7104,7 @@ function createMarkerOverlapPruner(map) {
   const overlapBuckets = new Map();
   // 60% area overlap threshold keeps only heavy stacks while preserving nearby detail.
   const overlapThreshold = 0.6;
-  const maxLayers = 3;
+  const maxLayers = 4;
 
   function bucketKey(point) {
     return `${Math.floor(point.x / bucketSize)}:${Math.floor(point.y / bucketSize)}`;
@@ -7136,7 +7136,16 @@ function createMarkerOverlapPruner(map) {
     return intersection / minArea;
   }
 
-  return function prune(markerKey, lat, lon, radius) {
+  function lessImportantMarker(first, second) {
+    const firstDose = Number.isFinite(first.doseRate) ? first.doseRate : -Infinity;
+    const secondDose = Number.isFinite(second.doseRate) ? second.doseRate : -Infinity;
+    if (firstDose !== secondDose) {
+      return firstDose < secondDose;
+    }
+    return String(first.key) > String(second.key);
+  }
+
+  return function prune(markerKey, lat, lon, radius, doseRate) {
     if (!markerKey || typeof lat !== 'number' || typeof lon !== 'number') {
       return;
     }
@@ -7144,7 +7153,7 @@ function createMarkerOverlapPruner(map) {
       return;
     }
     const point = map.latLngToLayerPoint([lat, lon]);
-    const entry = { key: markerKey, x: point.x, y: point.y, r: radius };
+    const entry = { key: markerKey, x: point.x, y: point.y, r: radius, doseRate: doseRate };
     const key = bucketKey(point);
     let stack = overlapBuckets.get(key);
     if (!stack) {
@@ -7158,7 +7167,13 @@ function createMarkerOverlapPruner(map) {
     if (overlaps.length < maxLayers) {
       return;
     }
-    const dropEntry = overlaps[0];
+    const candidates = overlaps.concat([entry]);
+    let dropEntry = candidates[0];
+    for (let index = 1; index < candidates.length; index += 1) {
+      if (lessImportantMarker(candidates[index], dropEntry)) {
+        dropEntry = candidates[index];
+      }
+    }
     removeMarkerByKey(dropEntry.key);
     overlapBuckets.set(key, stack.filter(function(candidate) {
       return candidate.key !== dropEntry.key;
@@ -10157,7 +10172,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     return;
   }
   const enableMarkerStreamCache = !window.desktopWebViewMode;
-  const streamKey = `v1:${layerName}:${params.toString()}`;
+  const streamKey = `v2:${layerName}:${params.toString()}`;
   const streamQuery = parseMarkerStreamQueryParams(params, layerName);
   if (!state.pendingStreams) {
     state.streamFailed = false;
@@ -10576,7 +10591,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       attachTrackMarkerHitTarget(marker, m, group);
     }
     if (m.speed >= 0 && markerRenderState.pruneOverlap) {
-      markerRenderState.pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
+      markerRenderState.pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius, m.doseRate);
     }
   }
 
@@ -10981,7 +10996,7 @@ function updateMarkers(forceReload){
     circleMarkers[markerKey] = marker;
     if (m.speed >= 0) {
       attachTrackMarkerHitTarget(marker, m, map);
-      pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius);
+      pruneOverlap(markerKey, m.lat, m.lon, marker.options && marker.options.radius, m.doseRate);
     }
   }
 

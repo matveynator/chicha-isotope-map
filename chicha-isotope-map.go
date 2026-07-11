@@ -1361,112 +1361,44 @@ func latLonToPixel(lat, lon float64, zoom int) (px, py float64) {
 	return webMercatorToPixel(x, y, zoom)
 }
 
-// fastMergeMarkersByZoom группирует маркеры в «ячейку» сетки
-// (диаметр = 2*radiusPx) и усредняет данные кластера.
-// • O(N) • без мьютексов • подходит для любых зумов.
+// fastMergeMarkersByZoom groups markers into screen-space cells and keeps the
+// highest-dose representative. Map aggregation must never hide a local peak by
+// averaging it with safer neighbours.
 func fastMergeMarkersByZoom(markers []database.Marker, zoom int, radiusPx float64) []database.Marker {
 	if len(markers) == 0 {
 		return nil
 	}
 
-	cell := 2*radiusPx + 1 // px
-	type acc struct {
-		sumLat, sumLon, sumDose, sumCnt, sumSp float64
-		sumAlt, sumTemp, sumHum                float64
-		altCount, tempCount, humCount          int
-		detector, radiation                    string
-		deviceName                             string
-		latest                                 int64
-		n                                      int
-	}
-	cl := make(map[int64]*acc) // key := cx<<32 | cy
+	cell := 2*radiusPx + 1                // px
+	cl := make(map[int64]database.Marker) // key := cx<<32 | cy
 
 	for _, m := range markers {
 		px, py := latLonToPixel(m.Lat, m.Lon, zoom)
 		key := int64(int(px/cell))<<32 | int64(int32(py/cell))
-		a := cl[key]
-		if a == nil {
-			a = &acc{}
-			cl[key] = a
+		if prev, ok := cl[key]; !ok || markerDoseWinner(m, prev) {
+			m.Zoom = zoom
+			cl[key] = m
 		}
-		a.sumLat += m.Lat
-		a.sumLon += m.Lon
-		a.sumDose += m.DoseRate
-		a.sumCnt += m.CountRate
-		a.sumSp += m.Speed
-		if m.AltitudeValid {
-			a.sumAlt += m.Altitude
-			a.altCount++
-		}
-		if m.TemperatureValid {
-			a.sumTemp += m.Temperature
-			a.tempCount++
-		}
-		if m.HumidityValid {
-			a.sumHum += m.Humidity
-			a.humCount++
-		}
-		if m.Date > a.latest {
-			a.latest = m.Date
-		}
-		if a.detector == "" && m.Detector != "" {
-			a.detector = m.Detector
-		}
-		if a.radiation == "" && m.Radiation != "" {
-			a.radiation = m.Radiation
-		}
-		if a.deviceName == "" && m.DeviceName != "" {
-			a.deviceName = m.DeviceName
-		}
-		a.n++
 	}
 
 	out := make([]database.Marker, 0, len(cl))
-	for _, c := range cl {
-		n := float64(c.n)
-		var (
-			altitude float64
-			temp     float64
-			hum      float64
-		)
-		var (
-			altValid  bool
-			tempValid bool
-			humValid  bool
-		)
-		if c.altCount > 0 {
-			altitude = c.sumAlt / float64(c.altCount)
-			altValid = true
-		}
-		if c.tempCount > 0 {
-			temp = c.sumTemp / float64(c.tempCount)
-			tempValid = true
-		}
-		if c.humCount > 0 {
-			hum = c.sumHum / float64(c.humCount)
-			humValid = true
-		}
-		out = append(out, database.Marker{
-			Lat:              c.sumLat / n,
-			Lon:              c.sumLon / n,
-			DoseRate:         c.sumDose / n,
-			CountRate:        c.sumCnt / n,
-			Speed:            c.sumSp / n,
-			Altitude:         altitude,
-			Temperature:      temp,
-			Humidity:         hum,
-			Detector:         c.detector,
-			Radiation:        c.radiation,
-			DeviceName:       c.deviceName,
-			Date:             c.latest,
-			Zoom:             zoom,
-			TrackID:          markers[0].TrackID,
-			AltitudeValid:    altValid,
-			TemperatureValid: tempValid,
-			HumidityValid:    humValid,
-		})
+	for _, marker := range cl {
+		out = append(out, marker)
 	}
 	return out
+}
+
+func markerDoseWinner(candidate, current database.Marker) bool {
+	if candidate.DoseRate != current.DoseRate {
+		return candidate.DoseRate > current.DoseRate
+	}
+	if candidate.Date != current.Date {
+		return candidate.Date > current.Date
+	}
+	if candidate.TrackID != current.TrackID {
+		return candidate.TrackID < current.TrackID
+	}
+	return candidate.ID < current.ID
 }
 
 // mergeMarkersByZoom “сливает” (усредняет) маркеры, которые пересекаются в пиксельных координатах
@@ -1864,6 +1796,98 @@ func precomputeMarkersForAllZoomLevels(src []database.Marker) []database.Marker 
 		res = append(res, (<-ch).out...)
 	}
 	return res
+}
+
+const markerZoomRebuildMaintenanceTask = "marker_zoom_rebuild_high_dose_v2"
+
+func startMarkerZoomRebuildAsync(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := rebuildMarkerZoomAggregates(ctx, db, dbType, logf); err != nil {
+			if logf != nil {
+				logf("marker zoom rebuild failed: %v", err)
+			}
+		}
+	}()
+	return done
+}
+
+func rebuildMarkerZoomAggregates(ctx context.Context, db *database.Database, dbType string, logf func(string, ...any)) error {
+	if db == nil {
+		return nil
+	}
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if status, ok, err := db.GetMaintenanceState(ctx, dbType, markerZoomRebuildMaintenanceTask); err != nil {
+		logf("marker zoom rebuild state read failed: %v", err)
+	} else if ok && status == "done" {
+		logf("marker zoom rebuild already done; skipping.")
+		return nil
+	}
+
+	if err := db.SetMaintenanceState(ctx, dbType, markerZoomRebuildMaintenanceTask, "running", "rebuilding high-dose zoom aggregates"); err != nil {
+		logf("marker zoom rebuild state update failed: %v", err)
+	}
+
+	started := time.Now()
+	summaries, errs := db.StreamTrackSummaries(ctx, "", 0, dbType)
+	processed := 0
+	for summary := range summaries {
+		if err := observeContext(ctx); err != nil {
+			_ = db.SetMaintenanceState(ctx, dbType, markerZoomRebuildMaintenanceTask, "failed", err.Error())
+			return err
+		}
+		rawMarkers, err := loadRawMarkersForZoomRebuild(ctx, db, dbType, summary.TrackID)
+		if err != nil {
+			_ = db.SetMaintenanceState(ctx, dbType, markerZoomRebuildMaintenanceTask, "failed", err.Error())
+			return err
+		}
+		if len(rawMarkers) == 0 {
+			continue
+		}
+		aggregates := precomputeMarkersForAllZoomLevels(rawMarkers)
+		if err := db.DeleteTrackZoomAggregates(ctx, summary.TrackID, dbType); err != nil {
+			_ = db.SetMaintenanceState(ctx, dbType, markerZoomRebuildMaintenanceTask, "failed", err.Error())
+			return err
+		}
+		if err := db.InsertMarkersBulk(ctx, nil, aggregates, dbType, 1000, nil, database.WorkloadGeneral); err != nil {
+			_ = db.SetMaintenanceState(ctx, dbType, markerZoomRebuildMaintenanceTask, "failed", err.Error())
+			return err
+		}
+		processed++
+		if processed == 1 || processed%50 == 0 {
+			logf("marker zoom rebuild: %d tracks processed in %s", processed, time.Since(started).Truncate(time.Second))
+		}
+	}
+	if err := <-errs; err != nil {
+		_ = db.SetMaintenanceState(ctx, dbType, markerZoomRebuildMaintenanceTask, "failed", err.Error())
+		return err
+	}
+	message := fmt.Sprintf("rebuilt %d tracks in %s", processed, time.Since(started).Truncate(time.Second))
+	if err := db.SetMaintenanceState(ctx, dbType, markerZoomRebuildMaintenanceTask, "done", message); err != nil {
+		logf("marker zoom rebuild state update failed: %v", err)
+	}
+	logf("marker zoom rebuild complete: %s", message)
+	return nil
+}
+
+func loadRawMarkersForZoomRebuild(ctx context.Context, db *database.Database, dbType, trackID string) ([]database.Marker, error) {
+	markersCh, errCh := db.StreamRawMarkersByTrackID(ctx, trackID, dbType)
+	markers := make([]database.Marker, 0, 1024)
+	for marker := range markersCh {
+		marker.Zoom = 0
+		markers = append(markers, marker)
+	}
+	if err := <-errCh; err != nil {
+		return nil, err
+	}
+	return markers, nil
 }
 
 // =====================
@@ -7274,11 +7298,22 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 
 		emit := func(m database.Marker) {
 			key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
-			if prev, ok := cells[key]; !ok || m.DoseRate > prev.DoseRate {
+			if prev, ok := cells[key]; !ok || markerDoseWinner(m, prev) {
 				cells[key] = m
+			}
+		}
+
+		flush := func() {
+			keys := make([]string, 0, len(cells))
+			for key := range cells {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
 				select {
-				case out <- m:
+				case out <- cells[key]:
 				case <-ctx.Done():
+					return
 				}
 			}
 		}
@@ -7291,6 +7326,7 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 				if !ok {
 					baseCh = nil
 					if baseCh == nil && updateCh == nil {
+						flush()
 						return
 					}
 					continue
@@ -7300,6 +7336,7 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 				if !ok {
 					updateCh = nil
 					if baseCh == nil && updateCh == nil {
+						flush()
 						return
 					}
 					continue
@@ -7326,7 +7363,10 @@ func parseMarkerStreamZoom(raw string) int {
 	return rounded
 }
 
-const trackViewMarkerZoomBoost = 2
+const (
+	multiTrackMarkerZoomBoost = 1
+	trackViewMarkerZoomBoost  = 2
+)
 
 // streamMarkersHandler streams markers via Server-Sent Events.
 // Map views are aggregated for responsiveness while track views preserve order.
@@ -7373,6 +7413,10 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
+	mapStreamZoom := zoom + multiTrackMarkerZoomBoost
+	if mapStreamZoom > 20 {
+		mapStreamZoom = 20
+	}
 	trackStreamZoom := zoom
 	if trackID != "" {
 		// Single-track views can afford denser precomputed layers while
@@ -7403,9 +7447,9 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			if len(sr) > 0 {
-				baseSrc, errCh = db.StreamMarkersByZoomBoundsSpeed(ctx, zoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
+				baseSrc, errCh = db.StreamMarkersByZoomBoundsSpeed(ctx, mapStreamZoom, minLat, minLon, maxLat, maxLon, sr, *dbType)
 			} else {
-				baseSrc, errCh = db.StreamMarkersByZoomAndBounds(ctx, zoom, minLat, minLon, maxLat, maxLon, *dbType)
+				baseSrc, errCh = db.StreamMarkersByZoomAndBounds(ctx, mapStreamZoom, minLat, minLon, maxLat, maxLon, *dbType)
 			}
 		}
 	}
@@ -7453,7 +7497,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Aggregate map view markers to keep large-area loads responsive.
 		rawStream, rawSummary := summarizeMarkerStream(ctx, baseSrc, visibleBounds)
-		streamSrc = aggregateMarkers(ctx, rawStream, nil, zoom)
+		streamSrc = aggregateMarkers(ctx, rawStream, nil, mapStreamZoom)
 		summaryCh = rawSummary
 	}
 
@@ -8492,6 +8536,15 @@ func main() {
 	indexDone := db.EnsureIndexesAsync(ctxIdx, dbCfg, func(format string, args ...any) {
 		log.Printf(format, args...)
 	})
+	markerZoomRebuildDone := make(chan struct{})
+	go func() {
+		defer close(markerZoomRebuildDone)
+		if indexDone != nil {
+			<-indexDone
+		}
+		rebuildDone := startMarkerZoomRebuildAsync(ctxIdx, db, dbCfg.DBType, log.Printf)
+		<-rebuildDone
+	}()
 	// асинхронные индексы в бд без блокирования основного процесса конец
 
 	// 6. Wait for termination signals so we can finish DB maintenance gracefully.
@@ -8507,10 +8560,16 @@ func main() {
 			if analyticsCancel != nil {
 				analyticsCancel()
 			}
+			cancelIdx()
 			if indexDone != nil {
 				log.Printf("⏳ waiting for background index operations to finish...")
 				<-indexDone
 				log.Printf("✅ background database operations finished")
+			}
+			if markerZoomRebuildDone != nil {
+				log.Printf("⏳ waiting for marker zoom rebuild to finish...")
+				<-markerZoomRebuildDone
+				log.Printf("✅ marker zoom rebuild finished")
 			}
 			log.Printf("👋 shutdown complete")
 			return
