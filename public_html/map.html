@@ -8659,8 +8659,17 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     map.on('zoomend', function() {
       adjustMarkerRadius();
-      if (trackPlaybackActive || playbackMarkersRendered) {
-        // Playback dots are transient; after viewport changes we must restore canonical marker rendering.
+      if (trackPlaybackActive) {
+        // Zoom changes the requested marker layer, so restart playback on a clean surface.
+        if (typeof window.__restartMapPlaybackForZoomChange === 'function') {
+          window.__restartMapPlaybackForZoomChange();
+        } else {
+          stopPlayback(true);
+        }
+        return;
+      }
+      if (playbackMarkersRendered) {
+        // Finished playback dots are transient; after zoom we restore canonical marker rendering.
         stopPlayback(true);
         return;
       }
@@ -8989,11 +8998,13 @@ function createDateRangeSlider(){
   const playbackConfig = {
     pointDelayMs: 20,
     trackDelayMs: 200,
+    viewportRestartDelayMs: 450,
   };
   let playbackAbortController = null;
   let playbackPaused = false;
   let playbackResume = null;
   let playbackState = null;
+  let playbackViewportRestartTimer = null;
 
   // Playback toggles stream markers off and paints one track at a time so movement is readable.
   function setPlayButtonState(state) {
@@ -9039,6 +9050,50 @@ function createDateRangeSlider(){
       removeMarkerByKey(key);
     });
     playbackMarkersRendered = false;
+  }
+
+  function prepareCleanPlaybackSurface() {
+    if (typeof cancelDebouncedMarkerUpdate === 'function') {
+      cancelDebouncedMarkerUpdate();
+    }
+    if (markerStreamSource) {
+      markerStreamSource.close();
+      markerStreamSource = null;
+    }
+    clearMarkerLayerGroups();
+    clearPlaybackMarkers();
+    hidePlaybackCalendar();
+  }
+
+  function clearPlaybackViewportRestartTimer() {
+    if (playbackViewportRestartTimer) {
+      clearTimeout(playbackViewportRestartTimer);
+      playbackViewportRestartTimer = null;
+    }
+  }
+
+  function restartPlaybackAfterViewportReset() {
+    clearPlaybackViewportRestartTimer();
+    playbackViewportRestartTimer = setTimeout(function() {
+      playbackViewportRestartTimer = null;
+      if (isTrackView || trackPlaybackActive || playbackPaused) {
+        return;
+      }
+      if (!sliderBox || sliderBox.style.display === 'none' || sliderBox.offsetParent === null) {
+        return;
+      }
+      togglePlayback();
+    }, playbackConfig.viewportRestartDelayMs);
+  }
+
+  function restartMapPlaybackForZoomChange() {
+    if (!(trackPlaybackActive || playbackPaused)) {
+      return false;
+    }
+    stopPlayback(false, { keepViewportRestart: true });
+    prepareCleanPlaybackSurface();
+    restartPlaybackAfterViewportReset();
+    return true;
   }
 
   function resolvePlaybackRange() {
@@ -9284,10 +9339,14 @@ function createDateRangeSlider(){
     }
   }
 
-  function stopPlayback(refreshMarkers) {
+  function stopPlayback(refreshMarkers, options) {
     const hasPlaybackState = trackPlaybackActive || playbackPaused || playbackMarkersRendered;
     if (!hasPlaybackState) {
       return;
+    }
+    const opts = options || {};
+    if (!opts.keepViewportRestart) {
+      clearPlaybackViewportRestartTimer();
     }
     trackPlaybackActive = false;
     playbackPaused = false;
@@ -9311,6 +9370,7 @@ function createDateRangeSlider(){
   }
 
   async function togglePlayback() {
+    clearPlaybackViewportRestartTimer();
     if (trackPlaybackActive && !playbackPaused) {
       playbackPaused = true;
       setPlayButtonState('paused');
@@ -9335,11 +9395,7 @@ function createDateRangeSlider(){
     if (sliderBox && document.activeElement === sliderBox) {
       sliderBox.blur();
     }
-    if (markerStreamSource) {
-      markerStreamSource.close();
-    }
-    hidePlaybackCalendar();
-    clearPlaybackMarkers();
+    prepareCleanPlaybackSurface();
     const controller = new AbortController();
     playbackAbortController = controller;
     try {
@@ -9418,6 +9474,7 @@ function createDateRangeSlider(){
   document.addEventListener('keyup', suppressPlaybackShortcutKeyup, true);
   window.__toggleMapPlayback = togglePlayback;
   window.__stopMapPlayback = stopPlayback;
+  window.__restartMapPlaybackForZoomChange = restartMapPlaybackForZoomChange;
 
   // One-time creation of both sliders using initial bounds
   window.__initSliderOnce = (minTs,maxTs)=>{
@@ -10085,6 +10142,16 @@ function removeMarkerByKey(markerKey) {
   }
 }
 
+function markerRenderKey(marker) {
+  if (!marker) {
+    return '';
+  }
+  if (marker.aggregateKey) {
+    return `aggregate:${marker.aggregateKey}`;
+  }
+  return marker.id || `${marker.trackID || 'track'}:${marker.date}:${marker.lat}:${marker.lon}`;
+}
+
 function clearMarkerLayerGroup(name) {
   if (!markerLayerGroups || !markerLayerGroups[name]) {
     return;
@@ -10172,7 +10239,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     return;
   }
   const enableMarkerStreamCache = !window.desktopWebViewMode;
-  const streamKey = `v2:${layerName}:${params.toString()}`;
+  const streamKey = `v3:${layerName}:${params.toString()}`;
   const streamQuery = parseMarkerStreamQueryParams(params, layerName);
   if (!state.pendingStreams) {
     state.streamFailed = false;
@@ -10427,7 +10494,7 @@ function updateLiveLayerOnly(state, options) {
             marker.isRealtime = true;
             marker.markerLat = entry.marker.lat;
             marker.markerLon = entry.marker.lon;
-            const markerKey = entry.marker.id || `${entry.marker.trackID || 'track'}:${entry.marker.date}:${entry.marker.lat}:${entry.marker.lon}`;
+            const markerKey = markerRenderKey(entry.marker);
             removeMarkerByKey(markerKey);
             marker.markerKey = markerKey;
             marker.layerGroupName = entry.layerName;
@@ -10581,7 +10648,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     marker.isRealtime = m.speed < 0;
     marker.markerLat = m.lat;
     marker.markerLon = m.lon;
-    const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
+    const markerKey = markerRenderKey(m);
     removeMarkerByKey(markerKey);
     marker.markerKey = markerKey;
     marker.layerGroupName = layerName;
@@ -10990,7 +11057,7 @@ function updateMarkers(forceReload){
     marker.doseRate  = m.doseRate;
     marker.date      = m.date;
     marker.isRealtime = m.speed < 0;
-    const markerKey = m.id || `${m.trackID || 'track'}:${m.date}:${m.lat}:${m.lon}`;
+    const markerKey = markerRenderKey(m);
     removeMarkerByKey(markerKey);
     marker.markerKey = markerKey;
     circleMarkers[markerKey] = marker;
@@ -12008,10 +12075,16 @@ async function openLiveModal(deviceID, fallback) {
 
 let debounceTimeout;
 
-function debounceUpdateMarkers() {
+function cancelDebouncedMarkerUpdate() {
   clearTimeout(debounceTimeout);
+  debounceTimeout = null;
+}
+
+function debounceUpdateMarkers() {
+  cancelDebouncedMarkerUpdate();
   const forceReload = arguments.length > 0 ? Boolean(arguments[0]) : false;
   debounceTimeout = setTimeout(function() {
+    debounceTimeout = null;
     updateMarkers(forceReload);
   }, 300);
 }

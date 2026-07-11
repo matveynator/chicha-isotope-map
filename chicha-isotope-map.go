@@ -7299,21 +7299,11 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 		emit := func(m database.Marker) {
 			key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
 			if prev, ok := cells[key]; !ok || markerDoseWinner(m, prev) {
+				m.AggregateKey = key
 				cells[key] = m
-			}
-		}
-
-		flush := func() {
-			keys := make([]string, 0, len(cells))
-			for key := range cells {
-				keys = append(keys, key)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
 				select {
-				case out <- cells[key]:
+				case out <- m:
 				case <-ctx.Done():
-					return
 				}
 			}
 		}
@@ -7326,7 +7316,6 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 				if !ok {
 					baseCh = nil
 					if baseCh == nil && updateCh == nil {
-						flush()
 						return
 					}
 					continue
@@ -7336,7 +7325,6 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 				if !ok {
 					updateCh = nil
 					if baseCh == nil && updateCh == nil {
-						flush()
 						return
 					}
 					continue
