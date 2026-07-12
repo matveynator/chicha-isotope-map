@@ -67,37 +67,54 @@ func collectAggregateMarkers(t *testing.T, markers []database.Marker) []database
 	return got
 }
 
-func TestAggregateMarkersEmitsReplacementWinnersInInputOrder(t *testing.T) {
+func TestAggregateMarkersEmitsFinalWinnersInDateOrder(t *testing.T) {
 	got := collectAggregateMarkers(t, []database.Marker{
-		{ID: 1, Lat: 10.000000, Lon: 20.000000, DoseRate: 0.08, Date: 100, TrackID: "low"},
-		{ID: 2, Lat: 10.000001, Lon: 20.000001, DoseRate: 0.42, Date: 120, TrackID: "high"},
+		{ID: 1, Lat: 10.000000, Lon: 10.000000, DoseRate: 0.08, Date: 300, TrackID: "latest"},
+		{ID: 2, Lat: 20.000000, Lon: 20.000000, DoseRate: 0.42, Date: 100, TrackID: "earliest"},
+		{ID: 3, Lat: 30.000000, Lon: 30.000000, DoseRate: 0.20, Date: 200, TrackID: "middle"},
 	})
 
-	if len(got) != 2 {
-		t.Fatalf("aggregated len = %d, want 2 replacement emissions", len(got))
+	if len(got) != 3 {
+		t.Fatalf("aggregated len = %d, want 3", len(got))
 	}
-	if got[0].DoseRate != 0.08 || got[1].DoseRate != 0.42 {
-		t.Fatalf("aggregated doses = %v, %v; want input-order low then high", got[0].DoseRate, got[1].DoseRate)
+	if got[0].TrackID != "earliest" || got[1].TrackID != "middle" || got[2].TrackID != "latest" {
+		t.Fatalf("aggregated order = %q, %q, %q; want date order", got[0].TrackID, got[1].TrackID, got[2].TrackID)
 	}
-	if got[0].AggregateKey == "" || got[0].AggregateKey != got[1].AggregateKey {
-		t.Fatalf("aggregate keys = %q, %q; want stable replacement key", got[0].AggregateKey, got[1].AggregateKey)
+	for _, marker := range got {
+		if marker.AggregateKey == "" {
+			t.Fatalf("marker %+v has empty aggregate key", marker)
+		}
 	}
 }
 
 func TestAggregateMarkersDoesNotFlushInCoordinateOrder(t *testing.T) {
 	got := collectAggregateMarkers(t, []database.Marker{
-		{ID: 1, Lat: 20.000000, Lon: 20.000000, DoseRate: 0.20, Date: 100, TrackID: "first"},
-		{ID: 2, Lat: 10.000000, Lon: 10.000000, DoseRate: 0.30, Date: 120, TrackID: "second"},
+		{ID: 1, Lat: 20.000000, Lon: 20.000000, DoseRate: 0.20, Date: 200, TrackID: "later"},
+		{ID: 2, Lat: 10.000000, Lon: 10.000000, DoseRate: 0.30, Date: 100, TrackID: "earlier"},
 	})
 
 	if len(got) != 2 {
 		t.Fatalf("aggregated len = %d, want 2", len(got))
 	}
-	if got[0].TrackID != "first" || got[1].TrackID != "second" {
-		t.Fatalf("aggregated order = %q, %q; want input order", got[0].TrackID, got[1].TrackID)
+	if got[0].TrackID != "earlier" || got[1].TrackID != "later" {
+		t.Fatalf("aggregated order = %q, %q; want date order", got[0].TrackID, got[1].TrackID)
 	}
 	if got[0].AggregateKey == "" || got[1].AggregateKey == "" || got[0].AggregateKey == got[1].AggregateKey {
 		t.Fatalf("aggregate keys = %q, %q; want distinct stable keys", got[0].AggregateKey, got[1].AggregateKey)
+	}
+}
+
+func TestAggregateMarkersKeepsHighestDosePerCell(t *testing.T) {
+	got := collectAggregateMarkers(t, []database.Marker{
+		{ID: 1, Lat: 10.000000, Lon: 20.000000, DoseRate: 0.08, Date: 100, TrackID: "low"},
+		{ID: 2, Lat: 10.000001, Lon: 20.000001, DoseRate: 0.42, Date: 120, TrackID: "high"},
+	})
+
+	if len(got) != 1 {
+		t.Fatalf("aggregated len = %d, want 1 final winner", len(got))
+	}
+	if got[0].DoseRate != 0.42 || got[0].TrackID != "high" || got[0].AggregateKey == "" {
+		t.Fatalf("aggregated marker = %+v, want high dose marker with aggregate key", got[0])
 	}
 }
 

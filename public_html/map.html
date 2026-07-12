@@ -7104,7 +7104,7 @@ function createMarkerOverlapPruner(map) {
   const overlapBuckets = new Map();
   // 60% area overlap threshold keeps only heavy stacks while preserving nearby detail.
   const overlapThreshold = 0.6;
-  const maxLayers = 4;
+  const maxVisibleOverlapLayers = 2;
 
   function bucketKey(point) {
     return `${Math.floor(point.x / bucketSize)}:${Math.floor(point.y / bucketSize)}`;
@@ -7164,7 +7164,7 @@ function createMarkerOverlapPruner(map) {
     const overlaps = stack.filter(function(candidate) {
       return candidate !== entry && overlapRatio(candidate, entry) >= overlapThreshold;
     });
-    if (overlaps.length < maxLayers) {
+    if (overlaps.length < maxVisibleOverlapLayers) {
       return;
     }
     const candidates = overlaps.concat([entry]);
