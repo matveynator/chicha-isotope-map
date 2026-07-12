@@ -7,6 +7,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -18,6 +19,9 @@ import (
 	"strconv"
 	"strings"
 )
+
+var targetOSFlag = flag.String("os", "all", "Target GOOS to build, or comma-separated list. Use all for every supported OS.")
+var targetArchFlag = flag.String("arch", "all", "Target GOARCH to build, or comma-separated list. Use all for every supported architecture.")
 
 // buildJob describes a single compilation task.
 // When DuckDB is true we compile with CGO and the duckdb tag.
@@ -35,6 +39,7 @@ type buildResult struct {
 }
 
 func main() {
+	flag.Parse()
 
 	//download all modules
 	goModTidy := exec.Command("go", "mod", "tidy")
@@ -96,8 +101,17 @@ func main() {
 		"ppc64le", "riscv64", "s390x", "wasm",
 	}
 
-	for _, osName := range osList {
-		for _, arch := range archList {
+	selectedOSList, err := filterBuildValues("os", *targetOSFlag, osList)
+	if err != nil {
+		log.Fatal(err)
+	}
+	selectedArchList, err := filterBuildValues("arch", *targetArchFlag, archList)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, osName := range selectedOSList {
+		for _, arch := range selectedArchList {
 			// Build the vanilla binary and, when possible, the DuckDB variant in parallel.
 			jobs := []buildJob{{osName: osName, arch: arch, duckdb: false, desktop: false}}
 			if supportsDuckDB(osName, arch) {
@@ -163,6 +177,39 @@ func main() {
 			fmt.Println("Deployment completed successfully.")
 		}
 	}
+}
+
+func filterBuildValues(name, raw string, allowed []string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.EqualFold(raw, "all") {
+		return allowed, nil
+	}
+
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, value := range allowed {
+		allowedSet[value] = struct{}{}
+	}
+
+	selected := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		if _, ok := allowedSet[value]; !ok {
+			return nil, fmt.Errorf("unsupported %s %q; allowed values: %s", name, value, strings.Join(allowed, ", "))
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		selected = append(selected, value)
+	}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("no %s targets selected", name)
+	}
+	return selected, nil
 }
 
 // Helper function to run a command
