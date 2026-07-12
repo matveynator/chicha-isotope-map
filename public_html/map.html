@@ -8,8 +8,8 @@
     <!-- Keep SEO metadata localized so crawlers understand the map in every language. -->
     <meta name="ai:purpose" content="global environmental radiation map">
     <!-- Provide explicit query parameters so AI agents and crawlers can reconstruct map views. -->
-    <meta name="ai:query-parameters" content="minLat,minLon,maxLat,maxLon,zoom,layer,theme,speed,from,to,dateMode,trackID">
-    <meta name="ai:query-parameter-notes" content="Bounds use WGS84 degrees. theme=light|dark. layer=OpenStreetMap|Google Satellite|Mapbox Satellite (requires mapbox token). speed=live,plane,car,ped. from/to are UNIX seconds. dateMode=month|year. trackID focuses a single uploaded track.">
+    <meta name="ai:query-parameters" content="minLat,minLon,maxLat,maxLon,zoom,layer,theme,legend,speed,from,to,dateMode,trackID">
+    <meta name="ai:query-parameter-notes" content="Bounds use WGS84 degrees. theme=light|dark. legend=default|safecast. layer=OpenStreetMap|Google Satellite|Mapbox Satellite (requires mapbox token). speed=live,plane,car,ped. from/to are UNIX seconds. dateMode=month|year. trackID focuses a single uploaded track.">
     <meta name="description" content="{{translate "meta_description"}}">
     <!-- Preserve upstream attribution in metadata for downstream crawlers. -->
     <meta name="generator" content="{{ .MetaGenerator }}">
@@ -28,6 +28,7 @@
           "Zoom: zoom",
           "Base layer: layer (OpenStreetMap, Google Satellite, or Mapbox Satellite with token)",
           "Theme: theme (light or dark)",
+          "Legend color scheme: legend (default or safecast)",
           "Date range: from/to UNIX seconds with dateMode month or year",
           "Speed filters: speed (live, plane, car, ped)",
           "Track focus: trackID"
@@ -402,6 +403,20 @@ body, html {
           text-overflow: ellipsis;
           white-space: nowrap;
           text-align: start;
+        }
+
+        #mapLogo .map-logo-subtitle-link {
+          color: var(--map-ui-accent-strong);
+          border-radius: 4px;
+          text-decoration: underline;
+          cursor: pointer;
+        }
+
+        #mapLogo .map-logo-subtitle-link:hover,
+        #mapLogo .map-logo-subtitle-link:focus-visible {
+          background: color-mix(in srgb, var(--map-ui-accent-strong) 26%, transparent);
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--map-ui-accent-strong) 28%, transparent);
+          outline: none;
         }
 
         #mapLogo .playback-calendar-control {
@@ -2280,6 +2295,7 @@ body, html {
         #mapCacheStatus,
         #themeToggle,
         #legend,
+        #legendSchemeToggle,
         .date-slider-box,
         .track-playback-control,
         .speed-filter-control,
@@ -2307,6 +2323,7 @@ body, html {
         #mapCacheStatus:hover,
         #themeToggle:hover,
         #legend:hover,
+        #legendSchemeToggle:hover,
         .date-slider-box:hover,
         .track-playback-control:hover,
         .speed-filter-control:hover,
@@ -2326,6 +2343,7 @@ body, html {
         #mapLogo,
         #shortLinkDisplay,
         #themeToggle,
+        #legendSchemeToggle,
         .date-slider-box,
         .upload-btn,
         .download-track-btn,
@@ -3054,6 +3072,34 @@ body, html {
           box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 0 8px rgba(0, 0, 0, 0.18);
         }
 
+        #legendSchemeToggle {
+          position: absolute;
+          right: 20px;
+          bottom: var(--legend-scheme-bottom, 104px) !important;
+          z-index: 1060 !important;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 74px;
+          min-height: 28px;
+          padding: 0 10px;
+          border-radius: 999px;
+          color: var(--map-ui-text);
+          cursor: pointer;
+          font-family: var(--font-family-base);
+          font-size: var(--font-size-xxs);
+          font-weight: 700;
+          line-height: 1;
+          opacity: 0.72;
+          letter-spacing: 0;
+        }
+
+        #legendSchemeToggle:hover,
+        #legendSchemeToggle:focus-visible {
+          opacity: 1;
+          outline: none;
+        }
+
         .legend-panel-body {
           position: absolute;
           right: calc(100% + 8px);
@@ -3102,6 +3148,13 @@ body, html {
           height: 10px;
           border-radius: 50%;
           box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.36);
+        }
+
+        .mobile-legend-toggle-button {
+          appearance: none;
+          -webkit-appearance: none;
+          cursor: pointer;
+          font: inherit;
         }
 
         #legend::after {
@@ -3919,6 +3972,10 @@ body, html {
             z-index: 1320 !important;
           }
 
+          #legendSchemeToggle {
+            display: none !important;
+          }
+
           #legend .legend-panel-body {
             right: auto;
             left: calc(100% + 8px);
@@ -3969,6 +4026,17 @@ body, html {
 
           .mobile-dock-panel #themeToggle .theme-mode-button:active {
             transform: scale(0.94);
+          }
+
+          .mobile-dock-panel .mobile-legend-toggle-button {
+            flex: 0 0 90px;
+            width: 90px;
+            height: 40px;
+            min-height: 40px;
+            max-height: 40px;
+            padding: 0 8px;
+            white-space: normal;
+            line-height: 1.05;
           }
 
           .mobile-dock-panel #mapCacheStatus {
@@ -4039,8 +4107,17 @@ body, html {
             transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease;
           }
 
+          .mobile-legend-toggle-button {
+            appearance: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+            font-family: inherit;
+          }
+
           .mobile-settings-link:hover,
-          .mobile-settings-link:focus-visible {
+          .mobile-settings-link:focus-visible,
+          .mobile-legend-toggle-button:hover,
+          .mobile-legend-toggle-button:focus-visible {
             background: var(--control-bg-hover);
             border-color: var(--map-ui-accent-strong);
             color: var(--map-ui-accent-strong);
@@ -4428,22 +4505,48 @@ body, html {
           .trim();
       }
 
-      function splitMapLogoSubtitle(text) {
-        var sourceText = String(text || '').replace(/\s+/g, ' ').trim();
-        if (!sourceText) return ['', ''];
-        var midpoint = Math.floor(sourceText.length / 2);
+      function mapLogoAlaraLinkText() {
+        var text = translate('meta_description_alara_link_text');
+        if (!text || text === 'meta_description_alara_link_text') {
+          return 'ALARA radiation safety rules';
+        }
+        return String(text).replace(/\s+/g, ' ').trim();
+      }
+
+      function mapLogoAlaraLegendHref() {
+        try {
+          var url = new URL(window.location.href);
+          url.searchParams.set('legend', 'default');
+          return url.pathname + url.search + url.hash;
+        } catch (err) {
+          return '?legend=default';
+        }
+      }
+
+      function chooseMapLogoSubtitleSplit(sourceText, midpoint, separatorPattern, protectedText) {
+        var protectedStart = protectedText ? sourceText.indexOf(protectedText) : -1;
+        var protectedEnd = protectedStart >= 0 ? protectedStart + protectedText.length : -1;
         var splitIndex = -1;
         var bestDistance = Number.MAX_SAFE_INTEGER;
-        var separatorPattern = /[\s,.;:!?，。！？、؛،]/u;
 
         for (var index = 1; index < sourceText.length - 1; index++) {
           if (!separatorPattern.test(sourceText.charAt(index))) continue;
+          if (protectedStart >= 0 && index > protectedStart && index < protectedEnd) continue;
           var distance = Math.abs(index - midpoint);
           if (distance < bestDistance) {
             bestDistance = distance;
             splitIndex = index;
           }
         }
+        return splitIndex;
+      }
+
+      function splitMapLogoSubtitle(text, protectedText) {
+        var sourceText = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!sourceText) return ['', ''];
+        var midpoint = Math.floor(sourceText.length / 2);
+        var separatorPattern = /[\s,.;:!?，。！？、؛،]/u;
+        var splitIndex = chooseMapLogoSubtitleSplit(sourceText, midpoint, separatorPattern, protectedText);
 
         if (splitIndex < 0 && sourceText.length > 18) {
           splitIndex = midpoint;
@@ -4460,14 +4563,40 @@ body, html {
         return [firstLine, secondLine];
       }
 
+      function appendMapLogoSubtitleLine(lineNode, lineText, linkText) {
+        var linkIndex = linkText ? lineText.indexOf(linkText) : -1;
+        if (linkIndex < 0) {
+          lineNode.textContent = lineText;
+          return;
+        }
+
+        var beforeText = lineText.slice(0, linkIndex);
+        var afterText = lineText.slice(linkIndex + linkText.length);
+        if (beforeText) {
+          lineNode.appendChild(document.createTextNode(beforeText));
+        }
+
+        var linkNode = document.createElement('a');
+        linkNode.className = 'map-logo-subtitle-link';
+        linkNode.href = mapLogoAlaraLegendHref();
+        linkNode.setAttribute('data-alara-legend-link', '1');
+        linkNode.textContent = linkText;
+        lineNode.appendChild(linkNode);
+
+        if (afterText) {
+          lineNode.appendChild(document.createTextNode(afterText));
+        }
+      }
+
       function setMapLogoSubtitle(subtitleNode, text) {
-        var subtitleLines = splitMapLogoSubtitle(text);
+        var alaraLinkText = mapLogoAlaraLinkText();
+        var subtitleLines = splitMapLogoSubtitle(text, alaraLinkText);
         subtitleNode.textContent = '';
         subtitleLines.forEach(function(lineText) {
           if (!lineText) return;
           var lineNode = document.createElement('span');
           lineNode.className = 'map-logo-subtitle-line';
-          lineNode.textContent = lineText;
+          appendMapLogoSubtitleLine(lineNode, lineText, alaraLinkText);
           subtitleNode.appendChild(lineNode);
         });
       }
@@ -4677,13 +4806,18 @@ body, html {
     <span class="legend-dot" style="background:#008000;"></span>
   </div>
   <div class="legend-panel-body">
-    <strong class="legend-panel-title">{{translate "legend_title"}}</strong>
-    <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#000000;"></span> >100 µR/h</div>
-    <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#FF4500;"></span> 30–100 µR/h</div>
-    <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#FFD700;"></span> 11–30 µR/h</div>
-    <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#008000;"></span> 0–11 µR/h</div>
+    <strong class="legend-panel-title" data-legend-panel-title>{{translate "legend_title"}}</strong>
+    <div data-legend-panel-rows>
+      <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#000000;"></span> >100 µR/h</div>
+      <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#FF4500;"></span> 30–100 µR/h</div>
+      <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#FFD700;"></span> 11–30 µR/h</div>
+      <div class="legend-panel-row"><span class="legend-panel-swatch" style="background:#008000;"></span> 0–11 µR/h</div>
+    </div>
   </div>
 </div>
+<button id="legendSchemeToggle" type="button" aria-label="Toggle legend color scheme">
+  <span data-legend-toggle-label>Legend: ALARA</span>
+</button>
 <!--
   Compact 4-bin legend (µR/h) with vertical gradient bar (green→yellow→orange→red→black).
   White labels mark safe at the bottom and danger at the top.
@@ -4943,16 +5077,96 @@ body, html {
         return cachedFontTokens;
       }
 
-      // Compute marker color from radiation level
-      function getGradientColor(doseRate) {
-        if (doseRate <= 0.04) return '#228B22'; // Dark green
-        else if (doseRate <= 0.08) return interpolateColor([34, 139, 34], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
-        else if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
-        else if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
-        else if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
-        else if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
-        else return '#000000'; // Black for very high values
-      }
+const legendSchemeDefault = 'default';
+const legendSchemeSafecast = 'safecast';
+const legendSchemeOrder = [legendSchemeDefault, legendSchemeSafecast];
+let currentLegendScheme = legendSchemeDefault;
+
+const schemeSafecastHex = [
+  { uRh: 3,    color: "#00008B" },
+  { uRh: 5,    color: "#0047AB" },
+  { uRh: 8,    color: "#4169E1" },
+  { uRh: 12,   color: "#87CEFA" },
+  { uRh: 16,   color: "#00BFFF" },
+  { uRh: 23,   color: "#00FFFF" },
+  { uRh: 31,   color: "#40E0D0" },
+  { uRh: 43,   color: "#9370DB" },
+  { uRh: 60,   color: "#BA55D3" },
+  { uRh: 87,   color: "#FF00FF" },
+  { uRh: 131,  color: "#FF1493" },
+  { uRh: 213,  color: "#FF0000" },
+  { uRh: 399,  color: "#FF4500" },
+  { uRh: 1009, color: "#FFA500" },
+  { uRh: 6554, color: "#FFFF00" }
+];
+
+function normalizeLegendScheme(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === legendSchemeSafecast) {
+    return legendSchemeSafecast;
+  }
+  return legendSchemeDefault;
+}
+
+function legendSchemeLabel(scheme) {
+  return normalizeLegendScheme(scheme) === legendSchemeSafecast ? 'safecast.org' : 'ALARA';
+}
+
+function legendToggleText(scheme) {
+  var prefix = translate('legend_toggle_prefix');
+  if (!prefix || prefix === 'legend_toggle_prefix') {
+    prefix = 'Legend';
+  }
+  return prefix + ': ' + legendSchemeLabel(scheme);
+}
+
+function hexToRgbArray(color) {
+  const rgb = parseColor(color);
+  if (!rgb) {
+    return [0, 0, 0];
+  }
+  return [rgb.r, rgb.g, rgb.b];
+}
+
+function getDefaultLegendColor(doseRate) {
+  if (doseRate <= 0.04) return '#228B22'; // Dark green
+  if (doseRate <= 0.08) return interpolateColor([34, 139, 34], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
+  if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
+  if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
+  if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
+  if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
+  return '#000000'; // Black for very high values
+}
+
+function getSafecastLegendColor(doseRate) {
+  const microRoentgen = Math.max(0, Number(doseRate) * 100);
+  if (!Number.isFinite(microRoentgen)) {
+    return schemeSafecastHex[0].color;
+  }
+  if (microRoentgen <= schemeSafecastHex[0].uRh) {
+    return schemeSafecastHex[0].color;
+  }
+  for (let index = 1; index < schemeSafecastHex.length; index += 1) {
+    const previousStop = schemeSafecastHex[index - 1];
+    const nextStop = schemeSafecastHex[index];
+    if (microRoentgen <= nextStop.uRh) {
+      return interpolateColor(
+        hexToRgbArray(previousStop.color),
+        hexToRgbArray(nextStop.color),
+        (microRoentgen - previousStop.uRh) / (nextStop.uRh - previousStop.uRh)
+      );
+    }
+  }
+  return schemeSafecastHex[schemeSafecastHex.length - 1].color;
+}
+
+// Compute marker color from radiation level.
+function getGradientColor(doseRate) {
+  if (currentLegendScheme === legendSchemeSafecast) {
+    return getSafecastLegendColor(doseRate);
+  }
+  return getDefaultLegendColor(doseRate);
+}
 
 // Interpolate between two colors
 function interpolateColor(color1, color2, factor) {
@@ -5486,6 +5700,135 @@ function doseCategory(doseRate) {
   return 'legend_danger';
 }
 
+function defaultLegendRows() {
+  return [
+    { label: '>100 µR/h', color: '#000000' },
+    { label: '30-100 µR/h', color: '#FF4500' },
+    { label: '11-30 µR/h', color: '#FFD700' },
+    { label: '0-11 µR/h', color: '#008000' }
+  ];
+}
+
+function safecastLegendRows() {
+  return schemeSafecastHex.slice().reverse().map(function(stop, index) {
+    const isHighest = index === 0;
+    const isLowest = index === schemeSafecastHex.length - 1;
+    const prefix = isHighest ? '>=' : (isLowest ? '<=' : '');
+    return {
+      label: prefix + String(stop.uRh) + ' µR/h',
+      color: stop.color
+    };
+  });
+}
+
+function legendRowsForScheme(scheme) {
+  return normalizeLegendScheme(scheme) === legendSchemeSafecast ? safecastLegendRows() : defaultLegendRows();
+}
+
+function renderLegendSchemeControls() {
+  const scheme = normalizeLegendScheme(currentLegendScheme);
+  const label = legendSchemeLabel(scheme);
+  const toggleText = legendToggleText(scheme);
+  const legendNode = document.getElementById('legend');
+  if (legendNode) {
+    legendNode.dataset.legendScheme = scheme;
+  }
+
+  document.querySelectorAll('[data-legend-scheme-label]').forEach(function(labelNode) {
+    labelNode.textContent = label;
+  });
+
+  const dotsNode = document.querySelector('#legend .legend-gradient-bar');
+  if (dotsNode) {
+    dotsNode.innerHTML = legendRowsForScheme(scheme).map(function(row) {
+      return '<span class="legend-dot" style="background:' + escapeHtml(row.color) + ';"></span>';
+    }).join('');
+  }
+
+  const titleNode = document.querySelector('[data-legend-panel-title]');
+  if (titleNode) {
+    titleNode.textContent = translate('legend_title') + ' - ' + label;
+  }
+
+  const rowsNode = document.querySelector('[data-legend-panel-rows]');
+  if (rowsNode) {
+    rowsNode.innerHTML = legendRowsForScheme(scheme).map(function(row) {
+      return '<div class="legend-panel-row"><span class="legend-panel-swatch" style="background:' +
+        escapeHtml(row.color) + ';"></span> ' + escapeHtml(row.label) + '</div>';
+    }).join('');
+  }
+
+  document.querySelectorAll('[data-legend-toggle-label]').forEach(function(toggleNode) {
+    toggleNode.textContent = toggleText;
+  });
+
+  document.querySelectorAll('#legendSchemeToggle, #mobileLegendToggleButton').forEach(function(buttonNode) {
+    buttonNode.setAttribute('aria-label', toggleText);
+  });
+}
+
+function repaintRenderedMarkersForLegendScheme() {
+  if (!map || !circleMarkers) {
+    return;
+  }
+
+  const zoomLevel = map.getZoom();
+  const nowSec = Date.now() / 1000;
+  Object.keys(circleMarkers).forEach(function(markerKey) {
+    const marker = circleMarkers[markerKey];
+    if (!marker || typeof marker.doseRate !== 'number') {
+      return;
+    }
+
+    if (marker.isRealtime && typeof marker.setIcon === 'function') {
+      const realtimeSource = marker.sourceMarker || marker;
+      const icon = buildRealtimeIcon(realtimeSource, zoomLevel, nowSec);
+      if (!icon) {
+        removeMarkerByKey(markerKey);
+        return;
+      }
+      marker.setIcon(L.divIcon({
+        className: '',
+        html: icon.html,
+        iconSize: [icon.size, icon.size],
+        iconAnchor: [icon.radius, icon.radius]
+      }));
+      return;
+    }
+
+    if (typeof marker.setStyle === 'function') {
+      marker.setStyle({ fillColor: getGradientColor(marker.doseRate) });
+    }
+  });
+}
+
+function setLegendScheme(scheme, options) {
+  const nextScheme = normalizeLegendScheme(scheme);
+  if (currentLegendScheme === nextScheme) {
+    renderLegendSchemeControls();
+    if (options && options.skipReload) {
+      repaintRenderedMarkersForLegendScheme();
+    }
+    return;
+  }
+  currentLegendScheme = nextScheme;
+  renderLegendSchemeControls();
+  if (!options || !options.skipUrl) {
+    updateUrl();
+  }
+  if (options && options.skipReload) {
+    repaintRenderedMarkersForLegendScheme();
+  } else {
+    updateMarkers(true);
+  }
+}
+
+function stepLegendScheme(step) {
+  const currentIndex = Math.max(0, legendSchemeOrder.indexOf(normalizeLegendScheme(currentLegendScheme)));
+  const nextIndex = (currentIndex + step + legendSchemeOrder.length) % legendSchemeOrder.length;
+  setLegendScheme(legendSchemeOrder[nextIndex]);
+}
+
 function annualExposureLimitLabel() {
   const labels = {
     ar: 'الحد: 1000 µSv/سنة',
@@ -5859,6 +6202,9 @@ function buildMapStateParams() {
   const theme = getThemePreference();
   if (theme) {
     params.set('theme', theme);
+  }
+  if (normalizeLegendScheme(currentLegendScheme) !== legendSchemeDefault) {
+    params.set('legend', normalizeLegendScheme(currentLegendScheme));
   }
 
   const speedState = normalizeSpeedFilterState(loadSpeedFilterState());
@@ -6591,10 +6937,14 @@ function updateBottomRightControlStackLayout() {
   const themeToggleBottom = cacheBottom + cachePanelHeight + verticalGap;
   const themeToggleNode = document.getElementById('themeToggle');
   const themeToggleHeight = themeToggleNode ? (themeToggleNode.offsetHeight || 0) : 0;
-  const legendBottom = themeToggleBottom + themeToggleHeight + verticalGap;
+  const legendSchemeToggleNode = document.getElementById('legendSchemeToggle');
+  const legendSchemeToggleHeight = legendSchemeToggleNode ? (legendSchemeToggleNode.offsetHeight || 28) : 28;
+  const legendSchemeBottom = themeToggleBottom + themeToggleHeight + verticalGap;
+  const legendBottom = legendSchemeBottom + legendSchemeToggleHeight + verticalGap;
 
   rootNode.style.setProperty('--map-cache-bottom', Math.max(0, cacheBottom) + 'px');
   rootNode.style.setProperty('--legend-bottom', Math.max(0, legendBottom) + 'px');
+  rootNode.style.setProperty('--legend-scheme-bottom', Math.max(0, legendSchemeBottom) + 'px');
   rootNode.style.setProperty('--theme-toggle-bottom', Math.max(0, themeToggleBottom) + 'px');
 }
 
@@ -6996,6 +7346,7 @@ function renderTrackViewMarker(marker, zoomLevel, index) {
   rendered.doseRate = marker.doseRate;
   rendered.date = marker.date;
   rendered.isRealtime = isLive;
+  rendered.sourceMarker = marker;
   const trackKey = marker.trackID || currentTrackID || 'track';
   const markerKey = marker.id || trackKey + ':' + marker.date + ':' + index;
   removeMarkerByKey(markerKey);
@@ -7987,6 +8338,25 @@ function initializeMobileControlDock() {
     return linksNode;
   }
 
+  function ensureMobileLegendToggleButton() {
+    let buttonNode = document.getElementById('mobileLegendToggleButton');
+    if (buttonNode) {
+      renderLegendSchemeControls();
+      return buttonNode;
+    }
+    buttonNode = document.createElement('button');
+    buttonNode.id = 'mobileLegendToggleButton';
+    buttonNode.className = 'mobile-settings-link mobile-legend-toggle-button';
+    buttonNode.type = 'button';
+    buttonNode.setAttribute('aria-label', 'Toggle legend color scheme');
+    buttonNode.innerHTML = '<span data-legend-toggle-label>' + escapeHtml(legendToggleText(currentLegendScheme)) + '</span>';
+    buttonNode.addEventListener('click', function(event) {
+      event.preventDefault();
+      stepLegendScheme(1);
+    });
+    return buttonNode;
+  }
+
   function findMobilePanelNodes(panelName) {
     if (panelName === 'layers') {
       const speedFilterNode = document.querySelector('.speed-filter-control');
@@ -8001,6 +8371,7 @@ function initializeMobileControlDock() {
       const settingsNodes = ['themeToggle']
         .map(function(elementID) { return document.getElementById(elementID); })
         .filter(function(elementNode) { return Boolean(elementNode); });
+      settingsNodes.push(ensureMobileLegendToggleButton());
       settingsNodes.push(ensureMobileSettingsLinks());
       return settingsNodes;
     }
@@ -8515,7 +8886,21 @@ document.addEventListener('DOMContentLoaded', function () {
         openLegendModal();
       }
     });
+    renderLegendSchemeControls();
   }
+  var legendSchemeToggle = document.getElementById('legendSchemeToggle');
+  if (legendSchemeToggle) {
+    legendSchemeToggle.addEventListener('click', function(ev) {
+      ev.preventDefault();
+      stepLegendScheme(1);
+    });
+  }
+  document.querySelectorAll('[data-alara-legend-link]').forEach(function(linkNode) {
+    linkNode.addEventListener('click', function(ev) {
+      ev.preventDefault();
+      setLegendScheme(legendSchemeDefault, { skipReload: true });
+    });
+  });
 
   var githubLink = document.querySelector('.github-link');
   if (githubLink && window.showGithubLinkTooltip) {
@@ -10492,6 +10877,7 @@ function updateLiveLayerOnly(state, options) {
             marker.doseRate = entry.marker.doseRate;
             marker.date = entry.marker.date;
             marker.isRealtime = true;
+            marker.sourceMarker = entry.marker;
             marker.markerLat = entry.marker.lat;
             marker.markerLon = entry.marker.lon;
             const markerKey = markerRenderKey(entry.marker);
@@ -10646,6 +11032,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
     marker.doseRate = m.doseRate;
     marker.date = m.date;
     marker.isRealtime = m.speed < 0;
+    marker.sourceMarker = m;
     marker.markerLat = m.lat;
     marker.markerLon = m.lon;
     const markerKey = markerRenderKey(m);
@@ -11057,6 +11444,7 @@ function updateMarkers(forceReload){
     marker.doseRate  = m.doseRate;
     marker.date      = m.date;
     marker.isRealtime = m.speed < 0;
+    marker.sourceMarker = m;
     const markerKey = markerRenderKey(m);
     removeMarkerByKey(markerKey);
     marker.markerKey = markerKey;
@@ -12650,6 +13038,7 @@ function loadMapFromUrl() {
   if (themeParam) {
     saveForcedThemePreference(themeParam);
   }
+  setLegendScheme(normalizeLegendScheme(params.get('legend')), { skipUrl: true, skipReload: true });
   const speedParam = parseSpeedFilterParam(params.get('speed'));
   if (speedParam) {
     saveSpeedFilterState(speedParam);
@@ -13940,6 +14329,20 @@ function centerMapToLocation() {
 <script>
   // Build legend HTML with color squares for tooltip and modal.
   function buildLegendHTML(lang) {
+    if (normalizeLegendScheme(currentLegendScheme) === legendSchemeSafecast) {
+      var description = translate('legend_safecast_description');
+      if (!description || description === 'legend_safecast_description') {
+        description = 'This is the traditional radiation level color scale adopted by safecast.org in 2013 and used consistently on their maps since then. Users of safecast.org find it intuitive. The wide color range allows subtle differences to be distinguished instantly at a glance, and the logarithmic scale helps users easily see relatively small differences in radiation levels near natural background while also displaying levels several orders of magnitude higher.';
+      }
+      var safecastRows = schemeSafecastHex.slice().reverse().map(function(stop) {
+        return '<div class="legend-panel-row" style="margin:0 0 0.45em 0;">' +
+          '<span class="legend-square" style="background:' + escapeHtml(stop.color) + ';"></span>' +
+          escapeHtml(String(stop.uRh)) + ' µR/h</div>';
+      }).join('');
+      return '<p style="margin:0 0 1em 0;"><strong>Safecast</strong></p>' +
+        '<p style="margin:0 0 1em 0;">' + escapeHtml(description) + '</p>' +
+        safecastRows;
+    }
     var key = 'legend_full_' + lang;
     var txt = translate(key);
     var parts = txt.split('\n\n');
@@ -14334,17 +14737,18 @@ Parameters:
 - zoom: map zoom level (integer).
 - layer: OpenStreetMap | Google Satellite | Mapbox Satellite (requires mapbox token).
 - theme: light | dark.
+- legend: default | safecast.
 - speed: comma list from [live, plane, car, ped].
 - from, to: UNIX seconds date range.
 - dateMode: month | year (UI slider mode).
 - trackID: focus a single uploaded track.
 
 Template:
-https://{DOMAIN}/?minLat={A}&minLon={B}&maxLat={C}&maxLon={D}&zoom={Z}&layer={L}&theme={T}&speed={S}&from={F}&to={G}&dateMode={M}
+https://{DOMAIN}/?minLat={A}&minLon={B}&maxLat={C}&maxLon={D}&zoom={Z}&layer={L}&theme={T}&legend={LEG}&speed={S}&from={F}&to={G}&dateMode={M}
 
 Examples (10 major radiation accidents, varied formats):
 1) Chernobyl (1986) — URL
-https://{DOMAIN}/?minLat=51.34&minLon=29.92&maxLat=51.44&maxLon=30.12&zoom=12&layer=OpenStreetMap&theme=dark&speed=ped&from=515822400&to=517132799&dateMode=month
+https://{DOMAIN}/?minLat=51.34&minLon=29.92&maxLat=51.44&maxLon=30.12&zoom=12&layer=OpenStreetMap&theme=dark&legend=safecast&speed=ped&from=515822400&to=517132799&dateMode=month
 
 2) Fukushima Daiichi (2011) — JSON
 {"bounds":{"minLat":37.38,"minLon":140.95,"maxLat":37.47,"maxLon":141.12},"zoom":12,"layer":"Google Satellite","theme":"light","speed":"car,plane","from":1298937600,"to":1301529599,"dateMode":"month"}
