@@ -7296,11 +7296,15 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 		baseCh := base
 		updateCh := updates
 
-		collect := func(m database.Marker) {
+		emit := func(m database.Marker) {
 			key := fmt.Sprintf("%d:%d", int(m.Lat*scale), int(m.Lon*scale))
 			if prev, ok := cells[key]; !ok || markerDoseWinner(m, prev) {
 				m.AggregateKey = key
 				cells[key] = m
+				select {
+				case out <- m:
+				case <-ctx.Done():
+				}
 			}
 		}
 
@@ -7312,51 +7316,24 @@ func aggregateMarkers(ctx context.Context, base <-chan database.Marker, updates 
 				if !ok {
 					baseCh = nil
 					if baseCh == nil && updateCh == nil {
-						emitAggregateCells(ctx, out, cells)
 						return
 					}
 					continue
 				}
-				collect(m)
+				emit(m)
 			case m, ok := <-updateCh:
 				if !ok {
 					updateCh = nil
 					if baseCh == nil && updateCh == nil {
-						emitAggregateCells(ctx, out, cells)
 						return
 					}
 					continue
 				}
-				collect(m)
+				emit(m)
 			}
 		}
 	}()
 	return out
-}
-
-func emitAggregateCells(ctx context.Context, out chan<- database.Marker, cells map[string]database.Marker) {
-	markers := make([]database.Marker, 0, len(cells))
-	for _, marker := range cells {
-		markers = append(markers, marker)
-	}
-	sort.Slice(markers, func(firstIndex, secondIndex int) bool {
-		first := markers[firstIndex]
-		second := markers[secondIndex]
-		if first.Date != second.Date {
-			return first.Date < second.Date
-		}
-		if first.TrackID != second.TrackID {
-			return first.TrackID < second.TrackID
-		}
-		return first.ID < second.ID
-	})
-	for _, marker := range markers {
-		select {
-		case out <- marker:
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 func parseMarkerStreamZoom(raw string) int {
@@ -7375,9 +7352,12 @@ func parseMarkerStreamZoom(raw string) int {
 }
 
 const (
-	multiTrackMarkerZoomBoost = 1
-	trackViewMarkerZoomBoost  = 2
+	trackViewMarkerZoomBoost = 2
 )
+
+func mapMarkerStreamZoom(zoom int) int {
+	return zoom
+}
 
 // streamMarkersHandler streams markers via Server-Sent Events.
 // Map views are aggregated for responsiveness while track views preserve order.
@@ -7424,10 +7404,7 @@ func streamMarkersHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Choose streaming source: either entire map or a single track.
 	ctx := r.Context()
-	mapStreamZoom := zoom + multiTrackMarkerZoomBoost
-	if mapStreamZoom > 20 {
-		mapStreamZoom = 20
-	}
+	mapStreamZoom := mapMarkerStreamZoom(zoom)
 	trackStreamZoom := zoom
 	if trackID != "" {
 		// Single-track views can afford denser precomputed layers while

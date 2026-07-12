@@ -10239,7 +10239,7 @@ function startMarkerLayerStream(layerName, params, viewKey, handlers) {
     return;
   }
   const enableMarkerStreamCache = !window.desktopWebViewMode;
-  const streamKey = `v3:${layerName}:${params.toString()}`;
+  const streamKey = `v4:${layerName}:${params.toString()}`;
   const streamQuery = parseMarkerStreamQueryParams(params, layerName);
   if (!state.pendingStreams) {
     state.streamFailed = false;

@@ -40,21 +40,23 @@ func (db *Database) StreamMarkersByZoomAndBounds(ctx context.Context, zoom int, 
 		defer close(errCh)
 
 		var query string
-		// The map aggregator sorts the final reduced set by time; avoiding a full SQL sort keeps large viewport streams fast.
+		// Order by ascending timestamp so map streams paint from oldest to newest.
 		switch dbType {
 		case "pgx":
 			query = `
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
                        COALESCE(device_name, '') AS device_name
                 FROM markers
-                WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5;
+                WHERE zoom = $1 AND lat BETWEEN $2 AND $3 AND lon BETWEEN $4 AND $5
+                ORDER BY date ASC;
             `
 		default:
 			query = `
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
                        COALESCE(device_name, '') AS device_name
                 FROM markers
-                WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?;
+                WHERE zoom = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+                ORDER BY date ASC;
             `
 		}
 
@@ -120,7 +122,8 @@ func (db *Database) StreamMarkersByZoomBoundsSpeed(ctx context.Context, zoom int
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
                        COALESCE(device_name, '') AS device_name
                 FROM markers
-                WHERE %s;
+                WHERE %s
+                ORDER BY date ASC;
             `, sb.String())
 
 		rows, err := db.DB.QueryContext(ctx, query, args...)
