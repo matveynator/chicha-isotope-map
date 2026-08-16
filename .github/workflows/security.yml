@@ -13,7 +13,6 @@ permissions:
   contents: read
   actions: read
   security-events: write
-  id-token: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -35,12 +34,12 @@ jobs:
       - name: Vet packages
         run: go vet ./...
       - name: Upload coverage
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2
         with:
-          files: coverage.out
-          fail_ci_if_error: true
-          slug: matveynator/chicha-isotope-map
-          use_oidc: true
+          coverage-reporter-version: v0.6.19
+          file: coverage.out
+          format: golang
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   govulncheck:
     name: govulncheck

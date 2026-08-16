@@ -11,7 +11,7 @@ measurements from Radiacode, AtomFast, and bGeigie Safecast devices.
 [![Security](https://github.com/matveynator/chicha-isotope-map/actions/workflows/security.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/security.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/chicha-isotope-map.svg)](https://pkg.go.dev/github.com/matveynator/chicha-isotope-map)
 [![Go Report Card](https://goreportcard.com/badge/github.com/matveynator/chicha-isotope-map)](https://goreportcard.com/report/github.com/matveynator/chicha-isotope-map)
-[![Coverage](https://codecov.io/gh/matveynator/chicha-isotope-map/graph/badge.svg)](https://app.codecov.io/gh/matveynator/chicha-isotope-map)
+[![Coverage Status](https://coveralls.io/repos/github/matveynator/chicha-isotope-map/badge.svg?branch=main)](https://coveralls.io/github/matveynator/chicha-isotope-map?branch=main)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Live demo](https://pelora.org/)
