@@ -39,6 +39,7 @@ jobs:
         with:
           files: coverage.out
           fail_ci_if_error: true
+          slug: matveynator/chicha-isotope-map
           use_oidc: true
 
   govulncheck:
