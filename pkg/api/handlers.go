@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"chicha-isotope-map/pkg/database"
-	"chicha-isotope-map/pkg/jsonarchive"
-	"chicha-isotope-map/pkg/trackjson"
+	"github.com/matveynator/chicha-isotope-map/pkg/database"
+	"github.com/matveynator/chicha-isotope-map/pkg/jsonarchive"
+	"github.com/matveynator/chicha-isotope-map/pkg/trackjson"
 )
 
 // =======================

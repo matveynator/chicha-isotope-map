@@ -15,8 +15,8 @@ import (
 	"time"
 	"unicode"
 
-	"chicha-isotope-map/pkg/countryresolver"
-	"chicha-isotope-map/pkg/database"
+	"github.com/matveynator/chicha-isotope-map/pkg/countryresolver"
+	"github.com/matveynator/chicha-isotope-map/pkg/database"
 )
 
 // devicePayload maps the minimal fields we need from the Safecast JSON.

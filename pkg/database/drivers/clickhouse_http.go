@@ -138,6 +138,9 @@ func (c *clickhouseConn) CheckNamedValue(nv *driver.NamedValue) error {
 		nv.Value = int64(v)
 		return nil
 	case uint:
+		if uint64(v) > math.MaxInt64 {
+			return fmt.Errorf("clickhouse: uint %d overflows int64", v)
+		}
 		nv.Value = int64(v)
 		return nil
 	case uint64:

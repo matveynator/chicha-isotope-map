@@ -3927,6 +3927,8 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 	out := make(chan Marker)
 	errCh := make(chan error, 1)
 
+	// The returned channels define this stream's lifecycle at its API boundary.
+	// #nosec G118 -- cancellation is delivered through the owned stream channels.
 	go func() {
 		defer close(out)
 		defer close(errCh)

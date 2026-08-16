@@ -1,13 +1,14 @@
 name: Stable Release
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - Security
+    types:
+      - completed
   workflow_dispatch:
 
-# Run automatically only for pushes to main where at least one commit message
-# contains "stable release" (case variants below), or via manual dispatch.
+# A stable release is built only from a main-branch commit that passed Security.
 
 permissions:
   contents: write
@@ -17,38 +18,84 @@ env:
 
 # ---------- PORTABLE: всё без CGO и без DuckDB ----------
 jobs:
+  verify_release:
+    name: verify release request
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-22.04
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Select verified commit
+        id: commit
+        env:
+          WORKFLOW_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          DISPATCH_COMMIT: ${{ github.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${WORKFLOW_COMMIT}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "sha=${DISPATCH_COMMIT}" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Checkout verified commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ steps.commit.outputs.sha }}
+      - name: Validate release request
+        id: release
+        env:
+          RELEASE_COMMIT: ${{ steps.commit.outputs.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          subject="$(git show -s --format=%s "${RELEASE_COMMIT}")"
+          if [ "${subject}" = "stable release" ]; then
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+          fi
+
   # GitHub-hosted Debian runners are unavailable, so Linux-hosted jobs use Ubuntu 22.04 LTS
   # as the closest stable base with broad package compatibility.
   build_portable:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(join(github.event.commits.*.message, ' || '), 'stable release') || contains(join(github.event.commits.*.message, ' || '), 'Stable Release')))
+    needs: [verify_release]
+    if: needs.verify_release.outputs.publish == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # Linux
-          - { goos: linux,  goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
-          - { goos: linux,  goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
-          - { goos: linux,  goarch: 386,   goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: amd64, goversion: "1.26.6", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: arm64, goversion: "1.26.6", runner: "ubuntu-22.04" }
+          - { goos: linux,  goarch: 386,   goversion: "1.26.6", runner: "ubuntu-22.04" }
           # macOS
-          - { goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14" }
-          - { goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14" }
+          - { goos: darwin, goarch: amd64, goversion: "1.26.6", runner: "macos-14" }
+          - { goos: darwin, goarch: arm64, goversion: "1.26.6", runner: "macos-14" }
           # *BSD
-          - { goos: freebsd, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
-          - { goos: freebsd, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
-          - { goos: openbsd, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
-          - { goos: openbsd, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04" }
-          - { goos: netbsd,  goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04" }
+          - { goos: freebsd, goarch: amd64, goversion: "1.26.6", runner: "ubuntu-22.04" }
+          - { goos: freebsd, goarch: arm64, goversion: "1.26.6", runner: "ubuntu-22.04" }
+          - { goos: openbsd, goarch: amd64, goversion: "1.26.6", runner: "ubuntu-22.04" }
+          - { goos: openbsd, goarch: arm64, goversion: "1.26.6", runner: "ubuntu-22.04" }
+          - { goos: netbsd,  goarch: amd64, goversion: "1.26.6", runner: "ubuntu-22.04" }
           # Windows
-          - { goos: windows, goarch: amd64, goversion: "1.24", runner: "windows-latest" }
-          - { goos: windows, goarch: arm64, goversion: "1.24", runner: "windows-latest" }
+          - { goos: windows, goarch: amd64, goversion: "1.26.6", runner: "windows-latest" }
+          - { goos: windows, goarch: arm64, goversion: "1.26.6", runner: "windows-latest" }
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.verify_release.outputs.sha }}
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -96,31 +143,34 @@ jobs:
                    -o "dist/$bin"
 
       - name: Upload portable artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
 
 # ---------- DUCKDB: Linux/amd64 (glibc 2.28) в контейнере + macOS (amd64/arm64) ----------
   build_duckdb:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(join(github.event.commits.*.message, ' || '), 'stable release') || contains(join(github.event.commits.*.message, ' || '), 'Stable Release')))
+    needs: [verify_release]
+    if: needs.verify_release.outputs.publish == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # macOS amd64/arm64: нативно
-          - { target: darwin_amd64_duckdb, goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14", in_container: false }
-          - { target: darwin_arm64_duckdb, goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14", in_container: false }
+          - { target: darwin_amd64_duckdb, goos: darwin, goarch: amd64, goversion: "1.26.6", runner: "macos-14", in_container: false }
+          - { target: darwin_arm64_duckdb, goos: darwin, goarch: arm64, goversion: "1.26.6", runner: "macos-14", in_container: false }
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.verify_release.outputs.sha }}
 
       # --- macOS нативно ---
       - name: Set up Go (macOS)
         if: matrix.in_container == false
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -128,9 +178,7 @@ jobs:
       - name: go mod tidy (macOS)
         if: matrix.in_container == false
         shell: bash
-        run: |
-          go get github.com/marcboeker/go-duckdb/v2@latest
-          go mod tidy
+        run: go mod tidy
 
       - name: Build (macOS duckdb)
         if: matrix.in_container == false
@@ -150,14 +198,15 @@ jobs:
                    -o "dist/${BIN}"
 
       - name: Upload duckdb artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: bin-${{ matrix.target }}
           path: dist/
 
 # ---------- DESKTOP WEBVIEW: macOS / Linux / Windows ----------
   build_desktop:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(join(github.event.commits.*.message, ' || '), 'stable release') || contains(join(github.event.commits.*.message, ' || '), 'Stable Release')))
+    needs: [verify_release]
+    if: needs.verify_release.outputs.publish == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -165,23 +214,25 @@ jobs:
         include:
           # go-webview-selector resolves webkit2gtk via pkg-config name "webkit2gtk-4.0",
           # so Linux desktop builds provide a webkit2gtk-4.0 pkg-config target.
-          - { goos: linux, goarch: amd64, goversion: "1.24", runner: "ubuntu-22.04", desktop_variant: "gtk40" }
-          - { goos: linux, goarch: amd64, goversion: "1.24", runner: "ubuntu-24.04", desktop_variant: "gtk41" }
-          - { goos: linux, goarch: arm64, goversion: "1.24", runner: "ubuntu-22.04-arm", desktop_variant: "gtk40" }
-          - { goos: linux, goarch: arm64, goversion: "1.24", runner: "ubuntu-24.04-arm", desktop_variant: "gtk41" }
+          - { goos: linux, goarch: amd64, goversion: "1.26.6", runner: "ubuntu-22.04", desktop_variant: "gtk40" }
+          - { goos: linux, goarch: amd64, goversion: "1.26.6", runner: "ubuntu-24.04", desktop_variant: "gtk41" }
+          - { goos: linux, goarch: arm64, goversion: "1.26.6", runner: "ubuntu-22.04-arm", desktop_variant: "gtk40" }
+          - { goos: linux, goarch: arm64, goversion: "1.26.6", runner: "ubuntu-24.04-arm", desktop_variant: "gtk41" }
           # Build both macOS desktop targets on macos-14 to avoid queue stalls on scarce macos-13 runners.
           # amd64 output is cross-compiled with explicit x86_64 toolchain flags and old deployment target.
-          - { goos: darwin, goarch: amd64, goversion: "1.24", runner: "macos-14", desktop_variant: "default" }
-          - { goos: darwin, goarch: arm64, goversion: "1.24", runner: "macos-14", desktop_variant: "default" }
-          - { goos: windows, goarch: amd64, goversion: "1.24", runner: "windows-latest", desktop_variant: "default" }
-          - { goos: windows, goarch: arm64, goversion: "1.24", runner: "windows-latest", desktop_variant: "default" }
+          - { goos: darwin, goarch: amd64, goversion: "1.26.6", runner: "macos-14", desktop_variant: "default" }
+          - { goos: darwin, goarch: arm64, goversion: "1.26.6", runner: "macos-14", desktop_variant: "default" }
+          - { goos: windows, goarch: amd64, goversion: "1.26.6", runner: "windows-latest", desktop_variant: "default" }
+          - { goos: windows, goarch: arm64, goversion: "1.26.6", runner: "windows-latest", desktop_variant: "default" }
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.verify_release.outputs.sha }}
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "${{ matrix.goversion }}"
           cache: false
@@ -338,7 +389,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          go install github.com/akavel/rsrc@latest
+          go install github.com/akavel/rsrc@v0.10.2
           $rsrcBin = Join-Path (go env GOPATH) "bin/rsrc.exe"
           $resourceArch = if ("${{ matrix.goarch }}" -eq "arm64") { "arm64" } else { "amd64" }
           & $rsrcBin -ico "dist/windows-desktop-icon.ico" -arch $resourceArch -o "zz_chicha_icon_windows_${{ matrix.goarch }}.syso"
@@ -368,7 +419,7 @@ jobs:
           Compress-Archive -Path "dist/$bin" -DestinationPath "dist/chicha-isotope-map_${{ matrix.goos }}_${{ matrix.goarch }}_desktop.zip" -Force
 
       - name: Upload desktop artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: bin-desktop-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.desktop_variant }}
           path: |
@@ -376,21 +427,23 @@ jobs:
 
       - name: Upload desktop icon artifact (single copy for release assets)
         if: runner.os == 'Windows' && matrix.goarch == 'amd64'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: bin-desktop-icon-windows
           path: dist/windows-desktop-icon.ico
 
   build_desktop_macos_universal:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(join(github.event.commits.*.message, ' || '), 'stable release') || contains(join(github.event.commits.*.message, ' || '), 'Stable Release')))
-    needs: [build_desktop]
+    needs: [verify_release, build_desktop]
+    if: needs.verify_release.outputs.publish == 'true'
     runs-on: macos-14
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.verify_release.outputs.sha }}
 
       - name: Download macOS desktop artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: bin-desktop-darwin-*
           merge-multiple: true
@@ -483,7 +536,7 @@ jobs:
             "${DMG_PATH}"
 
       - name: Upload macOS universal desktop artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: bin-desktop-darwin-universal
           path: |
@@ -491,20 +544,51 @@ jobs:
             dist/chicha-isotope-map_darwin_universal_desktop.dmg
 
   release:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(join(github.event.commits.*.message, ' || '), 'stable release') || contains(join(github.event.commits.*.message, ' || '), 'Stable Release')))
-    needs: [build_portable, build_duckdb, build_desktop, build_desktop_macos_universal]
+    needs: [verify_release, build_portable, build_duckdb, build_desktop, build_desktop_macos_universal]
+    if: needs.verify_release.outputs.publish == 'true'
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.verify_release.outputs.sha }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: dist-raw/
 
+      - name: Validate semantic version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n' < VERSION)"
+          if [[ ! "${version}" =~ ^v[1-9][0-9]*\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION must contain a semantic version such as v1.0.0" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${version}" >/dev/null 2>&1; then
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish immutable semantic release
+        if: steps.version.outputs.publish == 'true'
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: "Chicha Isotope Map ${{ steps.version.outputs.version }}"
+          generate_release_notes: true
+          prerelease: false
+          files: dist-raw/**/*
+
       - name: Publish GitHub Release (stable tag)
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

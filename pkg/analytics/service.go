@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"chicha-isotope-map/pkg/database"
+	"github.com/matveynator/chicha-isotope-map/pkg/database"
 )
 
 // Service wires session tracking, event ingestion, and hourly summaries together
@@ -121,7 +121,7 @@ func (s *Service) Start(ctx context.Context) {
 	if s == nil {
 		return
 	}
-	go s.run(ctx)
+	go s.run(ctx) // #nosec G118 -- the long-lived analytics process intentionally owns its supplied lifecycle
 }
 
 // Middleware assigns session cookies and logs high-level HTTP activity without

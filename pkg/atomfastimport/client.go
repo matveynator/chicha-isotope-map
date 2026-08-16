@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"chicha-isotope-map/pkg/database"
+	"github.com/matveynator/chicha-isotope-map/pkg/database"
 )
 
 // Config captures AtomFast endpoints and parsing defaults so callers can
@@ -88,7 +88,8 @@ func NewClient(cfg Config) *Client {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	// Header rotation and request pacing do not protect secrets or identifiers.
+	rng := rand.New(rand.NewSource(time.Now().UnixNano())) // #nosec G404 -- non-security scheduling randomness
 	return &Client{
 		baseURL:         base,
 		pageLimit:       limit,

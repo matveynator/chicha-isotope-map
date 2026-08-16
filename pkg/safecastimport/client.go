@@ -47,7 +47,8 @@ func NewClient(cfg Config) *Client {
 	if agent == "" {
 		agent = "Mozilla/5.0 (compatible; ChichaIsotopeMap/1.0; +https://github.com/matveynator/chicha-isotope-map)"
 	}
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	// Header rotation and request pacing do not protect secrets or identifiers.
+	rng := rand.New(rand.NewSource(time.Now().UnixNano())) // #nosec G404 -- non-security scheduling randomness
 	return &Client{
 		baseURL:   base,
 		userAgent: agent,
