@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"chicha-isotope-map/public_html/geojson"
+	"github.com/matveynator/chicha-isotope-map/public_html/geojson"
 )
 
 // datasetPath reflects the URL exposed by the web server so error messages

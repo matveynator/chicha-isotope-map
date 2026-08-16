@@ -45,4 +45,3 @@ func OpenExternalURL(rawURL string) error {
 	}
 	return nil
 }
-

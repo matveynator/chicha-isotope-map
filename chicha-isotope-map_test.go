@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"chicha-isotope-map/pkg/database"
+	"github.com/matveynator/chicha-isotope-map/pkg/database"
 )
 
 func TestFastMergeMarkersByZoomKeepsHighestDoseRepresentative(t *testing.T) {
@@ -118,5 +118,21 @@ func TestAggregateMarkersSuppressesWeakerLaterMarkerPerCell(t *testing.T) {
 	}
 	if got[0].DoseRate != 0.42 || got[0].TrackID != "high" || got[0].AggregateKey == "" {
 		t.Fatalf("aggregated marker = %+v, want high dose marker with aggregate key", got[0])
+	}
+}
+
+func TestGenerateSerialNumberReturnsDistinctCompactIdentifiers(t *testing.T) {
+	const generatedCount = 128
+	identifiers := make(map[string]struct{}, generatedCount)
+
+	for range generatedCount {
+		identifier := GenerateSerialNumber()
+		if len(identifier) != 10 {
+			t.Fatalf("identifier length = %d, want 10", len(identifier))
+		}
+		if _, exists := identifiers[identifier]; exists {
+			t.Fatalf("duplicate identifier %q", identifier)
+		}
+		identifiers[identifier] = struct{}{}
 	}
 }

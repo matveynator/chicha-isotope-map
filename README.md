@@ -4,14 +4,24 @@
 
 # Chicha Isotope Map
 
-Radiacode, AtomFast, BGeigie Safecast devices supported.
+Self-hosted public radiation map for importing, analyzing, and visualizing
+measurements from Radiacode, AtomFast, and bGeigie Safecast devices.
 
 [![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
-
+[![Security](https://github.com/matveynator/chicha-isotope-map/actions/workflows/security.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/security.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/chicha-isotope-map.svg)](https://pkg.go.dev/github.com/matveynator/chicha-isotope-map)
+[![Go Report Card](https://goreportcard.com/badge/github.com/matveynator/chicha-isotope-map)](https://goreportcard.com/report/github.com/matveynator/chicha-isotope-map)
+[![Coverage](https://codecov.io/gh/matveynator/chicha-isotope-map/graph/badge.svg)](https://app.codecov.io/gh/matveynator/chicha-isotope-map)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Live demo](https://pelora.org/)
 
 </div>
+
+Chicha Isotope Map runs as a local desktop application or a self-hosted server.
+It imports common radiation-track formats, provides a WebSocket-driven map UI,
+supports multiple portable SQL backends through `database/sql`, and offers
+cross-platform binaries for desktop and server deployments.
 
 
 ## Downloads (Stable Release)
@@ -299,6 +309,18 @@ Catalog scope in the built-in dataset:
 - Heavy transuranics up to `Og-294` for completeness of identifier parsing.
 
 This gives one universal parser entrypoint and one extensible isotope catalog, while keeping drivers isolated by format.
+
+---
+
+## Security
+
+Public domain mode obtains certificates through Let's Encrypt and accepts TLS
+1.2 or newer. Automated checks run tests with the race detector, `go vet`,
+`govulncheck`, `gosec`, and CodeQL. Dependencies and GitHub Actions are monitored
+by Dependabot.
+
+Please report suspected vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md).
 
 ---
 

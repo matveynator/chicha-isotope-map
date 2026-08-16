@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	cryptorand "crypto/rand"
 	"crypto/tls"
 	"database/sql"
 	"embed"
@@ -48,20 +49,20 @@ import (
 	"syscall"
 	"time"
 
-	"chicha-isotope-map/pkg/analytics"
-	"chicha-isotope-map/pkg/api"
-	"chicha-isotope-map/pkg/atomfastimport"
-	"chicha-isotope-map/pkg/cimimport"
-	"chicha-isotope-map/pkg/database"
-	"chicha-isotope-map/pkg/database/drivers"
-	"chicha-isotope-map/pkg/desktop"
-	"chicha-isotope-map/pkg/jsonarchive"
-	"chicha-isotope-map/pkg/logger"
-	"chicha-isotope-map/pkg/qrlogoext"
-	safecastrealtime "chicha-isotope-map/pkg/safecast-realtime"
-	"chicha-isotope-map/pkg/safecastimport"
-	"chicha-isotope-map/pkg/setupwizard"
-	"chicha-isotope-map/pkg/spectrum"
+	"github.com/matveynator/chicha-isotope-map/pkg/analytics"
+	"github.com/matveynator/chicha-isotope-map/pkg/api"
+	"github.com/matveynator/chicha-isotope-map/pkg/atomfastimport"
+	"github.com/matveynator/chicha-isotope-map/pkg/cimimport"
+	"github.com/matveynator/chicha-isotope-map/pkg/database"
+	"github.com/matveynator/chicha-isotope-map/pkg/database/drivers"
+	"github.com/matveynator/chicha-isotope-map/pkg/desktop"
+	"github.com/matveynator/chicha-isotope-map/pkg/jsonarchive"
+	"github.com/matveynator/chicha-isotope-map/pkg/logger"
+	"github.com/matveynator/chicha-isotope-map/pkg/qrlogoext"
+	safecastrealtime "github.com/matveynator/chicha-isotope-map/pkg/safecast-realtime"
+	"github.com/matveynator/chicha-isotope-map/pkg/safecastimport"
+	"github.com/matveynator/chicha-isotope-map/pkg/setupwizard"
+	"github.com/matveynator/chicha-isotope-map/pkg/spectrum"
 )
 
 // content bundles the UI and the license texts so single-file binaries still
@@ -1148,7 +1149,7 @@ func withServerHeader(h http.Handler) http.Handler {
 //        сервер всё-таки отдаёт ранее полученный fallback-cert,
 //        тем самым устраняя «host not configured» в логах.
 //
-// Совместимость: TLS ≥ 1.0, ALPN h2/http1.1/http1.0.
+// Public HTTPS requires TLS 1.2 or newer while retaining HTTP/1.0 ALPN for legacy clients.
 // Все ошибки только логируются.
 
 func serveWithDomain(domain string, handler http.Handler) {
@@ -1201,7 +1202,7 @@ func serveWithDomain(domain string, handler http.Handler) {
 
 	// ----------- :443 (HTTPS) -----------
 	tlsCfg := certMgr.TLSConfig()
-	tlsCfg.MinVersion = tls.VersionTLS10
+	tlsCfg.MinVersion = tls.VersionTLS12
 	tlsCfg.NextProtos = append([]string{"http/1.0"}, tlsCfg.NextProtos...)
 
 	// fallback-сертификат для IP / странных SNI
@@ -1227,7 +1228,7 @@ func serveWithDomain(domain string, handler http.Handler) {
 		return nil, err
 	}
 
-	log.Printf("HTTPS server for %s ➜ :443 (TLS ≥1.0, ALPN h2/http1.1/1.0)", domain)
+	log.Printf("HTTPS server for %s ➜ :443 (TLS ≥1.2, ALPN h2/http1.1/1.0)", domain)
 	if err := (&http.Server{
 		Addr:              ":443",
 		Handler:           handler,
@@ -1270,27 +1271,10 @@ func isClientDisconnect(err error) bool {
 	return strings.Contains(msg, "broken pipe") || strings.Contains(msg, "connection reset by peer")
 }
 
-// GenerateSerialNumber генерирует TrackID
+// GenerateSerialNumber returns a compact, cryptographically random track ID.
 func GenerateSerialNumber() string {
-	const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	const maxLength = 6
-
-	timestamp := uint64(time.Now().UnixNano() / 1e6) // время в мс
-	encoded := ""
-	base := uint64(len(base62Chars))
-
-	for timestamp > 0 && len(encoded) < maxLength {
-		remainder := timestamp % base
-		encoded = string(base62Chars[remainder]) + encoded
-		timestamp = timestamp / base
-	}
-
-	rand.Seed(time.Now().UnixNano())
-	for len(encoded) < maxLength {
-		encoded += string(base62Chars[rand.Intn(len(base62Chars))])
-	}
-
-	return encoded
+	const trackIDLength = 10
+	return cryptorand.Text()[:trackIDLength]
 }
 
 // convertRhToSv и convertSvToRh - вспомогательные функции перевода
@@ -4076,7 +4060,7 @@ func startAtomFastLoader(ctx context.Context, db *database.Database, dbType stri
 		minDelay:     minDelay,
 		maxDelay:     maxDelay,
 		pollInterval: defaultAtomFastPollInterval,
-		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404 -- retry jitter is not security-sensitive
 	}
 
 	go loader.run(ctx)
@@ -4492,7 +4476,7 @@ func startSafecastAPILoader(ctx context.Context, db *database.Database, dbType s
 		pollInterval: defaultSafecastPollInterval,
 		minDelay:     defaultSafecastDelayMin,
 		maxDelay:     defaultSafecastDelayMax,
-		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404 -- retry jitter is not security-sensitive
 	}
 
 	go loader.run(ctx)
@@ -5600,13 +5584,14 @@ func desktopTrackDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	internalURL := fmt.Sprintf("http://127.0.0.1:%d/api/track/%s.json", *port, url.PathEscape(trackID))
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, internalURL, nil)
+	// The scheme and host are fixed to loopback; the untrusted track ID is path-escaped.
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, internalURL, nil) // #nosec G704 -- fixed loopback destination
 	if err != nil {
 		http.Error(w, "build track request failed", http.StatusInternalServerError)
 		return
 	}
 
-	response, err := http.DefaultClient.Do(request)
+	response, err := http.DefaultClient.Do(request) // #nosec G704 -- fixed loopback destination
 	if err != nil {
 		http.Error(w, "track export request failed", http.StatusBadGateway)
 		return
@@ -5830,6 +5815,8 @@ func desktopAdminStatusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	const maximumUploadBytes = 110 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maximumUploadBytes)
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		http.Error(w, "multipart parse error", http.StatusBadRequest)
 		return
@@ -6456,17 +6443,19 @@ func logStreamActivity(r *http.Request, kind string, zoom int, minLat, minLon, m
 // proverb that "a little copying is better than a little dependency" by using
 // the standard library instead of bundling heavy GeoIP datasets.
 func geoIPLookup(ctx context.Context, ip string) (float64, float64, error) {
-	if strings.TrimSpace(ip) == "" {
+	parsedIP := net.ParseIP(strings.TrimSpace(ip))
+	if parsedIP == nil {
 		return 0, 0, errors.New("missing ip")
 	}
 
-	endpoint := fmt.Sprintf("https://ipapi.co/%s/json/", url.PathEscape(ip))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	endpoint := fmt.Sprintf("https://ipapi.co/%s/json/", url.PathEscape(parsedIP.String()))
+	// The external host is fixed; only a canonical net.ParseIP result enters the path.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil) // #nosec G704 -- fixed host and validated IP path
 	if err != nil {
 		return 0, 0, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) // #nosec G704 -- fixed host and validated IP path
 	if err != nil {
 		return 0, 0, err
 	}
@@ -8494,7 +8483,13 @@ func main() {
 		addr := fmt.Sprintf(":%d", *port)
 		go func() {
 			log.Printf("HTTP server ➜ http://localhost:%d", *port)
-			if err := http.ListenAndServe(addr, rootHandler); err != nil {
+			server := &http.Server{
+				Addr:              addr,
+				Handler:           rootHandler,
+				ReadHeaderTimeout: 10 * time.Second,
+				IdleTimeout:       2 * time.Minute,
+			}
+			if err := server.ListenAndServe(); err != nil {
 				handleServerError(err, log.Printf)
 			}
 		}()

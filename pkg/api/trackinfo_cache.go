@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"chicha-isotope-map/pkg/database"
+	"github.com/matveynator/chicha-isotope-map/pkg/database"
 )
 
 // ======================
