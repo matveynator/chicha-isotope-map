@@ -765,45 +765,89 @@ func apiDocsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scheme := "http"
-	if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
-		scheme = strings.ToLower(proto)
-	} else if r.TLS != nil {
-		scheme = "https"
+	origin, err := requestOrigin(r)
+	if err != nil {
+		http.Error(w, "invalid request host", http.StatusBadRequest)
+		return
 	}
-
-	host := strings.TrimSpace(r.Host)
-	if host == "" {
-		if strings.TrimSpace(*domain) != "" {
-			host = strings.TrimSpace(*domain)
-		} else {
-			host = fmt.Sprintf("localhost:%d", *port)
-		}
-	}
-
-	baseURL := fmt.Sprintf("%s://%s", scheme, host)
+	baseURL := origin.String()
 	apiRoot := strings.TrimRight(baseURL, "/") + "/api"
-
-	page := string(b)
-	page = strings.ReplaceAll(page, "__BASE_URL__", baseURL)
-	page = strings.ReplaceAll(page, "__API_ROOT__", apiRoot)
-	page = strings.ReplaceAll(page, "__DISPLAY_HOST__", host)
-	page = strings.ReplaceAll(page, "__ARCHIVE_ENABLED__", strconv.FormatBool(apiDocsArchiveEnabled))
 
 	route := strings.TrimSpace(apiDocsArchiveRoute)
 	if route == "" {
 		route = "/api/json/weekly.tgz"
 	}
-	page = strings.ReplaceAll(page, "__ARCHIVE_ROUTE__", route)
-
 	freq := strings.TrimSpace(apiDocsArchiveFrequency)
 	if freq == "" {
 		freq = "weekly"
 	}
-	page = strings.ReplaceAll(page, "__ARCHIVE_FREQUENCY__", freq)
+
+	pageTemplate, err := template.New("api-usage").Parse(string(b))
+	if err != nil {
+		http.Error(w, "api documentation unavailable", http.StatusInternalServerError)
+		return
+	}
+	var page bytes.Buffer
+	if err := pageTemplate.Execute(&page, struct {
+		ArchiveEnabled   bool
+		ArchiveFrequency string
+		ArchiveRoute     string
+		APIRoot          string
+		BaseURL          string
+		DisplayHost      string
+	}{
+		ArchiveEnabled:   apiDocsArchiveEnabled,
+		ArchiveFrequency: freq,
+		ArchiveRoute:     route,
+		APIRoot:          apiRoot,
+		BaseURL:          baseURL,
+		DisplayHost:      origin.Host,
+	}); err != nil {
+		http.Error(w, "api documentation unavailable", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(page))
+	if _, err := page.WriteTo(w); err != nil && !isClientDisconnect(err) {
+		log.Printf("api documentation response write failed: %v", err)
+	}
+}
+
+// requestOrigin accepts only an HTTP origin with a syntactically valid host.
+// Keeping validation at the boundary prevents Host headers from becoming
+// executable markup or redirect destinations in downstream handlers.
+func requestOrigin(r *http.Request) (*url.URL, error) {
+	if r == nil {
+		return nil, errors.New("nil request")
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0])
+	if forwarded != "" {
+		forwarded = strings.ToLower(forwarded)
+		if forwarded != "http" && forwarded != "https" {
+			return nil, errors.New("unsupported forwarded scheme")
+		}
+		scheme = forwarded
+	}
+
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		host = strings.TrimSpace(*domain)
+	}
+	if host == "" {
+		host = fmt.Sprintf("localhost:%d", *port)
+	}
+	if strings.ContainsAny(host, "\r\n") {
+		return nil, errors.New("host contains control characters")
+	}
+	parsedHost, err := url.Parse("//" + host)
+	if err != nil || parsedHost.Host != host || parsedHost.Hostname() == "" || parsedHost.User != nil {
+		return nil, errors.New("invalid host")
+	}
+	return &url.URL{Scheme: scheme, Host: host}, nil
 }
 
 // resolveArchivePath decides where the JSON archive tgz should live.
@@ -1177,7 +1221,13 @@ func serveWithDomain(domain string, handler http.Handler) {
 		mux80 := http.NewServeMux()
 		mux80.Handle("/.well-known/acme-challenge/", certMgr.HTTPHandler(nil))
 		mux80.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			target := "https://" + domain + r.URL.RequestURI()
+			target := (&url.URL{
+				Scheme:   "https",
+				Host:     domain,
+				Path:     r.URL.Path,
+				RawPath:  r.URL.RawPath,
+				RawQuery: r.URL.RawQuery,
+			}).String()
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 		})
 
@@ -3227,6 +3277,7 @@ func importArchiveFromFile(
 		logf = func(string, ...any) {}
 	}
 
+	// #nosec G304 -- path is supplied by the local -import-tgz-file operator flag.
 	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open tgz file: %w", err)
@@ -5302,6 +5353,7 @@ func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func
 			})
 		}
 
+		// #nosec G304 -- desktop mode receives absolute paths from the native local file picker.
 		openedFile, openErr := os.Open(currentPath)
 		if openErr != nil {
 			return nil, http.StatusInternalServerError, fmt.Errorf("open %s: %w", filename, openErr)
@@ -5393,6 +5445,7 @@ func uploadLocalFiles(ctx context.Context, filePaths []string, emitProgress func
 			bytesRead, _ := openedFile.Read(sample)
 			_ = openedFile.Close()
 			if strings.Contains(string(sample[:bytesRead]), "$BNRDD") {
+				// #nosec G304 -- currentPath was accepted from the native local file picker above.
 				reopenedFile, reopenErr := os.Open(currentPath)
 				if reopenErr != nil {
 					return nil, http.StatusInternalServerError, fmt.Errorf("re-open %s: %w", filename, reopenErr)
@@ -5819,7 +5872,13 @@ func desktopAdminStatusHandler(w http.ResponseWriter, r *http.Request) {
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	const maximumUploadBytes = 110 << 20
 	r.Body = http.MaxBytesReader(w, r.Body, maximumUploadBytes)
+	// #nosec G120 -- MaxBytesReader caps the complete request before multipart parsing.
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		var maximumBytesError *http.MaxBytesError
+		if errors.As(err, &maximumBytesError) {
+			http.Error(w, "upload too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "multipart parse error", http.StatusBadRequest)
 		return
 	}
@@ -6181,6 +6240,7 @@ func marshalTemplateJS(value interface{}) (template.JS, error) {
 	if err != nil {
 		return template.JS(""), err
 	}
+	// #nosec G203 -- encoding/json escapes HTML metacharacters before the value enters a script context.
 	return template.JS(payload), nil
 }
 
@@ -6232,6 +6292,7 @@ func resolveLogoConfig(path, link string, logf func(string, ...interface{})) (lo
 		absPath = abs
 	}
 
+	// #nosec G304 -- absPath comes from the local operator's explicit -logo-path flag.
 	logoBytes, err := os.ReadFile(absPath)
 	if err != nil {
 		logf("custom logo read failed (%s): %v", absPath, err)
@@ -6703,7 +6764,7 @@ func geoIPHandler(w http.ResponseWriter, r *http.Request) {
 
 	lat, lon, err := geoIPLookup(ctx, ip)
 	if err != nil {
-		log.Printf("geoip lookup failed for %s: %v", ip, err)
+		log.Printf("geoip lookup failed")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -6764,7 +6825,7 @@ func licenseHandler(w http.ResponseWriter, r *http.Request) {
 // the signature small.
 func shortRedirectHandler(w http.ResponseWriter, r *http.Request) {
 	code := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/s/"))
-	if code == "" {
+	if !isSafeShortCode(code) {
 		http.NotFound(w, r)
 		return
 	}
@@ -6782,11 +6843,12 @@ func shortRedirectHandler(w http.ResponseWriter, r *http.Request) {
 
 	target, err := db.ResolveShortLink(ctx, code)
 	if err != nil {
-		log.Printf("short link lookup for %q failed: %v", code, err)
+		log.Printf("short link lookup failed: %v", err)
 		http.Error(w, "short link lookup failed", http.StatusInternalServerError)
 		return
 	}
-	if strings.TrimSpace(target) == "" {
+	validatedTarget, ok := validateShortRedirectTarget(r, target)
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
@@ -6796,7 +6858,45 @@ func shortRedirectHandler(w http.ResponseWriter, r *http.Request) {
 		Detail: encodeActivityDetail(map[string]any{"code": code}),
 	})
 
-	http.Redirect(w, r, target, http.StatusFound)
+	// #nosec G710 -- validateShortRedirectTarget enforces http(s) and exact same-origin host matching.
+	http.Redirect(w, r, validatedTarget, http.StatusFound)
+}
+
+func isSafeShortCode(code string) bool {
+	if code == "" || len(code) > 64 {
+		return false
+	}
+	for _, character := range code {
+		if character < '0' || character > '9' {
+			if character < 'A' || character > 'Z' {
+				if character < 'a' || character > 'z' {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// validateShortRedirectTarget applies the same-origin policy again when a link
+// is read so legacy or manually modified database rows cannot become redirects
+// to an attacker-controlled site.
+func validateShortRedirectTarget(r *http.Request, target string) (string, bool) {
+	origin, err := requestOrigin(r)
+	if err != nil {
+		return "", false
+	}
+	parsedTarget, err := url.Parse(strings.TrimSpace(target))
+	if err != nil || parsedTarget.User != nil || parsedTarget.Host == "" {
+		return "", false
+	}
+	if parsedTarget.Scheme != "http" && parsedTarget.Scheme != "https" {
+		return "", false
+	}
+	if !strings.EqualFold(parsedTarget.Host, origin.Host) {
+		return "", false
+	}
+	return parsedTarget.String(), true
 }
 
 // =====================
@@ -6936,7 +7036,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ради отладки: показываем, что HTML отдали без тяжёлых данных
-	log.Printf("Track page %s rendered.", trackID)
+	log.Printf("track page rendered")
 }
 
 // qrPngHandler generates a QR code image for a given URL.
@@ -8109,7 +8209,7 @@ func resolveDesktopDefaultDBPath(driverName string, port int, logf func(string, 
 	}
 
 	appDir := filepath.Join(configDir, "chicha-isotope-map")
-	if mkErr := os.MkdirAll(appDir, 0o755); mkErr != nil {
+	if mkErr := os.MkdirAll(appDir, 0o750); mkErr != nil {
 		logf("desktop mode: cannot prepare DB directory %s: %v", appDir, mkErr)
 		return ""
 	}
@@ -8126,7 +8226,7 @@ func desktopSettingsFilePath() (string, error) {
 		return "", err
 	}
 	appDir := filepath.Join(configDir, "chicha-isotope-map")
-	if err := os.MkdirAll(appDir, 0o755); err != nil {
+	if err := os.MkdirAll(appDir, 0o750); err != nil {
 		return "", err
 	}
 	return filepath.Join(appDir, "desktop-settings.json"), nil
@@ -8137,6 +8237,7 @@ func loadDesktopAdminSettings() (desktopAdminSettings, error) {
 	if err != nil {
 		return desktopAdminSettings{}, err
 	}
+	// #nosec G304 -- settingsPath is a fixed filename beneath os.UserConfigDir.
 	payload, err := os.ReadFile(settingsPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -8160,7 +8261,10 @@ func storeDesktopAdminSettings(saved desktopAdminSettings) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(settingsPath, append(encoded, '\n'), 0o644)
+	if err := os.WriteFile(settingsPath, append(encoded, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(settingsPath, 0o600)
 }
 
 func measureDatabaseFileSizeGB(path string) float64 {

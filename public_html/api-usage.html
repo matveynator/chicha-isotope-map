@@ -228,17 +228,17 @@
     }
   </style>
 </head>
-<body data-archive-enabled="__ARCHIVE_ENABLED__">
+<body data-archive-enabled="{{.ArchiveEnabled}}">
   <main class="shell">
     <header class="hero">
       <h1>Chicha Isotope Map — API Guide</h1>
-      <p>Detailed documentation for the JSON endpoints served from <code>__API_ROOT__</code> on <code>__DISPLAY_HOST__</code>.</p>
+      <p>Detailed documentation for the JSON endpoints served from <code>{{.APIRoot}}</code> on <code>{{.DisplayHost}}</code>.</p>
     </header>
 
     <section class="card">
       <h2>Base URL</h2>
-      <p>All requests begin with <code>__API_ROOT__</code>. When the server runs with a configured domain the same endpoint is available over HTTPS.</p>
-      <p>The examples below assume <code>__BASE_URL__</code>; replace it with your preferred host or short-link.</p>
+      <p>All requests begin with <code>{{.APIRoot}}</code>. When the server runs with a configured domain the same endpoint is available over HTTPS.</p>
+      <p>The examples below assume <code>{{.BaseURL}}</code>; replace it with your preferred host or short-link.</p>
     </section>
 
     <section class="card">
@@ -252,7 +252,7 @@
           </div>
           <h3 class="api-card-title">Machine-readable index</h3>
           <p class="api-card-desc">Lists metadata, dataset statistics, and hyperlinks to every other endpoint.</p>
-          <a class="api-card-link" href="__BASE_URL__/api" target="_blank" rel="noopener">Open /api</a>
+          <a class="api-card-link" href="{{.BaseURL}}/api" target="_blank" rel="noopener">Open /api</a>
           <p class="api-card-note">Start here to discover collections and server status.</p>
         </article>
 
@@ -263,8 +263,8 @@
           </div>
           <h3 class="api-card-title">Latest nearby measurements</h3>
           <p class="api-card-desc">Returns the newest markers near the supplied latitude, longitude, and radius in metres.</p>
-          <a class="api-card-link" href="__BASE_URL__/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=20" target="_blank" rel="noopener">Latest near Tokyo</a>
-          <a class="api-card-link" href="__BASE_URL__/api/latest?lat=51.3890&lon=30.0990&radius_m=2200&limit=20" target="_blank" rel="noopener">Latest near Chernobyl</a>
+          <a class="api-card-link" href="{{.BaseURL}}/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=20" target="_blank" rel="noopener">Latest near Tokyo</a>
+          <a class="api-card-link" href="{{.BaseURL}}/api/latest?lat=51.3890&lon=30.0990&radius_m=2200&limit=20" target="_blank" rel="noopener">Latest near Chernobyl</a>
           <p class="api-card-note">Adjust <code>lat</code>, <code>lon</code>, and <code>radius_m</code> to focus on your own area.</p>
         </article>
 
@@ -275,7 +275,7 @@
           </div>
           <h3 class="api-card-title">All track summaries</h3>
           <p class="api-card-desc">Streams a catalog of published tracks including indices, counts, and download URLs.</p>
-          <a class="api-card-link" href="__BASE_URL__/api/tracks?limit=25" target="_blank" rel="noopener">List first tracks</a>
+          <a class="api-card-link" href="{{.BaseURL}}/api/tracks?limit=25" target="_blank" rel="noopener">List first tracks</a>
           <p class="api-card-note">Paginate with <code>limit</code> and <code>offset</code>.</p>
         </article>
 
@@ -286,7 +286,7 @@
           </div>
           <h3 class="api-card-title">Download track by index</h3>
           <p class="api-card-desc">Resolves the Nth track and returns the same JSON document as <code>/api/track/{id}.json</code> (legacy <code>.cim</code> URLs remain available).</p>
-          <a class="api-card-link" href="__BASE_URL__/api/tracks/index/1" target="_blank" rel="noopener">Fetch index 1</a>
+          <a class="api-card-link" href="{{.BaseURL}}/api/tracks/index/1" target="_blank" rel="noopener">Fetch index 1</a>
           <p class="api-card-note">Replace the number to pick a different entry.</p>
         </article>
 
@@ -296,8 +296,8 @@
             <span class="api-path">/api/json/{frequency}.tgz</span>
           </div>
           <h3 class="api-card-title">JSON archive bundle</h3>
-          <p class="api-card-desc">Downloads a tgz archive with every published <code>.json</code> export (compatible with historic <code>.cim</code> readers). Updated once per __ARCHIVE_FREQUENCY__.</p>
-          <a class="api-card-link" href="__BASE_URL____ARCHIVE_ROUTE__" target="_blank" rel="noopener">Download archive</a>
+          <p class="api-card-desc">Downloads a tgz archive with every published <code>.json</code> export (compatible with historic <code>.cim</code> readers). Updated once per {{.ArchiveFrequency}}.</p>
+          <a class="api-card-link" href="{{.BaseURL}}{{.ArchiveRoute}}" target="_blank" rel="noopener">Download archive</a>
           <p class="api-card-note">Enabled when the node starts with <code>-json-archive-path</code>.</p>
         </article>
       </div>
@@ -306,33 +306,33 @@
     <section class="card">
       <h2>Working with /api/latest</h2>
       <p>The endpoint accepts decimal degrees for <code>lat</code> and <code>lon</code>, a search radius in metres (<code>radius_m</code>), and an optional <code>limit</code> (default 25, max 200). Results are sorted from newest to oldest.</p>
-      <pre>curl -s "__BASE_URL__/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=10" | jq '.markers[0]'</pre>
-      <pre>curl -s "__BASE_URL__/api/latest?lat=51.3890&lon=30.0990&radius_m=2200&limit=15" | jq '.returned'</pre>
+      <pre>curl -s "{{.BaseURL}}/api/latest?lat=35.6804&lon=139.7690&radius_m=1500&limit=10" | jq '.markers[0]'</pre>
+      <pre>curl -s "{{.BaseURL}}/api/latest?lat=51.3890&lon=30.0990&radius_m=2200&limit=15" | jq '.returned'</pre>
     </section>
 
     <section class="card">
       <h2>Track catalog</h2>
       <p>Use <code>/api/tracks</code> for alphabetic listings, <code>/api/tracks/years/{year}</code> or <code>/api/tracks/months/{year}/{month}</code> for time windows, and <code>/api/tracks/index/{n}</code> for deterministic downloads.</p>
-      <pre>curl -s "__BASE_URL__/api/tracks?limit=25" | jq '.tracks[0].apiURL'</pre>
-      <pre>curl -s "__BASE_URL__/api/tracks/years/2024" | jq '.tracks | length'</pre>
+      <pre>curl -s "{{.BaseURL}}/api/tracks?limit=25" | jq '.tracks[0].apiURL'</pre>
+      <pre>curl -s "{{.BaseURL}}/api/tracks/years/2024" | jq '.tracks | length'</pre>
     </section>
 
     <section class="card">
       <h2>Track payloads</h2>
       <p>Each track streams as newline-delimited JSON with the <code>.json</code> suffix so browsers save the file. Optional <code>from</code> and <code>to</code> parameters filter the marker ID range. Older <code>.cim</code> URLs keep working for compatibility.</p>
-      <pre>curl -L -o sample.json "__BASE_URL__/api/track/ABC123.json"</pre>
+      <pre>curl -L -o sample.json "{{.BaseURL}}/api/track/ABC123.json"</pre>
     </section>
 
     <section class="card" data-requires-archive>
       <h2>JSON archive</h2>
-      <p>When <code>-json-archive-path</code> is set, the node builds a tgz bundle on a schedule (daily, weekly, monthly, or yearly). Download it at <code>__BASE_URL____ARCHIVE_ROUTE__</code>.</p>
-      <pre>curl -L -o archive.tgz "__BASE_URL____ARCHIVE_ROUTE__"</pre>
+      <p>When <code>-json-archive-path</code> is set, the node builds a tgz bundle on a schedule (daily, weekly, monthly, or yearly). Download it at <code>{{.BaseURL}}{{.ArchiveRoute}}</code>.</p>
+      <pre>curl -L -o archive.tgz "{{.BaseURL}}{{.ArchiveRoute}}"</pre>
     </section>
 
     <section class="card">
       <h2>Short links</h2>
       <p>The <code>/api/shorten</code> endpoint issues and finalises shareable URLs for map views. Submit JSON with <code>url</code>, optional <code>code</code>, and <code>commit</code>.</p>
-      <pre>curl -s -X POST "__BASE_URL__/api/shorten" \
+      <pre>curl -s -X POST "{{.BaseURL}}/api/shorten" \
   -H 'content-type: application/json' \
   -d '{"url":"/", "commit":false}' | jq</pre>
     </section>

@@ -83,8 +83,8 @@ jobs:
         with:
           sarif_file: gosec.sarif
           category: gosec
-      - name: Reject high-severity findings
-        run: gosec -severity high -confidence medium ./...
+      - name: Reject any unsuppressed finding
+        run: gosec ./...
 
   codeql:
     name: CodeQL

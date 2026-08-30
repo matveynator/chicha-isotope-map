@@ -30,3 +30,32 @@ func TestFilterBuildValuesRejectsUnknownTarget(t *testing.T) {
 		t.Fatal("filterBuildValues returned nil error for an unknown target")
 	}
 }
+
+func TestParseGitHubRepoRejectsForeignHostAndInvalidSlug(t *testing.T) {
+	for _, remote := range []string{
+		"https://example.com/owner/repo.git",
+		"http://github.com/owner/repo.git",
+		"git@example.com:owner/repo.git",
+		"https://github.com/../repo.git",
+		"https://github.com/owner/repo/extra.git",
+	} {
+		if _, _, err := parseGitHubRepo(remote); err == nil {
+			t.Fatalf("parseGitHubRepo accepted %q", remote)
+		}
+	}
+}
+
+func TestParseGitHubRepoAcceptsGitHubHTTPSAndSSH(t *testing.T) {
+	for _, remote := range []string{
+		"https://github.com/matveynator/chicha-isotope-map.git",
+		"git@github.com:matveynator/chicha-isotope-map.git",
+	} {
+		owner, repo, err := parseGitHubRepo(remote)
+		if err != nil {
+			t.Fatalf("parseGitHubRepo(%q): %v", remote, err)
+		}
+		if owner != "matveynator" || repo != "chicha-isotope-map" {
+			t.Fatalf("parseGitHubRepo(%q) = %q/%q", remote, owner, repo)
+		}
+	}
+}

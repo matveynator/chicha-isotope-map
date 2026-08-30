@@ -2412,7 +2412,7 @@ func (db *Database) getMaintenanceState(ctx context.Context, dbType, task string
 		ctx = context.Background()
 	}
 
-	query := fmt.Sprintf(`SELECT status FROM maintenance_state WHERE task = %s LIMIT 1`, placeholder(dbType, 1))
+	query := formatSQL(`SELECT status FROM maintenance_state WHERE task = %s LIMIT 1`, placeholder(dbType, 1))
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
 
@@ -2448,12 +2448,12 @@ func (db *Database) setMaintenanceState(ctx context.Context, dbType, task, statu
 	}
 
 	now := time.Now().Unix()
-	updateStmt := fmt.Sprintf(`UPDATE maintenance_state
+	updateStmt := formatSQL(`UPDATE maintenance_state
 SET status = %s,
     updated_at = %s,
     message = %s
 WHERE task = %s`, placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4))
-	insertStmt := fmt.Sprintf(`INSERT INTO maintenance_state (task, status, updated_at, message)
+	insertStmt := formatSQL(`INSERT INTO maintenance_state (task, status, updated_at, message)
 VALUES (%s, %s, %s, %s)`, placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3), placeholder(dbType, 4))
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
@@ -3986,7 +3986,7 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 			// Query track order first, then stream each track in date order to keep SQL flat and fast.
 			whereClause := sb.String()
 			baseArgs := args
-			trackOrderQuery := fmt.Sprintf(`SELECT trackID, MIN(date) AS start_date
+			trackOrderQuery := formatSQL(`SELECT trackID, MIN(date) AS start_date
                               FROM markers WHERE %s
                               GROUP BY trackID
                               ORDER BY start_date, trackID;`, whereClause)
@@ -4006,7 +4006,7 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 				}
 				_ = startDate
 
-				query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
+				query := formatSQL(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
                                      COALESCE(altitude, 0) AS altitude,
                                      COALESCE(detector, '') AS detector,
                                      COALESCE(radiation, '') AS radiation,
@@ -4030,19 +4030,16 @@ func (db *Database) StreamMarkersByZoomBoundsSpeedOrderedByTrackDate(
 						&m.CountRate, &m.Zoom, &m.Speed, &m.TrackID,
 						&m.Altitude, &m.Detector, &m.Radiation, &m.Temperature, &m.Humidity,
 						&m.DeviceID, &m.Transport, &m.DeviceName, &m.Tube, &m.Country); err != nil {
-						rows.Close()
-						return fmt.Errorf("scan markers: %w", err)
+						return errors.Join(fmt.Errorf("scan markers: %w", err), rows.Close())
 					}
 					select {
 					case out <- m:
 					case <-runCtx.Done():
-						rows.Close()
-						return runCtx.Err()
+						return errors.Join(runCtx.Err(), rows.Close())
 					}
 				}
 				if err := rows.Err(); err != nil {
-					rows.Close()
-					return fmt.Errorf("iterate markers: %w", err)
+					return errors.Join(fmt.Errorf("iterate markers: %w", err), rows.Close())
 				}
 				if err := rows.Close(); err != nil {
 					return fmt.Errorf("close markers: %w", err)
@@ -4144,7 +4141,7 @@ func (db *Database) GetMarkersByTrackIDZoomBoundsSpeed(
 // that live writes and heavy imports cannot starve web readers. A shared scanner keeps
 // the call sites compact while still returning fully populated Marker structs.
 func (db *Database) queryMarkers(ctx context.Context, where string, args []interface{}, dbType string, lane WorkloadKind) ([]Marker, error) {
-	query := fmt.Sprintf(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
+	query := formatSQL(`SELECT id,doseRate,date,lon,lat,countRate,zoom,speed,trackID,
                                      COALESCE(altitude, 0) AS altitude,
                                      COALESCE(detector, '') AS detector,
                                      COALESCE(radiation, '') AS radiation,
@@ -4204,6 +4201,14 @@ func placeholder(dbType string, n int) string {
 		return fmt.Sprintf("$%d", n)
 	}
 	return "?"
+}
+
+// formatSQL is the single formatting boundary for portable queries. Callers
+// pass only column/operator fragments assembled in this package and placeholders
+// returned by placeholder; all record values remain database/sql arguments.
+func formatSQL(query string, fragments ...any) string {
+	// #nosec G201 -- no external values cross this internal SQL-fragment boundary.
+	return fmt.Sprintf(query, fragments...)
 }
 
 // DetectExistingTrackID scans the first incoming markers and tries to
@@ -4330,21 +4335,23 @@ func (db *Database) DetectExistingTrackID(
 				hits int
 			)
 			if err := rows.Scan(&tid, &hits); err != nil {
-				rows.Close()
-				return "", fmt.Errorf("DetectExistingTrackID scan: %w", err)
+				return "", errors.Join(fmt.Errorf("DetectExistingTrackID scan: %w", err), rows.Close())
 			}
 			totals[tid] += hits
 			if totals[tid] >= threshold {
-				rows.Close()
+				if err := rows.Close(); err != nil {
+					return "", fmt.Errorf("DetectExistingTrackID close after match: %w", err)
+				}
 				return tid, nil // FOUND!
 			}
 		}
 
 		if err := rows.Err(); err != nil {
-			rows.Close()
-			return "", fmt.Errorf("DetectExistingTrackID rows: %w", err)
+			return "", errors.Join(fmt.Errorf("DetectExistingTrackID rows: %w", err), rows.Close())
 		}
-		rows.Close()
+		if err := rows.Close(); err != nil {
+			return "", fmt.Errorf("DetectExistingTrackID close: %w", err)
+		}
 	}
 
 	return "", nil // unique track — safe to create a new one

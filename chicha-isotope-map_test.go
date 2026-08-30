@@ -2,12 +2,72 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/matveynator/chicha-isotope-map/pkg/database"
 )
+
+func TestAPIDocsHandlerRejectsHostHeaderMarkup(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://example.test/api", nil)
+	request.Host = `example.test"><script>alert(1)</script>`
+	response := httptest.NewRecorder()
+
+	apiDocsHandler(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if strings.Contains(response.Body.String(), "<script>") {
+		t.Fatal("response contains executable Host header markup")
+	}
+}
+
+func TestAPIDocsHandlerRendersEscapedTemplateModel(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://example.test/api", nil)
+	response := httptest.NewRecorder()
+
+	apiDocsHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	if strings.Contains(body, "__BASE_URL__") || strings.Contains(body, "{{.BaseURL}}") {
+		t.Fatal("API documentation contains an unresolved template placeholder")
+	}
+	if !strings.Contains(body, "http://example.test/api") {
+		t.Fatal("API documentation does not contain its resolved API root")
+	}
+}
+
+func TestValidateShortRedirectTargetRequiresSameOrigin(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "https://example.test/s/ABC123", nil)
+
+	if target, ok := validateShortRedirectTarget(request, "https://example.test/tracks/1"); !ok || target == "" {
+		t.Fatalf("same-origin target rejected: target=%q ok=%v", target, ok)
+	}
+	for _, target := range []string{
+		"https://attacker.test/",
+		"javascript:alert(1)",
+		"//attacker.test/path",
+		"https://user@example.test/path",
+	} {
+		if validated, ok := validateShortRedirectTarget(request, target); ok {
+			t.Fatalf("unsafe target %q accepted as %q", target, validated)
+		}
+	}
+}
+
+func TestRequestOriginRejectsUnsupportedForwardedScheme(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://example.test/", nil)
+	request.Header.Set("X-Forwarded-Proto", "javascript")
+	if _, err := requestOrigin(request); err == nil {
+		t.Fatal("requestOrigin accepted an unsupported forwarded scheme")
+	}
+}
 
 func TestMapHandlerRendersConfiguredOSMVectorStylesWithoutCARTO(t *testing.T) {
 	previousLightStyleURL := *osmVectorLightStyleURL

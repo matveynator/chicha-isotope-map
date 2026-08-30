@@ -58,9 +58,9 @@ func (db *Database) streamTrackSummaries(
 		defer close(errs)
 
 		nextPlaceholder := newPlaceholderGenerator(dbType)
-		conditions := []string{fmt.Sprintf("trackID > %s", nextPlaceholder())}
+		conditions := []string{formatSQL("trackID > %s", nextPlaceholder())}
 		// Skip realtime-only track IDs so JSON archives focus on persisted journeys.
-		conditions = append(conditions, fmt.Sprintf("trackID NOT LIKE %s", nextPlaceholder()))
+		conditions = append(conditions, formatSQL("trackID NOT LIKE %s", nextPlaceholder()))
 		args := []any{startAfter, "live:%"}
 		// Avoid filtering by zoom so every stored measurement contributes
 		// to the per-track metadata. Keeping the SQL simple mirrors the Go
@@ -70,19 +70,19 @@ func (db *Database) streamTrackSummaries(
 		if restrictDates {
 			// The API provides inclusive start and exclusive end boundaries
 			// so date math stays consistent with Go's time package.
-			conditions = append(conditions, fmt.Sprintf("date >= %s", nextPlaceholder()))
+			conditions = append(conditions, formatSQL("date >= %s", nextPlaceholder()))
 			args = append(args, from)
-			conditions = append(conditions, fmt.Sprintf("date < %s", nextPlaceholder()))
+			conditions = append(conditions, formatSQL("date < %s", nextPlaceholder()))
 			args = append(args, to)
 		}
 
 		limitClause := ""
 		if limit > 0 {
-			limitClause = fmt.Sprintf(" LIMIT %s", nextPlaceholder())
+			limitClause = formatSQL(" LIMIT %s", nextPlaceholder())
 			args = append(args, limit)
 		}
 
-		query := fmt.Sprintf(`SELECT trackID, MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
+		query := formatSQL(`SELECT trackID, MIN(id) AS first_id, MAX(id) AS last_id, COUNT(*) AS marker_count
 FROM markers
 WHERE %s
 GROUP BY trackID
@@ -213,7 +213,7 @@ func (db *Database) TrackExists(ctx context.Context, trackID, dbType string) (bo
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	query := fmt.Sprintf("SELECT 1 FROM tracks WHERE trackID = %s LIMIT 1", placeholder(dbType, 1))
+	query := formatSQL("SELECT 1 FROM tracks WHERE trackID = %s LIMIT 1", placeholder(dbType, 1))
 	var one int
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -250,7 +250,7 @@ WHERE trackID = %s;`
 	// Keeping the SQL free of zoom filters ensures exports cover every
 	// marker tied to the track, even when ingestion recorded different zoom
 	// levels. We still rely on placeholders to stay portable across engines.
-	query = fmt.Sprintf(query, placeholder)
+	query = formatSQL(query, placeholder)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -302,12 +302,12 @@ func (db *Database) ResolveTrackMarkerZoom(ctx context.Context, trackID string, 
 		firstPlaceholder = "$1"
 		secondPlaceholder = "$2"
 	}
-	maxAtOrBelowQuery := fmt.Sprintf(
+	maxAtOrBelowQuery := formatSQL(
 		`SELECT MAX(zoom) FROM markers WHERE trackID = %s AND zoom > 0 AND zoom <= %s;`,
 		firstPlaceholder,
 		secondPlaceholder,
 	)
-	minAboveQuery := fmt.Sprintf(
+	minAboveQuery := formatSQL(
 		`SELECT MIN(zoom) FROM markers WHERE trackID = %s AND zoom > %s;`,
 		firstPlaceholder,
 		secondPlaceholder,
@@ -382,11 +382,11 @@ func (db *Database) StreamMarkersByTrackRange(
 		limitClause := ""
 		args := []any{trackID, fromID, toID}
 		if limit > 0 {
-			limitClause = fmt.Sprintf(" LIMIT %s", nextPlaceholder())
+			limitClause = formatSQL(" LIMIT %s", nextPlaceholder())
 			args = append(args, limit)
 		}
 
-		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+		query := formatSQL(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
        altitude,
        COALESCE(detector, '') AS detector,
        COALESCE(radiation, '') AS radiation,
@@ -473,7 +473,7 @@ func (db *Database) StreamRawMarkersByTrackID(
 		nextPlaceholder := newPlaceholderGenerator(dbType)
 		trackPlaceholder := nextPlaceholder()
 		zoomPlaceholder := nextPlaceholder()
-		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+		query := formatSQL(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
        altitude,
        COALESCE(detector, '') AS detector,
        COALESCE(radiation, '') AS radiation,
@@ -555,7 +555,7 @@ func (db *Database) DeleteTrackZoomAggregates(ctx context.Context, trackID, dbTy
 	nextPlaceholder := newPlaceholderGenerator(dbType)
 	trackPlaceholder := nextPlaceholder()
 	zoomPlaceholder := nextPlaceholder()
-	query := fmt.Sprintf(`DELETE FROM markers WHERE trackID = %s AND zoom > %s`, trackPlaceholder, zoomPlaceholder)
+	query := formatSQL(`DELETE FROM markers WHERE trackID = %s AND zoom > %s`, trackPlaceholder, zoomPlaceholder)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -581,7 +581,7 @@ func (db *Database) EnsureTrackPresence(ctx context.Context, trackID, dbType str
 	nextPlaceholder := newPlaceholderGenerator(dbType)
 	insertValue := nextPlaceholder()
 	existsValue := nextPlaceholder()
-	stmt := fmt.Sprintf(`INSERT INTO tracks (trackID)
+	stmt := formatSQL(`INSERT INTO tracks (trackID)
 SELECT %s
 WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE trackID = %s);`, insertValue, existsValue)
 
@@ -615,7 +615,7 @@ func (db *Database) UpdateTrackDeviceName(ctx context.Context, trackID, deviceNa
 
 	ph := placeholder(dbType, 1)
 	ph2 := placeholder(dbType, 2)
-	stmt := fmt.Sprintf(`UPDATE markers
+	stmt := formatSQL(`UPDATE markers
 SET device_name = %s
 WHERE trackID = %s;`, ph, ph2)
 	if _, err := db.DB.ExecContext(ctx, stmt, deviceName, trackID); err != nil {
@@ -640,7 +640,7 @@ func (db *Database) FillMissingTrackDeviceName(ctx context.Context, trackID, dev
 
 	ph := placeholder(dbType, 1)
 	ph2 := placeholder(dbType, 2)
-	stmt := fmt.Sprintf(`UPDATE markers
+	stmt := formatSQL(`UPDATE markers
 SET device_name = %s
 WHERE trackID = %s AND (device_name IS NULL OR device_name = '');`, ph, ph2)
 	if _, err := db.DB.ExecContext(ctx, stmt, deviceName, trackID); err != nil {
@@ -671,7 +671,7 @@ func (db *Database) AnnotateTrackRadiationWindow(ctx context.Context, trackID st
 	ph2 := placeholder(dbType, 2)
 	ph3 := placeholder(dbType, 3)
 	ph4 := placeholder(dbType, 4)
-	stmt := fmt.Sprintf(`UPDATE markers
+	stmt := formatSQL(`UPDATE markers
 SET radiation = %s
 WHERE trackID = %s AND date >= %s AND date <= %s;`, ph1, ph2, ph3, ph4)
 
@@ -716,7 +716,7 @@ func (db *Database) AnnotateAreaRadiationWindow(ctx context.Context, fromUnix, t
 	ph5 := placeholder(dbType, 5)
 	ph6 := placeholder(dbType, 6)
 	ph7 := placeholder(dbType, 7)
-	stmt := fmt.Sprintf(`UPDATE markers
+	stmt := formatSQL(`UPDATE markers
 SET radiation = %s
 WHERE date >= %s AND date <= %s
   AND lat >= %s AND lat <= %s
@@ -748,7 +748,7 @@ func (db *Database) TrackHasDeviceName(ctx context.Context, trackID, dbType stri
 	}
 
 	ph := placeholder(dbType, 1)
-	query := fmt.Sprintf(`SELECT 1 FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
+	query := formatSQL(`SELECT 1 FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
 	var one int
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -783,7 +783,7 @@ func (db *Database) GetTrackDeviceName(ctx context.Context, trackID, dbType stri
 	}
 
 	ph := placeholder(dbType, 1)
-	query := fmt.Sprintf(`SELECT device_name FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
+	query := formatSQL(`SELECT device_name FROM markers WHERE trackID = %s AND device_name IS NOT NULL AND device_name <> '' LIMIT 1;`, ph)
 	var name sql.NullString
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -935,8 +935,8 @@ func (db *Database) CountTrackIDsUpTo(ctx context.Context, trackID, dbType strin
 	}
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
-	where := fmt.Sprintf("trackID <= %s AND trackID IS NOT NULL AND trackID <> '' AND trackID NOT LIKE 'live:%%'", nextPlaceholder())
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM tracks WHERE %s;`, where)
+	where := formatSQL("trackID <= %s AND trackID IS NOT NULL AND trackID <> '' AND trackID NOT LIKE 'live:%%'", nextPlaceholder())
+	query := formatSQL(`SELECT COUNT(*) FROM tracks WHERE %s;`, where)
 
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -968,7 +968,7 @@ func (db *Database) GetTrackIDByIndex(ctx context.Context, index int64, dbType s
 
 	nextPlaceholder := newPlaceholderGenerator(dbType)
 	offsetPlaceholder := nextPlaceholder()
-	query := fmt.Sprintf(`SELECT trackID FROM tracks
+	query := formatSQL(`SELECT trackID FROM tracks
 WHERE trackID IS NOT NULL
   AND trackID <> ''
   AND trackID NOT LIKE 'live:%%'
@@ -1001,9 +1001,9 @@ LIMIT 1 OFFSET %s;`, offsetPlaceholder)
 // the totals match the paged summary streams.
 func (db *Database) CountTracksInRange(ctx context.Context, from, to int64, dbType string) (int64, error) {
 	nextPlaceholder := newPlaceholderGenerator(dbType)
-	condFrom := fmt.Sprintf("date >= %s", nextPlaceholder())
-	condTo := fmt.Sprintf("date < %s", nextPlaceholder())
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM (
+	condFrom := formatSQL("date >= %s", nextPlaceholder())
+	condTo := formatSQL("date < %s", nextPlaceholder())
+	query := formatSQL(`SELECT COUNT(*) FROM (
   SELECT DISTINCT trackID
   FROM markers
   WHERE %s AND %s

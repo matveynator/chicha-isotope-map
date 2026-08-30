@@ -1091,6 +1091,7 @@ func encodeJSON(payload any) ([]byte, error) {
 
 func writeJSONBytes(w http.ResponseWriter, data []byte) {
 	w.Header().Set("Content-Type", "application/json")
+	// #nosec G705 -- callers pass bytes produced exclusively by encoding/json and the response is not HTML.
 	_, _ = w.Write(data)
 }
 
