@@ -8,7 +8,8 @@ on:
       - completed
   workflow_dispatch:
 
-# A stable release is built only from a main-branch commit that passed Security.
+# A stable release is built only from a main-branch commit whose subject starts
+# with "stable release" and that passed Security.
 
 permissions:
   contents: write
@@ -55,7 +56,8 @@ jobs:
             exit 0
           fi
           subject="$(git show -s --format=%s "${RELEASE_COMMIT}")"
-          if [ "${subject}" = "stable release" ]; then
+          shopt -s nocasematch
+          if [[ "${subject}" =~ ^stable[[:space:]]+release([[:space:]:_-]|$) ]]; then
             echo "publish=true" >> "${GITHUB_OUTPUT}"
           else
             echo "publish=false" >> "${GITHUB_OUTPUT}"
