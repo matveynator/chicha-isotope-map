@@ -70,7 +70,7 @@ import (
 // simple and mirrors the "A little copying is better than a little dependency"
 // proverb by avoiding extra runtime file IO.
 //
-//go:embed public_html/* LICENSE LICENSE.CC0
+//go:embed public_html/* LICENSE LICENSE.CC0 LICENSE.MAPLIBRE LICENSE.MAPLIBRE-LEAFLET
 var content embed.FS
 
 var doseData database.Data
@@ -88,6 +88,8 @@ var defaultZoom = flag.Int("default-zoom", 11, "Default map zoom")
 // mapboxToken lets operators wire in Mapbox tiles without hardcoding secrets into HTML.
 var mapboxToken = flag.String("mapbox-token", "", "Mapbox access token used for the optional Mapbox Satellite base layer")
 var defaultLayer = flag.String("default-layer", "OpenStreetMap", `Default base layer: "OpenStreetMap", "Google Satellite", or "Mapbox Satellite"`)
+var osmVectorLightStyleURL = flag.String("osm-vector-light-style-url", "https://vector.openstreetmap.org/styles/shortbread/colorful.json", "MapLibre style URL for the light OpenStreetMap vector base layer; empty uses the raster fallback")
+var osmVectorDarkStyleURL = flag.String("osm-vector-dark-style-url", "https://vector.openstreetmap.org/styles/shortbread/eclipse.json", "MapLibre style URL for the dark OpenStreetMap vector base layer; empty uses the raster fallback")
 var autoLocateDefault = flag.Bool("auto-locate-default", true, "Auto-center initial map view using browser or GeoIP fallbacks when no URL bounds are provided.")
 var safecastRealtimeEnabled = flag.Bool("safecast-realtime", false, "Enable polling and display of Safecast realtime devices")
 
@@ -150,7 +152,7 @@ const (
 var cliUsageSections = []usageSection{
 	{Key: cliSectionGeneral, Flags: []string{"version", "domain", "port", "desktop", "setup"}},
 	{Key: cliSectionDatabase, Flags: []string{"db-type", "db-path", "db-conn"}},
-	{Key: cliSectionAppearance, Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "auto-locate-default", "support-email", "logo-path", "logo-link"}},
+	{Key: cliSectionAppearance, Flags: []string{"default-lat", "default-lon", "default-zoom", "default-layer", "osm-vector-light-style-url", "osm-vector-dark-style-url", "auto-locate-default", "support-email", "logo-path", "logo-link"}},
 	{Key: cliSectionPlugins, Flags: []string{"safecast-realtime", "safecast-realtime-default"}},
 	{Key: cliSectionImport, Flags: []string{"import", "import-tgz-url", "import-tgz-file"}},
 	{Key: cliSectionExport, Flags: []string{"json-archive-path", "json-archive-frequency"}},
@@ -6532,6 +6534,8 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultZoom         int
 		DefaultLayer        string
 		MapboxToken         string
+		OSMVectorLightStyle string
+		OSMVectorDarkStyle  string
 		AutoLocateDefault   bool
 		RealtimeAvailable   bool
 		RealtimeDefault     bool
@@ -6549,16 +6553,18 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		DesktopNativeUpload bool
 		ChichaGitHubURL     string
 	}{
-		Version:           displayVersion,
-		Translations:      translations,
-		Lang:              lang,
-		DefaultLat:        *defaultLat,
-		DefaultLon:        *defaultLon,
-		DefaultZoom:       *defaultZoom,
-		DefaultLayer:      resolvedDefaultLayer,
-		MapboxToken:       resolvedMapboxToken,
-		AutoLocateDefault: *autoLocateDefault,
-		RealtimeAvailable: *safecastRealtimeEnabled,
+		Version:             displayVersion,
+		Translations:        translations,
+		Lang:                lang,
+		DefaultLat:          *defaultLat,
+		DefaultLon:          *defaultLon,
+		DefaultZoom:         *defaultZoom,
+		DefaultLayer:        resolvedDefaultLayer,
+		MapboxToken:         resolvedMapboxToken,
+		OSMVectorLightStyle: strings.TrimSpace(*osmVectorLightStyleURL),
+		OSMVectorDarkStyle:  strings.TrimSpace(*osmVectorDarkStyleURL),
+		AutoLocateDefault:   *autoLocateDefault,
+		RealtimeAvailable:   *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
 		RealtimeDefault:     *safecastRealtimeEnabled && *safecastRealtimeDefault,
 		SupportEmail:        strings.TrimSpace(*supportEmail),
@@ -6732,6 +6738,10 @@ func licenseHandler(w http.ResponseWriter, r *http.Request) {
 		file = "LICENSE"
 	case "cc0":
 		file = "LICENSE.CC0"
+	case "maplibre":
+		file = "LICENSE.MAPLIBRE"
+	case "maplibre-leaflet":
+		file = "LICENSE.MAPLIBRE-LEAFLET"
 	default:
 		http.NotFound(w, r)
 		return
@@ -6861,6 +6871,8 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultZoom         int
 		DefaultLayer        string
 		MapboxToken         string
+		OSMVectorLightStyle string
+		OSMVectorDarkStyle  string
 		AutoLocateDefault   bool
 		RealtimeAvailable   bool
 		RealtimeDefault     bool
@@ -6878,16 +6890,18 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		DesktopNativeUpload bool
 		ChichaGitHubURL     string
 	}{
-		Version:           displayVersion,
-		Translations:      translations,
-		Lang:              lang,
-		DefaultLat:        *defaultLat,
-		DefaultLon:        *defaultLon,
-		DefaultZoom:       *defaultZoom,
-		DefaultLayer:      resolvedDefaultLayer,
-		MapboxToken:       resolvedMapboxToken,
-		AutoLocateDefault: *autoLocateDefault,
-		RealtimeAvailable: *safecastRealtimeEnabled,
+		Version:             displayVersion,
+		Translations:        translations,
+		Lang:                lang,
+		DefaultLat:          *defaultLat,
+		DefaultLon:          *defaultLon,
+		DefaultZoom:         *defaultZoom,
+		DefaultLayer:        resolvedDefaultLayer,
+		MapboxToken:         resolvedMapboxToken,
+		OSMVectorLightStyle: strings.TrimSpace(*osmVectorLightStyleURL),
+		OSMVectorDarkStyle:  strings.TrimSpace(*osmVectorDarkStyleURL),
+		AutoLocateDefault:   *autoLocateDefault,
+		RealtimeAvailable:   *safecastRealtimeEnabled,
 		// Keep the default toggle false unless realtime is active so the UI stays consistent.
 		RealtimeDefault:     *safecastRealtimeEnabled && *safecastRealtimeDefault,
 		SupportEmail:        strings.TrimSpace(*supportEmail),

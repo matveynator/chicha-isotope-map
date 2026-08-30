@@ -242,6 +242,8 @@ LINUX DESKTOP APP:
 - `-port 8765`
 - `-domain your-domain.example`
 - `-default-lat`, `-default-lon`, `-default-zoom`, `-default-layer`
+- `-osm-vector-light-style-url URL` (official OSM `colorful` style by default; empty uses raster fallback)
+- `-osm-vector-dark-style-url URL` (official OSM `eclipse` style by default; empty uses raster fallback)
 - `-mapbox-token YOUR_TOKEN`
 - `-setup` (Linux only)
 - `-import-tgz-url URL`

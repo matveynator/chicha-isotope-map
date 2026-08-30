@@ -2,10 +2,65 @@ package main
 
 import (
 	"context"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/matveynator/chicha-isotope-map/pkg/database"
 )
+
+func TestMapHandlerRendersConfiguredOSMVectorStylesWithoutCARTO(t *testing.T) {
+	previousLightStyleURL := *osmVectorLightStyleURL
+	previousDarkStyleURL := *osmVectorDarkStyleURL
+	previousTranslations := translations
+	t.Cleanup(func() {
+		*osmVectorLightStyleURL = previousLightStyleURL
+		*osmVectorDarkStyleURL = previousDarkStyleURL
+		translations = previousTranslations
+	})
+
+	*osmVectorLightStyleURL = "https://maps.example/light.json"
+	*osmVectorDarkStyleURL = "https://maps.example/dark.json"
+	translations = map[string]map[string]string{"en": {}}
+
+	request := httptest.NewRequest("GET", "http://example.test/?theme=dark", nil)
+	response := httptest.NewRecorder()
+	mapHandler(response, request)
+
+	if response.Code != 200 {
+		t.Fatalf("status = %d, want 200", response.Code)
+	}
+	responseBody := response.Body.String()
+	for _, expected := range []string{
+		`light: "https://maps.example/light.json"`,
+		`dark: "https://maps.example/dark.json"`,
+		`new L.OSMBaseLayer`,
+		`/static/maplibre-gl.js`,
+		`/static/leaflet-maplibre-gl.js`,
+	} {
+		if !strings.Contains(responseBody, expected) {
+			t.Fatalf("rendered map does not contain %q", expected)
+		}
+	}
+	if strings.Contains(responseBody, "cartocdn.com") {
+		t.Fatal("rendered map still references CARTO tiles")
+	}
+}
+
+func TestLicenseHandlerServesMapLibreNotices(t *testing.T) {
+	for _, licenseCode := range []string{"maplibre", "maplibre-leaflet"} {
+		request := httptest.NewRequest("GET", "http://example.test/licenses/"+licenseCode, nil)
+		response := httptest.NewRecorder()
+		licenseHandler(response, request)
+
+		if response.Code != 200 {
+			t.Fatalf("%s status = %d, want 200", licenseCode, response.Code)
+		}
+		if !strings.Contains(response.Body.String(), "Permission") {
+			t.Fatalf("%s notice does not contain its license grant", licenseCode)
+		}
+	}
+}
 
 func TestFastMergeMarkersByZoomKeepsHighestDoseRepresentative(t *testing.T) {
 	markers := []database.Marker{

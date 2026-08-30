@@ -45,6 +45,7 @@
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="/static/leaflet.css">
+    <link rel="stylesheet" href="/static/maplibre-gl.css">
     <link rel="stylesheet" href="/static/nouislider.min.css">
 
 		<!-- favicon -->
@@ -261,6 +262,15 @@ body, html {
         /* Match the lighter contrast in dark mode, with a touch of extra darkening for legibility. */
         :root[data-theme='dark'] .google-satellite-layer img {
           filter: contrast(0.80) brightness(0.8);
+        }
+
+        /* The raster layer is only a compatibility fallback when WebGL is unavailable. */
+        .osm-raster-fallback-layer {
+          transition: filter 160ms ease;
+        }
+
+        :root[data-theme='dark'] .osm-raster-fallback-layer {
+          filter: brightness(0.62) invert(1) contrast(1.65) hue-rotate(190deg) saturate(0.55) brightness(0.72);
         }
 
         :root[data-theme='dark'] {
@@ -4639,6 +4649,13 @@ body, html {
       window.mapboxToken = {{if .MapboxToken}}{{printf "%q" .MapboxToken}}{{else}}""{{end}};
     </script>
     <script>
+      // Operators can replace the best-effort OSM vector service without changing public URLs.
+      window.osmVectorStyles = {
+        light: {{.OSMVectorLightStyle}},
+        dark: {{.OSMVectorDarkStyle}}
+      };
+    </script>
+    <script>
       // Expose upstream attribution ingredients so sources remain localized.
       window.chichaVersion = {{ printf "%q" .Version }};
       window.chichaGitHubURL = {{ printf "%q" .ChichaGitHubURL }};
@@ -5041,6 +5058,8 @@ body, html {
 
     <!-- Load Leaflet JavaScript library -->
     <script src="/static/leaflet.js"></script>
+    <script src="/static/maplibre-gl.js"></script>
+    <script src="/static/leaflet-maplibre-gl.js"></script>
 
     <!-- Slider -->
     <script src="/static/nouislider.min.js"></script>
@@ -6417,35 +6436,6 @@ function isInternetOnlineNow() {
   return internetConnectivityState === 'online';
 }
 
-function probeInternetConnectivityOnce() {
-  return new Promise(function(resolve) {
-    const testImage = new Image();
-    let resolved = false;
-    const finish = function(result) {
-      if (resolved) return;
-      resolved = true;
-      resolve(result);
-    };
-    const timeoutHandle = setTimeout(function() {
-      finish(false);
-    }, 1400);
-    testImage.onload = function() {
-      clearTimeout(timeoutHandle);
-      finish(true);
-    };
-    testImage.onerror = function() {
-      clearTimeout(timeoutHandle);
-      finish(false);
-    };
-    testImage.src = 'https://tile.openstreetmap.org/0/0/0.png?ping=' + Date.now();
-  });
-}
-
-async function refreshInternetConnectivityState() {
-  const probeResult = await probeInternetConnectivityOnce();
-  updateInternetConnectivityState(probeResult);
-}
-
 function mapCacheText(key) {
   const translated = translate('map_cache_' + key);
   if (translated && translated !== 'map_cache_' + key) {
@@ -6472,10 +6462,6 @@ function applyMapCacheLocalization() {
 ensureMapCacheTranslationsForAllLanguages();
 applyMapCacheLocalization();
 applyTopOverlayLayoutByRuntimeMode();
-refreshInternetConnectivityState().catch(function() {});
-setInterval(function() {
-  refreshInternetConnectivityState().catch(function() {});
-}, 5000);
 
 function openMapCacheResetConfirmModal() {
   if (!mapCacheResetConfirmModalNode) {
@@ -6615,6 +6601,27 @@ const offlineCacheStorage = {
       tx.objectStore(offlineCacheStoreTiles).put(tileEntry);
       tx.oncomplete = function() { resolve(); };
       tx.onerror = function() { reject(tx.error || new Error('IndexedDB tile write failed')); };
+    });
+  },
+  async deleteTilesByProvider(providerName) {
+    const db = await openOfflineCacheDatabase();
+    return new Promise(function(resolve, reject) {
+      let removedBytes = 0;
+      const tx = db.transaction([offlineCacheStoreTiles], 'readwrite');
+      const request = tx.objectStore(offlineCacheStoreTiles).openCursor();
+      request.onsuccess = function(event) {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        const tileEntry = cursor.value || {};
+        const tileKey = String(tileEntry.key || cursor.key || '');
+        if (tileEntry.provider === providerName || tileKey.indexOf(providerName + ':') === 0) {
+          removedBytes += Math.max(0, Number(tileEntry.byteSize) || 0);
+          cursor.delete();
+        }
+        cursor.continue();
+      };
+      tx.oncomplete = function() { resolve(removedBytes); };
+      tx.onerror = function() { reject(tx.error || new Error('IndexedDB provider tile cleanup failed')); };
     });
   },
   async loadMarkerStream(streamKey) {
@@ -6827,6 +6834,21 @@ async function readOfflineCacheStats() {
   };
 }
 
+async function removeLegacyOSMTileCache() {
+  const migrationKey = 'osm_vector_cache_migration_v1';
+  const migrationDone = await offlineCacheStorage.readMeta(migrationKey);
+  if (migrationDone === true) {
+    return;
+  }
+  await offlineCacheStorage.deleteTilesByProvider('osm');
+  const stats = await readOfflineCacheStats();
+  stats.tiles.osm = 0;
+  stats.total = Math.max(0, stats.tiles.google + stats.tiles.mapbox + stats.markers);
+  await offlineCacheStorage.writeMeta('stats', stats);
+  await offlineCacheStorage.writeMeta(migrationKey, true);
+  offlineCacheStatsSnapshot = stats;
+}
+
 async function updateOfflineCacheStats(nextStats) {
   offlineCacheStatsSnapshot = nextStats;
   await offlineCacheStorage.writeMeta('stats', nextStats);
@@ -6991,7 +7013,6 @@ async function renderOfflineCacheStatus() {
 
 window.addEventListener('online', function() {
   updateInternetConnectivityState(true);
-  refreshInternetConnectivityState().catch(function() {});
 });
 window.addEventListener('offline', function() {
   updateInternetConnectivityState(false);
@@ -7087,12 +7108,160 @@ L.CachedTileLayer = L.TileLayer.extend({
       } else {
         // Fallback to direct tile URL when cache logic fails in WebView/CORS edge cases.
         tileImage.src = tileURL;
-        refreshInternetConnectivityState().catch(function() {});
       }
       renderOfflineCacheStatus();
     });
 
     return tileImage;
+  }
+});
+
+const osmRasterTileURL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const osmAttributionHTML = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
+
+function browserSupportsOSMVectorMap() {
+  try {
+    return !!(
+      window.maplibregl &&
+      typeof window.maplibregl.supported === 'function' &&
+      window.maplibregl.supported() &&
+      typeof L.maplibreGL === 'function'
+    );
+  } catch (supportError) {
+    console.warn('OSM vector support check failed:', supportError);
+    return false;
+  }
+}
+
+// OSMBaseLayer keeps one stable Leaflet layer identity while its renderer changes.
+L.OSMBaseLayer = L.Layer.extend({
+  initialize: function(options) {
+    L.setOptions(this, options);
+    this._themeName = normalizeThemePreference(options && options.theme) || 'light';
+    this._lightStyleURL = String(options && options.lightStyleURL || '').trim();
+    this._darkStyleURL = String(options && options.darkStyleURL || '').trim();
+    this._activeBaseRenderer = null;
+    this._leafletMap = null;
+    this._vectorStyleReady = false;
+    this._usingRasterFallback = false;
+  },
+
+  onAdd: function(leafletMap) {
+    this._leafletMap = leafletMap;
+    this._showPreferredRenderer();
+  },
+
+  onRemove: function(leafletMap) {
+    if (this._activeBaseRenderer && leafletMap.hasLayer(this._activeBaseRenderer)) {
+      leafletMap.removeLayer(this._activeBaseRenderer);
+    }
+    this._activeBaseRenderer = null;
+    this._leafletMap = null;
+    this._vectorStyleReady = false;
+    this._usingRasterFallback = false;
+  },
+
+  setTheme: function(themeName) {
+    const normalizedThemeName = normalizeThemePreference(themeName) || 'light';
+    if (this._themeName === normalizedThemeName) return;
+    this._themeName = normalizedThemeName;
+
+    if (!this._activeBaseRenderer || this._usingRasterFallback) return;
+    const styleURL = this._selectedStyleURL();
+    const maplibreMap = this._activeBaseRenderer.getMaplibreMap();
+    if (!styleURL || !maplibreMap || typeof maplibreMap.setStyle !== 'function') {
+      this._showRasterFallback('vector style URL is unavailable');
+      return;
+    }
+    this._vectorStyleReady = false;
+    try {
+      maplibreMap.setStyle(styleURL);
+    } catch (styleChangeError) {
+      console.warn('OSM vector style change failed:', styleChangeError);
+      this._showRasterFallback('vector style could not be changed');
+    }
+  },
+
+  _selectedStyleURL: function() {
+    return this._themeName === 'dark' ? this._darkStyleURL : this._lightStyleURL;
+  },
+
+  _showPreferredRenderer: function() {
+    const styleURL = this._selectedStyleURL();
+    if (!styleURL || !browserSupportsOSMVectorMap()) {
+      this._showRasterFallback(styleURL ? 'WebGL is unavailable' : 'vector style URL is empty');
+      return;
+    }
+
+    const ownerLayer = this;
+    let vectorLayer;
+    let maplibreMap;
+    try {
+      vectorLayer = L.maplibreGL({
+        style: styleURL,
+        pane: 'tilePane',
+        attribution: osmAttributionHTML
+      });
+      this._activeBaseRenderer = vectorLayer;
+      this._usingRasterFallback = false;
+      this._vectorStyleReady = false;
+      vectorLayer.addTo(this._leafletMap);
+      maplibreMap = vectorLayer.getMaplibreMap();
+    } catch (vectorStartError) {
+      console.warn('OSM vector map start failed:', vectorStartError);
+      if (vectorLayer && this._leafletMap.hasLayer(vectorLayer)) {
+        this._leafletMap.removeLayer(vectorLayer);
+      }
+      this._activeBaseRenderer = null;
+      this._showRasterFallback('vector renderer failed to start');
+      return;
+    }
+
+    maplibreMap.on('style.load', function() {
+      if (ownerLayer._activeBaseRenderer !== vectorLayer) return;
+      ownerLayer._vectorStyleReady = true;
+      updateInternetConnectivityState(true);
+    });
+    maplibreMap.on('error', function(mapErrorEvent) {
+      if (ownerLayer._activeBaseRenderer !== vectorLayer) return;
+      const mapError = mapErrorEvent && mapErrorEvent.error;
+      console.warn('OSM vector map error:', mapError || mapErrorEvent);
+      if (!ownerLayer._vectorStyleReady) {
+        ownerLayer._showRasterFallback('vector style failed to load');
+      } else if (!navigator.onLine) {
+        updateInternetConnectivityState(false);
+      }
+    });
+  },
+
+  _showRasterFallback: function(reason) {
+    if (!this._leafletMap || this._usingRasterFallback) return;
+    if (reason) {
+      console.warn('OSM vector map fallback:', reason);
+    }
+    if (this._activeBaseRenderer && this._leafletMap.hasLayer(this._activeBaseRenderer)) {
+      this._leafletMap.removeLayer(this._activeBaseRenderer);
+    }
+
+    const ownerLayer = this;
+    const rasterLayer = L.tileLayer(osmRasterTileURL, {
+      maxZoom: 18,
+      className: 'osm-raster-fallback-layer',
+      attribution: osmAttributionHTML
+    });
+    rasterLayer.on('load', function() {
+      if (ownerLayer._activeBaseRenderer === rasterLayer) {
+        updateInternetConnectivityState(true);
+      }
+    });
+    rasterLayer.on('tileerror', function() {
+      if (ownerLayer._activeBaseRenderer === rasterLayer && !navigator.onLine) {
+        updateInternetConnectivityState(false);
+      }
+    });
+    this._activeBaseRenderer = rasterLayer;
+    this._usingRasterFallback = true;
+    rasterLayer.addTo(this._leafletMap);
   }
 });
 
@@ -8929,10 +9098,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Initialize layers and automatic daylight-based theme switch
   const urlParams = new URLSearchParams(window.location.search);
-  const osmLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-  const osmDark  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-  window.osmLight = osmLight; // expose for theme toggle
-  window.osmDark  = osmDark;  // expose for theme toggle
   // Google tiles always use satellite imagery for consistent look
   const googleSat   = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
   // Mapbox tiles require an access token, so we build the URL only when provided.
@@ -8942,13 +9107,11 @@ document.addEventListener('DOMContentLoaded', function () {
     : '';
 
   const initialThemeName = normalizeThemePreference(urlParams.get('theme')) || getThemePreference();
-  osmLayer = new L.CachedTileLayer(initialThemeName === 'dark' ? osmDark : osmLight, {
-    maxZoom: 18,
-    attribution: '&copy; OSM contributors',
-    cacheProvider: 'osm',
-    cacheVariantResolver: function(tileURL) {
-      return /cartocdn\.com\/dark_all\//.test(tileURL) ? 'dark' : 'light';
-    }
+  const osmVectorStyles = window.osmVectorStyles || {};
+  osmLayer = new L.OSMBaseLayer({
+    theme: initialThemeName,
+    lightStyleURL: osmVectorStyles.light,
+    darkStyleURL: osmVectorStyles.dark
   });
 
   // Use the same satellite layer regardless of theme
@@ -9016,13 +9179,16 @@ document.addEventListener('DOMContentLoaded', function () {
     '<a href="#" class="attr-link" data-info="sources">' + translate('attr_sources') + '</a> | ' +
     '<a href="#" class="attr-link" data-info="license">' + translate('attr_license') + '</a>'
   );
-  readOfflineCacheStats()
+  removeLegacyOSMTileCache()
+    .then(function() {
+      return readOfflineCacheStats();
+    })
     .then(function(stats) {
       offlineCacheStatsSnapshot = stats;
       return renderOfflineCacheStatus();
     })
     .catch(function(error) {
-      console.warn('offline cache stats init failed:', error);
+      console.warn('offline cache migration or stats init failed:', error);
     });
 
   if (isTrackView) {
@@ -14245,8 +14411,8 @@ function centerMapToLocation() {
 
         function applyTheme(theme) {
           document.documentElement.dataset.theme = theme; // switch CSS variables
-          if (window.osmLayer) {
-            window.osmLayer.setUrl(theme === 'dark' ? window.osmDark : window.osmLight);
+          if (window.osmLayer && typeof window.osmLayer.setTheme === 'function') {
+            window.osmLayer.setTheme(theme);
           }
           sw.checked = theme === 'dark';
           if (typeof refreshThemedNewIcons === 'function') {
