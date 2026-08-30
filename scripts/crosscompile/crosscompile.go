@@ -7,9 +7,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var targetOSFlag = flag.String("os", "all", "Target GOOS to build, or comma-separated list. Use all for every supported OS.")
@@ -74,13 +76,15 @@ func main() {
 
 	// Set up directories
 	binariesPath := filepath.Join(gitRootPath, "binaries", version)
-	err = os.MkdirAll(binariesPath, os.ModePerm)
+	err = os.MkdirAll(binariesPath, 0o750)
 	if err != nil {
 		log.Fatalf("Error creating binaries directory: %v", err)
 	}
 
 	latestLink := filepath.Join(gitRootPath, "binaries", "latest")
-	os.Remove(latestLink)
+	if err := os.Remove(latestLink); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Fatalf("Error removing previous latest link: %v", err)
+	}
 	err = os.Symlink(version, latestLink)
 	if err != nil {
 		log.Printf("Warning: Failed to create symlink 'latest': %v", err)
@@ -148,7 +152,9 @@ func main() {
 	// Step 5: Optional deployment over SSH
 	fmt.Print("Do you want to deploy the binaries over SSH? (Y/n): ")
 	var response string
-	fmt.Scanln(&response)
+	if err := scanOptionalInput(&response); err != nil {
+		log.Fatalf("Error reading deployment choice: %v", err)
+	}
 	response = strings.ToLower(strings.TrimSpace(response))
 	if response == "n" {
 		fmt.Println("Deployment skipped.")
@@ -158,14 +164,19 @@ func main() {
 
 		// Optionally change remoteHost
 		fmt.Printf("Default remote host is '%s'. Press Enter to keep it or type a new host: ", remoteHost)
-		fmt.Scanln(&input)
+		if err := scanOptionalInput(&input); err != nil {
+			log.Fatalf("Error reading remote host: %v", err)
+		}
 		if input != "" {
 			remoteHost = input
 		}
 
 		// Optionally change deployPath
 		fmt.Printf("Default deployment path is '%s'. Press Enter to keep it or type a new path: ", deployPath)
-		fmt.Scanln(&input)
+		input = ""
+		if err := scanOptionalInput(&input); err != nil {
+			log.Fatalf("Error reading deployment path: %v", err)
+		}
 		if input != "" {
 			deployPath = input
 		}
@@ -177,6 +188,14 @@ func main() {
 			fmt.Println("Deployment completed successfully.")
 		}
 	}
+}
+
+func scanOptionalInput(destination *string) error {
+	_, err := fmt.Scanln(destination)
+	if err == nil || errors.Is(err, io.EOF) || err.Error() == "unexpected newline" {
+		return nil
+	}
+	return err
 }
 
 func filterBuildValues(name, raw string, allowed []string) ([]string, error) {
@@ -214,6 +233,10 @@ func filterBuildValues(name, raw string, allowed []string) ([]string, error) {
 
 // Helper function to run a command
 func runCommand(name string, args ...string) error {
+	if name != "rsync" {
+		return fmt.Errorf("unsupported command %q", name)
+	}
+	// #nosec G204 -- the executable is restricted to the literal rsync command and arguments are passed without a shell.
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -240,7 +263,7 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 	}
 
 	outputDir := filepath.Join(binariesPath, variantDir, targetOSName, job.arch)
-	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(outputDir, 0o750); err != nil {
 		return fmt.Errorf("creating output directory %s: %w", outputDir, err)
 	}
 
@@ -258,6 +281,7 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 		args = append(args, "-tags", "duckdb")
 	}
 	args = append(args, "-o", outputPath, goSourceFile)
+	// #nosec G204 -- go is a fixed executable and target values come from explicit GOOS/GOARCH allowlists.
 	buildCmd := exec.Command("go", args...)
 
 	env := append(os.Environ(), "GOOS="+job.osName, "GOARCH="+job.arch)
@@ -274,7 +298,8 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 		return fmt.Errorf("go build failed: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 
-	if err := os.Chmod(outputPath, 0755); err != nil {
+	// #nosec G302 -- release artifacts must remain executable by users after distribution.
+	if err := os.Chmod(outputPath, 0o755); err != nil {
 		return fmt.Errorf("chmod failed on %s: %w", outputPath, err)
 	}
 
@@ -385,7 +410,8 @@ func findMainGoFile() (string, error) {
 	}
 
 	for _, file := range files {
-		content, err := ioutil.ReadFile(file)
+		// #nosec G304 -- file is returned by a repository-root *.go glob, not by an external request.
+		content, err := os.ReadFile(file)
 		if err != nil {
 			continue
 		}
@@ -410,19 +436,29 @@ func fetchNextRunNumber() (string, error) {
 		return "", err
 	}
 
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/workflows/release.yml/runs?per_page=1", owner, repo)
-	resp, err := http.Get(apiURL)
+	apiURL := (&url.URL{
+		Scheme:   "https",
+		Host:     "api.github.com",
+		Path:     "/repos/" + owner + "/" + repo + "/actions/workflows/release.yml/runs",
+		RawQuery: "per_page=1",
+	}).String()
+	client := &http.Client{Timeout: 15 * time.Second}
+	// #nosec G107 -- the scheme and host are fixed above; only validated repository path segments vary.
+	resp, err := client.Get(apiURL)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub Actions API returned %s", resp.Status)
+	}
 
 	var result struct {
 		WorkflowRuns []struct {
 			RunNumber int `json:"run_number"`
 		} `json:"workflow_runs"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
 		return "", err
 	}
 	if len(result.WorkflowRuns) == 0 {
@@ -434,22 +470,48 @@ func fetchNextRunNumber() (string, error) {
 // parseGitHubRepo extracts owner and repository from remote URL.
 func parseGitHubRepo(remote string) (string, string, error) {
 	if strings.HasPrefix(remote, "git@") {
+		if !strings.HasPrefix(remote, "git@github.com:") {
+			return "", "", fmt.Errorf("unsupported git host")
+		}
 		parts := strings.SplitN(remote, ":", 2)
 		if len(parts) != 2 {
 			return "", "", fmt.Errorf("invalid remote URL")
 		}
 		remote = parts[1]
-	} else if strings.HasPrefix(remote, "https://") || strings.HasPrefix(remote, "http://") {
+	} else if strings.HasPrefix(remote, "https://") {
 		u, err := url.Parse(remote)
 		if err != nil {
 			return "", "", err
 		}
+		if !strings.EqualFold(u.Hostname(), "github.com") {
+			return "", "", fmt.Errorf("unsupported git host %q", u.Hostname())
+		}
 		remote = strings.TrimPrefix(u.Path, "/")
+	} else {
+		return "", "", fmt.Errorf("unsupported remote URL")
 	}
 	remote = strings.TrimSuffix(remote, ".git")
 	parts := strings.Split(remote, "/")
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("unable to parse owner and repo")
 	}
+	if !isGitHubSlug(parts[0]) || !isGitHubSlug(parts[1]) {
+		return "", "", fmt.Errorf("invalid GitHub owner or repository")
+	}
 	return parts[0], parts[1], nil
+}
+
+func isGitHubSlug(candidate string) bool {
+	if candidate == "" || candidate == "." || candidate == ".." {
+		return false
+	}
+	for _, character := range candidate {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' {
+			continue
+		}
+		if character != '-' && character != '_' && character != '.' {
+			return false
+		}
+	}
+	return true
 }

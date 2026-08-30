@@ -89,7 +89,7 @@ func (db *Database) StreamLatestMarkersNear(
 		maxLonPlaceholder := nextPlaceholder()
 		limitPlaceholder := nextPlaceholder()
 
-		query := fmt.Sprintf(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
+		query := formatSQL(`SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
        altitude,
        COALESCE(detector, '') AS detector,
        COALESCE(radiation, '') AS radiation,

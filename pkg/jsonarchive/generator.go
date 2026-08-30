@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -318,12 +319,12 @@ func runBuild(ctx context.Context, db *database.Database, dbType, destPath strin
 // archive.
 func buildArchive(ctx context.Context, db *database.Database, dbType, destPath string, logf func(string, ...any)) (string, time.Time, error) {
 	destDir := filepath.Dir(destPath)
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
+	if err := os.MkdirAll(destDir, 0o750); err != nil {
 		return "", time.Time{}, fmt.Errorf("create archive directory: %w", err)
 	}
 
 	tmpTrackDir := filepath.Join(destDir, ".json-archive-tracks")
-	if err := os.MkdirAll(tmpTrackDir, 0o755); err != nil {
+	if err := os.MkdirAll(tmpTrackDir, 0o750); err != nil {
 		return "", time.Time{}, fmt.Errorf("create track temp dir: %w", err)
 	}
 	if logf != nil {
@@ -338,21 +339,28 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		return "", time.Time{}, fmt.Errorf("tmp archive: %w", err)
 	}
 
-	cleanup := func() {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpFile.Name())
+	cleanup := func() error {
+		closeErr := tmpFile.Close()
+		if errors.Is(closeErr, os.ErrClosed) {
+			closeErr = nil
+		}
+		removeErr := os.Remove(tmpFile.Name())
+		if errors.Is(removeErr, os.ErrNotExist) {
+			removeErr = nil
+		}
+		return errors.Join(closeErr, removeErr)
 	}
 
 	counter := &countingWriter{Writer: tmpFile}
 	gz := gzip.NewWriter(counter)
 	tarw := tar.NewWriter(gz)
+	abort := func(cause error) error {
+		return errors.Join(cause, tarw.Close(), gz.Close(), cleanup())
+	}
 
 	totalTracks, err := db.CountTracks(ctx)
 	if err != nil {
-		tarw.Close()
-		gz.Close()
-		cleanup()
-		return "", time.Time{}, fmt.Errorf("count tracks: %w", err)
+		return "", time.Time{}, abort(fmt.Errorf("count tracks: %w", err))
 	}
 	if logf != nil {
 		logf("json archive discovered %d tracks for export", totalTracks)
@@ -387,10 +395,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 	for {
 		select {
 		case <-ctx.Done():
-			tarw.Close()
-			gz.Close()
-			cleanup()
-			return "", time.Time{}, ctx.Err()
+			return "", time.Time{}, abort(ctx.Err())
 		default:
 		}
 
@@ -405,10 +410,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 		for summary := range summariesCh {
 			if err := ctx.Err(); err != nil {
 				cancel()
-				tarw.Close()
-				gz.Close()
-				cleanup()
-				return "", time.Time{}, err
+				return "", time.Time{}, abort(err)
 			}
 			lastID = summary.TrackID
 			summaries = append(summaries, summary)
@@ -416,10 +418,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 
 		if err := <-errCh; err != nil {
 			cancel()
-			tarw.Close()
-			gz.Close()
-			cleanup()
-			return "", time.Time{}, err
+			return "", time.Time{}, abort(err)
 		}
 
 		if len(summaries) > 0 {
@@ -443,10 +442,7 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 			sendProgress(processed, summary.TrackID)
 			if err := appendTrack(buildCtx, tarw, db, dbType, summary, tmpTrackDir); err != nil {
 				cancel()
-				tarw.Close()
-				gz.Close()
-				cleanup()
-				return "", time.Time{}, err
+				return "", time.Time{}, abort(err)
 			}
 			processed++
 			lastTrackID = summary.TrackID
@@ -464,13 +460,10 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 	}
 
 	if processed == 0 {
-		tarw.Close()
-		gz.Close()
-		cleanup()
 		if logf != nil {
 			logf("json archive build halted: no tracks exported (total=%d)", totalTracks)
 		}
-		return "", time.Time{}, fmt.Errorf("build archive: no tracks exported")
+		return "", time.Time{}, abort(errors.New("build archive: no tracks exported"))
 	}
 
 	if totalTracks > 0 && processed < totalTracks {
@@ -482,24 +475,19 @@ func buildArchive(ctx context.Context, db *database.Database, dbType, destPath s
 	}
 
 	if err := tarw.Close(); err != nil {
-		gz.Close()
-		cleanup()
-		return "", time.Time{}, fmt.Errorf("close tar: %w", err)
+		return "", time.Time{}, errors.Join(fmt.Errorf("close tar: %w", err), gz.Close(), cleanup())
 	}
 	if err := gz.Close(); err != nil {
-		cleanup()
-		return "", time.Time{}, fmt.Errorf("close gzip: %w", err)
+		return "", time.Time{}, errors.Join(fmt.Errorf("close gzip: %w", err), cleanup())
 	}
 	if err := tmpFile.Close(); err != nil {
-		cleanup()
-		return "", time.Time{}, fmt.Errorf("close archive file: %w", err)
+		return "", time.Time{}, errors.Join(fmt.Errorf("close archive file: %w", err), cleanup())
 	}
 
 	sendProgress(processed, "finalising")
 
 	if err := replaceFile(tmpFile.Name(), destPath); err != nil {
-		cleanup()
-		return "", time.Time{}, err
+		return "", time.Time{}, errors.Join(err, cleanup())
 	}
 
 	info, err := os.Stat(destPath)
@@ -542,12 +530,10 @@ func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbT
 	writer := bufio.NewWriter(tmp)
 	latest, err := writeTrackJSON(ctx, db, dbType, summary, trackIndex, writer)
 	if err != nil {
-		tmp.Close()
-		return fmt.Errorf("write track %s: %w", summary.TrackID, err)
+		return errors.Join(fmt.Errorf("write track %s: %w", summary.TrackID, err), tmp.Close())
 	}
 	if err := writer.Flush(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("flush track %s: %w", summary.TrackID, err)
+		return errors.Join(fmt.Errorf("flush track %s: %w", summary.TrackID, err), tmp.Close())
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close track %s: %w", summary.TrackID, err)
@@ -558,6 +544,7 @@ func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbT
 		return fmt.Errorf("stat track %s: %w", summary.TrackID, err)
 	}
 
+	// #nosec G304 -- tmpPath is returned by os.CreateTemp in the private archive directory.
 	file, err := os.Open(tmpPath)
 	if err != nil {
 		return fmt.Errorf("open track %s: %w", summary.TrackID, err)
@@ -575,12 +562,10 @@ func appendTrack(ctx context.Context, tw *tar.Writer, db *database.Database, dbT
 	}
 
 	if err := tw.WriteHeader(header); err != nil {
-		file.Close()
-		return fmt.Errorf("tar header %s: %w", summary.TrackID, err)
+		return errors.Join(fmt.Errorf("tar header %s: %w", summary.TrackID, err), file.Close())
 	}
 	if _, err := io.Copy(tw, file); err != nil {
-		file.Close()
-		return fmt.Errorf("tar copy %s: %w", summary.TrackID, err)
+		return errors.Join(fmt.Errorf("tar copy %s: %w", summary.TrackID, err), file.Close())
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close copy %s: %w", summary.TrackID, err)

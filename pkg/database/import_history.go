@@ -34,7 +34,7 @@ func (db *Database) FindImportHistory(ctx context.Context, source, sourceID, dbT
 	}
 	phSource := placeholder(dbType, 1)
 	phSourceID := placeholder(dbType, 2)
-	query := fmt.Sprintf(`SELECT source, source_id, track_id, status, imported_at, message FROM import_history WHERE source = %s AND source_id = %s LIMIT 1`, phSource, phSourceID)
+	query := formatSQL(`SELECT source, source_id, track_id, status, imported_at, message FROM import_history WHERE source = %s AND source_id = %s LIMIT 1`, phSource, phSourceID)
 	var record ImportHistory
 	var (
 		trackID sql.NullString
@@ -76,7 +76,7 @@ func (db *Database) CountImportHistory(ctx context.Context, source, dbType strin
 		return 0, nil
 	}
 	phSource := placeholder(dbType, 1)
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM import_history WHERE source = %s`, phSource)
+	query := formatSQL(`SELECT COUNT(*) FROM import_history WHERE source = %s`, phSource)
 	var count int64
 	ctx, cancel := queueFriendlyContext(ctx, serializedWaitFloor)
 	defer cancel()
@@ -100,7 +100,7 @@ func (db *Database) ImportHistoryStats(ctx context.Context, source, dbType strin
 		return 0, time.Time{}, nil
 	}
 	phSource := placeholder(dbType, 1)
-	query := fmt.Sprintf(`SELECT COUNT(*), MAX(imported_at) FROM import_history WHERE source = %s`, phSource)
+	query := formatSQL(`SELECT COUNT(*), MAX(imported_at) FROM import_history WHERE source = %s`, phSource)
 	var (
 		count       int64
 		lastImport  sql.NullInt64
@@ -131,7 +131,7 @@ func (db *Database) LatestImportHistory(ctx context.Context, source, dbType stri
 		return "", time.Time{}, nil
 	}
 	phSource := placeholder(dbType, 1)
-	query := fmt.Sprintf(`SELECT source_id, imported_at FROM import_history WHERE source = %s ORDER BY imported_at DESC LIMIT 1`, phSource)
+	query := formatSQL(`SELECT source_id, imported_at FROM import_history WHERE source = %s ORDER BY imported_at DESC LIMIT 1`, phSource)
 	var (
 		sourceID  sql.NullString
 		imported  sql.NullInt64
@@ -202,7 +202,7 @@ func (db *Database) EnsureImportHistory(ctx context.Context, source, sourceID, t
 		insertMessage := placeholder(dbType, 6)
 		existsSource := placeholder(dbType, 7)
 		existsSourceID := placeholder(dbType, 8)
-		stmt := fmt.Sprintf(`INSERT INTO import_history (source, source_id, track_id, status, imported_at, message)
+		stmt := formatSQL(`INSERT INTO import_history (source, source_id, track_id, status, imported_at, message)
 SELECT %s, %s, %s, %s, %s, %s
 WHERE NOT EXISTS (SELECT 1 FROM import_history WHERE source = %s AND source_id = %s);`, insertSource, insertSourceID, insertTrackID, insertStatus, insertImported, insertMessage, existsSource, existsSourceID)
 		if _, err := conn.ExecContext(runCtx, stmt, source, sourceID, trackID, status, importedAt, message, source, sourceID); err != nil {

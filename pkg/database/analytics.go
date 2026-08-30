@@ -82,7 +82,7 @@ func (db *Database) UpsertAnalyticsSession(ctx context.Context, session Analytic
 		return fmt.Errorf("nil database")
 	}
 	return db.withSerializedConnectionFor(ctx, WorkloadGeneral, func(ctx context.Context, conn *sql.DB) error {
-		query := fmt.Sprintf(`SELECT display_name, last_seen_at, visit_count, visitor_number FROM analytics_sessions WHERE session_id = %s ORDER BY last_seen_at DESC LIMIT 1`, placeholder(dbType, 1))
+		query := formatSQL(`SELECT display_name, last_seen_at, visit_count, visitor_number FROM analytics_sessions WHERE session_id = %s ORDER BY last_seen_at DESC LIMIT 1`, placeholder(dbType, 1))
 		var (
 			existingName  string
 			lastSeen      sql.NullInt64
@@ -120,7 +120,7 @@ func (db *Database) UpsertAnalyticsSession(ctx context.Context, session Analytic
 		}
 
 		if strings.EqualFold(dbType, "clickhouse") {
-			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, fingerprint, created_at, last_seen_at, visit_count, ip, user_agent, referer)
+			insert := formatSQL(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, fingerprint, created_at, last_seen_at, visit_count, ip, user_agent, referer)
 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 1),
 				placeholder(dbType, 2),
@@ -148,7 +148,7 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 		}
 
 		if err == sql.ErrNoRows {
-			insert := fmt.Sprintf(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, fingerprint, created_at, last_seen_at, visit_count, ip, user_agent, referer)
+			insert := formatSQL(`INSERT INTO analytics_sessions (session_id, display_name, visitor_number, fingerprint, created_at, last_seen_at, visit_count, ip, user_agent, referer)
 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 				placeholder(dbType, 1),
 				placeholder(dbType, 2),
@@ -175,7 +175,7 @@ VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)`,
 			return execErr
 		}
 
-		update := fmt.Sprintf(`UPDATE analytics_sessions SET display_name = %s, visitor_number = CASE WHEN %s > 0 THEN %s ELSE visitor_number END, fingerprint = CASE WHEN %s != '' THEN %s ELSE fingerprint END, last_seen_at = %s, visit_count = %s, ip = %s, user_agent = %s, referer = %s WHERE session_id = %s`,
+		update := formatSQL(`UPDATE analytics_sessions SET display_name = %s, visitor_number = CASE WHEN %s > 0 THEN %s ELSE visitor_number END, fingerprint = CASE WHEN %s != '' THEN %s ELSE fingerprint END, last_seen_at = %s, visit_count = %s, ip = %s, user_agent = %s, referer = %s WHERE session_id = %s`,
 			placeholder(dbType, 1),
 			placeholder(dbType, 2),
 			placeholder(dbType, 3),
@@ -216,7 +216,7 @@ func (db *Database) AnalyticsSessionByFingerprint(ctx context.Context, fingerpri
 	}
 	var result AnalyticsSession
 	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
-		query := fmt.Sprintf(`SELECT session_id, display_name, visitor_number FROM analytics_sessions WHERE fingerprint = %s ORDER BY last_seen_at DESC LIMIT 1`, placeholder(dbType, 1))
+		query := formatSQL(`SELECT session_id, display_name, visitor_number FROM analytics_sessions WHERE fingerprint = %s ORDER BY last_seen_at DESC LIMIT 1`, placeholder(dbType, 1))
 		var number sql.NullInt64
 		err := conn.QueryRowContext(ctx, query, fingerprint).Scan(&result.SessionID, &result.DisplayName, &number)
 		if err == sql.ErrNoRows {
@@ -273,7 +273,7 @@ func (db *Database) InsertAnalyticsEvent(ctx context.Context, event AnalyticsEve
 		return fmt.Errorf("nil database")
 	}
 	return db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
-		insert := fmt.Sprintf(`INSERT INTO analytics_events (
+		insert := formatSQL(`INSERT INTO analytics_events (
   session_id, display_name, occurred_at, kind, path, ip, referer, user_agent,
   region, map_theme, map_layer, map_zoom, map_speed, map_center_lat, map_center_lon,
   dose_class, track_kind, track_id, detector, detail
@@ -372,7 +372,7 @@ func (db *Database) QueryAnalyticsSummary(ctx context.Context, start, end int64,
 }
 
 func queryCount(ctx context.Context, conn *sql.DB, dbType string, template string, start, end int64) (int, error) {
-	query := fmt.Sprintf(template, placeholder(dbType, 1), placeholder(dbType, 2))
+	query := formatSQL(template, placeholder(dbType, 1), placeholder(dbType, 2))
 	var count int
 	if err := conn.QueryRowContext(ctx, query, start, end).Scan(&count); err != nil {
 		return 0, err
@@ -381,7 +381,7 @@ func queryCount(ctx context.Context, conn *sql.DB, dbType string, template strin
 }
 
 func queryTopUsers(ctx context.Context, conn *sql.DB, dbType string, start, end int64, limit int) ([]AnalyticsSummaryItem, error) {
-	query := fmt.Sprintf(`SELECT display_name, session_id, COUNT(*) FROM analytics_events
+	query := formatSQL(`SELECT display_name, session_id, COUNT(*) FROM analytics_events
 WHERE occurred_at >= %s AND occurred_at < %s
 GROUP BY display_name, session_id
 ORDER BY COUNT(*) DESC
@@ -412,7 +412,7 @@ LIMIT %s`, placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3
 }
 
 func queryTopList(ctx context.Context, conn *sql.DB, dbType string, template string, start, end int64, limit int) ([]AnalyticsSummaryItem, error) {
-	query := fmt.Sprintf(template, placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3))
+	query := formatSQL(template, placeholder(dbType, 1), placeholder(dbType, 2), placeholder(dbType, 3))
 	rows, err := conn.QueryContext(ctx, query, start, end, limit)
 	if err != nil {
 		return nil, err
@@ -452,7 +452,7 @@ func (db *Database) GetTrackDeviceSummary(ctx context.Context, trackID, dbType s
 	}
 	var summary DeviceSummary
 	err := db.withSerializedConnectionFor(ctx, WorkloadWebRead, func(ctx context.Context, conn *sql.DB) error {
-		query := fmt.Sprintf(`SELECT detector, device_name, tube, transport FROM markers WHERE trackID = %s LIMIT 1`, placeholder(dbType, 1))
+		query := formatSQL(`SELECT detector, device_name, tube, transport FROM markers WHERE trackID = %s LIMIT 1`, placeholder(dbType, 1))
 		row := conn.QueryRowContext(ctx, query, trackID)
 		return row.Scan(&summary.Detector, &summary.DeviceName, &summary.Tube, &summary.Transport)
 	})

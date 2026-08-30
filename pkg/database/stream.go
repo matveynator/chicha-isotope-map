@@ -118,7 +118,7 @@ func (db *Database) StreamMarkersByZoomBoundsSpeed(ctx context.Context, zoom int
 		args = append(args, minLon, maxLon)
 		appendSpeedRangeClause(&sb, &args, speedRanges, dbType)
 
-		query := fmt.Sprintf(`
+		query := formatSQL(`
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
                        COALESCE(device_name, '') AS device_name
                 FROM markers
@@ -252,7 +252,7 @@ func (db *Database) StreamMarkersByTrackIDZoomBoundsSpeed(ctx context.Context, t
 		args = append(args, minLon, maxLon)
 		appendSpeedRangeClause(&sb, &args, speedRanges, dbType)
 
-		query := fmt.Sprintf(`
+		query := formatSQL(`
                 SELECT id, doseRate, date, lon, lat, countRate, zoom, speed, trackID,
                        COALESCE(device_name, '') AS device_name
                 FROM markers

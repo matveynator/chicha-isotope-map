@@ -24,7 +24,7 @@ func (db *Database) ResolveUserBySource(ctx context.Context, source, sourceUserI
 	}
 	phSource := placeholder(dbType, 1)
 	phSourceID := placeholder(dbType, 2)
-	query := fmt.Sprintf(`SELECT user_id, name FROM users WHERE source = %s AND source_user_id = %s LIMIT 1`, phSource, phSourceID)
+	query := formatSQL(`SELECT user_id, name FROM users WHERE source = %s AND source_user_id = %s LIMIT 1`, phSource, phSourceID)
 	var (
 		userID string
 		name   sql.NullString
@@ -80,7 +80,7 @@ func (db *Database) EnsureUserBySource(ctx context.Context, source, sourceUserID
 	insertCreated := placeholder(dbType, 5)
 	existsSource := placeholder(dbType, 6)
 	existsSourceID := placeholder(dbType, 7)
-	stmt := fmt.Sprintf(`INSERT INTO users (user_id, source, source_user_id, name, created_at)
+	stmt := formatSQL(`INSERT INTO users (user_id, source, source_user_id, name, created_at)
 SELECT %s, %s, %s, %s, %s
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE source = %s AND source_user_id = %s);`, insertID, insertSource, insertSourceID, insertName, insertCreated, existsSource, existsSourceID)
 	if _, err := db.DB.ExecContext(ctx, stmt, newID, source, sourceUserID, name, createdAt, source, sourceUserID); err != nil {
@@ -108,7 +108,7 @@ func (db *Database) UpdateUserNameIfEmpty(ctx context.Context, userID, name, dbT
 	}
 	phName := placeholder(dbType, 1)
 	phUser := placeholder(dbType, 2)
-	stmt := fmt.Sprintf(`UPDATE users SET name = %s WHERE user_id = %s AND (name IS NULL OR name = '')`, phName, phUser)
+	stmt := formatSQL(`UPDATE users SET name = %s WHERE user_id = %s AND (name IS NULL OR name = '')`, phName, phUser)
 	if _, err := db.DB.ExecContext(ctx, stmt, name, userID); err != nil {
 		return fmt.Errorf("update user name: %w", err)
 	}
@@ -146,7 +146,7 @@ func (db *Database) EnsureTrackUser(ctx context.Context, trackID, userID, source
 	insertSource := placeholder(dbType, 3)
 	existsTrack := placeholder(dbType, 4)
 	existsUser := placeholder(dbType, 5)
-	stmt := fmt.Sprintf(`INSERT INTO track_users (track_id, user_id, source)
+	stmt := formatSQL(`INSERT INTO track_users (track_id, user_id, source)
 SELECT %s, %s, %s
 WHERE NOT EXISTS (SELECT 1 FROM track_users WHERE track_id = %s AND user_id = %s);`, insertTrack, insertUser, insertSource, existsTrack, existsUser)
 	if _, err := db.DB.ExecContext(ctx, stmt, trackID, userID, source, trackID, userID); err != nil {

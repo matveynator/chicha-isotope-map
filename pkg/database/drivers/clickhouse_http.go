@@ -116,7 +116,9 @@ func (c *clickhouseConn) Ping(ctx context.Context) error {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("clickhouse: ping failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
-	io.Copy(io.Discard, resp.Body)
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		return fmt.Errorf("clickhouse: drain ping response: %w", err)
+	}
 	return nil
 }
 
@@ -185,7 +187,9 @@ func (c *clickhouseConn) ExecContext(ctx context.Context, query string, args []d
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("clickhouse: exec failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
-	io.Copy(io.Discard, resp.Body)
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		return nil, fmt.Errorf("clickhouse: drain exec response: %w", err)
+	}
 	return driver.RowsAffected(0), nil
 }
 
