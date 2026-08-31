@@ -26,35 +26,69 @@ cross-platform binaries for desktop and server deployments.
 
 ## Downloads (Stable Release)
 
-- **Smart download page (recommended):** https://matveynator.github.io/chicha-isotope-map/
-- **Stable Release tag (all artifacts):** https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release
+- **Latest release (always current):** https://github.com/matveynator/chicha-isotope-map/releases/latest
+- **Download mirror:** https://files.zabiyaka.net/chicha-isotope-map/
 
-### Desktop app (GUI)
+<details>
+<summary>
+  <img width="42" alt="linux" src="https://github.com/user-attachments/assets/bf3141b6-4c93-4fd6-b2d1-421b79876dcb" />
+  <b><big>Linux</big></b>
+  <sub>Desktop and server · amd64 / arm64 / 386</sub>
+</summary>
 
-Pick your OS first, then architecture.
+**Desktop:** [GTK 4.0 amd64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_amd64_desktop_gtk40.zip) · [GTK 4.0 arm64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_arm64_desktop_gtk40.zip) · [GTK 4.1 amd64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_amd64_desktop_gtk41.zip) · [GTK 4.1 arm64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_arm64_desktop_gtk41.zip)
 
-| OS | Architecture / Variant | Artifact |
-|---|---|---|
-| macOS | Universal (Intel + Apple Silicon) | [chicha-isotope-map_darwin_universal_desktop.dmg](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_universal_desktop.dmg) |
-| Windows | amd64 | [chicha-isotope-map_windows_amd64_desktop.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64_desktop.zip) |
-| Windows | arm64 | [chicha-isotope-map_windows_arm64_desktop.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64_desktop.zip) |
-| Linux GTK 4.0 (Ubuntu 22.04 / Mint 21.x) | amd64 | [chicha-isotope-map_linux_amd64_desktop_gtk40.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk40.zip) |
-| Linux GTK 4.0 (Ubuntu 22.04 / Mint 21.x) | arm64 | [chicha-isotope-map_linux_arm64_desktop_gtk40.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk40.zip) |
-| Linux GTK 4.1 (Ubuntu 24.04+ / Mint 22+) | amd64 | [chicha-isotope-map_linux_amd64_desktop_gtk41.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip) |
-| Linux GTK 4.1 (Ubuntu 24.04+ / Mint 22+) | arm64 | [chicha-isotope-map_linux_arm64_desktop_gtk41.zip](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64_desktop_gtk41.zip) |
+**Server:** [amd64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_amd64) · [arm64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_arm64) · [386](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_386)
 
-### Server binaries (self-hosted)
+</details>
 
-| OS | Architecture | Artifact |
-|---|---|---|
-| Linux | amd64 | [chicha-isotope-map_linux_amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64) |
-| Linux | arm64 | [chicha-isotope-map_linux_arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64) |
-| Windows | amd64 | [chicha-isotope-map_windows_amd64.exe](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_amd64.exe) |
-| Windows | arm64 | [chicha-isotope-map_windows_arm64.exe](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_windows_arm64.exe) |
-| macOS | amd64 | [chicha-isotope-map_darwin_amd64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_amd64) |
-| macOS | arm64 | [chicha-isotope-map_darwin_arm64](https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_darwin_arm64) |
-| FreeBSD | amd64 / arm64 | [Stable Release assets](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) |
-| OpenBSD | amd64 / arm64 | [Stable Release assets](https://github.com/matveynator/chicha-isotope-map/releases/tag/stable-release) |
+<details>
+<summary>
+  <img width="36" alt="macOS" src="https://github.com/user-attachments/assets/946102b8-f043-494d-809a-a589e536ee9a" />
+  <b><big>macOS</big></b>
+  <sub>Universal · Intel and Apple Silicon</sub>
+</summary>
+
+**Desktop:** [Universal DMG](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_darwin_universal_desktop.dmg) · [Universal binary](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_darwin_universal_desktop)
+
+**Server:** [Universal binary](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_darwin_universal) · [Intel](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_darwin_amd64) · [Apple Silicon](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_darwin_arm64)
+
+</details>
+
+<details>
+<summary>
+  <img width="42" alt="windows" src="https://github.com/user-attachments/assets/f6044001-95b0-4500-a4f6-1c3b08eb65fb" />
+  <b><big>Windows</big></b>
+  <sub>Desktop and server · amd64 / arm64</sub>
+</summary>
+
+**Desktop:** [amd64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_windows_amd64_desktop.zip) · [arm64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_windows_arm64_desktop.zip)
+
+**Server:** [amd64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_windows_amd64.exe) · [arm64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_windows_arm64.exe)
+
+</details>
+
+<details>
+<summary>
+  <img width="42" alt="freebsd" src="https://github.com/user-attachments/assets/d35baaac-d296-41b1-a281-55dc761328e9" />
+  <b><big>FreeBSD</big></b>
+  <sub>Server · amd64 / arm64</sub>
+</summary>
+
+[amd64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_freebsd_amd64) · [arm64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_freebsd_arm64)
+
+</details>
+
+<details>
+<summary>
+  <img width="42" alt="openbsd" src="https://github.com/user-attachments/assets/11633d7e-5744-46da-ad2f-6e49c69e51de" />
+  <b><big>OpenBSD</big></b>
+  <sub>Server · amd64 / arm64</sub>
+</summary>
+
+[amd64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_openbsd_amd64) · [arm64](https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_openbsd_arm64)
+
+</details>
 
 ### Quick run
 
@@ -71,7 +105,7 @@ chmod +x ./chicha-isotope-map_darwin_*
 
 Linux desktop (GTK 4.1 amd64 example):
 ```bash
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64_desktop_gtk41.zip -o chicha-isotope-map-desktop.zip
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_amd64_desktop_gtk41.zip -o chicha-isotope-map-desktop.zip
 unzip chicha-isotope-map-desktop.zip
 chmod +x ./chicha-isotope-map_linux_amd64_desktop_gtk41
 ./chicha-isotope-map_linux_amd64_desktop_gtk41
@@ -79,7 +113,7 @@ chmod +x ./chicha-isotope-map_linux_amd64_desktop_gtk41
 
 Linux server quick install:
 ```bash
-sudo curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
+sudo curl -fL https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
 sudo chmod +x /usr/local/bin/chicha-isotope-map
 /usr/local/bin/chicha-isotope-map
 ```
@@ -91,7 +125,7 @@ The commands below follow the stable download page conventions (Linux systemd se
 #### Linux + systemd (amd64)
 ```bash
 sudo bash -c 'set -euo pipefail
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_amd64 -o /usr/local/bin/chicha-isotope-map
 chmod +x /usr/local/bin/chicha-isotope-map
 cat >/etc/systemd/system/chicha-isotope-map.service <<"UNIT"
 [Unit]
@@ -116,7 +150,7 @@ systemctl status --no-pager chicha-isotope-map || true'
 #### Linux + systemd (arm64)
 ```bash
 sudo bash -c 'set -euo pipefail
-curl -fL https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_linux_arm64 -o /usr/local/bin/chicha-isotope-map
+curl -fL https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_linux_arm64 -o /usr/local/bin/chicha-isotope-map
 chmod +x /usr/local/bin/chicha-isotope-map
 cat >/etc/systemd/system/chicha-isotope-map.service <<"UNIT"
 [Unit]
@@ -142,7 +176,7 @@ systemctl status --no-pager chicha-isotope-map || true'
 ```bash
 # amd64: change URL to *_arm64 for arm64 hosts
 sudo sh -c 'set -eu
-fetch -o /usr/local/bin/chicha-isotope-map https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_freebsd_amd64
+fetch -o /usr/local/bin/chicha-isotope-map https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_freebsd_amd64
 chmod +x /usr/local/bin/chicha-isotope-map
 cat >/usr/local/etc/rc.d/chicha_isotope_map <<"RC"
 #!/bin/sh
@@ -172,7 +206,7 @@ service chicha_isotope_map start'
 ```bash
 # amd64: change URL to *_arm64 for arm64 hosts
 sudo sh -c 'set -eu
-ftp -o /usr/local/bin/chicha-isotope-map https://github.com/matveynator/chicha-isotope-map/releases/download/stable-release/chicha-isotope-map_openbsd_amd64
+ftp -o /usr/local/bin/chicha-isotope-map https://github.com/matveynator/chicha-isotope-map/releases/latest/download/chicha-isotope-map_openbsd_amd64
 chmod +x /usr/local/bin/chicha-isotope-map
 cat >/etc/rc.d/chicha_isotope_map <<"RC"
 #!/bin/ksh
@@ -232,9 +266,6 @@ USA uranium traces:
 JAPAN Fukusima disaster 2012 (updated at 2026):
 <img width="1288" height="837" alt="japan-fukusima" src="https://github.com/user-attachments/assets/2920cb7e-ff35-4851-92df-76dfe523021d" />
 
-LINUX DESKTOP APP:
-<img src="https://matveynator.github.io/chicha-isotope-map/linux-amd64-desktop.png">
-
 ---
 ## Configuration and deployment
 
@@ -287,6 +318,17 @@ Server-only binary (no embedded desktop window):
 CGO_ENABLED=0 go build .
 ./chicha-isotope-map
 ```
+
+Build the supported local cross-platform set and optionally deploy it to the download mirror:
+
+```bash
+go run ./scripts/crosscompile
+```
+
+The script keeps versioned builds under `binaries/<version>/`, updates
+`binaries/latest`, and writes GitHub-compatible file names to
+`binaries/<version>/release/`. Its optional rsync deployment publishes the same
+tree to `files.zabiyaka.net/chicha-isotope-map`.
 
 ---
 

@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"archive/zip"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestFilterBuildValuesAll(t *testing.T) {
 	allowed := []string{"linux", "darwin"}
@@ -56,6 +61,62 @@ func TestParseGitHubRepoAcceptsGitHubHTTPSAndSSH(t *testing.T) {
 		}
 		if owner != "matveynator" || repo != "chicha-isotope-map" {
 			t.Fatalf("parseGitHubRepo(%q) = %q/%q", remote, owner, repo)
+		}
+	}
+}
+
+func TestCreateReleaseArtifactsUsesGitHubReleaseNames(t *testing.T) {
+	binariesPath := t.TempDir()
+	serverPath := filepath.Join(binariesPath, "no-gui", "linux", "amd64", "chicha-isotope-map")
+	desktopPath := filepath.Join(binariesPath, "desktop-webview", "windows", "amd64", "chicha-isotope-map.exe")
+	for _, sourcePath := range []string{serverPath, desktopPath} {
+		if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(sourcePath, []byte("release binary"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := createReleaseArtifacts(binariesPath, "chicha-isotope-map"); err != nil {
+		t.Fatal(err)
+	}
+
+	serverReleasePath := filepath.Join(binariesPath, "release", "chicha-isotope-map_linux_amd64")
+	if content, err := os.ReadFile(serverReleasePath); err != nil || string(content) != "release binary" {
+		t.Fatalf("server release artifact = %q, %v", content, err)
+	}
+	archivePath := filepath.Join(binariesPath, "release", "chicha-isotope-map_windows_amd64_desktop.zip")
+	archive, err := zip.OpenReader(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	if len(archive.File) != 1 || archive.File[0].Name != "chicha-isotope-map_windows_amd64_desktop.exe" {
+		t.Fatalf("desktop archive entries = %#v", archive.File)
+	}
+}
+
+func TestMakeArtifactsPubliclyReadable(t *testing.T) {
+	binariesPath := t.TempDir()
+	artifactPath := filepath.Join(binariesPath, "version", "release", "binary")
+	if err := os.MkdirAll(filepath.Dir(artifactPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(artifactPath, []byte("binary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := makeArtifactsPubliclyReadable(binariesPath); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Dir(artifactPath), artifactPath} {
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fileInfo.Mode().Perm() != 0o755 {
+			t.Fatalf("mode for %s = %o, want 755", path, fileInfo.Mode().Perm())
 		}
 	}
 }

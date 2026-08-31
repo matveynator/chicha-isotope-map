@@ -6,6 +6,7 @@ package main
 // This approach follows Go proverbs by keeping the code clear and simple.
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -38,6 +39,12 @@ type buildJob struct {
 type buildResult struct {
 	job buildJob
 	err error
+}
+
+// releaseArtifact maps the local build tree to the stable release file names.
+type releaseArtifact struct {
+	sourcePath string
+	fileName   string
 }
 
 func main() {
@@ -75,8 +82,9 @@ func main() {
 	}
 
 	// Set up directories
-	binariesPath := filepath.Join(gitRootPath, "binaries", version)
-	err = os.MkdirAll(binariesPath, 0o750)
+	binariesRoot := filepath.Join(gitRootPath, "binaries")
+	binariesPath := filepath.Join(binariesRoot, version)
+	err = os.MkdirAll(binariesPath, 0o755)
 	if err != nil {
 		log.Fatalf("Error creating binaries directory: %v", err)
 	}
@@ -143,6 +151,13 @@ func main() {
 				}
 			}
 		}
+	}
+
+	if err := createReleaseArtifacts(binariesPath, executionFile); err != nil {
+		log.Fatalf("Error creating release artifacts: %v", err)
+	}
+	if err := makeArtifactsPubliclyReadable(binariesRoot); err != nil {
+		log.Fatalf("Error preparing artifacts for the download mirror: %v", err)
 	}
 
 	// Default deployment settings
@@ -263,7 +278,7 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 	}
 
 	outputDir := filepath.Join(binariesPath, variantDir, targetOSName, job.arch)
-	if err := os.MkdirAll(outputDir, 0o750); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("creating output directory %s: %w", outputDir, err)
 	}
 
@@ -305,6 +320,145 @@ func buildBinary(job buildJob, goSourceFile, executionFile, binariesPath, versio
 
 	fmt.Printf("Successfully built %s for %s/%s (duckdb=%v, desktop=%v)\n", execFileName, job.osName, job.arch, job.duckdb, job.desktop)
 	return nil
+}
+
+// createReleaseArtifacts exposes the useful local builds under the same names as GitHub Release assets.
+// Keeping one flat compatibility directory makes the GitHub and files.zabiyaka.net links interchangeable.
+func createReleaseArtifacts(binariesPath, executionFile string) error {
+	releasePath := filepath.Join(binariesPath, "release")
+	if err := os.MkdirAll(releasePath, 0o755); err != nil {
+		return err
+	}
+
+	artifacts := []releaseArtifact{
+		{sourcePath: "no-gui/linux/amd64/" + executionFile, fileName: executionFile + "_linux_amd64"},
+		{sourcePath: "no-gui/linux/arm64/" + executionFile, fileName: executionFile + "_linux_arm64"},
+		{sourcePath: "no-gui/linux/386/" + executionFile, fileName: executionFile + "_linux_386"},
+		{sourcePath: "no-gui/mac/amd64/" + executionFile, fileName: executionFile + "_darwin_amd64"},
+		{sourcePath: "no-gui/mac/arm64/" + executionFile, fileName: executionFile + "_darwin_arm64"},
+		{sourcePath: "no-gui/freebsd/amd64/" + executionFile, fileName: executionFile + "_freebsd_amd64"},
+		{sourcePath: "no-gui/freebsd/arm64/" + executionFile, fileName: executionFile + "_freebsd_arm64"},
+		{sourcePath: "no-gui/openbsd/amd64/" + executionFile, fileName: executionFile + "_openbsd_amd64"},
+		{sourcePath: "no-gui/openbsd/arm64/" + executionFile, fileName: executionFile + "_openbsd_arm64"},
+		{sourcePath: "no-gui/netbsd/amd64/" + executionFile, fileName: executionFile + "_netbsd_amd64"},
+		{sourcePath: "no-gui/windows/amd64/" + executionFile + ".exe", fileName: executionFile + "_windows_amd64.exe"},
+		{sourcePath: "no-gui/windows/arm64/" + executionFile + ".exe", fileName: executionFile + "_windows_arm64.exe"},
+		{sourcePath: "no-gui-duckdb/mac/amd64/" + executionFile, fileName: executionFile + "_darwin_amd64_duckdb"},
+		{sourcePath: "no-gui-duckdb/mac/arm64/" + executionFile, fileName: executionFile + "_darwin_arm64_duckdb"},
+		{sourcePath: "desktop-webview/mac/amd64/" + executionFile, fileName: executionFile + "_darwin_amd64_desktop"},
+		{sourcePath: "desktop-webview/mac/arm64/" + executionFile, fileName: executionFile + "_darwin_arm64_desktop"},
+		{sourcePath: "desktop-webview/windows/amd64/" + executionFile + ".exe", fileName: executionFile + "_windows_amd64_desktop.exe"},
+		{sourcePath: "desktop-webview/windows/arm64/" + executionFile + ".exe", fileName: executionFile + "_windows_arm64_desktop.exe"},
+	}
+
+	for _, artifact := range artifacts {
+		sourcePath := filepath.Join(binariesPath, filepath.FromSlash(artifact.sourcePath))
+		destinationPath := filepath.Join(releasePath, artifact.fileName)
+		copied, err := copyReleaseArtifact(sourcePath, destinationPath)
+		if err != nil {
+			return err
+		}
+		if copied && strings.HasSuffix(artifact.fileName, "_desktop.exe") {
+			zipPath := strings.TrimSuffix(destinationPath, ".exe") + ".zip"
+			if err := zipReleaseArtifact(destinationPath, zipPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return createUniversalMacArtifacts(releasePath, executionFile)
+}
+
+func copyReleaseArtifact(sourcePath, destinationPath string) (bool, error) {
+	source, err := os.Open(sourcePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer source.Close()
+
+	destination, err := os.OpenFile(destinationPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return false, err
+	}
+	if _, err := io.Copy(destination, source); err != nil {
+		_ = destination.Close()
+		return false, err
+	}
+	if err := destination.Close(); err != nil {
+		return false, err
+	}
+	return true, os.Chmod(destinationPath, 0o755)
+}
+
+func zipReleaseArtifact(binaryPath, zipPath string) error {
+	binary, err := os.Open(binaryPath)
+	if err != nil {
+		return err
+	}
+	defer binary.Close()
+
+	archive, err := os.Create(zipPath)
+	if err != nil {
+		return err
+	}
+	zipWriter := zip.NewWriter(archive)
+	header := &zip.FileHeader{Name: filepath.Base(binaryPath), Method: zip.Deflate}
+	header.SetMode(0o755)
+	entry, err := zipWriter.CreateHeader(header)
+	if err == nil {
+		_, err = io.Copy(entry, binary)
+	}
+	if closeErr := zipWriter.Close(); err == nil {
+		err = closeErr
+	}
+	if closeErr := archive.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}
+
+func createUniversalMacArtifacts(releasePath, executionFile string) error {
+	lipoPath, err := exec.LookPath("lipo")
+	if err != nil {
+		return nil
+	}
+	for _, suffix := range []string{"", "_desktop"} {
+		amd64Path := filepath.Join(releasePath, executionFile+"_darwin_amd64"+suffix)
+		arm64Path := filepath.Join(releasePath, executionFile+"_darwin_arm64"+suffix)
+		if _, err := os.Stat(amd64Path); err != nil {
+			continue
+		}
+		if _, err := os.Stat(arm64Path); err != nil {
+			continue
+		}
+		universalPath := filepath.Join(releasePath, executionFile+"_darwin_universal"+suffix)
+		command := exec.Command(lipoPath, "-create", amd64Path, arm64Path, "-output", universalPath)
+		if output, err := command.CombinedOutput(); err != nil {
+			return fmt.Errorf("creating universal macOS binary: %w: %s", err, strings.TrimSpace(string(output)))
+		}
+		if err := os.Chmod(universalPath, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func makeArtifactsPubliclyReadable(binariesRoot string) error {
+	return filepath.Walk(binariesRoot, func(path string, fileInfo os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if fileInfo.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if fileInfo.IsDir() {
+			return os.Chmod(path, 0o755)
+		}
+		return os.Chmod(path, 0o755)
+	})
 }
 
 // supportsDuckDB reports whether the given OS and architecture combination can build with DuckDB.

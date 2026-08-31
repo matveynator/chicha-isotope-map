@@ -8,8 +8,8 @@ on:
       - completed
   workflow_dispatch:
 
-# A stable release is built only from a main-branch commit whose subject starts
-# with "stable release" and that passed Security.
+# A stable release is built only from a main-branch commit containing
+# "stable release" and that passed Security.
 
 permissions:
   contents: write
@@ -55,9 +55,9 @@ jobs:
             echo "publish=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          subject="$(git show -s --format=%s "${RELEASE_COMMIT}")"
+          message="$(git show -s --format=%B "${RELEASE_COMMIT}")"
           shopt -s nocasematch
-          if [[ "${subject}" =~ ^stable[[:space:]]+release([[:space:]:_-]|$) ]]; then
+          if [[ "${message}" =~ stable[[:space:]]+release ]]; then
             echo "publish=true" >> "${GITHUB_OUTPUT}"
           else
             echo "publish=false" >> "${GITHUB_OUTPUT}"
@@ -434,8 +434,8 @@ jobs:
           name: bin-desktop-icon-windows
           path: dist/windows-desktop-icon.ico
 
-  build_desktop_macos_universal:
-    needs: [verify_release, build_desktop]
+  build_macos_universal:
+    needs: [verify_release, build_portable, build_desktop]
     if: needs.verify_release.outputs.publish == 'true'
     runs-on: macos-14
     steps:
@@ -451,16 +451,25 @@ jobs:
           merge-multiple: true
           path: dist/
 
-      - name: Build universal desktop binary
+      - name: Download macOS server artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: bin-darwin-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Build universal macOS binaries
         shell: bash
         run: |
           set -euo pipefail
-          AMD64_BIN="dist/chicha-isotope-map_darwin_amd64_desktop"
-          ARM64_BIN="dist/chicha-isotope-map_darwin_arm64_desktop"
-          UNIVERSAL_BIN="dist/chicha-isotope-map_darwin_universal_desktop"
-          lipo -create "${AMD64_BIN}" "${ARM64_BIN}" -output "${UNIVERSAL_BIN}"
-          lipo "${UNIVERSAL_BIN}" -verify_arch x86_64 arm64
-          chmod +x "${UNIVERSAL_BIN}"
+          for suffix in "" "_desktop"; do
+            AMD64_BIN="dist/chicha-isotope-map_darwin_amd64${suffix}"
+            ARM64_BIN="dist/chicha-isotope-map_darwin_arm64${suffix}"
+            UNIVERSAL_BIN="dist/chicha-isotope-map_darwin_universal${suffix}"
+            lipo -create "${AMD64_BIN}" "${ARM64_BIN}" -output "${UNIVERSAL_BIN}"
+            lipo "${UNIVERSAL_BIN}" -verify_arch x86_64 arm64
+            chmod +x "${UNIVERSAL_BIN}"
+          done
 
       - name: Package universal desktop app (macOS DMG)
         shell: bash
@@ -537,16 +546,17 @@ jobs:
             -format UDZO \
             "${DMG_PATH}"
 
-      - name: Upload macOS universal desktop artifact
+      - name: Upload macOS universal artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bin-desktop-darwin-universal
+          name: bin-darwin-universal
           path: |
+            dist/chicha-isotope-map_darwin_universal
             dist/chicha-isotope-map_darwin_universal_desktop
             dist/chicha-isotope-map_darwin_universal_desktop.dmg
 
   release:
-    needs: [verify_release, build_portable, build_duckdb, build_desktop, build_desktop_macos_universal]
+    needs: [verify_release, build_portable, build_duckdb, build_desktop, build_macos_universal]
     if: needs.verify_release.outputs.publish == 'true'
     runs-on: ubuntu-22.04
     steps:
