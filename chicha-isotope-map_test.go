@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -249,5 +252,76 @@ func TestGenerateSerialNumberReturnsDistinctCompactIdentifiers(t *testing.T) {
 			t.Fatalf("duplicate identifier %q", identifier)
 		}
 		identifiers[identifier] = struct{}{}
+	}
+}
+
+
+func decodeQRHandlerPNG(t *testing.T, response *httptest.ResponseRecorder) color.RGBA {
+	t.Helper()
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("QR status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if got := response.Header().Get("Content-Type"); got != "image/png" {
+		t.Fatalf("Content-Type = %q, want image/png", got)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if got := response.Header().Get("Content-Disposition"); got != "inline; filename=\"qr.png\"" {
+		t.Fatalf("Content-Disposition = %q", got)
+	}
+
+	img, err := png.Decode(bytes.NewReader(response.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("decode QR PNG: %v", err)
+	}
+	if got := img.Bounds().Dx(); got != 1500 {
+		t.Fatalf("QR width = %d, want 1500", got)
+	}
+	if got := img.Bounds().Dy(); got != 1500 {
+		t.Fatalf("QR height = %d, want 1500", got)
+	}
+
+	x := img.Bounds().Min.X + img.Bounds().Dx()/2
+	y := img.Bounds().Min.Y + img.Bounds().Dy()/2
+	r, g, b, a := img.At(x, y).RGBA()
+	return color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)}
+}
+
+func TestQrPngHandlerUsesRadiationLogoByDefault(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"http://example.test/qrpng?u=https%3A%2F%2Fexample.test%2Fmap%3Flat%3D51.3%26lon%3D30.1",
+		nil,
+	)
+	response := httptest.NewRecorder()
+
+	qrPngHandler(response, request)
+
+	center := decodeQRHandlerPNG(t, response)
+	want := color.RGBA{233, 192, 35, 255}
+	if center != want {
+		t.Fatalf("default QR center = %#v, want radiation logo color %#v", center, want)
+	}
+}
+
+func TestQrPngHandlerPlainModeLeavesQRWithoutRadiationLogo(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"http://example.test/qrpng?plain=1&u=https%3A%2F%2Fexample.test%2Fmap%3Flat%3D51.3%26lon%3D30.1",
+		nil,
+	)
+	response := httptest.NewRecorder()
+
+	qrPngHandler(response, request)
+
+	center := decodeQRHandlerPNG(t, response)
+	radiationYellow := color.RGBA{233, 192, 35, 255}
+	if center == radiationYellow {
+		t.Fatalf("plain QR still contains radiation logo color at center: %#v", center)
+	}
+	if center != (color.RGBA{0, 0, 0, 255}) && center != (color.RGBA{255, 255, 255, 255}) {
+		t.Fatalf("plain QR center = %#v, want a black or white QR module", center)
 	}
 }
