@@ -1967,62 +1967,105 @@ func getPreferredLanguage(r *http.Request) string {
 		return "en"
 	}
 
-	// Поддерживаемые языки (добавлены: da, fa)
+	// Supported UI languages. Translation strings live in public_html/translations.json.
 	supported := map[string]struct{}{
 		"en": {}, "zh": {}, "es": {}, "hi": {}, "ar": {}, "fr": {}, "ru": {}, "pt": {}, "de": {}, "ja": {}, "tr": {}, "it": {},
-		"ko": {}, "pl": {}, "uk": {}, "mn": {}, "no": {}, "fi": {}, "ka": {}, "sv": {}, "he": {}, "nl": {}, "el": {}, "hu": {},
-		"cs": {}, "ro": {}, "th": {}, "vi": {}, "id": {}, "ms": {}, "bg": {}, "lt": {}, "et": {}, "lv": {}, "sl": {},
-		"da": {}, "fa": {},
+		"ko": {}, "pl": {}, "uk": {}, "mn": {}, "kk": {}, "tg": {}, "ky": {}, "tk": {}, "ur": {}, "ps": {}, "uz": {},
+		"no": {}, "fi": {}, "ka": {}, "sv": {}, "he": {}, "nl": {}, "el": {}, "hu": {}, "cs": {}, "sk": {}, "ro": {}, "th": {}, "vi": {},
+		"id": {}, "ms": {}, "bg": {}, "lt": {}, "et": {}, "lv": {}, "sl": {}, "da": {}, "fa": {}, "af": {}, "mg": {}, "ny": {}, "ha": {},
 	}
 
-	// Нормализация/синонимы: приводим варианты к поддерживаемым базовым кодам
 	aliases := map[string]string{
-		// Устаревшие коды
-		"iw": "he", // he (Hebrew)
-		"in": "id", // id (Indonesian)
-
-		// Норвежский: часто приходит nb-NO/nn-NO
+		"iw": "he",
+		"in": "id",
 		"nb": "no",
 		"nn": "no",
-
-		// Китайский: сводим к "zh"
-		"zh-cn":   "zh",
-		"zh-sg":   "zh",
-		"zh-hans": "zh",
-		"zh-tw":   "zh",
-		"zh-hk":   "zh",
-		"zh-hant": "zh",
-
-		// Португальский варианты → "pt"
-		"pt-br": "pt",
-		"pt-pt": "pt",
+		"zh-cn": "zh", "zh-sg": "zh", "zh-hans": "zh",
+		"zh-tw": "zh", "zh-hk": "zh", "zh-hant": "zh",
+		"pt-br": "pt", "pt-pt": "pt",
 	}
 
-	langs := strings.Split(langHeader, ",")
-	for _, raw := range langs {
-		code := strings.TrimSpace(strings.SplitN(raw, ";", 2)[0])
-		code = strings.ToLower(strings.ReplaceAll(code, "_", "-"))
+	type languageRange struct {
+		code  string
+		q     float64
+		order int
+	}
 
-		// Берём базовую часть до дефиса (например, "de" из "de-DE")
-		base := code
-		if i := strings.Index(code, "-"); i != -1 {
-			base = code[:i]
+	var ranges []languageRange
+	for order, raw := range strings.Split(langHeader, ",") {
+		parts := strings.Split(raw, ";")
+		code := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(parts[0]), "_", "-"))
+		if code == "" {
+			continue
 		}
 
-		// Применяем алиасы (и к полному коду, и к базе)
-		if a, ok := aliases[code]; ok {
-			base = a
-		} else if a, ok := aliases[base]; ok {
-			base = a
+		q := 1.0
+		valid := true
+		for _, param := range parts[1:] {
+			param = strings.TrimSpace(param)
+			if len(param) < 2 || !strings.EqualFold(strings.TrimSpace(strings.SplitN(param, "=", 2)[0]), "q") {
+				continue
+			}
+			kv := strings.SplitN(param, "=", 2)
+			if len(kv) != 2 {
+				valid = false
+				break
+			}
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(kv[1]), 64)
+			if err != nil || parsed < 0 || parsed > 1 {
+				valid = false
+				break
+			}
+			q = parsed
+		}
+		if !valid || q == 0 {
+			continue
+		}
+		ranges = append(ranges, languageRange{code: code, q: q, order: order})
+	}
+
+	sort.SliceStable(ranges, func(i, j int) bool {
+		if ranges[i].q == ranges[j].q {
+			return ranges[i].order < ranges[j].order
+		}
+		return ranges[i].q > ranges[j].q
+	})
+
+	for _, candidate := range ranges {
+		if candidate.code == "*" {
+			return "en"
 		}
 
-		// Проверяем поддержку
+		base := candidate.code
+		if i := strings.Index(base, "-"); i != -1 {
+			base = base[:i]
+		}
+		if alias, ok := aliases[candidate.code]; ok {
+			base = alias
+		} else if alias, ok := aliases[base]; ok {
+			base = alias
+		}
 		if _, ok := supported[base]; ok {
 			return base
 		}
 	}
 
 	return "en"
+}
+
+// translationsForLanguage returns only the fallback English dictionary and the
+// selected locale. This keeps per-request HTML payloads small as locale coverage grows.
+func translationsForLanguage(lang string) map[string]map[string]string {
+	selected := make(map[string]map[string]string, 2)
+	if english, ok := translations["en"]; ok {
+		selected["en"] = english
+	}
+	if lang != "en" {
+		if localized, ok := translations[lang]; ok {
+			selected[lang] = localized
+		}
+	}
+	return selected
 }
 
 // =====================
@@ -6564,7 +6607,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}).ParseFS(content, "public_html/map.html"))
 
-	translationsJSON, err := marshalTemplateJS(translations)
+	translationsJSON, err := marshalTemplateJS(translationsForLanguage(lang))
 	if err != nil {
 		log.Printf("map handler: marshal translations failed: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -6615,7 +6658,7 @@ func mapHandler(w http.ResponseWriter, r *http.Request) {
 		ChichaGitHubURL     string
 	}{
 		Version:             displayVersion,
-		Translations:        translations,
+		Translations:        translationsForLanguage(lang),
 		Lang:                lang,
 		DefaultLat:          *defaultLat,
 		DefaultLon:          *defaultLon,
@@ -6943,7 +6986,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}).ParseFS(content, "public_html/map.html"))
 
-	translationsJSON, err := marshalTemplateJS(translations)
+	translationsJSON, err := marshalTemplateJS(translationsForLanguage(lang))
 	if err != nil {
 		log.Printf("track handler: marshal translations failed: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -6991,7 +7034,7 @@ func trackHandler(w http.ResponseWriter, r *http.Request) {
 		ChichaGitHubURL     string
 	}{
 		Version:             displayVersion,
-		Translations:        translations,
+		Translations:        translationsForLanguage(lang),
 		Lang:                lang,
 		DefaultLat:          *defaultLat,
 		DefaultLon:          *defaultLon,

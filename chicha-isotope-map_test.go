@@ -325,3 +325,81 @@ func TestQrPngHandlerPlainModeLeavesQRWithoutRadiationLogo(t *testing.T) {
 		t.Fatalf("plain QR center = %#v, want a black or white QR module", center)
 	}
 }
+
+
+func TestGetPreferredLanguageRecognizesNewLocales(t *testing.T) {
+	tests := map[string]string{
+		"mn-MN,mn;q=0.9": "mn",
+		"kk-KZ,ru;q=0.8": "kk",
+		"tg-TJ,ru;q=0.8": "tg",
+		"ky-KG,ru;q=0.8": "ky",
+		"tk-TM,ru;q=0.8": "tk",
+		"ur-PK,en;q=0.8": "ur",
+		"ps-AF,fa;q=0.8": "ps",
+		"fa-AF,en;q=0.8": "fa",
+		"fa-IR,en;q=0.8": "fa",
+		"hi-IN,en;q=0.8": "hi",
+		"zh-CN,en;q=0.8": "zh",
+		"ko-KP,en;q=0.8": "ko",
+		"ko-KR,en;q=0.8": "ko",
+		"en-CA,fr;q=0.8": "en",
+		"en-AU,en;q=0.8": "en",
+		"de-AT,en;q=0.8": "de",
+		"es-AR,en;q=0.8": "es",
+		"nl-BE,fr;q=0.8": "nl",
+		"pt-BR,en;q=0.8": "pt",
+		"bg-BG,en;q=0.8": "bg",
+		"ro-RO,en;q=0.8": "ro",
+		"sk-SK,en;q=0.8": "sk",
+		"sl-SI,en;q=0.8": "sl",
+		"uz-UZ,ru;q=0.8": "uz",
+		"et-EE,en;q=0.8": "et",
+		"mg-MG,fr;q=0.8": "mg",
+		"ny-MW,en;q=0.8": "ny",
+		"ha-NE,fr;q=0.8": "ha",
+		"af-ZA,en;q=0.8": "af",
+		"kk-KZ;q=0,ru;q=1": "ru",
+		"kk-KZ;q=0.2,ru;q=0.9": "ru",
+		"ru;q=0.4,kk-KZ;q=0.8": "kk",
+		"kk-KZ;q=0.8,ru;q=0.8": "kk",
+		"kk-KZ;q=0,ru;q=0": "en",
+		"kk-KZ;q=bogus,ru;q=0.7": "ru",
+	}
+
+	for header, want := range tests {
+		t.Run(header, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "http://example.test/", nil)
+			request.Header.Set("Accept-Language", header)
+			if got := getPreferredLanguage(request); got != want {
+				t.Fatalf("getPreferredLanguage(%q) = %q, want %q", header, got, want)
+			}
+		})
+	}
+}
+
+
+func TestTranslationsForLanguageLimitsPayload(t *testing.T) {
+	oldTranslations := translations
+	translations = map[string]map[string]string{
+		"en": {"hello": "Hello"},
+		"kk": {"hello": "Сәлем"},
+		"ru": {"hello": "Привет"},
+	}
+	t.Cleanup(func() { translations = oldTranslations })
+
+	got := translationsForLanguage("kk")
+	if len(got) != 2 {
+		t.Fatalf("translationsForLanguage(kk) returned %d dictionaries, want 2", len(got))
+	}
+	if got["en"]["hello"] != "Hello" || got["kk"]["hello"] != "Сәлем" {
+		t.Fatalf("translationsForLanguage(kk) returned wrong dictionaries: %#v", got)
+	}
+	if _, ok := got["ru"]; ok {
+		t.Fatal("translationsForLanguage(kk) unexpectedly included unrelated ru dictionary")
+	}
+
+	english := translationsForLanguage("en")
+	if len(english) != 1 || english["en"]["hello"] != "Hello" {
+		t.Fatalf("translationsForLanguage(en) = %#v, want English only", english)
+	}
+}
