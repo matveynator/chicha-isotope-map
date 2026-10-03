@@ -344,6 +344,20 @@ func TestGetPreferredLanguageRecognizesNewLocales(t *testing.T) {
 		"ko-KR,en;q=0.8": "ko",
 		"en-CA,fr;q=0.8": "en",
 		"en-AU,en;q=0.8": "en",
+		"de-AT,en;q=0.8": "de",
+		"es-AR,en;q=0.8": "es",
+		"nl-BE,fr;q=0.8": "nl",
+		"pt-BR,en;q=0.8": "pt",
+		"bg-BG,en;q=0.8": "bg",
+		"ro-RO,en;q=0.8": "ro",
+		"sk-SK,en;q=0.8": "sk",
+		"sl-SI,en;q=0.8": "sl",
+		"uz-UZ,ru;q=0.8": "uz",
+		"et-EE,en;q=0.8": "et",
+		"mg-MG,fr;q=0.8": "mg",
+		"ny-MW,en;q=0.8": "ny",
+		"ha-NE,fr;q=0.8": "ha",
+		"af-ZA,en;q=0.8": "af",
 	}
 
 	for header, want := range tests {
