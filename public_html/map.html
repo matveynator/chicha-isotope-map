@@ -3336,6 +3336,15 @@ body, html {
           object-fit: contain;
         }
 
+        #qrModal.qr-hazard-poster .qr-modal-card {
+          width: min(920px, 92vw);
+        }
+
+        #qrModal.qr-hazard-poster .qr-modal-image {
+          width: min(820px, 100%);
+          aspect-ratio: 297 / 210;
+        }
+
         .qr-modal-hint {
           margin: 0;
           color: var(--map-ui-muted);
@@ -13341,22 +13350,242 @@ function resolveShortLinkForQr() {
     });
 }
 
+const QR_HAZARD_THRESHOLD_MICRO_SV_H = 0.30;
+const QR_POSTER_WIDTH = 2480;
+const QR_POSTER_HEIGHT = 1754;
+
 let activeQrImageURL = '';
 let activeQrPayloadURL = '';
+let activeQrHazardPoster = false;
+let activeQrObjectURL = '';
 
-function buildQrImageURL(payloadURL) {
-  return '/qrpng?u=' + encodeURIComponent(payloadURL);
+function buildQrImageURL(payloadURL, plain) {
+  const params = new URLSearchParams();
+  params.set('u', payloadURL);
+  if (plain) {
+    params.set('plain', '1');
+  }
+  return '/qrpng?' + params.toString();
 }
 
-function showQrModal(qrImageURL, payloadURL) {
+function markerIsInCurrentQrSelection(marker, bounds) {
+  if (!marker || !Number.isFinite(marker.doseRate) || marker.doseRate <= QR_HAZARD_THRESHOLD_MICRO_SV_H) {
+    return false;
+  }
+  if (marker.layerGroupName && markerLayerGroups && markerLayerGroups[marker.layerGroupName]) {
+    if (!map.hasLayer(markerLayerGroups[marker.layerGroupName])) {
+      return false;
+    }
+  }
+  let latLng = null;
+  if (Number.isFinite(marker.markerLat) && Number.isFinite(marker.markerLon)) {
+    latLng = L.latLng(marker.markerLat, marker.markerLon);
+  } else if (typeof marker.getLatLng === 'function') {
+    latLng = marker.getLatLng();
+  }
+  return !!latLng && bounds.contains(latLng);
+}
+
+function currentQrSelectionHasHazard() {
+  if (!map || typeof map.getBounds !== 'function') {
+    return false;
+  }
+  const bounds = map.getBounds();
+  if (!bounds) {
+    return false;
+  }
+
+  // Track pages keep the complete selected track in memory even during playback,
+  // so inspect that source first instead of only the points rendered so far.
+  if (isTrackView && Array.isArray(trackViewMarkers)) {
+    const trackHasHazard = trackViewMarkers.some(function(marker) {
+      if (!marker || !Number.isFinite(marker.doseRate) || marker.doseRate <= QR_HAZARD_THRESHOLD_MICRO_SV_H) {
+        return false;
+      }
+      if (!Number.isFinite(marker.lat) || !Number.isFinite(marker.lon)) {
+        return false;
+      }
+      return bounds.contains(L.latLng(marker.lat, marker.lon));
+    });
+    if (trackHasHazard) {
+      return true;
+    }
+  }
+
+  return Object.values(circleMarkers).some(function(marker) {
+    return markerIsInCurrentQrSelection(marker, bounds);
+  });
+}
+
+function loadQrPosterImage(url) {
+  return new Promise(function(resolve, reject) {
+    const image = new Image();
+    image.onload = function() { resolve(image); };
+    image.onerror = function() { reject(new Error('QR image load failed')); };
+    image.src = url;
+  });
+}
+
+function roundedPosterRect(ctx, x, y, width, height, radius) {
+  const right = x + width;
+  const bottom = y + height;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(right - radius, y);
+  ctx.arcTo(right, y, right, y + radius, radius);
+  ctx.lineTo(right, bottom - radius);
+  ctx.arcTo(right, bottom, right - radius, bottom, radius);
+  ctx.lineTo(x + radius, bottom);
+  ctx.arcTo(x, bottom, x, bottom - radius, radius);
+  ctx.lineTo(x, y + radius);
+  ctx.arcTo(x, y, x + radius, y, radius);
+  ctx.closePath();
+}
+
+function drawPosterTrefoil(ctx, cx, cy, outerRadius) {
+  const innerRadius = outerRadius * 0.34;
+  const halfBlade = Math.PI / 6;
+  const centers = [-5 * Math.PI / 6, -Math.PI / 6, Math.PI / 2];
+  ctx.fillStyle = '#ef1b13';
+  centers.forEach(function(centerAngle) {
+    const start = centerAngle - halfBlade;
+    const end = centerAngle + halfBlade;
+    ctx.beginPath();
+    ctx.arc(cx, cy, innerRadius, start, end, false);
+    ctx.lineTo(cx + Math.cos(end) * outerRadius, cy + Math.sin(end) * outerRadius);
+    ctx.arc(cx, cy, outerRadius, end, start, true);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerRadius * 0.20, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFittedPosterText(ctx, text, x, y, maxWidth, maxFontSize) {
+  const locale = currentAppLocale().split('-')[0];
+  ctx.direction = (locale === 'ar' || locale === 'fa' || locale === 'he') ? 'rtl' : 'ltr';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#111111';
+  let fontSize = maxFontSize;
+  while (fontSize > 30) {
+    ctx.font = '800 ' + fontSize + 'px "Segoe UI", "Noto Sans", Arial, sans-serif';
+    if (ctx.measureText(text).width <= maxWidth) {
+      break;
+    }
+    fontSize -= 2;
+  }
+  ctx.fillText(text, x, y);
+}
+
+async function buildHazardQrPosterBlob(payloadURL) {
+  const qrImage = await loadQrPosterImage(buildQrImageURL(payloadURL, true));
+  const canvas = document.createElement('canvas');
+  canvas.width = QR_POSTER_WIDTH;
+  canvas.height = QR_POSTER_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Canvas is unavailable');
+  }
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // A4 landscape composition: equal panels, a symmetric equilateral warning
+  // triangle on the left, and a plain scannable QR on white on the right.
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 14;
+  roundedPosterRect(ctx, 55, 55, canvas.width - 110, canvas.height - 110, 55);
+  ctx.stroke();
+
+  const dividerX = canvas.width / 2;
+  ctx.beginPath();
+  ctx.moveTo(dividerX, 105);
+  ctx.lineTo(dividerX, canvas.height - 105);
+  ctx.stroke();
+
+  const leftCenterX = dividerX / 2;
+  const triangleWidth = 1020;
+  const triangleHeight = triangleWidth * Math.sqrt(3) / 2;
+  const triangleTopY = 205;
+  const triangleBaseY = triangleTopY + triangleHeight;
+  const triangleLeftX = leftCenterX - triangleWidth / 2;
+  const triangleRightX = leftCenterX + triangleWidth / 2;
+
+  ctx.beginPath();
+  ctx.moveTo(leftCenterX, triangleTopY);
+  ctx.lineTo(triangleRightX, triangleBaseY);
+  ctx.lineTo(triangleLeftX, triangleBaseY);
+  ctx.closePath();
+  ctx.fillStyle = '#fff200';
+  ctx.fill();
+  ctx.strokeStyle = '#ef1b13';
+  ctx.lineWidth = 72;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  drawPosterTrefoil(ctx, leftCenterX, triangleTopY + triangleHeight * 0.50, 215);
+  drawFittedPosterText(
+    ctx,
+    translate('qr_hazard_radioactivity'),
+    leftCenterX,
+    triangleBaseY - 105,
+    triangleWidth - 190,
+    82
+  );
+
+  const rightCenterX = dividerX + (canvas.width - dividerX) / 2;
+  const qrSize = 850;
+  const qrX = Math.round(rightCenterX - qrSize / 2);
+  const qrY = 205;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+  ctx.imageSmoothingEnabled = true;
+
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.moveTo(dividerX + 125, 1135);
+  ctx.lineTo(canvas.width - 125, 1135);
+  ctx.stroke();
+
+  drawFittedPosterText(
+    ctx,
+    translate('qr_hazard_scan'),
+    rightCenterX,
+    1270,
+    canvas.width - dividerX - 250,
+    78
+  );
+
+  return new Promise(function(resolve, reject) {
+    canvas.toBlob(function(blob) {
+      if (!blob) {
+        reject(new Error('Poster encoding failed'));
+        return;
+      }
+      resolve(blob);
+    }, 'image/png');
+  });
+}
+
+function showQrModal(qrImageURL, payloadURL, hazardPoster, ownedObjectURL) {
+  if (activeQrObjectURL && activeQrObjectURL !== qrImageURL) {
+    URL.revokeObjectURL(activeQrObjectURL);
+  }
+  activeQrObjectURL = ownedObjectURL ? qrImageURL : '';
   activeQrImageURL = qrImageURL;
   activeQrPayloadURL = payloadURL;
+  activeQrHazardPoster = !!hazardPoster;
+
   const modal = document.getElementById('qrModal');
   const image = document.getElementById('qrModalImage');
   if (!modal || !image) {
     window.open(qrImageURL, '_blank', 'noopener,noreferrer');
     return;
   }
+  modal.classList.toggle('qr-hazard-poster', activeQrHazardPoster);
   image.src = qrImageURL;
   image.dataset.payload = payloadURL;
   modal.style.display = 'flex';
@@ -13370,16 +13599,32 @@ function hideQrModal() {
   modal.setAttribute('aria-hidden', 'true');
 }
 
+function showQrForPayload(payloadURL) {
+  if (!currentQrSelectionHasHazard()) {
+    showQrModal(buildQrImageURL(payloadURL, false), payloadURL, false, false);
+    return Promise.resolve();
+  }
+  return buildHazardQrPosterBlob(payloadURL)
+    .then(function(blob) {
+      const posterURL = URL.createObjectURL(blob);
+      showQrModal(posterURL, payloadURL, true, true);
+    })
+    .catch(function(error) {
+      console.warn('Hazard QR poster generation failed:', error);
+      showQrModal(buildQrImageURL(payloadURL, false), payloadURL, false, false);
+    });
+}
+
 function openServerPoster() {
   if (typeof updateUrl === 'function') { try { updateUrl(); } catch(_){} }
   var full = buildCurrentShareURL();
   resolveShortLinkForQr()
     .then(function (shortURL) {
       var payload = shortURL || full;
-      showQrModal(buildQrImageURL(payload), payload);
+      return showQrForPayload(payload);
     })
     .catch(function () {
-      showQrModal(buildQrImageURL(full), full);
+      return showQrForPayload(full);
     });
 }
 
@@ -13497,12 +13742,19 @@ function downloadQrBlobWithAnchor(blob, filename) {
 function printQrImage() {
   if (!activeQrImageURL) return;
   const qrPrintImageURL = activeQrImageURL;
+  const hazardPoster = activeQrHazardPoster;
+  const printWidth = hazardPoster ? '297mm' : '210mm';
+  const printHeight = hazardPoster ? '210mm' : '297mm';
+  const printPageSize = hazardPoster ? 'A4 landscape' : 'A4 portrait';
+  const printPageMargin = hazardPoster ? '8mm' : '10mm';
+  const printImageMaxWidth = hazardPoster ? '281mm' : '180mm';
+  const printImageMaxHeight = hazardPoster ? '194mm' : '257mm';
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.left = '-10000px';
   iframe.style.top = '0';
-  iframe.style.width = '210mm';
-  iframe.style.height = '297mm';
+  iframe.style.width = printWidth;
+  iframe.style.height = printHeight;
   iframe.style.border = '0';
   iframe.style.background = '#ffffff';
   iframe.setAttribute('aria-hidden', 'true');
@@ -13538,7 +13790,7 @@ function printQrImage() {
   <meta charset="utf-8">
   <title>${escapeHtml(translate('qr_modal_title'))}</title>
   <style>
-    @page { margin: 10mm; }
+    @page { size: ${printPageSize}; margin: ${printPageMargin}; }
     html,
     body {
       width: 100%;
@@ -13557,8 +13809,8 @@ function printQrImage() {
       display: block;
       width: auto;
       height: auto;
-      max-width: 180mm;
-      max-height: 257mm;
+      max-width: ${printImageMaxWidth};
+      max-height: ${printImageMaxHeight};
       object-fit: contain;
       image-rendering: pixelated;
     }
