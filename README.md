@@ -7,6 +7,10 @@
 Self-hosted public radiation map for importing, analyzing, and visualizing
 measurements from Radiacode, AtomFast, and bGeigie Safecast devices.
 
+<img width="1280" height="673" alt="SafeCast fork of Chicha-Isotope-Map in action" src="https://github.com/user-attachments/assets/3fbc59df-86d9-451e-a408-143d4eed784a" />
+
+[SafeCast.org fork of Chicha-Isotope-Map](https://simplemap.safecast.org) in action in Fukushima workshop 2026.
+
 [![Latest stable release build](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/release.yml)
 [![Security](https://github.com/matveynator/chicha-isotope-map/actions/workflows/security.yml/badge.svg)](https://github.com/matveynator/chicha-isotope-map/actions/workflows/security.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/matveynator/chicha-isotope-map.svg)](https://pkg.go.dev/github.com/matveynator/chicha-isotope-map)
