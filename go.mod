@@ -9,8 +9,8 @@ require (
 	github.com/jchv/go-webview-selector v0.0.0-20250730141630-a5f64a01ba3a
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	golang.org/x/crypto v0.57.0
-	modernc.org/sqlite v1.57.0
+	golang.org/x/crypto v0.55.0
+	modernc.org/sqlite v1.59.0
 )
 
 require (
@@ -42,9 +42,9 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	modernc.org/libc v1.74.4 // indirect
+	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )
 
 replace github.com/apache/arrow-go/v18 => github.com/apache/arrow-go/v18 v18.0.0
