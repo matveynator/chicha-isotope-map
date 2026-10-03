@@ -13553,10 +13553,15 @@ async function buildHazardQrPosterBlob(payloadURL) {
   ctx.lineTo(dividerX, canvas.height - 105);
   ctx.stroke();
 
+  const posterCenterY = canvas.height / 2;
   const leftCenterX = dividerX / 2;
-  const triangleWidth = 1020;
+
+  // Keep the warning sign geometrically symmetric and vertically centered.
+  // The smaller inner artwork leaves a generous safety margin from all three
+  // triangle edges, including for long translated labels.
+  const triangleWidth = 960;
   const triangleHeight = triangleWidth * Math.sqrt(3) / 2;
-  const triangleTopY = 205;
+  const triangleTopY = Math.round(posterCenterY - triangleHeight / 2);
   const triangleBaseY = triangleTopY + triangleHeight;
   const triangleLeftX = leftCenterX - triangleWidth / 2;
   const triangleRightX = leftCenterX + triangleWidth / 2;
@@ -13569,42 +13574,43 @@ async function buildHazardQrPosterBlob(payloadURL) {
   ctx.fillStyle = '#fff200';
   ctx.fill();
   ctx.strokeStyle = '#ef1b13';
-  ctx.lineWidth = 72;
+  ctx.lineWidth = 56;
   ctx.lineJoin = 'round';
   ctx.stroke();
 
-  drawPosterTrefoil(ctx, leftCenterX, triangleTopY + triangleHeight * 0.50, 215);
+  drawPosterTrefoil(ctx, leftCenterX, triangleTopY + triangleHeight * 0.46, 155);
   drawFittedPosterText(
     ctx,
     translate('qr_hazard_radioactivity'),
     leftCenterX,
-    triangleBaseY - 105,
-    triangleWidth - 190,
-    82
+    triangleBaseY - 120,
+    650,
+    64
   );
 
   const rightCenterX = dividerX + (canvas.width - dividerX) / 2;
-  const qrSize = 850;
+  const qrSize = 880;
   const qrX = Math.round(rightCenterX - qrSize / 2);
-  const qrY = 205;
+  const qrY = Math.round(posterCenterY - qrSize / 2);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
   ctx.imageSmoothingEnabled = true;
 
+  const qrUnderlineY = qrY + qrSize + 70;
   ctx.strokeStyle = '#111111';
   ctx.lineWidth = 10;
   ctx.beginPath();
-  ctx.moveTo(dividerX + 125, 1135);
-  ctx.lineTo(canvas.width - 125, 1135);
+  ctx.moveTo(dividerX + 125, qrUnderlineY);
+  ctx.lineTo(canvas.width - 125, qrUnderlineY);
   ctx.stroke();
 
   drawFittedPosterText(
     ctx,
     translate('qr_hazard_scan'),
     rightCenterX,
-    1270,
+    qrUnderlineY + 115,
     canvas.width - dividerX - 250,
-    78
+    72
   );
 
   return new Promise(function(resolve, reject) {
