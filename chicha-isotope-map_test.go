@@ -358,6 +358,12 @@ func TestGetPreferredLanguageRecognizesNewLocales(t *testing.T) {
 		"ny-MW,en;q=0.8": "ny",
 		"ha-NE,fr;q=0.8": "ha",
 		"af-ZA,en;q=0.8": "af",
+		"kk-KZ;q=0,ru;q=1": "ru",
+		"kk-KZ;q=0.2,ru;q=0.9": "ru",
+		"ru;q=0.4,kk-KZ;q=0.8": "kk",
+		"kk-KZ;q=0.8,ru;q=0.8": "kk",
+		"kk-KZ;q=0,ru;q=0": "en",
+		"kk-KZ;q=bogus,ru;q=0.7": "ru",
 	}
 
 	for header, want := range tests {
@@ -368,5 +374,32 @@ func TestGetPreferredLanguageRecognizesNewLocales(t *testing.T) {
 				t.Fatalf("getPreferredLanguage(%q) = %q, want %q", header, got, want)
 			}
 		})
+	}
+}
+
+
+func TestTranslationsForLanguageLimitsPayload(t *testing.T) {
+	oldTranslations := translations
+	translations = map[string]map[string]string{
+		"en": {"hello": "Hello"},
+		"kk": {"hello": "Сәлем"},
+		"ru": {"hello": "Привет"},
+	}
+	t.Cleanup(func() { translations = oldTranslations })
+
+	got := translationsForLanguage("kk")
+	if len(got) != 2 {
+		t.Fatalf("translationsForLanguage(kk) returned %d dictionaries, want 2", len(got))
+	}
+	if got["en"]["hello"] != "Hello" || got["kk"]["hello"] != "Сәлем" {
+		t.Fatalf("translationsForLanguage(kk) returned wrong dictionaries: %#v", got)
+	}
+	if _, ok := got["ru"]; ok {
+		t.Fatal("translationsForLanguage(kk) unexpectedly included unrelated ru dictionary")
+	}
+
+	english := translationsForLanguage("en")
+	if len(english) != 1 || english["en"]["hello"] != "Hello" {
+		t.Fatalf("translationsForLanguage(en) = %#v, want English only", english)
 	}
 }
