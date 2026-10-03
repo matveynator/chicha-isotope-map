@@ -13578,7 +13578,7 @@ async function buildHazardQrPosterBlob(payloadURL) {
   ctx.lineJoin = 'round';
   ctx.stroke();
 
-  drawPosterTrefoil(ctx, leftCenterX, triangleTopY + triangleHeight * 0.46, 155);
+  drawPosterTrefoil(ctx, leftCenterX, triangleTopY + triangleHeight * 0.46 + 90, 155);
   drawFittedPosterText(
     ctx,
     translate('qr_hazard_radioactivity'),
