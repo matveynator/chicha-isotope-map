@@ -7083,6 +7083,7 @@ func qrPngHandler(w http.ResponseWriter, r *http.Request) {
 		Logo:        color.RGBA{233, 192, 35, 255},  // ЖЕЛТЫЙ знак радиации
 		LogoBoxFrac: 0.32,                           // большой центральный квадрат
 		LogoPadding: 16,                             // отступ для картинки (если PNG вставляешь)
+		NoLogo:      r.URL.Query().Get("plain") == "1",
 	}
 
 	if err := qrlogoext.EncodePNG(w, []byte(u), logoBytes, opts); err != nil {
