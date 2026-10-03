@@ -34,6 +34,10 @@ type Options struct {
 
 	// Отступ логотипа от краёв квадрата (px), если вставляем PNG
 	LogoPadding int
+
+	// NoLogo leaves the QR matrix untouched. This is used when the radiation
+	// symbol is already rendered separately on a warning placard.
+	NoLogo bool
 }
 
 func EncodePNG(w io.Writer, data []byte, logoPNG []byte, opt Options) error {
@@ -80,39 +84,41 @@ func EncodePNG(w io.Writer, data []byte, logoPNG []byte, opt Options) error {
 	draw.Draw(dst, dst.Bounds(), &image.Uniform{opt.Bg}, image.Point{}, draw.Src)
 	draw.Draw(dst, dst.Bounds(), src, b.Min, draw.Over)
 
-	// ---- central box
-	box := int(opt.LogoBoxFrac * float64(min(W, H)))
-	if box%2 == 1 {
-		box--
-	}
-	if box < W/6 {
-		box = W / 6
-	}
-	cx, cy := W/2, H/2
-	x0 := cx - box/2
-	y0 := cy - box/2
-	fillRect(dst, x0, y0, box, box, opt.Bg)
+	if !opt.NoLogo {
+		// ---- central box
+		box := int(opt.LogoBoxFrac * float64(min(W, H)))
+		if box%2 == 1 {
+			box--
+		}
+		if box < W/6 {
+			box = W / 6
+		}
+		cx, cy := W/2, H/2
+		x0 := cx - box/2
+		y0 := cy - box/2
+		fillRect(dst, x0, y0, box, box, opt.Bg)
 
-	// ---- logo: PNG or vector fallback (now colored from opt.Logo)
-	if len(logoPNG) > 0 {
-		img, err := png.Decode(bytes.NewReader(logoPNG))
-		if err == nil {
-			pad := opt.LogoPadding
-			maxW := box - 2*pad
-			maxH := box - 2*pad
-			if maxW > 0 && maxH > 0 {
-				wr, hr := img.Bounds().Dx(), img.Bounds().Dy()
-				sw, sh := fitRect(wr, hr, maxW, maxH)
-				scaled := scaleNearest(img, sw, sh)
-				ox := cx - sw/2
-				oy := cy - sh/2
-				draw.Draw(dst, image.Rect(ox, oy, ox+sw, oy+sh), scaled, image.Point{}, draw.Over)
+		// ---- logo: PNG or vector fallback (now colored from opt.Logo)
+		if len(logoPNG) > 0 {
+			img, err := png.Decode(bytes.NewReader(logoPNG))
+			if err == nil {
+				pad := opt.LogoPadding
+				maxW := box - 2*pad
+				maxH := box - 2*pad
+				if maxW > 0 && maxH > 0 {
+					wr, hr := img.Bounds().Dx(), img.Bounds().Dy()
+					sw, sh := fitRect(wr, hr, maxW, maxH)
+					scaled := scaleNearest(img, sw, sh)
+					ox := cx - sw/2
+					oy := cy - sh/2
+					draw.Draw(dst, image.Rect(ox, oy, ox+sw, oy+sh), scaled, image.Point{}, draw.Over)
+				}
+			} else {
+				drawRadiation(dst, cx, cy, box, opt.Logo)
 			}
 		} else {
 			drawRadiation(dst, cx, cy, box, opt.Logo)
 		}
-	} else {
-		drawRadiation(dst, cx, cy, box, opt.Logo)
 	}
 
 	enc := png.Encoder{CompressionLevel: png.BestSpeed}
