@@ -1970,9 +1970,9 @@ func getPreferredLanguage(r *http.Request) string {
 	// Supported UI languages. Translation strings live in public_html/translations.json.
 	supported := map[string]struct{}{
 		"en": {}, "zh": {}, "es": {}, "hi": {}, "ar": {}, "fr": {}, "ru": {}, "pt": {}, "de": {}, "ja": {}, "tr": {}, "it": {},
-		"ko": {}, "pl": {}, "uk": {}, "mn": {}, "kk": {}, "tg": {}, "ky": {}, "tk": {}, "ur": {}, "ps": {},
-		"no": {}, "fi": {}, "ka": {}, "sv": {}, "he": {}, "nl": {}, "el": {}, "hu": {}, "cs": {}, "ro": {}, "th": {}, "vi": {},
-		"id": {}, "ms": {}, "bg": {}, "lt": {}, "et": {}, "lv": {}, "sl": {}, "da": {}, "fa": {},
+		"ko": {}, "pl": {}, "uk": {}, "mn": {}, "kk": {}, "tg": {}, "ky": {}, "tk": {}, "ur": {}, "ps": {}, "uz": {},
+		"no": {}, "fi": {}, "ka": {}, "sv": {}, "he": {}, "nl": {}, "el": {}, "hu": {}, "cs": {}, "sk": {}, "ro": {}, "th": {}, "vi": {},
+		"id": {}, "ms": {}, "bg": {}, "lt": {}, "et": {}, "lv": {}, "sl": {}, "da": {}, "fa": {}, "af": {}, "mg": {}, "ny": {}, "ha": {},
 	}
 
 	// Нормализация/синонимы: приводим варианты к поддерживаемым базовым кодам
