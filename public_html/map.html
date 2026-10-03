@@ -6332,6 +6332,10 @@ var markerRenderState = null;
 var markerFilterState = null;
 // Guard async callbacks so stale marker loads cannot mutate shared loading UI.
 var markerLoadToken = 0;
+// markerSettledToken advances only after the active marker stream and its
+// render queue have both finished. QR classification uses it to avoid
+// deciding from a partially loaded viewport.
+var markerSettledToken = 0;
 var markerViewportState = null;
 var currentDateFullRange = null;
 var isTrackView = false;
@@ -11089,6 +11093,7 @@ function updateLiveLayerOnly(state, options) {
 function updateMapMarkers(loadingEl, forceReload, loadToken) {
   initMarkerLayers();
   if (!map || !markerLayerGroups) {
+    markerSettledToken = loadToken;
     if (loadingEl) loadingEl.style.display = 'none';
     return;
   }
@@ -11318,6 +11323,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       zoom: zoom,
       bounds: baseStreamFailed ? null : prefetchBounds,
     };
+    markerSettledToken = loadToken;
     if (loadingEl) loadingEl.style.display = 'none';
   }
 
@@ -11472,6 +11478,7 @@ function updateMapMarkers(loadingEl, forceReload, loadToken) {
       if (window.__setDateSliderVisibility) {
         window.__setDateSliderVisibility(false);
       }
+      markerSettledToken = loadToken;
       if (loadingEl) {
         loadingEl.style.display = 'none';
       }
@@ -11491,11 +11498,13 @@ function updateMarkers(forceReload){
   if (trackPlaybackActive || trackViewPlaybackActive) {
     if (forceReload && trackViewPlaybackActive) {
       if (isTrackView && isTrackViewReloadSuppressed()) {
+        markerSettledToken = loadToken;
         if (loadingEl) loadingEl.style.display='none';
         return;
       }
       stopTrackViewPlayback(false);
     } else {
+      markerSettledToken = loadToken;
       if (loadingEl) loadingEl.style.display='none';
       return;
     }
@@ -11556,6 +11565,7 @@ function updateMarkers(forceReload){
     if (!isActiveLoad() || !streamDone || pendingRenderItems > 0) {
       return;
     }
+    markerSettledToken = loadToken;
     if (loadingEl) loadingEl.style.display='none';
   }
 
@@ -11669,6 +11679,7 @@ function updateMarkers(forceReload){
       return;
     }
     if (!e || e.data !== 'end') {
+      markerSettledToken = loadToken;
       if (loadingEl) loadingEl.style.display='none';
       es.close();
       return;
@@ -11748,6 +11759,7 @@ function updateMarkers(forceReload){
       trackViewAutoplayDone = true;
       setTrackViewPlaybackButtonState('stopped');
     }
+    markerSettledToken = loadToken;
     es.close();
   };
 }
@@ -13321,8 +13333,8 @@ function updateUrl() {
 
 // Resolve a short link for the current map view so QR codes stay compact and
 // readable across scanners that struggle with oversized URLs.
-function resolveShortLinkForQr() {
-  const full = buildCurrentShareURL();
+function resolveShortLinkForQr(fullURL) {
+  const full = fullURL || buildCurrentShareURL();
   if (shortLinkBox && shortLinkBox.dataset && shortLinkBox.dataset.target === full) {
     return finalizeShortLink(full);
   }
@@ -13414,6 +13426,42 @@ function currentQrSelectionHasHazard() {
 
   return Object.values(circleMarkers).some(function(marker) {
     return markerIsInCurrentQrSelection(marker, bounds);
+  });
+}
+
+function currentQrSelectionDataReady() {
+  if (markerSettledToken !== markerLoadToken) {
+    return false;
+  }
+  if (!markerLayerState) {
+    return true;
+  }
+  const state = loadSpeedFilterState();
+  const activeLayerNames = markerLayerNames.filter(function(name) {
+    return markerLayerEnabled(name, state);
+  });
+  if (markerLayerEnabled(markerLiveLayerName, state) && window.safecastRealtimeEnabled) {
+    activeLayerNames.push(markerLiveLayerName);
+  }
+  return activeLayerNames.every(function(name) {
+    const layerState = markerLayerState[name];
+    return !layerState || (layerState.pendingStreams || 0) === 0;
+  });
+}
+
+function waitForCurrentQrSelectionData() {
+  if (currentQrSelectionDataReady()) {
+    return Promise.resolve();
+  }
+  return new Promise(function(resolve) {
+    function checkReady() {
+      if (currentQrSelectionDataReady()) {
+        resolve();
+        return;
+      }
+      setTimeout(checkReady, 40);
+    }
+    checkReady();
   });
 }
 
@@ -13599,8 +13647,8 @@ function hideQrModal() {
   modal.setAttribute('aria-hidden', 'true');
 }
 
-function showQrForPayload(payloadURL) {
-  if (!currentQrSelectionHasHazard()) {
+function showQrForPayload(payloadURL, hazardPoster) {
+  if (!hazardPoster) {
     showQrModal(buildQrImageURL(payloadURL, false), payloadURL, false, false);
     return Promise.resolve();
   }
@@ -13616,16 +13664,28 @@ function showQrForPayload(payloadURL) {
 }
 
 function openServerPoster() {
-  if (typeof updateUrl === 'function') { try { updateUrl(); } catch(_){} }
-  var full = buildCurrentShareURL();
-  resolveShortLinkForQr()
-    .then(function (shortURL) {
-      var payload = shortURL || full;
-      return showQrForPayload(payload);
-    })
-    .catch(function () {
-      return showQrForPayload(full);
-    });
+  waitForCurrentQrSelectionData().then(function() {
+    if (typeof updateUrl === 'function') { try { updateUrl(); } catch(_){} }
+
+    // Capture the URL and hazard classification in the same event turn. The
+    // short-link request may take time, but the warning state must always match
+    // the exact map selection encoded by that URL.
+    const selection = {
+      fullURL: buildCurrentShareURL(),
+      hazard: currentQrSelectionHasHazard(),
+    };
+
+    return resolveShortLinkForQr(selection.fullURL)
+      .then(function(shortURL) {
+        const payload = shortURL || selection.fullURL;
+        return showQrForPayload(payload, selection.hazard);
+      })
+      .catch(function() {
+        return showQrForPayload(selection.fullURL, selection.hazard);
+      });
+  }).catch(function(error) {
+    console.warn('QR selection preparation failed:', error);
+  });
 }
 
 async function downloadQrImage() {
