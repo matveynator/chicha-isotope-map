@@ -290,6 +290,14 @@ var cliUsageSectionTranslations = map[string]map[string]string{
 		cliSectionImport:     "データのインポート",
 		cliSectionExport:     "データのエクスポート",
 	},
+	"ka": {
+		cliSectionGeneral:    "აპლიკაციის ზოგადი პარამეტრები",
+		cliSectionDatabase:   "მონაცემთა ბაზა",
+		cliSectionAppearance: "გარეგნობა და ლოკალიზაცია",
+		cliSectionPlugins:    "დამატებითი პლაგინები (რეალური დრო და სხვ.)",
+		cliSectionImport:     "მონაცემთა იმპორტი",
+		cliSectionExport:     "მონაცემთა ექსპორტი",
+	},
 	"ko": {
 		cliSectionGeneral:    "애플리케이션 일반 설정",
 		cliSectionDatabase:   "데이터베이스",
@@ -297,6 +305,22 @@ var cliUsageSectionTranslations = map[string]map[string]string{
 		cliSectionPlugins:    "추가 플러그인(실시간 등)",
 		cliSectionImport:     "데이터 가져오기",
 		cliSectionExport:     "데이터 내보내기",
+	},
+	"lt": {
+		cliSectionGeneral:    "Bendrieji programos nustatymai",
+		cliSectionDatabase:   "Duomenų bazė",
+		cliSectionAppearance: "Išvaizda ir lokalizavimas",
+		cliSectionPlugins:    "Papildomi įskiepiai (realaus laiko ir kt.)",
+		cliSectionImport:     "Duomenų importas",
+		cliSectionExport:     "Duomenų eksportas",
+	},
+	"lv": {
+		cliSectionGeneral:    "Vispārīgie lietotnes iestatījumi",
+		cliSectionDatabase:   "Datubāze",
+		cliSectionAppearance: "Izskats un lokalizācija",
+		cliSectionPlugins:    "Papildu spraudņi (reāllaika u.c.)",
+		cliSectionImport:     "Datu imports",
+		cliSectionExport:     "Datu eksports",
 	},
 	"ms": {
 		cliSectionGeneral:    "Tetapan umum aplikasi",
