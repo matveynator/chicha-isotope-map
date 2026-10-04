@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"context"
 	"image/color"
 	"image/png"
@@ -401,5 +402,54 @@ func TestTranslationsForLanguageLimitsPayload(t *testing.T) {
 	english := translationsForLanguage("en")
 	if len(english) != 1 || english["en"]["hello"] != "Hello" {
 		t.Fatalf("translationsForLanguage(en) = %#v, want English only", english)
+	}
+}
+
+
+func TestTranslationsCoverAllSupportedLocales(t *testing.T) {
+	data, err := content.ReadFile("public_html/translations.json")
+	if err != nil {
+		t.Fatalf("read translations.json: %v", err)
+	}
+
+	var dictionaries map[string]map[string]string
+	if err := json.Unmarshal(data, &dictionaries); err != nil {
+		t.Fatalf("parse translations.json: %v", err)
+	}
+
+	supported := []string{
+		"en", "zh", "es", "hi", "ar", "fr", "ru", "pt", "de", "ja", "tr", "it",
+		"ko", "pl", "uk", "mn", "kk", "tg", "ky", "tk", "ur", "ps", "uz",
+		"no", "fi", "ka", "sv", "he", "nl", "el", "hu", "cs", "sk", "ro", "th", "vi",
+		"id", "ms", "bg", "lt", "et", "lv", "sl", "da", "fa", "af", "mg", "ny", "ha",
+	}
+
+	english, ok := dictionaries["en"]
+	if !ok || len(english) == 0 {
+		t.Fatal("English translation dictionary is missing or empty")
+	}
+
+	for _, lang := range supported {
+		dict, ok := dictionaries[lang]
+		if !ok {
+			t.Errorf("supported locale %q has no translation dictionary", lang)
+			continue
+		}
+		for key := range english {
+			value, exists := dict[key]
+			if !exists {
+				t.Errorf("locale %q is missing translation key %q", lang, key)
+				continue
+			}
+			if strings.TrimSpace(value) == "" {
+				t.Errorf("locale %q has an empty translation for %q", lang, key)
+			}
+		}
+		if lang != "en" {
+			legendKey := "legend_full_" + lang
+			if strings.TrimSpace(dict[legendKey]) == "" {
+				t.Errorf("locale %q is missing localized ALARA legend %q", lang, legendKey)
+			}
+		}
 	}
 }
