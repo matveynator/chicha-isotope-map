@@ -1,6 +1,7 @@
 name: Temporary split translations
 
 on:
+  pull_request:
   push:
     branches:
       - i18n/split-translations-by-language
