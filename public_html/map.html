@@ -5157,11 +5157,11 @@ function hexToRgbArray(color) {
 }
 
 function getDefaultLegendColor(doseRate) {
-  if (doseRate <= 0.04) return '#228B22'; // Dark green
-  if (doseRate <= 0.08) return interpolateColor([34, 139, 34], [173, 255, 47], (doseRate - 0.04) / (0.08 - 0.04));
-  if (doseRate <= 0.11) return interpolateColor([173, 255, 47], [255, 255, 0], (doseRate - 0.08) / (0.11 - 0.08));
-  if (doseRate <= 0.20) return interpolateColor([255, 255, 0], [255, 165, 0], (doseRate - 0.11) / (0.20 - 0.11));
-  if (doseRate <= 0.30) return interpolateColor([255, 165, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
+  if (doseRate <= 0.01) return '#228B22'; // Dark green
+  if (doseRate <= 0.06) return interpolateColor([34, 139, 34], [92, 232, 37], (doseRate - 0.01) / (0.06 - 0.01));
+  if (doseRate <= 0.11) return interpolateColor([92, 232, 37], [173, 245, 29], (doseRate - 0.06) / (0.12 - 0.06));
+  if (doseRate <= 0.20) return interpolateColor([216, 245, 29], [252, 227, 0], (doseRate - 0.12) / (0.20 - 0.12));
+  if (doseRate <= 0.30) return interpolateColor([252, 227, 0], [255, 0, 0], (doseRate - 0.20) / (0.30 - 0.20));
   if (doseRate <= 0.99) return interpolateColor([255, 0, 0], [0, 0, 0], (doseRate - 0.30) / (0.99 - 0.30));
   return '#000000'; // Black for very high values
 }
