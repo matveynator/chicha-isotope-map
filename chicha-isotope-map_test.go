@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/matveynator/chicha-isotope-map/pkg/database"
-	"path/filepath"
+	"path"
 )
 
 func TestAPIDocsHandlerRejectsHostHeaderMarkup(t *testing.T) {
@@ -410,10 +410,10 @@ func TestTranslationsCoverAllSupportedLocales(t *testing.T) {
 	}
 	dictionaries := make(map[string]map[string]string, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+		if entry.IsDir() || path.Ext(entry.Name()) != ".json" {
 			continue
 		}
-		data, err := content.ReadFile(filepath.Join("public_html/translations", entry.Name()))
+		data, err := content.ReadFile(path.Join("public_html/translations", entry.Name()))
 		if err != nil {
 			t.Fatalf("read translation %s: %v", entry.Name(), err)
 		}
@@ -421,7 +421,7 @@ func TestTranslationsCoverAllSupportedLocales(t *testing.T) {
 		if err := json.Unmarshal(data, &dictionary); err != nil {
 			t.Fatalf("parse translation %s: %v", entry.Name(), err)
 		}
-		lang := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		lang := strings.TrimSuffix(entry.Name(), path.Ext(entry.Name()))
 		dictionaries[lang] = dictionary
 	}
 	supported := []string{

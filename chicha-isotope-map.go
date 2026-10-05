@@ -39,6 +39,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -1963,10 +1964,10 @@ func loadTranslations(fs embed.FS, dirname string) {
 
 	translations = make(map[string]map[string]string, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+		if entry.IsDir() || path.Ext(entry.Name()) != ".json" {
 			continue
 		}
-		data, err := fs.ReadFile(filepath.Join(dirname, entry.Name()))
+		data, err := fs.ReadFile(path.Join(dirname, entry.Name()))
 		if err != nil {
 			log.Fatalf("Error reading translation file %s: %v", entry.Name(), err)
 		}
@@ -1974,7 +1975,7 @@ func loadTranslations(fs embed.FS, dirname string) {
 		if err := json.Unmarshal(data, &dictionary); err != nil {
 			log.Fatalf("Error decoding translation file %s: %v", entry.Name(), err)
 		}
-		lang := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		lang := strings.TrimSuffix(entry.Name(), path.Ext(entry.Name()))
 		translations[lang] = dictionary
 	}
 }
