@@ -18,110 +18,14 @@ jobs:
         with:
           fetch-depth: 0
           ref: i18n/split-translations-by-language
-
       - name: Split translation dictionary
         run: |
-          python3 <<'PY'
-          import json
-          import pathlib
-
-          root = pathlib.Path('.')
-          source = root / 'public_html' / 'translations.json'
-          original = json.loads(source.read_text(encoding='utf-8'))
-          out = root / 'public_html' / 'translations'
-          out.mkdir(parents=True, exist_ok=True)
-
-          for lang, dictionary in original.items():
-              (out / f'{lang}.json').write_text(
-                  json.dumps(dictionary, ensure_ascii=False, indent=2) + '\n',
-                  encoding='utf-8',
-              )
-          source.unlink()
-
-          go_path = root / 'chicha-isotope-map.go'
-          go = go_path.read_text(encoding='utf-8')
-          start = go.index('func loadTranslations(fs embed.FS, filename string) {')
-          end = go.index('\n}', start) + 2
-          replacement = '''func loadTranslations(fs embed.FS, dirname string) {
-\tentries, err := fs.ReadDir(dirname)
-\tif err != nil {
-\t\tlog.Fatalf("Error opening translation directory: %v", err)
-\t}
-
-\ttranslations = make(map[string]map[string]string, len(entries))
-\tfor _, entry := range entries {
-\t\tif entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-\t\t\tcontinue
-\t\t}
-\t\tdata, err := fs.ReadFile(filepath.Join(dirname, entry.Name()))
-\t\tif err != nil {
-\t\t\tlog.Fatalf("Error reading translation file %s: %v", entry.Name(), err)
-\t\t}
-\t\tdictionary := make(map[string]string)
-\t\tif err := json.Unmarshal(data, &dictionary); err != nil {
-\t\t\tlog.Fatalf("Error decoding translation file %s: %v", entry.Name(), err)
-\t\t}
-\t\tlang := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-\t\ttranslations[lang] = dictionary
-\t}
-}'''
-          go = go[:start] + replacement + go[end:]
-          go = go.replace('loadTranslations(content, "public_html/translations.json")', 'loadTranslations(content, "public_html/translations")')
-          go = go.replace('Translation strings live in public_html/translations.json.', 'Translation strings live in public_html/translations/<lang>.json.')
-          embed_line = '//go:embed public_html/* LICENSE LICENSE.CC0 LICENSE.MAPLIBRE LICENSE.MAPLIBRE-LEAFLET'
-          if '//go:embed public_html/translations/*.json' not in go:
-              go = go.replace(embed_line, embed_line + '\n//go:embed public_html/translations/*.json')
-          go_path.write_text(go, encoding='utf-8')
-
-          test_path = root / 'chicha-isotope-map_test.go'
-          test = test_path.read_text(encoding='utf-8')
-          old = '''\tdata, err := content.ReadFile("public_html/translations.json")
-\tif err != nil {
-\t\tt.Fatalf("read translations.json: %v", err)
-\t}
-
-\tvar dictionaries map[string]map[string]string
-\tif err := json.Unmarshal(data, &dictionaries); err != nil {
-\t\tt.Fatalf("parse translations.json: %v", err)
-\t}'''
-          new = '''\tentries, err := content.ReadDir("public_html/translations")
-\tif err != nil {
-\t\tt.Fatalf("read translations directory: %v", err)
-\t}
-\tdictionaries := make(map[string]map[string]string, len(entries))
-\tfor _, entry := range entries {
-\t\tif entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-\t\t\tcontinue
-\t\t}
-\t\tdata, err := content.ReadFile(filepath.Join("public_html/translations", entry.Name()))
-\t\tif err != nil {
-\t\t\tt.Fatalf("read translation %s: %v", entry.Name(), err)
-\t\t}
-\t\tdictionary := make(map[string]string)
-\t\tif err := json.Unmarshal(data, &dictionary); err != nil {
-\t\t\tt.Fatalf("parse translation %s: %v", entry.Name(), err)
-\t\t}
-\t\tlang := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-\t\tdictionaries[lang] = dictionary
-\t}'''
-          if old not in test:
-              raise SystemExit('translation test read block not found')
-          test_path.write_text(test.replace(old, new, 1), encoding='utf-8')
-
-          reconstructed = {
-              p.stem: json.loads(p.read_text(encoding='utf-8'))
-              for p in sorted(out.glob('*.json'))
-          }
-          if reconstructed != original:
-              raise SystemExit('split translation data differs from source')
-          print(f'split {len(original)} languages with exact semantic equality')
-          PY
-
+          echo 'aW1wb3J0IGpzb24KaW1wb3J0IHBhdGhsaWIKCnJvb3QgPSBwYXRobGliLlBhdGgoIi4iKQpzb3VyY2UgPSByb290IC8gInB1YmxpY19odG1sIiAvICJ0cmFuc2xhdGlvbnMuanNvbiIKb3JpZ2luYWwgPSBqc29uLmxvYWRzKHNvdXJjZS5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikpCm91dCA9IHJvb3QgLyAicHVibGljX2h0bWwiIC8gInRyYW5zbGF0aW9ucyIKb3V0Lm1rZGlyKHBhcmVudHM9VHJ1ZSwgZXhpc3Rfb2s9VHJ1ZSkKCmZvciBsYW5nLCBkaWN0aW9uYXJ5IGluIG9yaWdpbmFsLml0ZW1zKCk6CiAgICAob3V0IC8gZiJ7bGFuZ30uanNvbiIpLndyaXRlX3RleHQoCiAgICAgICAganNvbi5kdW1wcyhkaWN0aW9uYXJ5LCBlbnN1cmVfYXNjaWk9RmFsc2UsIGluZGVudD0yKSArICJcbiIsCiAgICAgICAgZW5jb2Rpbmc9InV0Zi04IiwKICAgICkKc291cmNlLnVubGluaygpCgpnb19wYXRoID0gcm9vdCAvICJjaGljaGEtaXNvdG9wZS1tYXAuZ28iCmdvID0gZ29fcGF0aC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikKc3RhcnQgPSBnby5pbmRleCgiZnVuYyBsb2FkVHJhbnNsYXRpb25zKGZzIGVtYmVkLkZTLCBmaWxlbmFtZSBzdHJpbmcpIHsiKQplbmQgPSBnby5pbmRleCgiXG59Iiwgc3RhcnQpICsgMgpyZXBsYWNlbWVudCA9ICIiImZ1bmMgbG9hZFRyYW5zbGF0aW9ucyhmcyBlbWJlZC5GUywgZGlybmFtZSBzdHJpbmcpIHsKXHRlbnRyaWVzLCBlcnIgOj0gZnMuUmVhZERpcihkaXJuYW1lKQpcdGlmIGVyciAhPSBuaWwgewpcdFx0bG9nLkZhdGFsZigiRXJyb3Igb3BlbmluZyB0cmFuc2xhdGlvbiBkaXJlY3Rvcnk6ICV2IiwgZXJyKQpcdH0KClx0dHJhbnNsYXRpb25zID0gbWFrZShtYXBbc3RyaW5nXW1hcFtzdHJpbmddc3RyaW5nLCBsZW4oZW50cmllcykpClx0Zm9yIF8sIGVudHJ5IDo9IHJhbmdlIGVudHJpZXMgewpcdFx0aWYgZW50cnkuSXNEaXIoKSB8fCBmaWxlcGF0aC5FeHQoZW50cnkuTmFtZSgpKSAhPSAiLmpzb24iIHsKXHRcdFx0Y29udGludWUKXHRcdH0KXHRcdGRhdGEsIGVyciA6PSBmcy5SZWFkRmlsZShmaWxlcGF0aC5Kb2luKGRpcm5hbWUsIGVudHJ5Lk5hbWUoKSkpClx0XHRpZiBlcnIgIT0gbmlsIHsKXHRcdFx0bG9nLkZhdGFsZigiRXJyb3IgcmVhZGluZyB0cmFuc2xhdGlvbiBmaWxlICVzOiAldiIsIGVudHJ5Lk5hbWUoKSwgZXJyKQpcdFx0fQpcdFx0ZGljdGlvbmFyeSA6PSBtYWtlKG1hcFtzdHJpbmddc3RyaW5nKQpcdFx0aWYgZXJyIDo9IGpzb24uVW5tYXJzaGFsKGRhdGEsICZkaWN0aW9uYXJ5KTsgZXJyICE9IG5pbCB7Clx0XHRcdGxvZy5GYXRhbGYoIkVycm9yIGRlY29kaW5nIHRyYW5zbGF0aW9uIGZpbGUgJXM6ICV2IiwgZW50cnkuTmFtZSgpLCBlcnIpClx0XHR9Clx0XHRsYW5nIDo9IHN0cmluZ3MuVHJpbVN1ZmZpeChlbnRyeS5OYW1lKCksIGZpbGVwYXRoLkV4dChlbnRyeS5OYW1lKCkpKQpcdFx0dHJhbnNsYXRpb25zW2xhbmddID0gZGljdGlvbmFyeQpcdH0KfSIiIgpnbyA9IGdvWzpzdGFydF0gKyByZXBsYWNlbWVudCArIGdvW2VuZDpdCmdvID0gZ28ucmVwbGFjZSgnbG9hZFRyYW5zbGF0aW9ucyhjb250ZW50LCAicHVibGljX2h0bWwvdHJhbnNsYXRpb25zLmpzb24iKScsICdsb2FkVHJhbnNsYXRpb25zKGNvbnRlbnQsICJwdWJsaWNfaHRtbC90cmFuc2xhdGlvbnMiKScpCmdvID0gZ28ucmVwbGFjZSgiVHJhbnNsYXRpb24gc3RyaW5ncyBsaXZlIGluIHB1YmxpY19odG1sL3RyYW5zbGF0aW9ucy5qc29uLiIsICJUcmFuc2xhdGlvbiBzdHJpbmdzIGxpdmUgaW4gcHVibGljX2h0bWwvdHJhbnNsYXRpb25zLzxsYW5nPi5qc29uLiIpCmVtYmVkX2xpbmUgPSAiLy9nbzplbWJlZCBwdWJsaWNfaHRtbC8qIExJQ0VOU0UgTElDRU5TRS5DQzAgTElDRU5TRS5NQVBMSUJSRSBMSUNFTlNFLk1BUExJQlJFLUxFQUZMRVQiCmlmICIvL2dvOmVtYmVkIHB1YmxpY19odG1sL3RyYW5zbGF0aW9ucy8qLmpzb24iIG5vdCBpbiBnbzoKICAgIGlmIGVtYmVkX2xpbmUgbm90IGluIGdvOgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoImVtYmVkIGRpcmVjdGl2ZSBub3QgZm91bmQiKQogICAgZ28gPSBnby5yZXBsYWNlKGVtYmVkX2xpbmUsIGVtYmVkX2xpbmUgKyAiXG4vL2dvOmVtYmVkIHB1YmxpY19odG1sL3RyYW5zbGF0aW9ucy8qLmpzb24iKQpnb19wYXRoLndyaXRlX3RleHQoZ28sIGVuY29kaW5nPSJ1dGYtOCIpCgp0ZXN0X3BhdGggPSByb290IC8gImNoaWNoYS1pc290b3BlLW1hcF90ZXN0LmdvIgp0ZXN0ID0gdGVzdF9wYXRoLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQpvbGQgPSAiXHRkYXRhLCBlcnIgOj0gY29udGVudC5SZWFkRmlsZShcInB1YmxpY19odG1sL3RyYW5zbGF0aW9ucy5qc29uXCIpXG5cdGlmIGVyciAhPSBuaWwge1xuXHRcdHQuRmF0YWxmKFwicmVhZCB0cmFuc2xhdGlvbnMuanNvbjogJXZcIiwgZXJyKVxuXHR9XG5cblx0dmFyIGRpY3Rpb25hcmllcyBtYXBbc3RyaW5nXW1hcFtzdHJpbmddc3RyaW5nXG5cdGlmIGVyciA6PSBqc29uLlVubWFyc2hhbChkYXRhLCAmZGljdGlvbmFyaWVzKTsgZXJyICE9IG5pbCB7XG5cdFx0dC5GYXRhbGYoXCJwYXJzZSB0cmFuc2xhdGlvbnMuanNvbjogJXZcIiwgZXJyKVxuXHR9IgpuZXcgPSAiXHRlbnRyaWVzLCBlcnIgOj0gY29udGVudC5SZWFkRGlyKFwicHVibGljX2h0bWwvdHJhbnNsYXRpb25zXCIpXG5cdGlmIGVyciAhPSBuaWwge1xuXHRcdHQuRmF0YWxmKFwicmVhZCB0cmFuc2xhdGlvbnMgZGlyZWN0b3J5OiAldlwiLCBlcnIpXG5cdH1cblx0ZGljdGlvbmFyaWVzIDo9IG1ha2UobWFwW3N0cmluZ11tYXBbc3RyaW5nXXN0cmluZywgbGVuKGVudHJpZXMpKVxuXHRmb3IgXywgZW50cnkgOj0gcmFuZ2UgZW50cmllcyB7XG5cdFx0aWYgZW50cnkuSXNEaXIoKSB8fCBmaWxlcGF0aC5FeHQoZW50cnkuTmFtZSgpKSAhPSBcIi5qc29uXCIge1xuXHRcdFx0Y29udGludWVcblx0XHR9XG5cdFx0ZGF0YSwgZXJyIDo9IGNvbnRlbnQuUmVhZEZpbGUoZmlsZXBhdGguSm9pbihcInB1YmxpY19odG1sL3RyYW5zbGF0aW9uc1wiLCBlbnRyeS5OYW1lKCkpKVxuXHRcdGlmIGVyciAhPSBuaWwge1xuXHRcdFx0dC5GYXRhbGYoXCJyZWFkIHRyYW5zbGF0aW9uICVzOiAldlwiLCBlbnRyeS5OYW1lKCksIGVycilcblx0XHR9XG5cdFx0ZGljdGlvbmFyeSA6PSBtYWtlKG1hcFtzdHJpbmddc3RyaW5nKVxuXHRcdGlmIGVyciA6PSBqc29uLlVubWFyc2hhbChkYXRhLCAmZGljdGlvbmFyeSk7IGVyciAhPSBuaWwge1xuXHRcdFx0dC5GYXRhbGYoXCJwYXJzZSB0cmFuc2xhdGlvbiAlczogJXZcIiwgZW50cnkuTmFtZSgpLCBlcnIpXG5cdFx0fVxuXHRcdGxhbmcgOj0gc3RyaW5ncy5UcmltU3VmZml4KGVudHJ5Lk5hbWUoKSwgZmlsZXBhdGguRXh0KGVudHJ5Lk5hbWUoKSkpXG5cdFx0ZGljdGlvbmFyaWVzW2xhbmddID0gZGljdGlvbmFyeVxuXHR9IgppZiBvbGQgbm90IGluIHRlc3Q6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJ0cmFuc2xhdGlvbiB0ZXN0IHJlYWQgYmxvY2sgbm90IGZvdW5kIikKdGVzdF9wYXRoLndyaXRlX3RleHQodGVzdC5yZXBsYWNlKG9sZCwgbmV3LCAxKSwgZW5jb2Rpbmc9InV0Zi04IikKCnJlY29uc3RydWN0ZWQgPSB7CiAgICBwLnN0ZW06IGpzb24ubG9hZHMocC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikpCiAgICBmb3IgcCBpbiBzb3J0ZWQob3V0Lmdsb2IoIiouanNvbiIpKQp9CmlmIHJlY29uc3RydWN0ZWQgIT0gb3JpZ2luYWw6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJzcGxpdCB0cmFuc2xhdGlvbiBkYXRhIGRpZmZlcnMgZnJvbSBzb3VyY2UiKQpwcmludChmInNwbGl0IHtsZW4ob3JpZ2luYWwpfSBsYW5ndWFnZXMgd2l0aCBleGFjdCBzZW1hbnRpYyBlcXVhbGl0eSIpCg==' | base64 -d > /tmp/split_translations.py
+          python3 /tmp/split_translations.py
       - name: Format and test
         run: |
           gofmt -w chicha-isotope-map.go chicha-isotope-map_test.go
           go test ./...
-
       - name: Commit final migration without temporary workflow
         run: |
           git config user.name "github-actions[bot]"
