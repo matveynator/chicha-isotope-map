@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"image/color"
 	"image/png"
 	"net/http"
@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/matveynator/chicha-isotope-map/pkg/database"
+	"path/filepath"
 )
 
 func TestAPIDocsHandlerRejectsHostHeaderMarkup(t *testing.T) {
@@ -256,7 +257,6 @@ func TestGenerateSerialNumberReturnsDistinctCompactIdentifiers(t *testing.T) {
 	}
 }
 
-
 func decodeQRHandlerPNG(t *testing.T, response *httptest.ResponseRecorder) color.RGBA {
 	t.Helper()
 
@@ -327,43 +327,42 @@ func TestQrPngHandlerPlainModeLeavesQRWithoutRadiationLogo(t *testing.T) {
 	}
 }
 
-
 func TestGetPreferredLanguageRecognizesNewLocales(t *testing.T) {
 	tests := map[string]string{
-		"mn-MN,mn;q=0.9": "mn",
-		"kk-KZ,ru;q=0.8": "kk",
-		"tg-TJ,ru;q=0.8": "tg",
-		"ky-KG,ru;q=0.8": "ky",
-		"tk-TM,ru;q=0.8": "tk",
-		"ur-PK,en;q=0.8": "ur",
-		"ps-AF,fa;q=0.8": "ps",
-		"fa-AF,en;q=0.8": "fa",
-		"fa-IR,en;q=0.8": "fa",
-		"hi-IN,en;q=0.8": "hi",
-		"zh-CN,en;q=0.8": "zh",
-		"ko-KP,en;q=0.8": "ko",
-		"ko-KR,en;q=0.8": "ko",
-		"en-CA,fr;q=0.8": "en",
-		"en-AU,en;q=0.8": "en",
-		"de-AT,en;q=0.8": "de",
-		"es-AR,en;q=0.8": "es",
-		"nl-BE,fr;q=0.8": "nl",
-		"pt-BR,en;q=0.8": "pt",
-		"bg-BG,en;q=0.8": "bg",
-		"ro-RO,en;q=0.8": "ro",
-		"sk-SK,en;q=0.8": "sk",
-		"sl-SI,en;q=0.8": "sl",
-		"uz-UZ,ru;q=0.8": "uz",
-		"et-EE,en;q=0.8": "et",
-		"mg-MG,fr;q=0.8": "mg",
-		"ny-MW,en;q=0.8": "ny",
-		"ha-NE,fr;q=0.8": "ha",
-		"af-ZA,en;q=0.8": "af",
-		"kk-KZ;q=0,ru;q=1": "ru",
-		"kk-KZ;q=0.2,ru;q=0.9": "ru",
-		"ru;q=0.4,kk-KZ;q=0.8": "kk",
-		"kk-KZ;q=0.8,ru;q=0.8": "kk",
-		"kk-KZ;q=0,ru;q=0": "en",
+		"mn-MN,mn;q=0.9":         "mn",
+		"kk-KZ,ru;q=0.8":         "kk",
+		"tg-TJ,ru;q=0.8":         "tg",
+		"ky-KG,ru;q=0.8":         "ky",
+		"tk-TM,ru;q=0.8":         "tk",
+		"ur-PK,en;q=0.8":         "ur",
+		"ps-AF,fa;q=0.8":         "ps",
+		"fa-AF,en;q=0.8":         "fa",
+		"fa-IR,en;q=0.8":         "fa",
+		"hi-IN,en;q=0.8":         "hi",
+		"zh-CN,en;q=0.8":         "zh",
+		"ko-KP,en;q=0.8":         "ko",
+		"ko-KR,en;q=0.8":         "ko",
+		"en-CA,fr;q=0.8":         "en",
+		"en-AU,en;q=0.8":         "en",
+		"de-AT,en;q=0.8":         "de",
+		"es-AR,en;q=0.8":         "es",
+		"nl-BE,fr;q=0.8":         "nl",
+		"pt-BR,en;q=0.8":         "pt",
+		"bg-BG,en;q=0.8":         "bg",
+		"ro-RO,en;q=0.8":         "ro",
+		"sk-SK,en;q=0.8":         "sk",
+		"sl-SI,en;q=0.8":         "sl",
+		"uz-UZ,ru;q=0.8":         "uz",
+		"et-EE,en;q=0.8":         "et",
+		"mg-MG,fr;q=0.8":         "mg",
+		"ny-MW,en;q=0.8":         "ny",
+		"ha-NE,fr;q=0.8":         "ha",
+		"af-ZA,en;q=0.8":         "af",
+		"kk-KZ;q=0,ru;q=1":       "ru",
+		"kk-KZ;q=0.2,ru;q=0.9":   "ru",
+		"ru;q=0.4,kk-KZ;q=0.8":   "kk",
+		"kk-KZ;q=0.8,ru;q=0.8":   "kk",
+		"kk-KZ;q=0,ru;q=0":       "en",
 		"kk-KZ;q=bogus,ru;q=0.7": "ru",
 	}
 
@@ -377,7 +376,6 @@ func TestGetPreferredLanguageRecognizesNewLocales(t *testing.T) {
 		})
 	}
 }
-
 
 func TestTranslationsForLanguageLimitsPayload(t *testing.T) {
 	oldTranslations := translations
@@ -405,18 +403,27 @@ func TestTranslationsForLanguageLimitsPayload(t *testing.T) {
 	}
 }
 
-
 func TestTranslationsCoverAllSupportedLocales(t *testing.T) {
-	data, err := content.ReadFile("public_html/translations.json")
+	entries, err := content.ReadDir("public_html/translations")
 	if err != nil {
-		t.Fatalf("read translations.json: %v", err)
+		t.Fatalf("read translations directory: %v", err)
 	}
-
-	var dictionaries map[string]map[string]string
-	if err := json.Unmarshal(data, &dictionaries); err != nil {
-		t.Fatalf("parse translations.json: %v", err)
+	dictionaries := make(map[string]map[string]string, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		data, err := content.ReadFile(filepath.Join("public_html/translations", entry.Name()))
+		if err != nil {
+			t.Fatalf("read translation %s: %v", entry.Name(), err)
+		}
+		dictionary := make(map[string]string)
+		if err := json.Unmarshal(data, &dictionary); err != nil {
+			t.Fatalf("parse translation %s: %v", entry.Name(), err)
+		}
+		lang := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		dictionaries[lang] = dictionary
 	}
-
 	supported := []string{
 		"en", "zh", "es", "hi", "ar", "fr", "ru", "pt", "de", "ja", "tr", "it",
 		"ko", "pl", "uk", "mn", "kk", "tg", "ky", "tk", "ur", "ps", "uz",

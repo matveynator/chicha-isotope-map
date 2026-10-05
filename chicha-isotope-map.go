@@ -30,7 +30,6 @@ import (
 	"image/color"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
@@ -71,6 +70,7 @@ import (
 // proverb by avoiding extra runtime file IO.
 //
 //go:embed public_html/* LICENSE LICENSE.CC0 LICENSE.MAPLIBRE LICENSE.MAPLIBRE-LEAFLET
+//go:embed public_html/translations/*.json
 var content embed.FS
 
 var doseData database.Data
@@ -1955,21 +1955,27 @@ func loadRawMarkersForZoomRebuild(ctx context.Context, db *database.Database, db
 // =====================
 var translations map[string]map[string]string
 
-func loadTranslations(fs embed.FS, filename string) {
-	file, err := fs.Open(filename)
+func loadTranslations(fs embed.FS, dirname string) {
+	entries, err := fs.ReadDir(dirname)
 	if err != nil {
-		log.Fatalf("Error opening translation file: %v", err)
-	}
-	defer file.Close()
-
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Fatalf("Error reading translation file: %v", err)
+		log.Fatalf("Error opening translation directory: %v", err)
 	}
 
-	err = json.Unmarshal(data, &translations)
-	if err != nil {
-		log.Fatalf("Error parsing translations: %v", err)
+	translations = make(map[string]map[string]string, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		data, err := fs.ReadFile(filepath.Join(dirname, entry.Name()))
+		if err != nil {
+			log.Fatalf("Error reading translation file %s: %v", entry.Name(), err)
+		}
+		dictionary := make(map[string]string)
+		if err := json.Unmarshal(data, &dictionary); err != nil {
+			log.Fatalf("Error decoding translation file %s: %v", entry.Name(), err)
+		}
+		lang := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		translations[lang] = dictionary
 	}
 }
 
@@ -1991,7 +1997,7 @@ func getPreferredLanguage(r *http.Request) string {
 		return "en"
 	}
 
-	// Supported UI languages. Translation strings live in public_html/translations.json.
+	// Supported UI languages. Translation strings live in public_html/translations/<lang>.json.
 	supported := map[string]struct{}{
 		"en": {}, "zh": {}, "es": {}, "hi": {}, "ar": {}, "fr": {}, "ru": {}, "pt": {}, "de": {}, "ja": {}, "tr": {}, "it": {},
 		"ko": {}, "pl": {}, "uk": {}, "mn": {}, "kk": {}, "tg": {}, "ky": {}, "tk": {}, "ur": {}, "ps": {}, "uz": {},
@@ -2000,10 +2006,10 @@ func getPreferredLanguage(r *http.Request) string {
 	}
 
 	aliases := map[string]string{
-		"iw": "he",
-		"in": "id",
-		"nb": "no",
-		"nn": "no",
+		"iw":    "he",
+		"in":    "id",
+		"nb":    "no",
+		"nn":    "no",
 		"zh-cn": "zh", "zh-sg": "zh", "zh-hans": "zh",
 		"zh-tw": "zh", "zh-hk": "zh", "zh-hant": "zh",
 		"pt-br": "pt", "pt-pt": "pt",
@@ -8405,7 +8411,7 @@ func main() {
 		}
 		return
 	}
-	loadTranslations(content, "public_html/translations.json")
+	loadTranslations(content, "public_html/translations")
 	// Resolve UI branding early so handlers can rely on the final logo settings.
 	activeLogoConfig, customLogoAsset = resolveLogoConfig(*logoPath, *logoLink, log.Printf)
 
