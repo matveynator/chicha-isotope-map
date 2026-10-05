@@ -13,5 +13,120 @@ jobs:
   split:
     runs-on: ubuntu-22.04
     steps:
-      - name: Sanity check
-        run: echo ok
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: i18n/split-translations-by-language
+
+      - name: Split translation dictionary
+        run: |
+          python3 <<'PY'
+          import json
+          import pathlib
+
+          root = pathlib.Path('.')
+          source = root / 'public_html' / 'translations.json'
+          original = json.loads(source.read_text(encoding='utf-8'))
+          out = root / 'public_html' / 'translations'
+          out.mkdir(parents=True, exist_ok=True)
+
+          for lang, dictionary in original.items():
+              (out / f'{lang}.json').write_text(
+                  json.dumps(dictionary, ensure_ascii=False, indent=2) + '\n',
+                  encoding='utf-8',
+              )
+          source.unlink()
+
+          go_path = root / 'chicha-isotope-map.go'
+          go = go_path.read_text(encoding='utf-8')
+          start = go.index('func loadTranslations(fs embed.FS, filename string) {')
+          end = go.index('\n}', start) + 2
+          replacement = '''func loadTranslations(fs embed.FS, dirname string) {
+\tentries, err := fs.ReadDir(dirname)
+\tif err != nil {
+\t\tlog.Fatalf("Error opening translation directory: %v", err)
+\t}
+
+\ttranslations = make(map[string]map[string]string, len(entries))
+\tfor _, entry := range entries {
+\t\tif entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+\t\t\tcontinue
+\t\t}
+\t\tdata, err := fs.ReadFile(filepath.Join(dirname, entry.Name()))
+\t\tif err != nil {
+\t\t\tlog.Fatalf("Error reading translation file %s: %v", entry.Name(), err)
+\t\t}
+\t\tdictionary := make(map[string]string)
+\t\tif err := json.Unmarshal(data, &dictionary); err != nil {
+\t\t\tlog.Fatalf("Error decoding translation file %s: %v", entry.Name(), err)
+\t\t}
+\t\tlang := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+\t\ttranslations[lang] = dictionary
+\t}
+}'''
+          go = go[:start] + replacement + go[end:]
+          go = go.replace('loadTranslations(content, "public_html/translations.json")', 'loadTranslations(content, "public_html/translations")')
+          go = go.replace('Translation strings live in public_html/translations.json.', 'Translation strings live in public_html/translations/<lang>.json.')
+          embed_line = '//go:embed public_html/* LICENSE LICENSE.CC0 LICENSE.MAPLIBRE LICENSE.MAPLIBRE-LEAFLET'
+          if '//go:embed public_html/translations/*.json' not in go:
+              go = go.replace(embed_line, embed_line + '\n//go:embed public_html/translations/*.json')
+          go_path.write_text(go, encoding='utf-8')
+
+          test_path = root / 'chicha-isotope-map_test.go'
+          test = test_path.read_text(encoding='utf-8')
+          old = '''\tdata, err := content.ReadFile("public_html/translations.json")
+\tif err != nil {
+\t\tt.Fatalf("read translations.json: %v", err)
+\t}
+
+\tvar dictionaries map[string]map[string]string
+\tif err := json.Unmarshal(data, &dictionaries); err != nil {
+\t\tt.Fatalf("parse translations.json: %v", err)
+\t}'''
+          new = '''\tentries, err := content.ReadDir("public_html/translations")
+\tif err != nil {
+\t\tt.Fatalf("read translations directory: %v", err)
+\t}
+\tdictionaries := make(map[string]map[string]string, len(entries))
+\tfor _, entry := range entries {
+\t\tif entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+\t\t\tcontinue
+\t\t}
+\t\tdata, err := content.ReadFile(filepath.Join("public_html/translations", entry.Name()))
+\t\tif err != nil {
+\t\t\tt.Fatalf("read translation %s: %v", entry.Name(), err)
+\t\t}
+\t\tdictionary := make(map[string]string)
+\t\tif err := json.Unmarshal(data, &dictionary); err != nil {
+\t\t\tt.Fatalf("parse translation %s: %v", entry.Name(), err)
+\t\t}
+\t\tlang := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+\t\tdictionaries[lang] = dictionary
+\t}'''
+          if old not in test:
+              raise SystemExit('translation test read block not found')
+          test_path.write_text(test.replace(old, new, 1), encoding='utf-8')
+
+          reconstructed = {
+              p.stem: json.loads(p.read_text(encoding='utf-8'))
+              for p in sorted(out.glob('*.json'))
+          }
+          if reconstructed != original:
+              raise SystemExit('split translation data differs from source')
+          print(f'split {len(original)} languages with exact semantic equality')
+          PY
+
+      - name: Format and test
+        run: |
+          gofmt -w chicha-isotope-map.go chicha-isotope-map_test.go
+          go test ./...
+
+      - name: Commit final migration without temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-split-translations.yml
+          git add -A
+          git commit -m "Split translations into per-language files"
+          git push origin HEAD:i18n/split-translations-by-language
