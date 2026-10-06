@@ -14807,12 +14807,12 @@ function centerMapToLocation() {
 <!--
   When the legend is clicked:
     • Fetch language-specific full text.
-    • Split into paragraphs and decorate range lines with color squares.
+    • Preserve the localized HTML structure and its range colors.
     • Show modal; close on backdrop click for convenience.
 -->
 <script>
-  // Build legend HTML with color squares for tooltip and modal.
-  function buildLegendHTML(lang) {
+  // ALARA translations own their HTML; Safecast rows follow the active scale.
+  function buildLegendHTML() {
     if (normalizeLegendScheme(currentLegendScheme) === legendSchemeSafecast) {
       var description = translate('legend_safecast_description');
       if (!description || description === 'legend_safecast_description') {
@@ -14827,32 +14827,13 @@ function centerMapToLocation() {
         '<p style="margin:0 0 1em 0;">' + escapeHtml(description) + '</p>' +
         safecastRows;
     }
-    var key = 'legend_full_' + lang;
-    var txt = translate(key);
-    var parts = txt.split('\n\n');
-    function stripBullet(line) {
-      return line.replace(/^■\s*/, '');
-    }
-    function square(color) {
-      return '<span class="legend-square" style="background:' + color + ';"></span>';
-    }
-    return parts.map(function(p){
-      var lines = p.split('\n').map(function(line){
-        if (line.includes('0–11')) return square('#008000') + stripBullet(line);
-        if (line.includes('11–30')) return square('#FFD700') + stripBullet(line);
-        if (line.includes('30–100')) return square('#FF4500') + stripBullet(line);
-        if (line.includes('>100')) return square('#000000') + stripBullet(line);
-        return line;
-      }).join('<br>');
-      return '<p style="margin:0 0 1em 0;">' + lines + '</p>';
-    }).join('');
+    return translate('legend_full');
   }
 
   // Display the full legend text in current language.
   // Exposed so marker popups reuse the same modal.
   function openLegendModal() {
-    var lang = (typeof currentLang !== 'undefined') ? currentLang : 'en';
-    var html = buildLegendHTML(lang);
+    var html = buildLegendHTML();
     var box = document.getElementById('legendText');
     if (box) box.innerHTML = html;
     var modal = document.getElementById('legendModal');
