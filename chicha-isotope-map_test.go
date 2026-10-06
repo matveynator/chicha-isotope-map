@@ -452,11 +452,8 @@ func TestTranslationsCoverAllSupportedLocales(t *testing.T) {
 				t.Errorf("locale %q has an empty translation for %q", lang, key)
 			}
 		}
-		if lang != "en" {
-			legendKey := "legend_full_" + lang
-			if strings.TrimSpace(dict[legendKey]) == "" {
-				t.Errorf("locale %q is missing localized ALARA legend %q", lang, legendKey)
-			}
+		if strings.TrimSpace(dict["legend_full"]) == "" {
+			t.Errorf("locale %q is missing localized ALARA legend %q", lang, "legend_full")
 		}
 	}
 }
