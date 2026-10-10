@@ -145,7 +145,7 @@ jobs:
                    -o "dist/$bin"
 
       - name: Upload portable artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
@@ -200,7 +200,7 @@ jobs:
                    -o "dist/${BIN}"
 
       - name: Upload duckdb artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-${{ matrix.target }}
           path: dist/
@@ -421,7 +421,7 @@ jobs:
           Compress-Archive -Path "dist/$bin" -DestinationPath "dist/chicha-isotope-map_${{ matrix.goos }}_${{ matrix.goarch }}_desktop.zip" -Force
 
       - name: Upload desktop artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-desktop-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.desktop_variant }}
           path: |
@@ -429,7 +429,7 @@ jobs:
 
       - name: Upload desktop icon artifact (single copy for release assets)
         if: runner.os == 'Windows' && matrix.goarch == 'amd64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-desktop-icon-windows
           path: dist/windows-desktop-icon.ico
@@ -547,7 +547,7 @@ jobs:
             "${DMG_PATH}"
 
       - name: Upload macOS universal artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-darwin-universal
           path: |
