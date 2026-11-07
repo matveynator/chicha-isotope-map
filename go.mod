@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.26.6
 
 require (
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.12.0
 	github.com/jchv/go-webview-selector v0.0.0-20250730141630-a5f64a01ba3a
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
@@ -22,7 +22,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/jchv/go-webview2 v0.0.0-20220126073738-2ea27096a5eb // indirect
 	github.com/jchv/go-winloader v0.0.0-20200815041850-dec1ee9a7fd5 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
